@@ -39,6 +39,7 @@ class SimState(TypedDict):
     """LangGraph global state for AI-FEA engine."""
 
     # 1. Inputs
+    user_request: str  # Original natural language request
     plan: SimPlan
 
     # 2. Intermediate Artifacts
