@@ -4,16 +4,26 @@ import datetime
 
 from langgraph.types import interrupt
 
+from backend.app.well_harness.notion_sync import NotionRunRegistrar
 from schemas.sim_state import SimState
 
 
 def sync_to_notion_pending_review(case_id: str, run_id: str):
-    """Stub to simulate Notion writeback for Pending Review via well_harness."""
+    """Real Notion writeback for Pending Review via well_harness."""
     message = (
         f"[{datetime.datetime.now().isoformat()}] NOTION SYNC: "
         f"Task {case_id} set to Pending Review for run {run_id}"
     )
     print(message)
+    registrar = NotionRunRegistrar.from_default_path()
+    res = registrar.create_standalone_task(
+        case_id=case_id,
+        run_id=run_id,
+        status="Pending Review",
+        summary="Graph execution paused by human_fallback interrupt due to limit or unknown fault.",
+    )
+    if res.attempted and not res.success:
+        print(f"Failed to sync Notion task: {res.error_message}")
 
 
 def run(state: SimState) -> dict:
