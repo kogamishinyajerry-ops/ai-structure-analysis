@@ -38,6 +38,7 @@ dev = [
 ]
 agents = [
     "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=2.0",
 ]
 solvers = [
     "meshio>=5.3",
