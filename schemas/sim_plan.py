@@ -52,9 +52,12 @@ class ElementOrder(StrEnum):
 class GeometrySpec(BaseModel):
     """Geometry definition — consumed by the Geometry Agent."""
 
-    kind: str = Field(..., description="Geometry type: naca, pressure_vessel, plate, truss, custom")
+    kind: str = Field(
+        ..., description="Geometry type: 'naca', 'pressure_vessel', 'plate', 'truss', 'custom'"
+    )
     parameters: dict[str, Any] = Field(
-        default_factory=dict, description="Type-specific geometry parameters"
+        default_factory=dict,
+        description="Type-specific geometry parameters. For 'naca', use 'profile' (e.g. 'NACA0012'), 'chord_length' (float), 'span' (float).",
     )
 
 
@@ -73,14 +76,20 @@ class LoadSpec(BaseModel):
     """A single load definition."""
 
     kind: str = Field(..., description="concentrated_force | pressure | gravity | thermal")
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Load parameters. For 'concentrated_force', use 'magnitude' (float, N) and 'node_set' (string, e.g. 'Ntip').",
+    )
 
 
 class BCSpec(BaseModel):
     """A single boundary-condition definition."""
 
     kind: str = Field(..., description="fixed | displacement | symmetry | cyclic")
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Boundary Condition parameters. For 'fixed', use 'node_set' (string, e.g. 'Nroot').",
+    )
 
 
 class MeshStrategy(BaseModel):
