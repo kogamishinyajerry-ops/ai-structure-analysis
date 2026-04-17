@@ -4,47 +4,95 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-structure-fea"
-version = "0.1.0"
-description = "有限元分析后处理智能助手"
+version = "0.2.0"
+description = "AI-driven Finite Element Analysis engine with multi-agent orchestration"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Structure Analysis Team"}
 ]
-keywords = ["fea", "structural-analysis", "ai", "copilot"]
+keywords = ["fea", "structural-analysis", "ai", "calculix", "multi-agent", "langgraph"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "jinja2>=3.1",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.8",
+]
+agents = [
+    "langgraph>=0.2",
+]
+solvers = [
+    "meshio>=5.3",
+    "gmsh>=4.11",
+]
+viz = [
+    "pyvista>=0.42",
+    "matplotlib>=3.7",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourorg/ai-structure-fea"
-Documentation = "https://docs.ai-structure-fea.com"
-Repository = "https://github.com/yourorg/ai-structure-fea"
+Homepage = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
+Repository = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
+"Notion Control Hub" = "https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9"
 
 [project.scripts]
 run-well-harness = "app.well_harness.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["backend"]
+where = ["."]
+include = [
+    "agents*",
+    "tools*",
+    "schemas*",
+    "checkers*",
+    "reporters*",
+    "backend*",
+]
 
-[tool.black]
+[tool.ruff]
+target-version = "py311"
 line-length = 100
-target-version = ['py310', 'py311']
-include = '\.pyi?$'
+exclude = [
+    "backend/",
+    "golden_samples/",
+    "calculix_cases/",
+    "frontend/",
+    "scripts/",
+    "run_well_harness.py",
+    "sync_well_harness_approvals.py",
+    ".venv/",
+]
 
-[tool.isort]
-profile = "black"
-line_length = 100
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
