@@ -121,6 +121,8 @@ class NotionRunRegistrar:
         run_records: List[HarnessRunRecord],
         invoked_command: str,
         executor_mode: str,
+        github_pr_link: Optional[str] = None,
+        github_issue_link: Optional[str] = None,
     ) -> NotionSyncResult:
         if not run_records:
             return NotionSyncResult(attempted=False, success=False, skipped_reason="No run records were produced.")
@@ -141,6 +143,8 @@ class NotionRunRegistrar:
             run_records=run_records,
             invoked_command=invoked_command,
             executor_mode=executor_mode,
+            github_pr_link=github_pr_link,
+            github_issue_link=github_issue_link,
         )
         task_bodies = [
             self.build_task_request(
@@ -148,6 +152,8 @@ class NotionRunRegistrar:
                 batch_id=batch_id,
                 invoked_command=invoked_command,
                 session_title=session_body["properties"]["Session"]["title"][0]["text"]["content"],
+                github_pr_link=github_pr_link,
+                github_issue_link=github_issue_link,
             )
             for record in run_records
         ]
@@ -179,6 +185,66 @@ class NotionRunRegistrar:
             session_page_id=session_page_id,
             task_page_ids=task_page_ids,
         )
+
+    def create_standalone_task(
+        self,
+        case_id: str,
+        run_id: str,
+        status: str = "Pending Review",
+        summary: str = "Execution paused for human fallback.",
+        invoked_command: str = "langgraph fallback",
+        verdict: str = "Needs Review",
+        github_pr_link: str = "",
+        github_issue_link: str = "",
+    ) -> NotionSyncResult:
+        """Create a single task record without a full batch session (for mid-run interrupts)."""
+        if not self._config.is_configured:
+            return NotionSyncResult(attempted=False, success=False, skipped_reason="Notion sync disabled")
+            
+        github = self._github_metadata()
+        batch_id = run_id
+        task_title = f"{case_id} run review {run_id}"
+        
+        task_body = {
+            "parent": {
+                "type": "data_source_id",
+                "data_source_id": self._config.data_sources.tasks,
+            },
+            "properties": {
+                "Task": self._title_prop(task_title),
+                "Status": self._select_prop(status),
+                "Priority": self._select_prop("P0" if status == "Pending Review" else "P2"),
+                "Type": self._select_prop("Review"),
+                "Case ID": self._rich_text_prop(case_id),
+                "Run ID": self._rich_text_prop(run_id),
+                "Summary": self._rich_text_prop(summary),
+                "Command": self._rich_text_prop(invoked_command),
+                "GitHub Commit Link": self._url_prop(github["commit_url"]),
+                "Approval Status": self._select_prop("Awaiting Approval"),
+                "Verdict": self._select_prop(verdict),
+                "Review Summary": self._rich_text_prop("Waiting for human review due to graph interrupt."),
+                "Next Action": self._rich_text_prop("Review project_state artifacts and determine next steps."),
+                "GitHub PR Link": self._url_prop(github_pr_link),
+                "GitHub Issue Link": self._url_prop(github_issue_link),
+                "Session Batch": self._rich_text_prop(batch_id),
+            },
+        }
+        
+        try:
+            with self._http_client() as client:
+                task_response = self._request(client, "POST", "/pages", json_body=task_body)
+                return NotionSyncResult(
+                    attempted=True,
+                    success=True,
+                    batch_id=batch_id,
+                    task_page_ids=[task_response["id"]],
+                )
+        except Exception as exc:
+            return NotionSyncResult(
+                attempted=True,
+                success=False,
+                error_message=str(exc),
+            )
 
     def reconcile_session_approval_status(
         self,
@@ -272,6 +338,8 @@ class NotionRunRegistrar:
         run_records: List[HarnessRunRecord],
         invoked_command: str,
         executor_mode: str,
+        github_pr_link: Optional[str] = None,
+        github_issue_link: Optional[str] = None,
     ) -> Dict[str, Any]:
         github = self._github_metadata()
         title = f"well_harness batch {batch_id}"
@@ -280,6 +348,12 @@ class NotionRunRegistrar:
         summary = self._session_summary(run_records, executor_mode, github)
         outcome = self._session_outcome(run_records)
         cases = ", ".join(record.case_id for record in run_records)
+
+        execution_notes = []
+        for r in run_records:
+            if r.handoff:
+                execution_notes.append(f"[{r.case_id}] {r.handoff.did_what}")
+        note_text = "\n".join(execution_notes) if execution_notes else "GitHub is the source of truth; local execution artifacts stay out of Notion."
 
         return {
             "parent": {
@@ -295,10 +369,10 @@ class NotionRunRegistrar:
                 "Cases": self._rich_text_prop(cases),
                 "Summary": self._rich_text_prop(summary),
                 "GitHub Commit Link": self._url_prop(github["commit_url"]),
-                "GitHub PR Link": self._url_prop(""),
-                "GitHub Issue Link": self._url_prop(""),
+                "GitHub PR Link": self._url_prop(github_pr_link or ""),
+                "GitHub Issue Link": self._url_prop(github_issue_link or ""),
                 "Command": self._rich_text_prop(invoked_command),
-                "Execution Note": self._rich_text_prop("GitHub is the source of truth; local execution artifacts stay out of Notion."),
+                "Execution Note": self._rich_text_prop(note_text),
             },
             "children": self._session_children(batch_id, run_records, invoked_command, executor_mode, github),
         }
@@ -309,6 +383,8 @@ class NotionRunRegistrar:
         batch_id: str,
         invoked_command: str,
         session_title: str,
+        github_pr_link: Optional[str] = None,
+        github_issue_link: Optional[str] = None,
     ) -> Dict[str, Any]:
         github = self._github_metadata()
         task_title = f"{run_record.case_id} run review {run_record.run_id}"
@@ -332,8 +408,8 @@ class NotionRunRegistrar:
                 "Reviewer": self._rich_text_prop(""),
                 "Review Summary": self._rich_text_prop(run_record.verification.summary),
                 "Next Action": self._rich_text_prop(self._next_action(run_record)),
-                "GitHub PR Link": self._url_prop(""),
-                "GitHub Issue Link": self._url_prop(""),
+                "GitHub PR Link": self._url_prop(github_pr_link or ""),
+                "GitHub Issue Link": self._url_prop(github_issue_link or ""),
                 "Session Batch": self._rich_text_prop(batch_id),
             },
             "children": self._task_children(run_record, batch_id, session_title, github),

@@ -33,6 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip automatic Notion registration for this batch.",
     )
+    parser.add_argument(
+        "--github-pr-link",
+        default=None,
+        help="Optional GitHub PR URL to bind to the Notion records.",
+    )
+    parser.add_argument(
+        "--github-issue-link",
+        default=None,
+        help="Optional GitHub Issue URL to bind to the Notion records.",
+    )
     return parser
 
 
@@ -48,6 +58,8 @@ def main() -> None:
             run_records=run_records,
             invoked_command=_build_invoked_command(args.case_ids, args.executor),
             executor_mode=args.executor,
+            github_pr_link=args.github_pr_link,
+            github_issue_link=args.github_issue_link,
         )
         if sync_result.attempted and not sync_result.success:
             print(
