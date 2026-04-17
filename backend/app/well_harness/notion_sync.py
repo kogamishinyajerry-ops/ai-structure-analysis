@@ -7,6 +7,7 @@ into the project-specific task/session data sources configured for this repo.
 from __future__ import annotations
 
 import os
+import subprocess
 from collections import Counter, defaultdict
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -40,6 +41,7 @@ class NotionSyncConfig:
     notion_version: str
     root_page_id: str
     data_sources: NotionDataSources
+    github_repository: Optional[str] = None
 
     @property
     def token(self) -> Optional[str]:
@@ -64,6 +66,7 @@ class NotionSyncConfig:
                 sessions=str(data_source_ids.get("sessions", "")),
                 decisions=str(data_source_ids.get("decisions", "")) or None,
             ),
+            github_repository=str((raw.get("github", {}) or {}).get("repository", "")) or None,
         )
 
 
@@ -102,6 +105,7 @@ class NotionRunRegistrar:
     ) -> None:
         self._config = config
         self._client = client
+        self._github_metadata_cache: Optional[Dict[str, str]] = None
 
     @classmethod
     def from_default_path(
@@ -269,17 +273,13 @@ class NotionRunRegistrar:
         invoked_command: str,
         executor_mode: str,
     ) -> Dict[str, Any]:
+        github = self._github_metadata()
         title = f"well_harness batch {batch_id}"
         session_status = self._session_status(run_records)
         session_kind = "Review" if any(record.status != HarnessRunStatus.COMPLETED for record in run_records) else "Execution"
-        summary = self._session_summary(run_records, executor_mode)
+        summary = self._session_summary(run_records, executor_mode, github)
         outcome = self._session_outcome(run_records)
         cases = ", ".join(record.case_id for record in run_records)
-        artifacts = "; ".join(
-            str(record.project_state_dir or "")
-            for record in run_records
-            if record.project_state_dir
-        )
 
         return {
             "parent": {
@@ -294,11 +294,13 @@ class NotionRunRegistrar:
                 "Run Batch": self._rich_text_prop(batch_id),
                 "Cases": self._rich_text_prop(cases),
                 "Summary": self._rich_text_prop(summary),
-                "Artifacts": self._rich_text_prop(artifacts),
+                "GitHub Commit Link": self._url_prop(github["commit_url"]),
+                "GitHub PR Link": self._url_prop(""),
+                "GitHub Issue Link": self._url_prop(""),
                 "Command": self._rich_text_prop(invoked_command),
-                "Project State Root": self._rich_text_prop("project_state/runs/"),
+                "Execution Note": self._rich_text_prop("GitHub is the source of truth; local execution artifacts stay out of Notion."),
             },
-            "children": self._session_children(batch_id, run_records, invoked_command, executor_mode),
+            "children": self._session_children(batch_id, run_records, invoked_command, executor_mode, github),
         }
 
     def build_task_request(
@@ -308,13 +310,8 @@ class NotionRunRegistrar:
         invoked_command: str,
         session_title: str,
     ) -> Dict[str, Any]:
+        github = self._github_metadata()
         task_title = f"{run_record.case_id} run review {run_record.run_id}"
-        artifact_path = run_record.project_state_dir or self._first_artifact_path(run_record)
-        handoff_path = (
-            f"{run_record.project_state_dir}/handoff.md"
-            if run_record.project_state_dir
-            else ""
-        )
         return {
             "parent": {
                 "type": "data_source_id",
@@ -329,16 +326,17 @@ class NotionRunRegistrar:
                 "Run ID": self._rich_text_prop(run_record.run_id),
                 "Summary": self._rich_text_prop(run_record.report_summary),
                 "Command": self._rich_text_prop(invoked_command),
-                "Artifact Path": self._rich_text_prop(artifact_path),
+                "GitHub Commit Link": self._url_prop(github["commit_url"]),
                 "Approval Status": self._select_prop(self._approval_status(run_record)),
                 "Verdict": self._select_prop(self._verdict(run_record)),
                 "Reviewer": self._rich_text_prop(""),
                 "Review Summary": self._rich_text_prop(run_record.verification.summary),
                 "Next Action": self._rich_text_prop(self._next_action(run_record)),
-                "Handoff Path": self._rich_text_prop(handoff_path),
+                "GitHub PR Link": self._url_prop(""),
+                "GitHub Issue Link": self._url_prop(""),
                 "Session Batch": self._rich_text_prop(batch_id),
             },
-            "children": self._task_children(run_record, batch_id, session_title),
+            "children": self._task_children(run_record, batch_id, session_title, github),
         }
 
     def _http_client(self) -> httpx.Client:
@@ -471,12 +469,17 @@ class NotionRunRegistrar:
         return "Mixed"
 
     @staticmethod
-    def _session_summary(run_records: List[HarnessRunRecord], executor_mode: str) -> str:
+    def _session_summary(
+        run_records: List[HarnessRunRecord],
+        executor_mode: str,
+        github: Dict[str, str],
+    ) -> str:
         parts = [
             f"{record.case_id}:{record.status.value}"
             for record in run_records
         ]
-        return f"Batch completed via {executor_mode}. " + "; ".join(parts)
+        baseline = NotionRunRegistrar._github_baseline_text(github)
+        return f"{baseline}. Batch completed via {executor_mode}. " + "; ".join(parts)
 
     @staticmethod
     def _session_status_from_approvals(task_pages: List[Dict[str, Any]]) -> str:
@@ -532,9 +535,45 @@ class NotionRunRegistrar:
         )
         return f"{stable_summary} | {approval_summary}" if stable_summary else approval_summary
 
+    def _github_metadata(self) -> Dict[str, str]:
+        if self._github_metadata_cache is not None:
+            return self._github_metadata_cache
+
+        repository = self._config.github_repository or ""
+        repo_url = f"https://github.com/{repository}" if repository else ""
+        branch = self._git_output("git", "rev-parse", "--abbrev-ref", "HEAD") or "main"
+        commit_sha = self._git_output("git", "rev-parse", "HEAD")
+        commit_short = commit_sha[:7] if commit_sha else ""
+        commit_url = f"{repo_url}/commit/{commit_sha}" if repo_url and commit_sha else ""
+        self._github_metadata_cache = {
+            "repository": repository,
+            "repo_url": repo_url,
+            "branch": branch,
+            "commit_sha": commit_sha,
+            "commit_short": commit_short,
+            "commit_url": commit_url,
+        }
+        return self._github_metadata_cache
+
     @staticmethod
-    def _first_artifact_path(run_record: HarnessRunRecord) -> str:
-        return run_record.artifacts[0].path if run_record.artifacts else ""
+    def _github_baseline_text(github: Dict[str, str]) -> str:
+        if github.get("commit_short"):
+            return f"GitHub baseline {github.get('branch', 'main')}@{github['commit_short']}"
+        if github.get("repo_url"):
+            return f"GitHub repo {github['repo_url']}"
+        return "GitHub baseline pending"
+
+    @staticmethod
+    def _git_output(*args: str) -> str:
+        try:
+            return subprocess.check_output(
+                list(args),
+                cwd=Path(__file__).resolve().parents[3],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except Exception:
+            return ""
 
     @staticmethod
     def _page_property_text(page: Dict[str, Any], property_name: str) -> str:
@@ -565,12 +604,15 @@ class NotionRunRegistrar:
         run_records: List[HarnessRunRecord],
         invoked_command: str,
         executor_mode: str,
+        github: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         blocks: List[Dict[str, Any]] = [
             self._heading_block("运行批次"),
             self._paragraph_block(f"Batch ID: {batch_id}"),
             self._paragraph_block(f"Command: {invoked_command}"),
             self._paragraph_block(f"Executor: {executor_mode}"),
+            self._paragraph_block(f"GitHub Baseline: {self._github_baseline_text(github)}"),
+            self._paragraph_block(f"GitHub Commit: {github.get('commit_url') or '待补充'}"),
             self._heading_block("案例结果"),
         ]
         for record in run_records:
@@ -584,7 +626,7 @@ class NotionRunRegistrar:
                 self._heading_block("后续动作"),
                 self._numbered_block("若存在 pending_review，请在任务库的审批流中完成审批结论。"),
                 self._numbered_block("若存在 failed，请评估是否需要 fresh CalculiX run。"),
-                self._numbered_block("所有 run artifact 以 project_state 为准。"),
+                self._numbered_block("代码实现与模块事实以 GitHub 仓库为准。"),
             ]
         )
         return blocks
@@ -594,25 +636,23 @@ class NotionRunRegistrar:
         run_record: HarnessRunRecord,
         batch_id: str,
         session_title: str,
+        github: Dict[str, str],
     ) -> List[Dict[str, Any]]:
-        handoff_path = (
-            f"{run_record.project_state_dir}/handoff.md"
-            if run_record.project_state_dir
-            else "N/A"
-        )
         return [
             self._heading_block("审批流"),
             self._paragraph_block(f"当前阶段：{self._approval_status(run_record)}"),
             self._bullet_block(f"Batch: {batch_id}"),
             self._bullet_block(f"Session: {session_title}"),
             self._bullet_block(f"Run ID: {run_record.run_id}"),
-            self._bullet_block(f"Artifact Path: {run_record.project_state_dir or self._first_artifact_path(run_record)}"),
-            self._bullet_block(f"Handoff Path: {handoff_path}"),
+            self._bullet_block(f"GitHub Baseline: {self._github_baseline_text(github)}"),
+            self._bullet_block(f"GitHub Commit: {github.get('commit_url') or '待补充'}"),
+            self._bullet_block("GitHub PR: 待创建或待绑定"),
+            self._bullet_block("GitHub Issue: 待创建或待绑定"),
             self._heading_block("结论模板"),
-            self._paragraph_block("1. 证据摘要：补充本次 run 的关键数值、主要偏差和证据路径。"),
+            self._paragraph_block("1. GitHub 证据摘要：补充本次 run 关联的 commit、PR、issue 和关键结果摘要。"),
             self._paragraph_block("2. 风险判断：判断当前结果是否可接受，以及风险级别和说明。"),
             self._paragraph_block("3. 审批决定：填写 Verdict、Approval Status 和审批说明。"),
-            self._paragraph_block("4. 下一步：填写是否重跑、是否补充归因、下一动作。"),
+            self._paragraph_block("4. 下一步：填写是否需要新建 issue、补 PR、还是继续重跑。"),
         ]
 
     @staticmethod
@@ -626,6 +666,10 @@ class NotionRunRegistrar:
     @staticmethod
     def _select_prop(value: str) -> Dict[str, Any]:
         return {"select": {"name": value}}
+
+    @staticmethod
+    def _url_prop(value: str) -> Dict[str, Any]:
+        return {"url": value or None}
 
     @staticmethod
     def _text(value: str) -> List[Dict[str, Any]]:

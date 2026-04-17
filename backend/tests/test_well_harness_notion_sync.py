@@ -20,6 +20,8 @@ notion:
     tasks: "f17ba02b-d6d7-4aa7-b375-bd705038f47d"
     sessions: "6644423a-671b-4def-8e42-7414ba0d8d4a"
     decisions: "2b99ac18-0ba5-4b0a-9f38-18075b3bd6b6"
+github:
+  repository: "kogamishinyajerry-ops/ai-structure-analysis"
 """.strip(),
         encoding="utf-8",
     )
@@ -81,6 +83,18 @@ def test_notion_sync_request_shapes(tmp_path, monkeypatch):
     runner = WellHarnessRunner(state_store=ProjectStateStore(tmp_path / "state"))
     run = runner.run_case("GS-001")
     registrar = NotionRunRegistrar.from_default_path(config_path)
+    monkeypatch.setattr(
+        registrar,
+        "_github_metadata",
+        lambda: {
+            "repository": "kogamishinyajerry-ops/ai-structure-analysis",
+            "repo_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis",
+            "branch": "main",
+            "commit_sha": "ef5e9db47a70c9eb9a647f3f75e92df062082ead",
+            "commit_short": "ef5e9db",
+            "commit_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/commit/ef5e9db47a70c9eb9a647f3f75e92df062082ead",
+        },
+    )
 
     session_request = registrar.build_session_request(
         batch_id="batch-001",
@@ -97,8 +111,16 @@ def test_notion_sync_request_shapes(tmp_path, monkeypatch):
 
     assert session_request["parent"]["type"] == "data_source_id"
     assert session_request["properties"]["Outcome"]["select"]["name"] == "Pending Review"
+    assert session_request["properties"]["GitHub Commit Link"]["url"].endswith("ef5e9db47a70c9eb9a647f3f75e92df062082ead")
+    assert "Artifacts" not in session_request["properties"]
+    assert "Project State Root" not in session_request["properties"]
     assert task_request["parent"]["type"] == "data_source_id"
     assert task_request["properties"]["Approval Status"]["select"]["name"] == "Awaiting Approval"
+    assert task_request["properties"]["GitHub Commit Link"]["url"].endswith("ef5e9db47a70c9eb9a647f3f75e92df062082ead")
+    assert task_request["properties"]["GitHub PR Link"]["url"] is None
+    assert task_request["properties"]["GitHub Issue Link"]["url"] is None
+    assert "Artifact Path" not in task_request["properties"]
+    assert "Handoff Path" not in task_request["properties"]
     assert task_request["properties"]["Session Batch"]["rich_text"][0]["text"]["content"] == "batch-001"
 
 
