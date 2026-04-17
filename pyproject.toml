@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-structure-fea"
+version = "0.1.0"
+description = "有限元分析后处理智能助手"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Structure Analysis Team"}
+]
+keywords = ["fea", "structural-analysis", "ai", "copilot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourorg/ai-structure-fea"
+Documentation = "https://docs.ai-structure-fea.com"
+Repository = "https://github.com/yourorg/ai-structure-fea"
+
+[project.scripts]
+run-well-harness = "app.well_harness.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

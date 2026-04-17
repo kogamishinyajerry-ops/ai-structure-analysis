@@ -1,0 +1,19 @@
+# well-harness control plane example configuration
+
+notion:
+  enabled: true
+  token_env: "NOTION_API_KEY"
+  notion_version: "2026-03-11"
+  root_page_id: "replace-with-project-hub-page-id"
+  data_source_ids:
+    tasks: "replace-with-notion-task-data-source-id"
+    sessions: "replace-with-notion-session-data-source-id"
+    decisions: "replace-with-notion-decision-data-source-id"
+
+github:
+  enabled: false
+  repository: "yourorg/ai-structure-fea"
+  labels:
+    - "well-harness"
+    - "automation"
+    - "pending-review"

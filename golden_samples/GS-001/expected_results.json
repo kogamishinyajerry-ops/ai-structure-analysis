@@ -1,0 +1,268 @@
+{
+  "case_id": "GS-001",
+  "case_name": "悬臂梁静力学分析",
+  "analysis_type": "static_analysis",
+  "beam_type": "cantilever",
+
+  "case_description": {
+    "geometry": "悬臂梁 - 一端固定，自由端集中力",
+    "length": 100.0,
+    "length_unit": "mm",
+    "cross_section": "10mm × 10mm 矩形截面",
+    "units": {
+      "length": "mm",
+      "force": "N",
+      "stress": "MPa",
+      "displacement": "mm"
+    }
+  },
+
+  "theoretical_solutions": {
+    "note": "欧拉-伯努利梁理论 (适用于细长梁)",
+    "formula_source": "Strength of Materials - Euler-Bernoulli Beam Theory",
+
+    "euler_bernoulli": {
+      "max_displacement": {
+        "value": 0.7619,
+        "unit": "mm",
+        "location": "free_end",
+        "formula": "δ_max = PL³/(3EI)",
+        "calculation": {
+          "P": 400,
+          "P_unit": "N",
+          "L": 100,
+          "L_unit": "mm",
+          "b": 10,
+          "h": 10,
+          "A": 100,
+          "A_unit": "mm²",
+          "I": 833.33,
+          "I_unit": "mm⁴",
+          "E": 210000,
+          "E_unit": "MPa",
+          "bending_deflection": 0.7619,
+          "shear_deflection_estimate": 0.02,
+          "shear_ratio": 0.026
+        }
+      },
+      "max_bending_stress": {
+        "value": 240.0,
+        "unit": "MPa",
+        "location": "fixed_end_top_fiber",
+        "formula": "σ_max = Mc/I = PL·(h/2)/I",
+        "calculation": {
+          "P": 400,
+          "L": 100,
+          "h": 10,
+          "I": 833.33,
+          "c": 5,
+          "M": 40000,
+          "M_unit": "N·mm",
+          "sigma": 240.0
+        }
+      },
+      "max_shear_stress": {
+        "value": 6.0,
+        "unit": "MPa",
+        "formula": "τ_max = 1.5V/A = 1.5P/A"
+      }
+    },
+
+    "timoshenko_beam": {
+      "note": "Timoshenko梁理论 (考虑剪切变形，对深梁更准确)",
+      "max_displacement": {
+        "value": 0.78,
+        "unit": "mm",
+        "shear_modulus_G": 80769,
+        "G_unit": "MPa",
+        "kappa": 0.9,
+        "shear_area_ratio": 0.9
+      }
+    },
+
+    "fea_result": {
+      "source": "calculix_cases/cantilever_beam/cantilever_beam.frd",
+      "parse_status": "SUCCESS",
+      "num_nodes": 44,
+      "num_elements": 10,
+      "element_type": "C3D8",
+
+      "displacement": {
+        "node_11_UX": -36.87,
+        "node_11_UY": -493.56,
+        "node_11_UZ": -0.042,
+        "unit": "mm",
+        "max_uy_location": "node_11"
+      },
+
+      "stress": {
+        "node_1_SXX": -190.08,
+        "node_1_SYY": -81.46,
+        "node_1_SZZ": -81.46,
+        "node_1_SXY": -58.31,
+        "unit": "MPa",
+        "location": "fixed_end_corner"
+      }
+    },
+
+    "critical_discrepancy": {
+      "status": "FAILED - SIGNIFICANT ERROR DETECTED",
+      "UY_ratio": 648.0,
+      "SXX_ratio": 0.79,
+      "description": "FEA UY displacement is 648× larger than theoretical prediction",
+
+      "UY_comparison": {
+        "theory_mm": 0.7619,
+        "fea_mm": 493.56,
+        "ratio": 648.0,
+        "unit": "mm"
+      },
+
+      "SXX_comparison": {
+        "theory_MPa": 240.0,
+        "fea_MPa": 190.08,
+        "ratio": 0.79,
+        "note": "Stress is in reasonable range (20% difference)"
+      },
+
+      "root_cause_analysis": [
+        "1. UNIT SYSTEM ERROR: The .inp file may be using inconsistent units",
+        "2. GEOMETRY ERROR: Cross-section '10.0, 10.0' in SOLID SECTION may mean thickness, not b×h",
+        "3. MODEL TYPE ERROR: C3D8 is 3D continuum element, not a beam element",
+        "4. LOAD APPLICATION: 4-node distributed load vs ideal point load",
+        "5. BOUNDARY CONDITIONS: Full fixity at x=0 vs standard cantilever BC"
+      ],
+
+      "model_issues": {
+        "primary_error": "CRITICAL - FEA model setup is incorrect for beam theory comparison",
+        "secondary_error": "expected_results.json contains wrong theoretical values",
+        "recommended_action": "Recreate model with proper beam elements (B31) or correct 3D model"
+      }
+    }
+  },
+
+  "input_file_analysis": {
+    "file": "calculix_cases/cantilever_beam/cantilever_beam.inp",
+    "mesh_definition": {
+      "nodes": 44,
+      "elements": 10,
+      "element_type": "C3D8 (8-node brick)",
+      "node_coords_example": "11, 100.0, 0.0, 0.0"
+    },
+    "material": {
+      "name": "STEEL",
+      "E": 210000.0,
+      "nu": 0.3,
+      "unit": "MPa (assumed)"
+    },
+    "section": {
+      "type": "SOLID SECTION",
+      "params": "10.0, 10.0",
+      "issue": "Params likely mean thickness, not b×h for beam theory"
+    },
+    "boundary": {
+      "fixed_nodes": [1, 12, 23, 34],
+      "description": "All DOFs constrained at x=0 plane"
+    },
+    "load": {
+      "type": "CLOAD (concentrated force)",
+      "nodes": [11, 22, 33, 44],
+      "magnitude_each": -100.0,
+      "total_load": -400.0,
+      "DOF": 2,
+      "direction": "Y (vertical)"
+    }
+  },
+
+  "correct_theoretical_calculation": {
+    "units": {
+      "system": "mm-N-MPa",
+      "length_L": 100,
+      "width_b": 10,
+      "height_h": 10,
+      "area_A": 100,
+      "moment_of_inertia_I": 833.33,
+      "elastic_modulus_E": 210000,
+      "load_P": 400
+    },
+
+    "displacement": {
+      "formula": "δ = PL³/(3EI)",
+      "calculation": "δ = 400 × 100³ / (3 × 210000 × 833.33)",
+      "result_mm": 0.7619,
+      "result_m": 0.0007619
+    },
+
+    "stress": {
+      "formula": "σ = Mc/I = PLc/I",
+      "c": "h/2 = 5",
+      "calculation": "σ = 400 × 100 × 5 / 833.33",
+      "result_MPa": 240.0
+    },
+
+    "shear_stress": {
+      "formula": "τ = 1.5V/A",
+      "result_MPa": 6.0
+    }
+  },
+
+  "validation_points": [
+    {
+      "id": "VP-001",
+      "name": "最大位移UY (自由端)",
+      "location": [100.0, 0.0, 0.0],
+      "theory_value_mm": 0.7619,
+      "fea_value_mm": -493.56,
+      "ratio": 648.0,
+      "status": "FAILED",
+      "note": "FEA结果与理论值差异巨大，模型设置有问题"
+    },
+    {
+      "id": "VP-002",
+      "name": "固定端应力SXX",
+      "location": [0.0, 0.0, 0.0],
+      "theory_value_MPa": 240.0,
+      "fea_value_MPa": -190.08,
+      "ratio": 0.79,
+      "status": "ACCEPTABLE",
+      "note": "应力在合理范围内"
+    },
+    {
+      "id": "VP-003",
+      "name": "节点UX位移 (泊松效应)",
+      "location": [100.0, 0.0, 0.0],
+      "theory_value_mm": 0.0,
+      "fea_value_mm": -36.87,
+      "status": "N/A",
+      "note": "3D实体模型有横向收缩"
+    }
+  ],
+
+  "acceptance_criteria": {
+    "parse_validation": {
+      "description": "验证解析器能正确读取FRD文件",
+      "criteria": "所有节点位移和应力值可正确解析",
+      "status": "PASSED"
+    },
+    "result_comparison": {
+      "description": "FEA数值与理论值对比",
+      "criteria": "误差 < 10%",
+      "status": "FAILED",
+      "note": "位移误差 > 600%，模型设置有根本性问题"
+    }
+  },
+
+  "metadata": {
+    "created_at": "2026-04-09T01:35:00Z",
+    "updated_at": "2026-04-09T10:15:00Z",
+    "version": "3.0",
+    "author": "Structure Analysis Team",
+    "tags": ["benchmark", "static", "cantilever", "3D", "VALIDATION_FAILED"],
+    "correction_note": "GS-001 FAILED validation - FEA model setup issue detected. Theory-FEA mismatch requires model correction.",
+    "issues": [
+      "expected_results.json v1.0: Wrong case type (simply supported vs cantilever)",
+      "expected_results.json v2.0: Wrong theory calculation (unit error)",
+      "expected_results.json v3.0: Corrected theory values, documented FEA model issues"
+    ]
+  }
+}

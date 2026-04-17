@@ -1,0 +1,40 @@
+ ELEMENT            1 with label "CPS4R   " and with nodes:
+          1          2          5          4
+  is expanded into a "C3D8R S " element with topology:
+         16         19         28         25         18         21         30         27
+
+ ELEMENT            2 with label "CPS4R   " and with nodes:
+          2          3          6          5
+  is expanded into a "C3D8R S " element with topology:
+         19         22         31         28         21         24         33         30
+
+ ELEMENT            3 with label "CPS4R   " and with nodes:
+          4          5          8          7
+  is expanded into a "C3D8R S " element with topology:
+         25         28         37         34         27         30         39         36
+
+ ELEMENT            4 with label "CPS4R   " and with nodes:
+          5          6          9          8
+  is expanded into a "C3D8R S " element with topology:
+         28         31         40         37         30         33         42         39
+
+ ELEMENT            5 with label "CPS4R   " and with nodes:
+          7          8         11         10
+  is expanded into a "C3D8R S " element with topology:
+         34         37         46         43         36         39         48         45
+
+ ELEMENT            6 with label "CPS4R   " and with nodes:
+          8          9         12         11
+  is expanded into a "C3D8R S " element with topology:
+         37         40         49         46         39         42         51         48
+
+ ELEMENT            7 with label "CPS4R   " and with nodes:
+         10         11         14         13
+  is expanded into a "C3D8R S " element with topology:
+         43         46         55         52         45         48         57         54
+
+ ELEMENT            8 with label "CPS4R   " and with nodes:
+         11         12         15         14
+  is expanded into a "C3D8R S " element with topology:
+         46         49         58         55         48         51         60         57
+

@@ -1,0 +1,24 @@
+ a KNOT was generated in node            1
+
+ a KNOT was generated in node            2
+
+ a KNOT was generated in node            3
+
+ ELEMENT            1 with label "B31    R" and with nodes:
+          1          3
+  is expanded into a "C3D8I BR" element with topology:
+          4         72         73          5          7         75         74          6          0          0
+          0
+
+ ELEMENT            2 with label "B31    R" and with nodes:
+          2          3
+  is expanded into a "C3D8I BR" element with topology:
+         38         80         81         39         41         83         82         40          0          0
+          0
+
+ ELEMENT            3 with label "B31    R" and with nodes:
+          1          2
+  is expanded into a "C3D8I BR" element with topology:
+         12         46         47         13         15         49         48         14          0          0
+          0
+

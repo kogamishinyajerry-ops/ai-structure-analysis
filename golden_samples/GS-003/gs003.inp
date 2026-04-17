@@ -1,0 +1,72 @@
+*HEADING
+Plane Stress - Rectangular Plate with Central Hole
+Uniaxial Tension - Stress Concentration Analysis
+
+** PLATE GEOMETRY **
+Width: W = 100 mm (x-direction)
+Height: H = 200 mm (y-direction)
+Hole diameter: D = 20 mm
+Thickness: t = 1 mm
+
+** NODE DEFINITION **
+*NODE
+1, 0.0, 0.0, 0.0
+2, 50.0, 0.0, 0.0
+3, 100.0, 0.0, 0.0
+4, 0.0, 50.0, 0.0
+5, 50.0, 50.0, 0.0
+6, 100.0, 50.0, 0.0
+7, 0.0, 100.0, 0.0
+8, 50.0, 100.0, 0.0
+9, 100.0, 100.0, 0.0
+10, 0.0, 150.0, 0.0
+11, 50.0, 150.0, 0.0
+12, 100.0, 150.0, 0.0
+13, 0.0, 200.0, 0.0
+14, 50.0, 200.0, 0.0
+15, 100.0, 200.0, 0.0
+
+** ELEMENTS - CPS4R (4-node plane stress, reduced integration) **
+*ELEMENT, TYPE=CPS4R, ELSET=PLATE
+1, 1, 2, 5, 4
+2, 2, 3, 6, 5
+3, 4, 5, 8, 7
+4, 5, 6, 9, 8
+5, 7, 8, 11, 10
+6, 8, 9, 12, 11
+7, 10, 11, 14, 13
+8, 11, 12, 15, 14
+
+** MATERIAL - Steel **
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+
+** SECTION - Plane stress with thickness **
+*SOLID SECTION, ELSET=PLATE, MATERIAL=STEEL
+1.0
+
+** BOUNDARY CONDITIONS **
+** Bottom edge (y=0): fixed in Y, free in X **
+*BOUNDARY
+1, 2, 2, 0.0
+2, 2, 2, 0.0
+3, 2, 2, 0.0
+
+** TOP edge (y=200): prescribed displacement (tension) **
+** UX = 1.0 (applied displacement to create tension) **
+*BOUNDARY
+13, 1, 1, 0.5
+14, 1, 1, 0.5
+15, 1, 1, 0.5
+
+** STEP - Static Analysis **
+*STEP
+*STATIC
+
+** OUTPUT REQUESTS **
+*NODE FILE
+U
+*EL FILE
+S, E
+*END STEP

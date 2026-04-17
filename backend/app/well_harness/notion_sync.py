@@ -1,0 +1,664 @@
+"""Optional Notion runtime sync for well_harness batches.
+
+This module uses the official Notion public API to register each CLI batch
+into the project-specific task/session data sources configured for this repo.
+"""
+
+from __future__ import annotations
+
+import os
+from collections import Counter, defaultdict
+from contextlib import nullcontext
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import httpx
+import yaml
+
+from .schemas import HarnessRunRecord, HarnessRunStatus
+
+NOTION_API_BASE_URL = "https://api.notion.com/v1"
+DEFAULT_NOTION_VERSION = "2026-03-11"
+
+
+@dataclass(frozen=True)
+class NotionDataSources:
+    """Project-scoped Notion destinations."""
+
+    tasks: str
+    sessions: str
+    decisions: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class NotionSyncConfig:
+    """Runtime config for Notion registration."""
+
+    enabled: bool
+    token_env: str
+    notion_version: str
+    root_page_id: str
+    data_sources: NotionDataSources
+
+    @property
+    def token(self) -> Optional[str]:
+        return os.environ.get(self.token_env)
+
+    @property
+    def is_configured(self) -> bool:
+        return self.enabled and bool(self.token) and bool(self.data_sources.tasks) and bool(self.data_sources.sessions)
+
+    @classmethod
+    def from_file(cls, path: Path) -> "NotionSyncConfig":
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        notion = raw.get("notion", {})
+        data_source_ids = notion.get("data_source_ids", {})
+        return cls(
+            enabled=bool(notion.get("enabled", False)),
+            token_env=notion.get("token_env", "NOTION_API_KEY"),
+            notion_version=notion.get("notion_version", DEFAULT_NOTION_VERSION),
+            root_page_id=str(notion.get("root_page_id", "")),
+            data_sources=NotionDataSources(
+                tasks=str(data_source_ids.get("tasks", "")),
+                sessions=str(data_source_ids.get("sessions", "")),
+                decisions=str(data_source_ids.get("decisions", "")) or None,
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class NotionSyncResult:
+    """High-level result of a Notion registration attempt."""
+
+    attempted: bool
+    success: bool
+    skipped_reason: Optional[str] = None
+    batch_id: Optional[str] = None
+    session_page_id: Optional[str] = None
+    task_page_ids: List[str] = field(default_factory=list)
+    error_message: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class NotionApprovalSyncResult:
+    """High-level result of reconciling approval state back into sessions."""
+
+    attempted: bool
+    success: bool
+    processed_sessions: int = 0
+    updated_session_ids: List[str] = field(default_factory=list)
+    skipped_reason: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class NotionRunRegistrar:
+    """Create project-scoped task/session records for each harness batch."""
+
+    def __init__(
+        self,
+        config: NotionSyncConfig,
+        client: Optional[httpx.Client] = None,
+    ) -> None:
+        self._config = config
+        self._client = client
+
+    @classmethod
+    def from_default_path(
+        cls,
+        path: Optional[Path] = None,
+        client: Optional[httpx.Client] = None,
+    ) -> "NotionRunRegistrar":
+        config_path = path or Path(__file__).resolve().parents[3] / "config" / "well_harness_control_plane.yaml"
+        return cls(config=NotionSyncConfig.from_file(config_path), client=client)
+
+    def register_batch(
+        self,
+        run_records: List[HarnessRunRecord],
+        invoked_command: str,
+        executor_mode: str,
+    ) -> NotionSyncResult:
+        if not run_records:
+            return NotionSyncResult(attempted=False, success=False, skipped_reason="No run records were produced.")
+
+        if not self._config.is_configured:
+            return NotionSyncResult(
+                attempted=False,
+                success=False,
+                skipped_reason=(
+                    f"Notion sync is disabled or missing {self._config.token_env}. "
+                    "The run still completed locally."
+                ),
+            )
+
+        batch_id = self._build_batch_id(run_records)
+        session_body = self.build_session_request(
+            batch_id=batch_id,
+            run_records=run_records,
+            invoked_command=invoked_command,
+            executor_mode=executor_mode,
+        )
+        task_bodies = [
+            self.build_task_request(
+                run_record=record,
+                batch_id=batch_id,
+                invoked_command=invoked_command,
+                session_title=session_body["properties"]["Session"]["title"][0]["text"]["content"],
+            )
+            for record in run_records
+        ]
+
+        session_page_id = None
+        task_page_ids: List[str] = []
+
+        try:
+            with self._http_client() as client:
+                session_response = self._request(client, "POST", "/pages", json_body=session_body)
+                session_page_id = session_response["id"]
+                for task_body in task_bodies:
+                    task_response = self._request(client, "POST", "/pages", json_body=task_body)
+                    task_page_ids.append(task_response["id"])
+        except Exception as exc:
+            return NotionSyncResult(
+                attempted=True,
+                success=False,
+                batch_id=batch_id,
+                session_page_id=session_page_id,
+                task_page_ids=task_page_ids,
+                error_message=str(exc),
+            )
+
+        return NotionSyncResult(
+            attempted=True,
+            success=True,
+            batch_id=batch_id,
+            session_page_id=session_page_id,
+            task_page_ids=task_page_ids,
+        )
+
+    def reconcile_session_approval_status(
+        self,
+        batch_id: Optional[str] = None,
+    ) -> NotionApprovalSyncResult:
+        if not self._config.is_configured:
+            return NotionApprovalSyncResult(
+                attempted=False,
+                success=False,
+                skipped_reason=(
+                    f"Notion sync is disabled or missing {self._config.token_env}. "
+                    "No approval reconciliation was attempted."
+                ),
+            )
+
+        processed_sessions = 0
+        updated_session_ids: List[str] = []
+
+        try:
+            with self._http_client() as client:
+                session_pages = self._query_data_source_pages(client, self._config.data_sources.sessions)
+                task_pages = self._query_data_source_pages(client, self._config.data_sources.tasks)
+
+                tasks_by_batch: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+                for task_page in task_pages:
+                    task_batch = self._page_property_text(task_page, "Session Batch")
+                    if task_batch:
+                        tasks_by_batch[task_batch].append(task_page)
+
+                for session_page in session_pages:
+                    session_batch = self._page_property_text(session_page, "Run Batch")
+                    if not session_batch:
+                        continue
+                    if batch_id and session_batch != batch_id:
+                        continue
+                    if not batch_id and self._page_property_text(session_page, "Status") == "Closed":
+                        continue
+
+                    related_tasks = tasks_by_batch.get(session_batch, [])
+                    if not related_tasks:
+                        continue
+
+                    processed_sessions += 1
+                    next_status = self._session_status_from_approvals(related_tasks)
+                    next_outcome = self._session_outcome_from_approvals(related_tasks)
+                    next_summary = self._approval_summary_text(
+                        base_summary=self._page_property_text(session_page, "Summary"),
+                        related_tasks=related_tasks,
+                    )
+
+                    current_status = self._page_property_text(session_page, "Status")
+                    current_outcome = self._page_property_text(session_page, "Outcome")
+                    current_summary = self._page_property_text(session_page, "Summary")
+                    if (
+                        current_status == next_status
+                        and current_outcome == next_outcome
+                        and current_summary == next_summary
+                    ):
+                        continue
+
+                    self._update_page_properties(
+                        client,
+                        page_id=session_page["id"],
+                        properties={
+                            "Status": self._select_prop(next_status),
+                            "Outcome": self._select_prop(next_outcome),
+                            "Summary": self._rich_text_prop(next_summary),
+                        },
+                    )
+                    updated_session_ids.append(session_page["id"])
+
+        except Exception as exc:
+            return NotionApprovalSyncResult(
+                attempted=True,
+                success=False,
+                processed_sessions=processed_sessions,
+                updated_session_ids=updated_session_ids,
+                error_message=str(exc),
+            )
+
+        return NotionApprovalSyncResult(
+            attempted=True,
+            success=True,
+            processed_sessions=processed_sessions,
+            updated_session_ids=updated_session_ids,
+        )
+
+    def build_session_request(
+        self,
+        batch_id: str,
+        run_records: List[HarnessRunRecord],
+        invoked_command: str,
+        executor_mode: str,
+    ) -> Dict[str, Any]:
+        title = f"well_harness batch {batch_id}"
+        session_status = self._session_status(run_records)
+        session_kind = "Review" if any(record.status != HarnessRunStatus.COMPLETED for record in run_records) else "Execution"
+        summary = self._session_summary(run_records, executor_mode)
+        outcome = self._session_outcome(run_records)
+        cases = ", ".join(record.case_id for record in run_records)
+        artifacts = "; ".join(
+            str(record.project_state_dir or "")
+            for record in run_records
+            if record.project_state_dir
+        )
+
+        return {
+            "parent": {
+                "type": "data_source_id",
+                "data_source_id": self._config.data_sources.sessions,
+            },
+            "properties": {
+                "Session": self._title_prop(title),
+                "Status": self._select_prop(session_status),
+                "Kind": self._select_prop(session_kind),
+                "Outcome": self._select_prop(outcome),
+                "Run Batch": self._rich_text_prop(batch_id),
+                "Cases": self._rich_text_prop(cases),
+                "Summary": self._rich_text_prop(summary),
+                "Artifacts": self._rich_text_prop(artifacts),
+                "Command": self._rich_text_prop(invoked_command),
+                "Project State Root": self._rich_text_prop("project_state/runs/"),
+            },
+            "children": self._session_children(batch_id, run_records, invoked_command, executor_mode),
+        }
+
+    def build_task_request(
+        self,
+        run_record: HarnessRunRecord,
+        batch_id: str,
+        invoked_command: str,
+        session_title: str,
+    ) -> Dict[str, Any]:
+        task_title = f"{run_record.case_id} run review {run_record.run_id}"
+        artifact_path = run_record.project_state_dir or self._first_artifact_path(run_record)
+        handoff_path = (
+            f"{run_record.project_state_dir}/handoff.md"
+            if run_record.project_state_dir
+            else ""
+        )
+        return {
+            "parent": {
+                "type": "data_source_id",
+                "data_source_id": self._config.data_sources.tasks,
+            },
+            "properties": {
+                "Task": self._title_prop(task_title),
+                "Status": self._select_prop(self._task_status(run_record)),
+                "Priority": self._select_prop(self._task_priority(run_record)),
+                "Type": self._select_prop(self._task_type(run_record)),
+                "Case ID": self._rich_text_prop(run_record.case_id),
+                "Run ID": self._rich_text_prop(run_record.run_id),
+                "Summary": self._rich_text_prop(run_record.report_summary),
+                "Command": self._rich_text_prop(invoked_command),
+                "Artifact Path": self._rich_text_prop(artifact_path),
+                "Approval Status": self._select_prop(self._approval_status(run_record)),
+                "Verdict": self._select_prop(self._verdict(run_record)),
+                "Reviewer": self._rich_text_prop(""),
+                "Review Summary": self._rich_text_prop(run_record.verification.summary),
+                "Next Action": self._rich_text_prop(self._next_action(run_record)),
+                "Handoff Path": self._rich_text_prop(handoff_path),
+                "Session Batch": self._rich_text_prop(batch_id),
+            },
+            "children": self._task_children(run_record, batch_id, session_title),
+        }
+
+    def _http_client(self) -> httpx.Client:
+        if self._client is not None:
+            return nullcontext(self._client)
+        return httpx.Client(
+            base_url=NOTION_API_BASE_URL,
+            timeout=30.0,
+            headers={
+                "Authorization": f"Bearer {self._config.token}",
+                "Notion-Version": self._config.notion_version,
+                "Content-Type": "application/json",
+            },
+        )
+
+    @staticmethod
+    def _request(
+        client: httpx.Client,
+        method: str,
+        path: str,
+        json_body: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        response = client.request(method, path, json=json_body)
+        response.raise_for_status()
+        return response.json()
+
+    def _query_data_source_pages(
+        self,
+        client: httpx.Client,
+        data_source_id: str,
+    ) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        next_cursor: Optional[str] = None
+
+        while True:
+            payload: Dict[str, Any] = {"page_size": 100}
+            if next_cursor:
+                payload["start_cursor"] = next_cursor
+            response = self._request(
+                client,
+                "POST",
+                f"/data_sources/{data_source_id}/query",
+                json_body=payload,
+            )
+            results.extend(response.get("results", []))
+            if not response.get("has_more"):
+                return results
+            next_cursor = response.get("next_cursor")
+
+    @staticmethod
+    def _update_page_properties(
+        client: httpx.Client,
+        page_id: str,
+        properties: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        response = client.request("PATCH", f"/pages/{page_id}", json={"properties": properties})
+        response.raise_for_status()
+        return response.json()
+
+    @staticmethod
+    def _build_batch_id(run_records: List[HarnessRunRecord]) -> str:
+        anchor = min(run_records, key=lambda record: record.started_at)
+        return anchor.started_at.replace(":", "").replace("-", "").replace("+00:00", "Z")
+
+    @staticmethod
+    def _task_status(run_record: HarnessRunRecord) -> str:
+        if run_record.status == HarnessRunStatus.FAILED:
+            return "Blocked"
+        if run_record.status == HarnessRunStatus.PENDING_REVIEW:
+            return "Pending Review"
+        if run_record.status == HarnessRunStatus.COMPLETED:
+            return "Done"
+        return "Running"
+
+    @staticmethod
+    def _approval_status(run_record: HarnessRunRecord) -> str:
+        if run_record.status == HarnessRunStatus.COMPLETED:
+            return "Approved"
+        if run_record.status == HarnessRunStatus.FAILED:
+            return "Re-run Required"
+        return "Awaiting Approval"
+
+    @staticmethod
+    def _verdict(run_record: HarnessRunRecord) -> str:
+        if run_record.status == HarnessRunStatus.COMPLETED:
+            return "Accept"
+        if run_record.status == HarnessRunStatus.FAILED:
+            return "Re-run"
+        return "Needs Review"
+
+    @staticmethod
+    def _task_type(run_record: HarnessRunRecord) -> str:
+        return "Review" if run_record.status != HarnessRunStatus.COMPLETED else "Execution"
+
+    @staticmethod
+    def _task_priority(run_record: HarnessRunRecord) -> str:
+        if run_record.status == HarnessRunStatus.FAILED:
+            return "P0"
+        if any(item.severity == "critical" for item in run_record.verification.findings):
+            return "P0"
+        if any(item.severity == "warning" for item in run_record.verification.findings):
+            return "P1"
+        return "P3"
+
+    @staticmethod
+    def _next_action(run_record: HarnessRunRecord) -> str:
+        if run_record.handoff and run_record.handoff.next_steps:
+            return run_record.handoff.next_steps[0]
+        if run_record.status == HarnessRunStatus.COMPLETED:
+            return "No manual action required."
+        if run_record.status == HarnessRunStatus.FAILED:
+            return "Inspect the failed run and decide whether to re-run."
+        return "Review the current run and record the approval decision."
+
+    @staticmethod
+    def _session_status(run_records: List[HarnessRunRecord]) -> str:
+        if any(record.status != HarnessRunStatus.COMPLETED for record in run_records):
+            return "Open"
+        return "Captured"
+
+    @staticmethod
+    def _session_outcome(run_records: List[HarnessRunRecord]) -> str:
+        statuses = {record.status for record in run_records}
+        if statuses == {HarnessRunStatus.COMPLETED}:
+            return "Clean Pass"
+        if statuses == {HarnessRunStatus.FAILED}:
+            return "Failed"
+        if HarnessRunStatus.PENDING_REVIEW in statuses and len(statuses) == 1:
+            return "Pending Review"
+        return "Mixed"
+
+    @staticmethod
+    def _session_summary(run_records: List[HarnessRunRecord], executor_mode: str) -> str:
+        parts = [
+            f"{record.case_id}:{record.status.value}"
+            for record in run_records
+        ]
+        return f"Batch completed via {executor_mode}. " + "; ".join(parts)
+
+    @staticmethod
+    def _session_status_from_approvals(task_pages: List[Dict[str, Any]]) -> str:
+        approval_statuses = [
+            NotionRunRegistrar._page_property_text(task_page, "Approval Status")
+            for task_page in task_pages
+        ]
+        if any(status == "Awaiting Approval" for status in approval_statuses):
+            return "Open"
+        return "Closed"
+
+    @staticmethod
+    def _session_outcome_from_approvals(task_pages: List[Dict[str, Any]]) -> str:
+        approval_statuses = [
+            NotionRunRegistrar._page_property_text(task_page, "Approval Status")
+            for task_page in task_pages
+        ]
+        verdicts = [
+            NotionRunRegistrar._page_property_text(task_page, "Verdict")
+            for task_page in task_pages
+        ]
+        if any(status == "Awaiting Approval" for status in approval_statuses):
+            return "Pending Review"
+        if any(status in {"Rejected", "Re-run Required"} for status in approval_statuses):
+            return "Failed"
+        if any(verdict in {"Reject", "Re-run"} for verdict in verdicts):
+            return "Failed"
+        if any(verdict == "Accept with Note" for verdict in verdicts):
+            return "Mixed"
+        return "Clean Pass"
+
+    @staticmethod
+    def _approval_summary_text(
+        base_summary: str,
+        related_tasks: List[Dict[str, Any]],
+    ) -> str:
+        stable_summary = base_summary.split(" | Approval:", 1)[0]
+        verdict_counts = Counter(
+            NotionRunRegistrar._page_property_text(task_page, "Verdict")
+            for task_page in related_tasks
+        )
+        approval_counts = Counter(
+            NotionRunRegistrar._page_property_text(task_page, "Approval Status")
+            for task_page in related_tasks
+        )
+        approval_summary = (
+            "Approval: "
+            f"approved={approval_counts.get('Approved', 0)}, "
+            f"pending={approval_counts.get('Awaiting Approval', 0)}, "
+            f"rejected={approval_counts.get('Rejected', 0)}, "
+            f"rerun={approval_counts.get('Re-run Required', 0)}, "
+            f"accept_with_note={verdict_counts.get('Accept with Note', 0)}"
+        )
+        return f"{stable_summary} | {approval_summary}" if stable_summary else approval_summary
+
+    @staticmethod
+    def _first_artifact_path(run_record: HarnessRunRecord) -> str:
+        return run_record.artifacts[0].path if run_record.artifacts else ""
+
+    @staticmethod
+    def _page_property_text(page: Dict[str, Any], property_name: str) -> str:
+        property_value = page.get("properties", {}).get(property_name, {})
+        property_type = property_value.get("type")
+        if property_type == "title":
+            return "".join(
+                item.get("plain_text") or item.get("text", {}).get("content", "")
+                for item in property_value.get("title", [])
+            )
+        if property_type == "rich_text":
+            return "".join(
+                item.get("plain_text") or item.get("text", {}).get("content", "")
+                for item in property_value.get("rich_text", [])
+            )
+        if property_type in {"select", "status"}:
+            return (property_value.get(property_type) or {}).get("name", "")
+        if property_type == "number":
+            number_value = property_value.get("number")
+            return "" if number_value is None else str(number_value)
+        if property_type == "url":
+            return property_value.get("url", "") or ""
+        return ""
+
+    def _session_children(
+        self,
+        batch_id: str,
+        run_records: List[HarnessRunRecord],
+        invoked_command: str,
+        executor_mode: str,
+    ) -> List[Dict[str, Any]]:
+        blocks: List[Dict[str, Any]] = [
+            self._heading_block("运行批次"),
+            self._paragraph_block(f"Batch ID: {batch_id}"),
+            self._paragraph_block(f"Command: {invoked_command}"),
+            self._paragraph_block(f"Executor: {executor_mode}"),
+            self._heading_block("案例结果"),
+        ]
+        for record in run_records:
+            blocks.append(
+                self._bullet_block(
+                    f"{record.case_id} | status={record.status.value} | summary={record.report_summary}"
+                )
+            )
+        blocks.extend(
+            [
+                self._heading_block("后续动作"),
+                self._numbered_block("若存在 pending_review，请在任务库的审批流中完成审批结论。"),
+                self._numbered_block("若存在 failed，请评估是否需要 fresh CalculiX run。"),
+                self._numbered_block("所有 run artifact 以 project_state 为准。"),
+            ]
+        )
+        return blocks
+
+    def _task_children(
+        self,
+        run_record: HarnessRunRecord,
+        batch_id: str,
+        session_title: str,
+    ) -> List[Dict[str, Any]]:
+        handoff_path = (
+            f"{run_record.project_state_dir}/handoff.md"
+            if run_record.project_state_dir
+            else "N/A"
+        )
+        return [
+            self._heading_block("审批流"),
+            self._paragraph_block(f"当前阶段：{self._approval_status(run_record)}"),
+            self._bullet_block(f"Batch: {batch_id}"),
+            self._bullet_block(f"Session: {session_title}"),
+            self._bullet_block(f"Run ID: {run_record.run_id}"),
+            self._bullet_block(f"Artifact Path: {run_record.project_state_dir or self._first_artifact_path(run_record)}"),
+            self._bullet_block(f"Handoff Path: {handoff_path}"),
+            self._heading_block("结论模板"),
+            self._paragraph_block("1. 证据摘要：补充本次 run 的关键数值、主要偏差和证据路径。"),
+            self._paragraph_block("2. 风险判断：判断当前结果是否可接受，以及风险级别和说明。"),
+            self._paragraph_block("3. 审批决定：填写 Verdict、Approval Status 和审批说明。"),
+            self._paragraph_block("4. 下一步：填写是否重跑、是否补充归因、下一动作。"),
+        ]
+
+    @staticmethod
+    def _title_prop(value: str) -> Dict[str, Any]:
+        return {"title": [{"type": "text", "text": {"content": value[:2000]}}]}
+
+    @staticmethod
+    def _rich_text_prop(value: str) -> Dict[str, Any]:
+        return {"rich_text": [{"type": "text", "text": {"content": value[:2000]}}]}
+
+    @staticmethod
+    def _select_prop(value: str) -> Dict[str, Any]:
+        return {"select": {"name": value}}
+
+    @staticmethod
+    def _text(value: str) -> List[Dict[str, Any]]:
+        return [{"type": "text", "text": {"content": value[:2000]}}]
+
+    @classmethod
+    def _heading_block(cls, value: str) -> Dict[str, Any]:
+        return {
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {"rich_text": cls._text(value)},
+        }
+
+    @classmethod
+    def _paragraph_block(cls, value: str) -> Dict[str, Any]:
+        return {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {"rich_text": cls._text(value)},
+        }
+
+    @classmethod
+    def _bullet_block(cls, value: str) -> Dict[str, Any]:
+        return {
+            "object": "block",
+            "type": "bulleted_list_item",
+            "bulleted_list_item": {"rich_text": cls._text(value)},
+        }
+
+    @classmethod
+    def _numbered_block(cls, value: str) -> Dict[str, Any]:
+        return {
+            "object": "block",
+            "type": "numbered_list_item",
+            "numbered_list_item": {"rich_text": cls._text(value)},
+        }
