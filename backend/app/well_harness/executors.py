@@ -56,6 +56,8 @@ class CalculixExecutor:
         task_spec: TaskSpec,
         store: GoldenSampleKnowledgeStore,
     ) -> ExecutorRunResult:
+        from tools.calculix_driver import run_solve
+
         inp_path = store.find_input_file(case_id)
         if inp_path is None:
             return ExecutorRunResult(
@@ -66,37 +68,24 @@ class CalculixExecutor:
                 error_message=f"No .inp file found for {case_id}",
             )
 
-        resolved_ccx = shutil.which(self.ccx_path) or self.ccx_path
-        if not Path(resolved_ccx).exists() and shutil.which(self.ccx_path) is None:
+        try:
+            # Use the core driver which handles WSL detection and pathing
+            solve_result = run_solve(inp_path=inp_path, work_dir=inp_path.parent)
+            
+            return ExecutorRunResult(
+                success=solve_result["converged"],
+                executor_name="calculix_executor",
+                frd_path=solve_result["frd_path"] or "",
+                output_dir=str(inp_path.parent),
+                execution_time_s=solve_result["wall_time_s"],
+                logs=[],  # logs are captured in driver now
+                error_message=None if solve_result["converged"] else f"CalculiX error (code {solve_result['returncode']})",
+            )
+        except Exception as e:
             return ExecutorRunResult(
                 success=False,
                 executor_name="calculix_executor",
                 frd_path="",
                 output_dir=str(inp_path.parent),
-                error_message=f"CalculiX executable not found: {self.ccx_path}",
+                error_message=str(e),
             )
-
-        started = time.perf_counter()
-        completed = subprocess.run(
-            [resolved_ccx, inp_path.stem],
-            cwd=inp_path.parent,
-            capture_output=True,
-            text=True,
-        )
-        duration = time.perf_counter() - started
-
-        frd_candidates = sorted(inp_path.parent.glob("*.frd"), key=lambda path: path.stat().st_mtime)
-        frd_path = frd_candidates[-1] if frd_candidates else None
-        logs = [line for line in (completed.stdout + "\n" + completed.stderr).splitlines() if line.strip()]
-
-        return ExecutorRunResult(
-            success=completed.returncode == 0 and frd_path is not None,
-            executor_name="calculix_executor",
-            frd_path="" if frd_path is None else str(frd_path),
-            output_dir=str(inp_path.parent),
-            execution_time_s=duration,
-            logs=logs[-50:],
-            error_message=None
-            if completed.returncode == 0 and frd_path is not None
-            else f"CalculiX run failed with code {completed.returncode}",
-        )

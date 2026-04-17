@@ -18,6 +18,16 @@ FAULT_TO_NODE: dict[FaultClass, str] = {
 MAX_RETRIES = 3
 
 
+
+
+
+def route_architect(state: SimState) -> str:
+    """Route after Architect node based on plan success."""
+    if state.get("plan") and state.get("fault_class") == FaultClass.NONE:
+        return "geometry"
+    return "human_fallback"
+
+
 def route_reviewer(state: SimState) -> str:
     """Determine the next node after reviewer validation."""
     verdict = state.get("verdict")
@@ -39,3 +49,4 @@ def route_reviewer(state: SimState) -> str:
         return target_node
 
     return "human_fallback"
+

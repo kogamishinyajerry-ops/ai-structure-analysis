@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +13,23 @@ try:
     GMSH_AVAILABLE = True
 except ImportError:
     GMSH_AVAILABLE = False
+
+
+def _find_gmsh() -> tuple[str | None, bool]:
+    """Return (path, is_wsl). checks Windows then WSL."""
+    win_bin = shutil.which("gmsh")
+    if win_bin:
+        return win_bin, False
+
+    # Check WSL
+    try:
+        wsl_check = subprocess.run(["wsl", "which", "gmsh"], capture_output=True, text=True, timeout=5)
+        if wsl_check.returncode == 0:
+            return "gmsh", True
+    except Exception:
+        pass
+
+    return None, False
 
 
 def generate_mesh(geometry_path: Path, params: dict[str, Any], output_dir: Path) -> Path:
@@ -31,12 +50,31 @@ def generate_mesh(geometry_path: Path, params: dict[str, Any], output_dir: Path)
         Path to the generated mesh file (.inp).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    out_path = output_dir / "model.inp"
+    output_path = output_dir / f"{geometry_path.stem}.inp"
 
+    gmsh_bin, is_wsl = _find_gmsh()
+    
+    if gmsh_bin:
+        cmd = [gmsh_bin, str(geometry_path), "-3", "-format", "inp", "-o", str(output_path)]
+        
+        # Add refinement parameters if provided
+        if "global_size" in params:
+            cmd.extend(["-setnumber", "Mesh.CharacteristicLengthMax", str(params["global_size"])])
+        
+        if is_wsl:
+            cmd = ["wsl"] + cmd
+            logger.info("Running Gmsh (via WSL): %s", cmd)
+        else:
+            logger.info("Running Gmsh (Native): %s", cmd)
+
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return output_path
+
+    # Fallback to Python API
     if not GMSH_AVAILABLE:
-        logger.warning("Gmsh is not available natively. Returning a dummy mesh.")
-        out_path.write_text("*NODE\n1, 0, 0, 0\n*ELEMENT, TYPE=C3D10\n1, 1\n")
-        return out_path
+        logger.warning("Gmsh is not available natively or via WSL. Returning a dummy mesh.")
+        output_path.write_text("*NODE\n1, 0, 0, 0\n*ELEMENT, TYPE=C3D10\n1, 1\n")
+        return output_path
 
     # Extract refinement params
     base_size = params.get("global_size", 1.0)
@@ -58,7 +96,7 @@ def generate_mesh(geometry_path: Path, params: dict[str, Any], output_dir: Path)
         # If quadratic elements are requested
         gmsh.option.setNumber("Mesh.ElementOrder", element_order)
         # Abaqus/CalculiX format specific configurations
-        gmsh.option.setNumber("Mesh.Format", 39) # 39 often corresponds to INP format, gmsh.write handles this natively via extension
+        gmsh.option.setNumber("Mesh.Format", 39) 
 
         # We assume 3D geometry meshing
         gmsh.model.mesh.generate(3)

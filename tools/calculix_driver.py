@@ -23,9 +23,30 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_S = 600
 
 
-def _find_ccx() -> str | None:
-    """Return the absolute path to ``ccx`` if available on PATH."""
-    return shutil.which("ccx")
+def _find_ccx() -> tuple[str | None, bool]:
+    """Return (path, is_wsl). checks Windows then WSL."""
+    win_bin = shutil.which("ccx")
+    if win_bin:
+        return win_bin, False
+        
+    # Check WSL
+    try:
+        wsl_check = subprocess.run(["wsl", "which", "ccx"], capture_output=True, text=True, timeout=5)
+        if wsl_check.returncode == 0:
+            return "ccx", True
+    except Exception:
+        pass
+        
+    return None, False
+
+
+def _to_wsl_path(win_path: Path) -> str:
+    """Convert Windows path to WSL-style path (/mnt/e/...)."""
+    p_str = str(win_path.absolute()).replace("\\", "/")
+    if ":" in p_str:
+        drive, rest = p_str.split(":", 1)
+        return f"/mnt/{drive.lower()}{rest}"
+    return p_str
 
 
 def _check_convergence(work_dir: Path, jobname: str) -> bool:
@@ -84,23 +105,31 @@ def run_solve(
         Keys: ``frd_path``, ``dat_path``, ``sta_path``, ``converged``,
         ``wall_time_s``, ``returncode``.
     """
-    ccx_bin = _find_ccx()
+    ccx_bin, is_wsl = _find_ccx()
     if ccx_bin is None:
         raise FileNotFoundError(
-            "CalculiX executable 'ccx' not found on PATH. "
-            "Install CalculiX 2.21+ or add it to your system PATH."
+            "CalculiX executable 'ccx' not found on Windows PATH or WSL. "
+            "Please install it (e.g., 'wsl sudo apt install calculix-ccx')."
         )
 
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # CalculiX convention: ``ccx -i jobname`` (without .inp extension).
     jobname = inp_path.stem
-    cmd = [ccx_bin, "-i", jobname]
-
-    logger.info("Running CalculiX: %s  (cwd=%s, timeout=%ds)", cmd, work_dir, timeout_s)
+    
+    if is_wsl:
+        wsl_work_dir = _to_wsl_path(work_dir)
+        cmd = ["wsl", ccx_bin, "-i", jobname]
+        logger.info("Running CalculiX (via WSL): %s  (wsl_cwd=%s, timeout=%ds)", cmd, wsl_work_dir, timeout_s)
+    else:
+        cmd = [ccx_bin, "-i", jobname]
+        logger.info("Running CalculiX (Native): %s  (cwd=%s, timeout=%ds)", cmd, work_dir, timeout_s)
 
     t0 = time.monotonic()
     try:
+        # If WSL, we still run subprocess locally but with 'wsl' prefix.
+        # We must ensure the CWD is also handled or passed if needed,
+        # but 'wsl' command inherited current working directory if it's on a mounted drive.
         result = subprocess.run(
             cmd,
             cwd=str(work_dir),

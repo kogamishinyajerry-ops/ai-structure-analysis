@@ -3,7 +3,7 @@ from __future__ import annotations
 from langgraph.graph import END, START, StateGraph
 
 from agents import architect, geometry, human_fallback, mesh, reviewer, solver, viz
-from agents.router import route_reviewer
+from agents.router import route_architect, route_reviewer
 from schemas.sim_state import SimState
 
 
@@ -22,7 +22,17 @@ def build_graph() -> StateGraph:
 
     # 2. Add structural edges
     workflow.add_edge(START, "architect")
-    workflow.add_edge("architect", "geometry")
+    
+    # 3. Add conditional routing for the Architect
+    workflow.add_conditional_edges(
+        "architect",
+        route_architect,
+        {
+            "geometry": "geometry",
+            "human_fallback": "human_fallback",
+        },
+    )
+
     workflow.add_edge("geometry", "mesh")
     workflow.add_edge("mesh", "solver")
     workflow.add_edge("solver", "reviewer")

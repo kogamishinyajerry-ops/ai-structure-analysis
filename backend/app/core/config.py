@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     
     # OpenAI配置
     openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4-turbo-preview"
+    minimax_api_key: Optional[str] = None
+    openai_model: str = "MiniMax-M2.7"
     
     # 数据库配置(后续Sprint使用)
     postgres_url: Optional[str] = None
