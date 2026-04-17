@@ -4,17 +4,19 @@ Produces a structured analysis report from parsed FRD data
 and SimPlan context.  Report sections:
   1. Executive Summary (pass/fail, key metrics).
   2. Geometry & Mesh summary.
-  3. Results (stress/displacement tables, contour figure refs).
+  3. Results (stress/displacement tables).
   4. Comparison against reference values.
   5. Recommendations / next actions.
-
-This module is a stub (AI-FEA-P0-01).  Logic will be filled in P0-09.
 """
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def generate_report(results: dict[str, Any], output_dir: Path) -> Path:
@@ -23,7 +25,14 @@ def generate_report(results: dict[str, Any], output_dir: Path) -> Path:
     Parameters
     ----------
     results : dict
-        Parsed FRD data + SimPlan context + reviewer verdict.
+        Expected keys:
+        - ``case_id``: str
+        - ``description``: str
+        - ``verdict``: str (``"pass"`` / ``"fail"`` / ``"review"``)
+        - ``fields``: list of field-extreme dicts from ``extract_field_extremes``
+        - ``reference_values``: dict of analytical reference values
+        - ``mesh_quality``: dict from jacobian checker (optional)
+        - ``wall_time_s``: float (optional)
     output_dir : Path
         Directory to write the report into.
 
@@ -32,4 +41,97 @@ def generate_report(results: dict[str, Any], output_dir: Path) -> Path:
     Path
         Path to the generated ``report.md``.
     """
-    raise NotImplementedError("Markdown reporter not yet implemented — see AI-FEA-P0-09")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = output_dir / "report.md"
+
+    case_id = results.get("case_id", "UNKNOWN")
+    desc = results.get("description", "")
+    verdict = results.get("verdict", "review")
+    fields = results.get("fields", [])
+    refs = results.get("reference_values", {})
+    mesh_q = results.get("mesh_quality")
+    wall_time = results.get("wall_time_s")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    lines: list[str] = []
+
+    # --- Header ---
+    lines.append(f"# FEA Analysis Report — {case_id}")
+    lines.append("")
+    lines.append(f"> Generated: {timestamp}")
+    lines.append("")
+
+    # --- Executive Summary ---
+    verdict_emoji = {"pass": "✅", "fail": "❌", "review": "⚠️"}.get(verdict, "❓")
+    lines.append("## 1. Executive Summary")
+    lines.append("")
+    lines.append(f"- **Case ID**: `{case_id}`")
+    lines.append(f"- **Description**: {desc}")
+    lines.append(f"- **Verdict**: {verdict_emoji} **{verdict.upper()}**")
+    if wall_time is not None:
+        lines.append(f"- **Solve Wall Time**: {wall_time:.1f} s")
+    lines.append("")
+
+    # --- Mesh Quality ---
+    if mesh_q:
+        lines.append("## 2. Mesh Quality")
+        lines.append("")
+        lines.append("| Metric | Value | Threshold | Status |")
+        lines.append("|--------|-------|-----------|--------|")
+        mj = mesh_q.get("min_jacobian", "N/A")
+        ma = mesh_q.get("max_aspect_ratio", "N/A")
+        mj_ok = "✅" if isinstance(mj, (int, float)) and mj >= 0.2 else "❌"
+        ma_ok = "✅" if isinstance(ma, (int, float)) and ma <= 10 else "❌"
+        lines.append(f"| Min Jacobian | {mj} | ≥ 0.2 | {mj_ok} |")
+        lines.append(f"| Max Aspect Ratio | {ma} | ≤ 10 | {ma_ok} |")
+        lines.append("")
+
+    # --- Results ---
+    lines.append("## 3. Results")
+    lines.append("")
+    if fields:
+        lines.append("| Field | Max Magnitude | Node | Min Magnitude | Node |")
+        lines.append("|-------|--------------|------|--------------|------|")
+        for f in fields:
+            fname = f.get("field", "?")
+            mx = f.get("max_magnitude")
+            mx_n = f.get("max_node")
+            mn = f.get("min_magnitude")
+            mn_n = f.get("min_node")
+            mx_s = f"{mx:.6g}" if mx is not None else "N/A"
+            mn_s = f"{mn:.6g}" if mn is not None else "N/A"
+            lines.append(f"| {fname} | {mx_s} | {mx_n} | {mn_s} | {mn_n} |")
+        lines.append("")
+    else:
+        lines.append("_No field data available._")
+        lines.append("")
+
+    # --- Reference Comparison ---
+    if refs:
+        lines.append("## 4. Reference Comparison")
+        lines.append("")
+        lines.append("| Quantity | Reference | Computed | Δ (%) |")
+        lines.append("|----------|-----------|----------|-------|")
+        for key, ref_val in refs.items():
+            # Try to find a matching field extreme
+            computed = None
+            for f in fields:
+                if f.get("field") == key:
+                    computed = f.get("max_magnitude")
+                    break
+            if computed is not None and ref_val != 0:
+                delta = abs(computed - ref_val) / abs(ref_val) * 100
+                lines.append(f"| {key} | {ref_val:.6g} | {computed:.6g} | {delta:.1f}% |")
+            else:
+                c_s = f"{computed:.6g}" if computed is not None else "N/A"
+                lines.append(f"| {key} | {ref_val:.6g} | {c_s} | — |")
+        lines.append("")
+
+    # --- Footer ---
+    lines.append("---")
+    lines.append(f"*Report generated by AI-FEA Engine · {case_id}*")
+    lines.append("")
+
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("Report written → %s", report_path)
+    return report_path
