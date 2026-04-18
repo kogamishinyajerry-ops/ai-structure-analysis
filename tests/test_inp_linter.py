@@ -162,6 +162,44 @@ class TestDuplicateIDs:
         assert any(f.code == "E-DUPLICATE-ELEMENT-ID" for f in report.errors)
 
 
+class TestIncludeResolution:
+    def test_include_inlines_external_mesh(self, tmp_path):
+        """Linter must follow *INCLUDE so a split mesh deck lints as a single unit."""
+        mesh = tmp_path / "mesh.inp"
+        mesh.write_text(
+            "*NODE\n1, 0.0, 0.0, 0.0\n2, 1.0, 0.0, 0.0\n"
+            "*ELEMENT, TYPE=C3D8, ELSET=Eall\n1, 1, 2, 1, 1, 1, 1, 1, 1\n",
+            encoding="utf-8",
+        )
+        deck = tmp_path / "solve.inp"
+        deck.write_text(
+            "*INCLUDE, INPUT=mesh.inp\n"
+            "*MATERIAL, NAME=STEEL\n*ELASTIC\n210000.0, 0.3\n"
+            "*SOLID SECTION, ELSET=Eall, MATERIAL=STEEL\n"
+            "*BOUNDARY\n1, 1, 6, 0.0\n"
+            "*STEP\n*STATIC\n*CLOAD\n2, 2, -100.0\n*END STEP\n",
+            encoding="utf-8",
+        )
+        report = lint_inp(deck)
+        assert report.ok, (
+            f"Should resolve INCLUDE and lint clean: {[f.code for f in report.errors]}"
+        )
+
+    def test_missing_include_does_not_crash(self, tmp_path):
+        deck = tmp_path / "solve.inp"
+        deck.write_text(
+            "*INCLUDE, INPUT=missing.inp\n"
+            "*MATERIAL, NAME=STEEL\n*ELASTIC\n210000.0, 0.3\n"
+            "*SOLID SECTION, ELSET=Eall, MATERIAL=STEEL\n"
+            "*STEP\n*STATIC\n*END STEP\n",
+            encoding="utf-8",
+        )
+        report = lint_inp(deck)
+        codes = [f.code for f in report.errors]
+        assert "E-MISSING-NODE" in codes
+        assert "E-MISSING-ELEMENT" in codes
+
+
 class TestReportSerialization:
     def test_report_to_dict_is_json_serializable(self, tmp_path):
         import json

@@ -407,19 +407,59 @@ def _check_duplicates(lines: list[str], report: LintReport) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
+_INCLUDE_RE = re.compile(r"^\*\s*INCLUDE\s*,\s*INPUT\s*=\s*([^,\s]+)", re.IGNORECASE)
+
+
+def _resolve_includes(path: Path, _seen: set[Path] | None = None) -> list[str]:
+    """Inline ``*INCLUDE, INPUT=<path>`` targets so the linter sees what ccx sees.
+
+    Resolution matches CalculiX's semantics: the include path is taken relative
+    to the including deck's directory. Missing include files are left in place
+    so higher-level checks can surface them without crashing. Cycles are
+    detected via ``_seen``.
+    """
+    if _seen is None:
+        _seen = set()
+    resolved = path.resolve()
+    if resolved in _seen:
+        return []
+    _seen.add(resolved)
+
+    out: list[str] = []
+    try:
+        raw_lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return out
+
+    for line in raw_lines:
+        m = _INCLUDE_RE.match(line.strip())
+        if not m:
+            out.append(line)
+            continue
+        include_target = (path.parent / m.group(1)).resolve()
+        if include_target.exists() and include_target.is_file():
+            out.append(f"** [linter-inlined] {m.group(1)}")
+            out.extend(_resolve_includes(include_target, _seen))
+            out.append("** [linter-end-inline]")
+        else:
+            out.append(line)
+    return out
+
 
 def lint_inp(deck_path: str | Path) -> LintReport:
     """Static-analyze a CalculiX ``.inp`` deck and return a ``LintReport``.
 
     Deterministic and pure — does not invoke ``ccx``. Safe to call from any
     node in the graph, including Architect before handing off to Geometry.
+
+    ``*INCLUDE`` directives are resolved relative to the deck's directory so
+    the linter's view matches the flattened deck ccx will consume.
     """
     path = Path(deck_path)
     if not path.exists():
         raise FileNotFoundError(f"Deck not found: {path}")
 
-    text = path.read_text(encoding="utf-8", errors="replace")
-    lines = text.splitlines()
+    lines = _resolve_includes(path)
     report = LintReport(deck_path=str(path))
 
     _check_keywords(lines, report)

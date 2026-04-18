@@ -11,6 +11,7 @@ import jinja2
 
 from schemas.sim_state import FaultClass, SimState
 from tools.calculix_driver import run_solve
+from tools.inp_linter import lint_inp
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,31 @@ def run(state: SimState) -> dict[str, Any]:
                     "node": "solver",
                     "fault_class": FaultClass.SOLVER_SYNTAX.value,
                     "msg": str(exc),
+                }
+            ],
+            "verdict": "re-run",
+        }
+
+    lint_report = lint_inp(deck_path)
+    if not lint_report.ok:
+        error_codes = [f.code for f in lint_report.errors]
+        first_error = lint_report.errors[0]
+        msg = (
+            f"Gate-Solve lint rejected deck before ccx: {len(lint_report.errors)} "
+            f"error(s); first: {first_error.code} — {first_error.message}"
+        )
+        logger.warning("Gate-Solve lint rejected deck: %s", error_codes)
+        return {
+            "fault_class": FaultClass.SOLVER_SYNTAX,
+            "retry_budgets": {"solver": 1},
+            "history": [
+                {
+                    "node": "solver",
+                    "fault_class": FaultClass.SOLVER_SYNTAX.value,
+                    "msg": msg,
+                    "lint_codes": error_codes,
+                    "lint_findings": [f.to_dict() for f in lint_report.errors],
+                    "stage": "gate_solve_lint",
                 }
             ],
             "verdict": "re-run",
