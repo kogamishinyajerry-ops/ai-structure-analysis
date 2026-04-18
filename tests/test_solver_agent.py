@@ -48,7 +48,15 @@ def solver_state(sample_plan, tmp_path) -> dict:
     mesh_dir = tmp_path / "mesh"
     mesh_dir.mkdir()
     mesh_inp = mesh_dir / "model.inp"
-    mesh_inp.write_text("*NODE\n1, 0, 0, 0\n*ELEMENT\n1, 1\n", encoding="utf-8")
+    mesh_inp.write_text(
+        "*NODE, NSET=Nall\n"
+        "1, 0.0, 0.0, 0.0\n2, 1.0, 0.0, 0.0\n"
+        "*NSET, NSET=Nroot\n1\n"
+        "*NSET, NSET=Ntip\n2\n"
+        "*ELEMENT, TYPE=C3D8, ELSET=Eall\n"
+        "1, 1, 2, 1, 1, 1, 1, 1, 1\n",
+        encoding="utf-8",
+    )
 
     return {
         "plan": sample_plan,
@@ -153,6 +161,39 @@ class TestSolverAgent:
 
         assert result["fault_class"] == FaultClass.SOLVER_SYNTAX
         assert result["retry_budgets"] == {"solver": 1}
+
+    def test_gate_solve_lint_short_circuits_before_ccx(self, solver_state, tmp_path):
+        """Lint errors in the rendered deck must skip ccx invocation entirely."""
+        from agents.solver import run as solver_run
+        from tools.inp_linter import LintFinding, LintReport
+        from schemas.sim_state import FaultClass as FC
+
+        fake_report = LintReport(
+            deck_path="fake",
+            findings=[
+                LintFinding(
+                    severity="error",
+                    code="E-TYPO-KEYWORD",
+                    line=42,
+                    message="*CLAOD is a common misspelling of *CLOAD.",
+                    fault_class_hint=FC.SOLVER_SYNTAX,
+                )
+            ],
+        )
+
+        with (
+            patch("agents.solver.lint_inp", return_value=fake_report),
+            patch("agents.solver.run_solve") as mock_run_solve,
+        ):
+            result = solver_run(solver_state)
+
+        # ccx MUST NOT have been called — this is the whole point of the gate.
+        mock_run_solve.assert_not_called()
+        assert result["fault_class"] == FaultClass.SOLVER_SYNTAX
+        assert result["retry_budgets"] == {"solver": 1}
+        assert result["verdict"] == "re-run"
+        assert result["history"][0]["stage"] == "gate_solve_lint"
+        assert result["history"][0]["lint_codes"] == ["E-TYPO-KEYWORD"]
 
     def test_missing_mesh_artifact(self, sample_plan, tmp_path):
         from agents.solver import run as solver_run
