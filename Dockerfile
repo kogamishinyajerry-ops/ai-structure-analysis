@@ -24,6 +24,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     AI_FEA_IN_CONTAINER=1
 
+# calculix-ccx lives in Debian ``contrib`` (depends on non-free spooles).
+# The slim base image ships a single-line sources file — enable contrib
+# / non-free / non-free-firmware for both the deb822 and legacy formats.
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's/Components: main$/Components: main contrib non-free non-free-firmware/' \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    if [ -s /etc/apt/sources.list ]; then \
+        sed -i 's/main$/main contrib non-free non-free-firmware/' /etc/apt/sources.list; \
+    fi
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
