@@ -40,12 +40,18 @@ class SimState(TypedDict):
 
     # 1. Inputs
     user_request: str  # Original natural language request
+    case_id: str
+    run_id: str
     plan: SimPlan
 
     # 2. Intermediate Artifacts
+    project_state_dir: str
+    artifacts: list[str]
     geometry_path: str | None
     mesh_path: str | None
     frd_path: str | None
+    solve_path: str | None
+    solve_metadata: dict[str, Any]
 
     # 3. Validation and Fault Routing
     verdict: str | None
