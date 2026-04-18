@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Any
 
 REQUIRED_TOPOLOGY_KEYS = ("fixed_base", "tip_load", "skin")
+
+ALLOW_DUMMY_ENV = "AI_FEA_ALLOW_DUMMY_GEOMETRY"
 
 # We will handle FreeCAD import softly to allow local testing
 try:
@@ -18,6 +21,18 @@ except ImportError:
     FREECAD_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def _dummy_geometry_allowed(explicit: bool | None) -> bool:
+    """ADR-008 N-3: allow dummy STEP only with explicit opt-in.
+
+    Precedence: explicit kwarg > env var > denied. The env var accepts
+    truthy values "1", "true", "yes" (case-insensitive).
+    """
+    if explicit is not None:
+        return bool(explicit)
+    raw = os.getenv(ALLOW_DUMMY_ENV, "")
+    return raw.strip().lower() in {"1", "true", "yes"}
 
 
 def parse_naca_4digit(profile: str) -> tuple[float, float, float]:
@@ -179,8 +194,19 @@ def build_geometry_metadata(
     }
 
 
-def generate_geometry(spec: dict[str, Any], output_dir: Path) -> Path:
+def generate_geometry(
+    spec: dict[str, Any],
+    output_dir: Path,
+    *,
+    allow_dummy: bool | None = None,
+) -> Path:
     """Generate CAD geometry from a specification dict.
+
+    ADR-008 N-3: when FreeCAD is unavailable, this function raises
+    ``RuntimeError`` unless the caller explicitly opts into the dummy STEP
+    fallback (``allow_dummy=True`` or ``AI_FEA_ALLOW_DUMMY_GEOMETRY=1``).
+    The dummy STEP is graph-wiring-only; it must never be emitted during
+    Demo Gate / hot-smoke runs.
 
     Parameters
     ----------
@@ -188,15 +214,32 @@ def generate_geometry(spec: dict[str, Any], output_dir: Path) -> Path:
         Geometry specification from SimPlan (requires 'profile', 'chord_length', 'span').
     output_dir : Path
         Directory to write the STEP file into.
+    allow_dummy : bool, optional
+        Explicit opt-in for the placeholder STEP fallback when FreeCAD is
+        missing. If ``None``, the ``AI_FEA_ALLOW_DUMMY_GEOMETRY`` env var
+        is consulted. Any Demo Gate / hot-smoke path MUST leave this at
+        ``None``/``False`` so that a missing FreeCAD hard-fails.
 
     Returns
     -------
     Path
         Path to the generated STEP file.
     """
+    dummy_allowed = _dummy_geometry_allowed(allow_dummy)
     if not FREECAD_AVAILABLE:
+        if not dummy_allowed:
+            raise RuntimeError(
+                "FreeCAD is not available and dummy geometry fallback is disabled. "
+                "Run inside the P1-01 container image or set "
+                f"{ALLOW_DUMMY_ENV}=1 / allow_dummy=True for cold-smoke / "
+                "graph-wiring tests only (ADR-008 N-3)."
+            )
         logger.warning(
-            "FreeCAD is not available in the environment. Mocks must be used or it will fail."
+            "FreeCAD not available — emitting dummy STEP (allow_dummy=%s, %s=%s). "
+            "This path is NOT valid for Demo Gate.",
+            allow_dummy,
+            ALLOW_DUMMY_ENV,
+            os.getenv(ALLOW_DUMMY_ENV, ""),
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
