@@ -1,0 +1,304 @@
+{
+  "total_scenarios": 24,
+  "passed": 24,
+  "failed": 0,
+  "pass_rate_pct": 100.0,
+  "rows": [
+    {
+      "scenario_id": "geometry_invalid-fresh",
+      "fault_class": "geometry_invalid",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "geometry",
+      "expected_route": "geometry",
+      "pass": true,
+      "description": "First-time injection of geometry_invalid; budget=0; should route to geometry."
+    },
+    {
+      "scenario_id": "geometry_invalid-mid-retry",
+      "fault_class": "geometry_invalid",
+      "initial_budget": {
+        "geometry": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "geometry",
+      "expected_route": "geometry",
+      "pass": true,
+      "description": "geometry_invalid with budget=2; last-chance retry; should still route to geometry."
+    },
+    {
+      "scenario_id": "geometry_invalid-budget-exhausted",
+      "fault_class": "geometry_invalid",
+      "initial_budget": {
+        "geometry": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "geometry_invalid with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "mesh_jacobian-fresh",
+      "fault_class": "mesh_jacobian",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "mesh",
+      "expected_route": "mesh",
+      "pass": true,
+      "description": "First-time injection of mesh_jacobian; budget=0; should route to mesh."
+    },
+    {
+      "scenario_id": "mesh_jacobian-mid-retry",
+      "fault_class": "mesh_jacobian",
+      "initial_budget": {
+        "mesh": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "mesh",
+      "expected_route": "mesh",
+      "pass": true,
+      "description": "mesh_jacobian with budget=2; last-chance retry; should still route to mesh."
+    },
+    {
+      "scenario_id": "mesh_jacobian-budget-exhausted",
+      "fault_class": "mesh_jacobian",
+      "initial_budget": {
+        "mesh": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "mesh_jacobian with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "mesh_resolution-fresh",
+      "fault_class": "mesh_resolution",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "mesh",
+      "expected_route": "mesh",
+      "pass": true,
+      "description": "First-time injection of mesh_resolution; budget=0; should route to mesh."
+    },
+    {
+      "scenario_id": "mesh_resolution-mid-retry",
+      "fault_class": "mesh_resolution",
+      "initial_budget": {
+        "mesh": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "mesh",
+      "expected_route": "mesh",
+      "pass": true,
+      "description": "mesh_resolution with budget=2; last-chance retry; should still route to mesh."
+    },
+    {
+      "scenario_id": "mesh_resolution-budget-exhausted",
+      "fault_class": "mesh_resolution",
+      "initial_budget": {
+        "mesh": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "mesh_resolution with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "solver_convergence-fresh",
+      "fault_class": "solver_convergence",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "First-time injection of solver_convergence; budget=0; should route to solver."
+    },
+    {
+      "scenario_id": "solver_convergence-mid-retry",
+      "fault_class": "solver_convergence",
+      "initial_budget": {
+        "solver": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "solver_convergence with budget=2; last-chance retry; should still route to solver."
+    },
+    {
+      "scenario_id": "solver_convergence-budget-exhausted",
+      "fault_class": "solver_convergence",
+      "initial_budget": {
+        "solver": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "solver_convergence with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "solver_timestep-fresh",
+      "fault_class": "solver_timestep",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "First-time injection of solver_timestep; budget=0; should route to solver."
+    },
+    {
+      "scenario_id": "solver_timestep-mid-retry",
+      "fault_class": "solver_timestep",
+      "initial_budget": {
+        "solver": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "solver_timestep with budget=2; last-chance retry; should still route to solver."
+    },
+    {
+      "scenario_id": "solver_timestep-budget-exhausted",
+      "fault_class": "solver_timestep",
+      "initial_budget": {
+        "solver": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "solver_timestep with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "solver_syntax-fresh",
+      "fault_class": "solver_syntax",
+      "initial_budget": {},
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "First-time injection of solver_syntax; budget=0; should route to solver."
+    },
+    {
+      "scenario_id": "solver_syntax-mid-retry",
+      "fault_class": "solver_syntax",
+      "initial_budget": {
+        "solver": 2
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "solver",
+      "expected_route": "solver",
+      "pass": true,
+      "description": "solver_syntax with budget=2; last-chance retry; should still route to solver."
+    },
+    {
+      "scenario_id": "solver_syntax-budget-exhausted",
+      "fault_class": "solver_syntax",
+      "initial_budget": {
+        "solver": 3
+      },
+      "verdict": "Re-run",
+      "expected_verdict": "Re-run",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "solver_syntax with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "reference_mismatch-fresh",
+      "fault_class": "reference_mismatch",
+      "initial_budget": {},
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "First-time injection of reference_mismatch; budget=0; should route to human_fallback."
+    },
+    {
+      "scenario_id": "reference_mismatch-mid-retry",
+      "fault_class": "reference_mismatch",
+      "initial_budget": {
+        "human_fallback": 2
+      },
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "reference_mismatch with budget=2; last-chance retry; should still route to human_fallback."
+    },
+    {
+      "scenario_id": "reference_mismatch-budget-exhausted",
+      "fault_class": "reference_mismatch",
+      "initial_budget": {
+        "human_fallback": 3
+      },
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "reference_mismatch with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    },
+    {
+      "scenario_id": "unknown-fresh",
+      "fault_class": "unknown",
+      "initial_budget": {},
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "First-time injection of unknown; budget=0; should route to human_fallback."
+    },
+    {
+      "scenario_id": "unknown-mid-retry",
+      "fault_class": "unknown",
+      "initial_budget": {
+        "human_fallback": 2
+      },
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "unknown with budget=2; last-chance retry; should still route to human_fallback."
+    },
+    {
+      "scenario_id": "unknown-budget-exhausted",
+      "fault_class": "unknown",
+      "initial_budget": {
+        "human_fallback": 3
+      },
+      "verdict": "Needs Review",
+      "expected_verdict": "Needs Review",
+      "route": "human_fallback",
+      "expected_route": "human_fallback",
+      "pass": true,
+      "description": "unknown with budget=3 (exhausted); Re-run faults must escape to human_fallback."
+    }
+  ]
+}
