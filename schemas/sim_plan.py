@@ -44,6 +44,15 @@ class ElementOrder(StrEnum):
     QUADRATIC = "quadratic"
 
 
+class MeshLevel(StrEnum):
+    """Named mesh density presets for the Mesh Agent."""
+
+    COARSE = "coarse"
+    MEDIUM = "medium"
+    FINE = "fine"
+    VERY_FINE = "very_fine"
+
+
 # ---------------------------------------------------------------------------
 # Sub-models
 # ---------------------------------------------------------------------------
@@ -87,8 +96,16 @@ class MeshStrategy(BaseModel):
     """Meshing parameters for the Mesh Agent."""
 
     element_order: ElementOrder = ElementOrder.QUADRATIC
+    mesh_level: MeshLevel = MeshLevel.MEDIUM
     global_size: float | None = Field(None, description="Global element size [m]")
     refinement_regions: list[dict[str, Any]] = Field(default_factory=list)
+    min_scaled_jacobian: float = Field(0.2, gt=0.0, description="Scaled Jacobian threshold")
+    max_aspect_ratio: float = Field(10.0, gt=1.0, description="Aspect ratio threshold")
+    thin_wall_threshold_m: float = Field(
+        5e-4,
+        gt=0.0,
+        description="Minimum feature size below which thin-wall refinement is forced",
+    )
 
 
 class SolverControls(BaseModel):

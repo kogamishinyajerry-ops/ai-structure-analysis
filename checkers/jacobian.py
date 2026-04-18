@@ -4,148 +4,207 @@ import logging
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 import numpy as np  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 try:
-    import meshio  # type: ignore
+    import meshio  # type: ignore[import-not-found, import-untyped]
 
     MESHIO_AVAILABLE = True
 except ImportError:
+    meshio = None
     MESHIO_AVAILABLE = False
 
 
-def compute_tetra_volume(pts: list) -> float:
-    """Compute volume of a tetrahedron given 4 points."""
+def compute_signed_tetra_volume(pts: list) -> float:
+    """Compute the signed volume of a tetrahedron given 4 points."""
     a, b, c, d = pts[0], pts[1], pts[2], pts[3]
-    return abs(np.dot(a - d, np.cross(b - d, c - d))) / 6.0
+    return float(np.dot(np.cross(b - a, c - a), d - a) / 6.0)
+
+
+def compute_tetra_volume(pts: list) -> float:
+    """Compute the absolute volume of a tetrahedron given 4 points."""
+    return abs(compute_signed_tetra_volume(pts))
+
+
+def _tetra_metrics(points: np.ndarray) -> tuple[float, float]:
+    """Return scaled Jacobian and aspect ratio for a linear tetrahedron."""
+    edges = [
+        points[1] - points[0],
+        points[2] - points[0],
+        points[3] - points[0],
+        points[2] - points[1],
+        points[3] - points[1],
+        points[3] - points[2],
+    ]
+    lengths = [float(np.linalg.norm(edge)) for edge in edges]
+    min_length = min(lengths)
+    max_length = max(lengths)
+    if min_length == 0.0:
+        return 0.0, float("inf")
+
+    signed_volume = compute_signed_tetra_volume(points)
+    l_rms = float(np.sqrt(np.mean(np.square(lengths))))
+    scale = l_rms**3 / (6 * np.sqrt(2))
+    scaled_jacobian = signed_volume / scale if scale > 0.0 else 0.0
+    aspect_ratio = max_length / min_length
+    return float(scaled_jacobian), float(aspect_ratio)
+
+
+def _read_mock_quality(mesh_path: Path) -> dict[str, Any]:
+    """Support deterministic quality checks when meshio is unavailable."""
+    content = mesh_path.read_text(errors="ignore") if mesh_path.exists() else ""
+    if "BAD_JACOBIAN" in content:
+        return {
+            "ok": False,
+            "passed": False,
+            "bad_element_ids": [1],
+            "resolution_element_ids": [],
+            "min_scaled_jacobian": 0.05,
+            "max_aspect_ratio": 4.0,
+            "degenerate_pct": 100.0,
+            "findings": ["Mock check failed: scaled Jacobian < threshold."],
+        }
+    if "BAD_RESOLUTION" in content:
+        return {
+            "ok": False,
+            "passed": False,
+            "bad_element_ids": [],
+            "resolution_element_ids": [1],
+            "min_scaled_jacobian": 0.88,
+            "max_aspect_ratio": 14.0,
+            "degenerate_pct": 0.0,
+            "findings": ["Mock check failed: aspect ratio exceeds threshold."],
+        }
+    return {
+        "ok": True,
+        "passed": True,
+        "bad_element_ids": [],
+        "resolution_element_ids": [],
+        "min_scaled_jacobian": 0.8,
+        "max_aspect_ratio": 3.5,
+        "degenerate_pct": 0.0,
+        "findings": [],
+    }
+
+
+def check_jacobian_positive(
+    mesh_path: Path, min_scaled_jacobian: float = 0.2
+) -> tuple[bool, list[int]]:
+    """Return whether all tetrahedra satisfy the scaled Jacobian threshold."""
+    if not MESHIO_AVAILABLE:
+        mock_report = _read_mock_quality(mesh_path)
+        bad_element_ids = mock_report["bad_element_ids"]
+        return not bad_element_ids, bad_element_ids
+
+    try:
+        mesh = meshio.read(str(mesh_path))
+    except Exception:
+        return False, []
+
+    bad_element_ids: list[int] = []
+    element_id = 1
+    for cell_block in mesh.cells:
+        if cell_block.type not in ("tetra", "tetra10"):
+            continue
+
+        for element in cell_block.data:
+            scaled_jacobian, _ = _tetra_metrics(mesh.points[element[:4]])
+            if scaled_jacobian < min_scaled_jacobian:
+                bad_element_ids.append(element_id)
+            element_id += 1
+
+    return not bad_element_ids, bad_element_ids
 
 
 def check_mesh_quality(
     mesh_path: Path, thresholds: dict[str, float] | None = None
 ) -> dict[str, Any]:
-    """Run Jacobian and aspect-ratio checks on a mesh file.
-
-    Parameters
-    ----------
-    mesh_path : Path
-        Path to the mesh file (.inp or .msh).
-    thresholds : dict, optional
-        Override default thresholds (``min_jacobian``, ``max_aspect_ratio``).
-
-    Returns
-    -------
-    dict
-        Keys: ``passed`` (bool), ``min_jacobian``, ``max_aspect_ratio``,
-        ``degenerate_pct``, ``findings`` (list of issue strings).
-    """
+    """Run Jacobian and aspect-ratio checks on a mesh file."""
     thresholds = thresholds or {}
-    min_j_thresh = thresholds.get("min_jacobian", 0.2)
+    min_j_thresh = thresholds.get("min_scaled_jacobian", thresholds.get("min_jacobian", 0.2))
     max_ar_thresh = thresholds.get("max_aspect_ratio", 10.0)
 
     if not MESHIO_AVAILABLE:
         logger.warning("meshio/numpy is not available. Performing a mocked validation pass.")
-        content = mesh_path.read_text(errors="ignore") if mesh_path.exists() else ""
-        if "BAD_JACOBIAN" in content:
-            return {
-                "passed": False,
-                "min_jacobian": 0.05,
-                "max_aspect_ratio": 12.0,
-                "degenerate_pct": 5.0,
-                "findings": ["Mock check failed: Jacobian < threshold"],
-            }
-        return {
-            "passed": True,
-            "min_jacobian": 0.8,
-            "max_aspect_ratio": 3.5,
-            "degenerate_pct": 0.0,
-            "findings": [],
-        }
+        return _read_mock_quality(mesh_path)
 
     try:
         mesh = meshio.read(str(mesh_path))
-    except Exception as e:
+    except Exception as exc:
         return {
+            "ok": False,
             "passed": False,
-            "min_jacobian": 0.0,
+            "bad_element_ids": [],
+            "resolution_element_ids": [],
+            "min_scaled_jacobian": 0.0,
             "max_aspect_ratio": float("inf"),
             "degenerate_pct": 100.0,
-            "findings": [f"Failed to read mesh: {e}"],
+            "findings": [f"Failed to read mesh: {exc}"],
         }
 
-    pts = mesh.points
-    min_j = float("inf")
-    max_ar = 0.0
+    points = mesh.points
+    min_jacobian = float("inf")
+    max_aspect_ratio = 0.0
     degenerate_count = 0
     total_elements = 0
+    bad_element_ids: list[int] = []
+    resolution_element_ids: list[int] = []
+    element_id = 1
 
-    # For simplicity, we just evaluate tetrahedrons (tetra or tetra10)
     for cell_block in mesh.cells:
         if cell_block.type not in ("tetra", "tetra10"):
             continue
 
         cells = cell_block.data
         total_elements += len(cells)
-
         for element in cells:
-            # First 4 nodes define the linear tetrahedron
-            e_pts = pts[element[:4]]
+            tetra_points = points[element[:4]]
+            scaled_jacobian, aspect_ratio = _tetra_metrics(tetra_points)
+            min_jacobian = min(min_jacobian, scaled_jacobian)
+            max_aspect_ratio = max(max_aspect_ratio, aspect_ratio)
 
-            # Edges
-            edges = [
-                e_pts[1] - e_pts[0],
-                e_pts[2] - e_pts[0],
-                e_pts[3] - e_pts[0],
-                e_pts[2] - e_pts[1],
-                e_pts[3] - e_pts[1],
-                e_pts[3] - e_pts[2],
-            ]
-
-            lengths = [np.linalg.norm(edge) for edge in edges]
-            if any(l == 0 for l in lengths):
+            if scaled_jacobian <= 0.0 or aspect_ratio == float("inf"):
                 degenerate_count += 1
-                min_j = 0.0
-                max_ar = float("inf")
-                continue
+            if scaled_jacobian < min_j_thresh:
+                bad_element_ids.append(element_id)
+            if aspect_ratio > max_ar_thresh:
+                resolution_element_ids.append(element_id)
 
-            vol = compute_tetra_volume(e_pts)
-
-            # Simple scaling for jacobian: roughly proportional to Vol / (l_rms^3)
-            # A perfect regular tetrahedron has V = l^3 / (6*sqrt(2))
-            l_rms = np.sqrt(np.mean(np.square(lengths)))
-            scale = l_rms**3 / (6 * np.sqrt(2))
-            j = vol / scale if scale > 0 else 0
-
-            min_j = min(min_j, j)
-
-            ar = max(lengths) / min(lengths)
-            max_ar = max(max_ar, ar)
+            element_id += 1
 
     if total_elements == 0:
         return {
-            "passed": True,
-            "min_jacobian": 1.0,
-            "max_aspect_ratio": 1.0,
+            "ok": False,
+            "passed": False,
+            "bad_element_ids": [],
+            "resolution_element_ids": [],
+            "min_scaled_jacobian": 0.0,
+            "max_aspect_ratio": float("inf"),
             "degenerate_pct": 0.0,
             "findings": ["No tetrahedral elements to evaluate."],
         }
 
     degenerate_pct = (degenerate_count / total_elements) * 100.0
-
-    passed = True
-    findings = []
-    if min_j < min_j_thresh:
-        passed = False
-        findings.append(f"Minimum Jacobian {min_j:.3f} is below threshold {min_j_thresh}.")
-    if max_ar > max_ar_thresh:
-        passed = False
-        findings.append(f"Maximum Aspect Ratio {max_ar:.1f} is above threshold {max_ar_thresh}.")
+    ok = True
+    findings: list[str] = []
+    if bad_element_ids:
+        ok = False
+        findings.append(f"Minimum Jacobian {min_jacobian:.3f} is below threshold {min_j_thresh}.")
+    if resolution_element_ids:
+        ok = False
+        findings.append(
+            f"Maximum Aspect Ratio {max_aspect_ratio:.1f} is above threshold {max_ar_thresh}."
+        )
 
     return {
-        "passed": passed,
-        "min_jacobian": float(min_j),
-        "max_aspect_ratio": float(max_ar),
+        "ok": ok,
+        "passed": ok,
+        "bad_element_ids": bad_element_ids,
+        "resolution_element_ids": resolution_element_ids,
+        "min_scaled_jacobian": float(min_jacobian),
+        "max_aspect_ratio": float(max_aspect_ratio),
         "degenerate_pct": float(degenerate_pct),
         "findings": findings,
     }
