@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 from langgraph.types import interrupt
 
@@ -8,19 +9,28 @@ from backend.app.well_harness.notion_sync import NotionRunRegistrar
 from schemas.sim_state import SimState
 
 
-def sync_to_notion_pending_review(case_id: str, run_id: str):
+def sync_to_notion_pending_review(
+    case_id: str,
+    run_id: str,
+    *,
+    registrar: NotionRunRegistrar | None = None,
+    fault_class: Any = None,
+):
     """Real Notion writeback for Pending Review via well_harness."""
     message = (
         f"[{datetime.datetime.now().isoformat()}] NOTION SYNC: "
         f"Task {case_id} set to Pending Review for run {run_id}"
     )
     print(message)
-    registrar = NotionRunRegistrar.from_default_path()
-    res = registrar.create_standalone_task(
+    notion_registrar = registrar or NotionRunRegistrar.from_default_path()
+    summary = "Graph execution paused by human_fallback interrupt due to limit or unknown fault."
+    if fault_class:
+        summary = f"{summary} fault_class={fault_class}."
+    res = notion_registrar.create_standalone_task(
         case_id=case_id,
         run_id=run_id,
         status="Pending Review",
-        summary="Graph execution paused by human_fallback interrupt due to limit or unknown fault.",
+        summary=summary,
     )
     if res.attempted and not res.success:
         print(f"Failed to sync Notion task: {res.error_message}")
@@ -38,8 +48,15 @@ def run(state: SimState) -> dict:
     )
     budgets = state.get("retry_budgets", {})
     fault_class = state.get("fault_class")
+    registrar = NotionRunRegistrar.from_default_path()
+    run_id = registrar.build_graph_run_id(case_id)
 
-    sync_to_notion_pending_review(case_id, "run-human-fallback-req")
+    sync_to_notion_pending_review(
+        case_id,
+        run_id,
+        registrar=registrar,
+        fault_class=fault_class,
+    )
 
     human_decision = interrupt(
         {
@@ -47,11 +64,13 @@ def run(state: SimState) -> dict:
             "fault_class": fault_class,
             "budgets": budgets,
             "action_required": "Please review the run and specify next action",
+            "run_id": run_id,
         }
     )
 
     return {
         "verdict": human_decision.get("verdict", "accept")
         if isinstance(human_decision, dict)
-        else "accept"
+        else "accept",
+        "run_id": run_id,
     }

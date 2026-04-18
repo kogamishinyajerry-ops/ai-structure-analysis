@@ -1,8 +1,8 @@
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-
 from app.well_harness.notion_sync import NotionRunRegistrar
 from app.well_harness.project_state import ProjectStateStore
 from app.well_harness.task_runner import WellHarnessRunner
@@ -111,17 +111,24 @@ def test_notion_sync_request_shapes(tmp_path, monkeypatch):
 
     assert session_request["parent"]["type"] == "data_source_id"
     assert session_request["properties"]["Outcome"]["select"]["name"] == "Pending Review"
-    assert session_request["properties"]["GitHub Commit Link"]["url"].endswith("ef5e9db47a70c9eb9a647f3f75e92df062082ead")
+    assert session_request["properties"]["GitHub Commit Link"]["url"].endswith(
+        "ef5e9db47a70c9eb9a647f3f75e92df062082ead"
+    )
     assert "Artifacts" not in session_request["properties"]
     assert "Project State Root" not in session_request["properties"]
     assert task_request["parent"]["type"] == "data_source_id"
     assert task_request["properties"]["Approval Status"]["select"]["name"] == "Awaiting Approval"
-    assert task_request["properties"]["GitHub Commit Link"]["url"].endswith("ef5e9db47a70c9eb9a647f3f75e92df062082ead")
+    assert task_request["properties"]["GitHub Commit Link"]["url"].endswith(
+        "ef5e9db47a70c9eb9a647f3f75e92df062082ead"
+    )
     assert task_request["properties"]["GitHub PR Link"]["url"] is None
     assert task_request["properties"]["GitHub Issue Link"]["url"] is None
     assert "Artifact Path" not in task_request["properties"]
     assert "Handoff Path" not in task_request["properties"]
-    assert task_request["properties"]["Session Batch"]["rich_text"][0]["text"]["content"] == "batch-001"
+    assert (
+        task_request["properties"]["Session Batch"]["rich_text"][0]["text"]["content"]
+        == "batch-001"
+    )
 
 
 def test_notion_sync_skips_when_not_configured(tmp_path):
@@ -142,6 +149,99 @@ def test_notion_sync_skips_when_not_configured(tmp_path):
     assert "disabled" in (result.skipped_reason or "")
 
 
+def test_build_graph_run_id_uses_case_and_commit_short(tmp_path, monkeypatch):
+    config_path = tmp_path / "well_harness_control_plane.yaml"
+    _write_config(config_path, enabled=True)
+    monkeypatch.setenv("TEST_NOTION_TOKEN", "secret-token")
+
+    registrar = NotionRunRegistrar.from_default_path(config_path)
+    monkeypatch.setattr(
+        registrar,
+        "_github_metadata",
+        lambda: {
+            "repository": "kogamishinyajerry-ops/ai-structure-analysis",
+            "repo_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis",
+            "branch": "feature/AI-FEA-P0-03-notion-sync",
+            "commit_sha": "ebf5f9a0e1b785487a5cdc30f91b42a55fe93cb7",
+            "commit_short": "ebf5f9a",
+            "commit_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/commit/ebf5f9a0e1b785487a5cdc30f91b42a55fe93cb7",
+        },
+    )
+
+    run_id = registrar.build_graph_run_id(
+        "AI-FEA-P0-03",
+        now=datetime(2026, 4, 18, 9, 30, tzinfo=UTC),
+    )
+
+    assert run_id == "run-20260418-AI-FEA-P0-03-ebf5f9a"
+
+
+def test_create_standalone_task_request_shape(tmp_path, monkeypatch):
+    config_path = tmp_path / "well_harness_control_plane.yaml"
+    _write_config(config_path, enabled=True)
+    monkeypatch.setenv("TEST_NOTION_TOKEN", "secret-token")
+
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST" and request.url.path == "/v1/pages":
+            return httpx.Response(200, json={"id": "task-page-1"})
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = httpx.Client(
+        base_url="https://api.notion.com/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    registrar = NotionRunRegistrar.from_default_path(config_path, client=client)
+    monkeypatch.setattr(
+        registrar,
+        "_github_metadata",
+        lambda: {
+            "repository": "kogamishinyajerry-ops/ai-structure-analysis",
+            "repo_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis",
+            "branch": "feature/AI-FEA-P0-03-notion-sync",
+            "commit_sha": "ebf5f9a0e1b785487a5cdc30f91b42a55fe93cb7",
+            "commit_short": "ebf5f9a",
+            "commit_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/commit/ebf5f9a0e1b785487a5cdc30f91b42a55fe93cb7",
+        },
+    )
+
+    result = registrar.create_standalone_task(
+        case_id="AI-FEA-P0-03",
+        run_id="run-20260418-AI-FEA-P0-03-ebf5f9a",
+        summary=(
+            "Graph execution paused by human_fallback interrupt due to limit "
+            "or unknown fault. fault_class=unknown."
+        ),
+        invoked_command="langgraph human_fallback",
+    )
+
+    assert result.attempted is True
+    assert result.success is True
+    assert result.task_page_ids == ["task-page-1"]
+
+    request_body = json.loads(requests[0].content.decode("utf-8"))
+    assert (
+        request_body["properties"]["Case ID"]["rich_text"][0]["text"]["content"] == "AI-FEA-P0-03"
+    )
+    assert (
+        request_body["properties"]["Run ID"]["rich_text"][0]["text"]["content"]
+        == "run-20260418-AI-FEA-P0-03-ebf5f9a"
+    )
+    assert (
+        request_body["properties"]["Session Batch"]["rich_text"][0]["text"]["content"]
+        == "run-20260418-AI-FEA-P0-03-ebf5f9a"
+    )
+    assert (
+        request_body["properties"]["Command"]["rich_text"][0]["text"]["content"]
+        == "langgraph human_fallback"
+    )
+    assert request_body["properties"]["GitHub Commit Link"]["url"].endswith(
+        "ebf5f9a0e1b785487a5cdc30f91b42a55fe93cb7"
+    )
+
+
 def test_notion_reconcile_updates_session_summary_from_task_approvals(tmp_path, monkeypatch):
     config_path = tmp_path / "well_harness_control_plane.yaml"
     _write_config(config_path, enabled=True)
@@ -152,7 +252,10 @@ def test_notion_reconcile_updates_session_summary_from_task_approvals(tmp_path, 
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        if request.method == "POST" and request.url.path == "/v1/data_sources/6644423a-671b-4def-8e42-7414ba0d8d4a/query":
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/data_sources/6644423a-671b-4def-8e42-7414ba0d8d4a/query"
+        ):
             return httpx.Response(
                 200,
                 json={
@@ -162,14 +265,20 @@ def test_notion_reconcile_updates_session_summary_from_task_approvals(tmp_path, 
                             batch_id=batch_id,
                             status="Open",
                             outcome="Pending Review",
-                            summary="Batch completed via replay. GS-001:pending_review; GS-002:pending_review",
+                            summary=(
+                                "Batch completed via replay. "
+                                "GS-001:pending_review; GS-002:pending_review"
+                            ),
                         )
                     ],
                     "has_more": False,
                     "next_cursor": None,
                 },
             )
-        if request.method == "POST" and request.url.path == "/v1/data_sources/f17ba02b-d6d7-4aa7-b375-bd705038f47d/query":
+        if (
+            request.method == "POST"
+            and request.url.path == "/v1/data_sources/f17ba02b-d6d7-4aa7-b375-bd705038f47d/query"
+        ):
             return httpx.Response(
                 200,
                 json={
@@ -203,7 +312,10 @@ def test_notion_reconcile_updates_session_summary_from_task_approvals(tmp_path, 
     assert patch_body["properties"]["Status"]["select"]["name"] == "Closed"
     assert patch_body["properties"]["Outcome"]["select"]["name"] == "Mixed"
     assert "approved=2" in patch_body["properties"]["Summary"]["rich_text"][0]["text"]["content"]
-    assert "accept_with_note=1" in patch_body["properties"]["Summary"]["rich_text"][0]["text"]["content"]
+    assert (
+        "accept_with_note=1"
+        in patch_body["properties"]["Summary"]["rich_text"][0]["text"]["content"]
+    )
 
 
 def test_notion_reconcile_skips_when_not_configured(tmp_path):
