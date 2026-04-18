@@ -9,7 +9,7 @@ def test_geometry_agent_returns_geometry_path_for_valid_geometry(tmp_path, monke
 
     step_path = tmp_path / "geometry" / "model.step"
 
-    def fake_generate_geometry(spec, output_dir):
+    def fake_generate_geometry(spec, output_dir, *, allow_dummy=None):
         output_dir.mkdir(parents=True, exist_ok=True)
         step_path.write_text("solid", encoding="utf-8")
         (output_dir / "topo_map.json").write_text("[]", encoding="utf-8")
@@ -38,7 +38,7 @@ def test_geometry_agent_marks_geometry_invalid_when_checker_fails(tmp_path, monk
 
     step_path = tmp_path / "geometry" / "model.step"
 
-    def fake_generate_geometry(spec, output_dir):
+    def fake_generate_geometry(spec, output_dir, *, allow_dummy=None):
         output_dir.mkdir(parents=True, exist_ok=True)
         step_path.write_text("solid", encoding="utf-8")
         (output_dir / "topo_map.json").write_text("[]", encoding="utf-8")

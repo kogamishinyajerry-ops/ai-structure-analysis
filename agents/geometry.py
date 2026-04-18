@@ -38,8 +38,13 @@ def run(state: SimState) -> dict[str, Any]:
             f"Geometry kind '{geom_spec.kind}' is not yet supported in freecad_driver."
         )
 
+    # ADR-008 N-3: only allow the dummy STEP fallback when the state
+    # explicitly declares a dummy / cold-smoke execution mode.
+    execution_mode = state.get("execution_mode") or {}
+    allow_dummy = execution_mode.get("geometry_source") == "dummy"
+
     # Generate geometry
-    step_path = generate_geometry(geom_spec.parameters, geom_dir)
+    step_path = generate_geometry(geom_spec.parameters, geom_dir, allow_dummy=allow_dummy)
     topo_map_path = geom_dir / "topo_map.json"
     meta_path = geom_dir / "geometry_meta.json"
     geometry_report = check_geometry(step_path)

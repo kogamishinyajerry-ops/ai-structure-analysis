@@ -40,15 +40,52 @@ def test_generate_naca_points():
 
 
 @patch("tools.freecad_driver.FREECAD_AVAILABLE", False)
-def test_generate_geometry_fallback_mode(tmp_path):
-    """Test standard graceful degradation when FreeCAD is not in environment."""
+def test_generate_geometry_without_freecad_raises(tmp_path):
+    """ADR-008 N-3: missing FreeCAD must hard-fail unless opt-in is set."""
     spec = {"profile": "NACA0012", "chord_length": 2.0, "span": 5.0}
+
+    with pytest.raises(RuntimeError, match="AI_FEA_ALLOW_DUMMY_GEOMETRY"):
+        generate_geometry(spec, tmp_path)
+
+
+@patch("tools.freecad_driver.FREECAD_AVAILABLE", False)
+def test_generate_geometry_dummy_opt_in_via_kwarg(tmp_path):
+    """ADR-008 N-3: explicit allow_dummy=True produces the placeholder STEP."""
+    spec = {"profile": "NACA0012", "chord_length": 2.0, "span": 5.0}
+
+    step_path = generate_geometry(spec, tmp_path, allow_dummy=True)
+
+    assert step_path.exists()
+    assert step_path.name == "model.step"
+    assert (tmp_path / "model.FCStd").exists()
+
+    topo_map_path = tmp_path / "topo_map.json"
+    assert topo_map_path.exists()
+    with open(topo_map_path) as f:
+        data = json.load(f)
+        assert len(data) == 1
+        assert "fixed_base" in data[0]
+        assert "skin" in data[0]
+        assert "tip_load" in data[0]
+
+    meta_path = tmp_path / "geometry_meta.json"
+    assert meta_path.exists()
+    meta = json.loads(meta_path.read_text())
+    assert meta["watertight"] is True
+    assert meta["manifold"] is True
+    assert meta["volume_m3"] > 0
+
+
+@patch("tools.freecad_driver.FREECAD_AVAILABLE", False)
+def test_generate_geometry_dummy_opt_in_via_env(tmp_path, monkeypatch):
+    """ADR-008 N-3: env var AI_FEA_ALLOW_DUMMY_GEOMETRY=1 also unlocks the stub."""
+    monkeypatch.setenv("AI_FEA_ALLOW_DUMMY_GEOMETRY", "1")
+    spec = {"profile": "NACA0012", "chord_length": 1.0, "span": 1.0}
 
     step_path = generate_geometry(spec, tmp_path)
 
     assert step_path.exists()
     assert step_path.name == "model.step"
-    assert (tmp_path / "model.FCStd").exists()
 
     # Verify topo_map
     topo_map_path = tmp_path / "topo_map.json"
