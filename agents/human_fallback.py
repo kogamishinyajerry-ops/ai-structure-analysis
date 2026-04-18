@@ -9,9 +9,11 @@ from schemas.sim_state import SimState
 
 def sync_to_notion_pending_review(case_id: str, run_id: str):
     """Stub to simulate Notion writeback for Pending Review via well_harness."""
-    print(
-        f"[{datetime.datetime.now().isoformat()}] NOTION SYNC: Task {case_id} set to Pending Review for run {run_id}"
+    message = (
+        f"[{datetime.datetime.now().isoformat()}] NOTION SYNC: "
+        f"Task {case_id} set to Pending Review for run {run_id}"
     )
+    print(message)
 
 
 def run(state: SimState) -> dict:

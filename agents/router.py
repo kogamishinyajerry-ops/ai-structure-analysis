@@ -12,7 +12,8 @@ FAULT_TO_NODE: dict[FaultClass, str] = {
     FaultClass.SOLVER_SYNTAX: "solver",
     FaultClass.REFERENCE_MISMATCH: "architect",
     FaultClass.UNKNOWN: "human_fallback",
-    FaultClass.NONE: "human_fallback",  # If re-run is requested without a fault_class, treat as unknown
+    # If re-run is requested without a fault_class, treat it as unknown.
+    FaultClass.NONE: "human_fallback",
 }
 
 MAX_RETRIES = 3
