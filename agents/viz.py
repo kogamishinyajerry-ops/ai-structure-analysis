@@ -30,6 +30,7 @@ def _run_id_from_state(state: SimState, project_dir: Path) -> str:
 
 def _build_manifest(state: SimState, plan: Any, project_dir: Path) -> dict[str, Any]:
     solve_metadata = state.get("solve_metadata") or {}
+    execution_mode = state.get("execution_mode") or {}
     return {
         "case_id": plan.case_id,
         "run_id": _run_id_from_state(state, project_dir),
@@ -44,6 +45,10 @@ def _build_manifest(state: SimState, plan: Any, project_dir: Path) -> dict[str, 
             "frd_parser": "ascii-v2",
             "reporter": "markdown-v2",
             "vtp_exporter": "point-cloud-v1",
+        },
+        "execution_mode": {
+            "replay": bool(execution_mode.get("replay", False)),
+            "geometry_source": execution_mode.get("geometry_source", "real"),
         },
         "seed": state.get("seed"),
     }

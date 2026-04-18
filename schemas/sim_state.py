@@ -65,3 +65,6 @@ class SimState(TypedDict):
 
     # 6. Outputs
     reports: dict[str, str] | None
+
+    # 7. Execution provenance (ADR-008 N-3: honest reporting of replay / dummy geometry)
+    execution_mode: dict[str, Any]
