@@ -1,4 +1,10 @@
-"""P0-10 smoke E2E for the full agent graph."""
+"""P0-10 cold-smoke E2E for the full agent graph.
+
+This test exercises LangGraph wiring end-to-end with Architect, Mesh, and
+Solver external calls monkey-patched and a synthetic FRD. It is a *graph
+wiring* regression baseline, not a physics validation — the real求解器
+验证 happens in P1-02 hot_smoke per ADR-008.
+"""
 
 from __future__ import annotations
 
@@ -62,8 +68,8 @@ def _naca_smoke_plan() -> SimPlan:
     )
 
 
-def test_p0_10_smoke_e2e_full_graph(monkeypatch, tmp_path):
-    """Run Architect->Geometry->Mesh->Solver->Reviewer->Viz without external binaries."""
+def test_p0_10_cold_smoke_graph_wiring(monkeypatch, tmp_path):
+    """Cold smoke: graph wiring only. Replay executor; no real binaries."""
 
     def fake_extract_structured_data(**kwargs):
         return _naca_smoke_plan()
@@ -124,16 +130,18 @@ def test_p0_10_smoke_e2e_full_graph(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("agents.solver.run_solve", fake_run_solve)
 
-    run_dir = tmp_path / "runs" / "run-20260418-AI-FEA-P0-10-smoke"
+    run_dir = tmp_path / "runs" / "run-20260418-AI-FEA-P0-10-coldsmoke"
     result = compile_graph().invoke(
         {
             "user_request": "NACA0012 cantilever wing, Aluminum 7075, 500N tip load.",
-            "run_id": "run-20260418-AI-FEA-P0-10-smoke",
+            "run_id": "run-20260418-AI-FEA-P0-10-coldsmoke",
             "project_state_dir": str(run_dir),
             "artifacts": [],
             "history": [],
             "retry_budgets": {},
             "fault_class": FaultClass.NONE,
+            # ADR-008 N-3 honest provenance: cold smoke is replay + dummy geometry.
+            "execution_mode": {"replay": True, "geometry_source": "dummy"},
         }
     )
 
@@ -150,4 +158,9 @@ def test_p0_10_smoke_e2e_full_graph(monkeypatch, tmp_path):
     assert vtp_path.exists()
     assert manifest_path.exists()
     assert "von_mises" in report_path.read_text(encoding="utf-8")
-    assert "run-20260418-AI-FEA-P0-10-smoke" in manifest_path.read_text(encoding="utf-8")
+
+    manifest_text = manifest_path.read_text(encoding="utf-8")
+    assert "run-20260418-AI-FEA-P0-10-coldsmoke" in manifest_text
+    # Honest provenance fields must be emitted for the cold-smoke / replay path.
+    assert "replay: true" in manifest_text
+    assert "geometry_source: dummy" in manifest_text
