@@ -12,7 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from schemas.sim_state import SimState
+from checkers.geometry_checker import check_geometry
+from schemas.sim_state import FaultClass, SimState
 from tools.freecad_driver import generate_geometry
 
 logger = logging.getLogger(__name__)
@@ -40,11 +41,36 @@ def run(state: SimState) -> dict[str, Any]:
     # Generate geometry
     step_path = generate_geometry(geom_spec.parameters, geom_dir)
     topo_map_path = geom_dir / "topo_map.json"
+    meta_path = geom_dir / "geometry_meta.json"
+    geometry_report = check_geometry(step_path)
 
     # Capture artifacts
     artifacts = state.get("artifacts", []).copy()
     artifacts.append(str(step_path))
     artifacts.append(str(topo_map_path))
+    if meta_path.exists():
+        artifacts.append(str(meta_path))
+
+    if not geometry_report["valid"]:
+        history = state.get("history", []).copy()
+        history.append(
+            {
+                "node": "geometry",
+                "fault_class": FaultClass.GEOMETRY_INVALID.value,
+                "findings": geometry_report["findings"],
+            }
+        )
+        return {
+            "artifacts": artifacts,
+            "geometry_path": str(step_path),
+            "fault_class": FaultClass.GEOMETRY_INVALID,
+            "history": history,
+            "verdict": "re-run",
+        }
 
     # Return delta update for SimState
-    return {"artifacts": artifacts}
+    return {
+        "artifacts": artifacts,
+        "geometry_path": str(step_path),
+        "fault_class": FaultClass.NONE,
+    }
