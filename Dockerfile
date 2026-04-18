@@ -14,9 +14,15 @@
 # as ``ghcr.io/kogamishinyajerry-ops/ai-fea-engine:p1-base`` and consumed
 # by the hot-smoke CI lane added in later P1 phases.
 
-# ADR-002 requires CalculiX 2.21. Debian bookworm ships 2.20, so we pin the
-# base image to trixie (2025+ Debian testing/stable) which ships 2.21.
-FROM python:3.11-slim-trixie AS base
+# NOTE on CalculiX version (ADR-002 vs Debian reality):
+#   ADR-002 requires CalculiX 2.21. Debian bookworm main ships
+#   ``calculix-ccx`` 2.20; trixie currently has no ``calculix-ccx``
+#   installation candidate. We pin to bookworm and ship 2.20 as the
+#   P1-01 baseline — the tool_versions field in manifest.yaml records
+#   exactly what ran (ADR-008 N-3 honest reporting). Upgrading to
+#   2.21 via source-build is tracked as a follow-up task; it is not
+#   a gate for P1-01.
+FROM python:3.11-slim-bookworm AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -32,7 +38,7 @@ RUN set -eux; \
         sed -i 's/Components: main$/Components: main contrib non-free non-free-firmware/' \
             /etc/apt/sources.list.d/debian.sources; \
     fi; \
-    if [ -s /etc/apt/sources.list ]; then \
+    if [ -f /etc/apt/sources.list ] && [ -s /etc/apt/sources.list ]; then \
         sed -i 's/main$/main contrib non-free non-free-firmware/' /etc/apt/sources.list; \
     fi
 
