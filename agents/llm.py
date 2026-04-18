@@ -1,10 +1,13 @@
 """LLM utility for agents."""
 
 from __future__ import annotations
+
 import logging
-from typing import Any, Type, TypeVar
-from pydantic import BaseModel
+from typing import TypeVar
+
 from openai import OpenAI
+from pydantic import BaseModel
+
 from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -22,7 +25,7 @@ def get_llm_client() -> OpenAI | None:
 
 def extract_structured_data(
     prompt: str,
-    response_model: Type[T],
+    response_model: type[T],
     system_message: str = "You are a specialized structural engineering assistant.",
     model: str | None = None,
 ) -> T | None:
@@ -35,7 +38,11 @@ def extract_structured_data(
 
     # Inject schema into prompt if not already there or to be safe
     schema_json = response_model.model_json_schema()
-    full_prompt = f"{prompt}\n\nYour response MUST be a valid JSON object matching this schema:\n{schema_json}"
+    full_prompt = (
+        f"{prompt}\n\n"
+        "Your response MUST be a valid JSON object matching this schema:\n"
+        f"{schema_json}"
+    )
 
     try:
         response = client.chat.completions.create(
