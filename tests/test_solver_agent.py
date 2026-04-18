@@ -1,7 +1,8 @@
-"""Tests for agents/solver.py — Jinja2 rendering + CalculiX invocation routing."""
+"""Tests for agents/solver.py."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
+
+from unittest.mock import patch
 
 import pytest
 
@@ -44,11 +45,10 @@ def sample_plan() -> SimPlan:
 
 @pytest.fixture()
 def solver_state(sample_plan, tmp_path) -> dict:
-    # Create a dummy mesh inp
     mesh_dir = tmp_path / "mesh"
     mesh_dir.mkdir()
     mesh_inp = mesh_dir / "model.inp"
-    mesh_inp.write_text("*NODE\n1, 0, 0, 0\n*ELEMENT\n1, 1\n")
+    mesh_inp.write_text("*NODE\n1, 0, 0, 0\n*ELEMENT\n1, 1\n", encoding="utf-8")
 
     return {
         "plan": sample_plan,
@@ -67,8 +67,8 @@ class TestRenderInpDeck:
         deck = _render_inp_deck(sample_plan, "model.inp", tmp_path)
 
         assert deck.exists()
+        assert deck.name == "solve.inp"
         content = deck.read_text(encoding="utf-8")
-        # Check key substitutions
         assert "Aluminium" in content
         assert "70000000000.0" in content
         assert "0.33" in content
@@ -81,20 +81,23 @@ class TestSolverAgent:
     def test_successful_solve(self, solver_state, tmp_path):
         from agents.solver import run as solver_run
 
-        solver_dir = tmp_path / "solver"
-        solver_dir.mkdir(parents=True, exist_ok=True)
-
-        # Simulate ccx producing output files
         def fake_run_solve(inp_path, work_dir, **kwargs):
-            frd = work_dir / "solver_deck.frd"
-            frd.write_text("FRD RESULT")
+            frd = work_dir / "solve.frd"
+            dat = work_dir / "solve.dat"
+            sta = work_dir / "solve.sta"
+            frd.write_text("FRD RESULT", encoding="utf-8")
+            dat.write_text("DAT RESULT", encoding="utf-8")
+            sta.write_text("STEP 1 converged", encoding="utf-8")
             return {
                 "frd_path": str(frd),
-                "dat_path": None,
-                "sta_path": None,
+                "dat_path": str(dat),
+                "sta_path": str(sta),
                 "converged": True,
                 "wall_time_s": 1.23,
                 "returncode": 0,
+                "ccx_version": "2.21",
+                "fault_class": FaultClass.NONE,
+                "failure_reason": None,
             }
 
         with patch("agents.solver.run_solve", side_effect=fake_run_solve):
@@ -102,36 +105,54 @@ class TestSolverAgent:
 
         assert result["fault_class"] == FaultClass.NONE
         assert result["frd_path"] is not None
+        assert any(path.endswith("solve.inp") for path in result["artifacts"])
 
-    def test_diverged_solve(self, solver_state):
+    def test_classified_failure_retries_solver(self, solver_state):
         from agents.solver import run as solver_run
 
-        def fake_diverge(inp_path, work_dir, **kwargs):
-            return {
+        with patch(
+            "agents.solver.run_solve",
+            return_value={
                 "frd_path": None,
                 "dat_path": None,
                 "sta_path": None,
                 "converged": False,
                 "wall_time_s": 0.5,
                 "returncode": 1,
-            }
-
-        with patch("agents.solver.run_solve", side_effect=fake_diverge):
+                "ccx_version": "2.21",
+                "fault_class": FaultClass.SOLVER_TIMESTEP,
+                "failure_reason": "Time increment required is less than the minimum",
+            },
+        ):
             result = solver_run(solver_state)
 
-        assert result["fault_class"] == FaultClass.SOLVER_CONVERGENCE
+        assert result["fault_class"] == FaultClass.SOLVER_TIMESTEP
         assert result["retry_budgets"] == {"solver": 1}
+        assert result["history"][0]["fault_class"] == FaultClass.SOLVER_TIMESTEP.value
 
-    def test_ccx_not_found(self, solver_state):
+    def test_version_gate_failure_does_not_retry(self, solver_state):
         from agents.solver import run as solver_run
 
         with patch(
             "agents.solver.run_solve",
-            side_effect=FileNotFoundError("ccx not on PATH"),
+            side_effect=RuntimeError("CalculiX 2.20 is unsupported; AI-FEA requires >= 2.21."),
         ):
             result = solver_run(solver_state)
 
         assert result["fault_class"] == FaultClass.UNKNOWN
+        assert "2.20" in result["history"][0]["msg"]
+
+    def test_template_render_failure_is_solver_syntax(self, solver_state):
+        from agents.solver import run as solver_run
+
+        with patch(
+            "agents.solver._render_inp_deck",
+            side_effect=FileNotFoundError("Solver template not found"),
+        ):
+            result = solver_run(solver_state)
+
+        assert result["fault_class"] == FaultClass.SOLVER_SYNTAX
+        assert result["retry_budgets"] == {"solver": 1}
 
     def test_missing_mesh_artifact(self, sample_plan, tmp_path):
         from agents.solver import run as solver_run
