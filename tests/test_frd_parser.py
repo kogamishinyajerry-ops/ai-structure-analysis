@@ -1,12 +1,9 @@
 """Tests for tools/frd_parser.py — FRD parsing and field extraction."""
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from tools.frd_parser import extract_field_extremes, parse_frd
-
 
 # Minimal synthetic FRD content mimicking CalculiX ASCII output.
 SAMPLE_FRD = """\
@@ -59,16 +56,15 @@ class TestParseFrd:
         fields = result["fields"]
 
         assert len(fields) == 2
-        names = [f["name"] for f in fields]
-        assert "displacement" in names
-        assert "stress" in names
+        assert "displacement" in fields
+        assert "stress" in fields
 
     def test_displacement_values(self, tmp_path):
         frd = tmp_path / "test.frd"
         frd.write_text(SAMPLE_FRD)
 
         result = parse_frd(frd)
-        disp = next(f for f in result["fields"] if f["name"] == "displacement")
+        disp = result["fields"]["displacement"]
 
         assert len(disp["values"]) == 3
         assert len(disp["component_names"]) == 3
@@ -110,3 +106,14 @@ class TestExtractFieldExtremes:
         parsed = parse_frd(frd)
         assert len(parsed["nodes"]) == 0
         assert len(parsed["fields"]) == 0
+
+    def test_stress_uses_von_mises_metric(self, tmp_path):
+        frd = tmp_path / "test.frd"
+        frd.write_text(SAMPLE_FRD)
+
+        parsed = parse_frd(frd)
+        extremes = extract_field_extremes(parsed, "stress")
+
+        assert extremes["metric"] == "von_mises"
+        assert extremes["max_node"] == 2
+        assert extremes["max_magnitude"] > 1.0e6

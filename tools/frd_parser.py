@@ -1,9 +1,4 @@
-"""CalculiX .frd result file parser.
-
-Parses the ASCII .frd format produced by CalculiX and exposes
-nodal/elemental field data as NumPy arrays for downstream analysis
-and visualization.
-"""
+"""CalculiX `.frd` result parser and approval-grade metric helpers."""
 
 from __future__ import annotations
 
@@ -18,11 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_nodes(lines: list[str], start: int) -> tuple[dict[int, np.ndarray], int]:
-    """Parse a node block starting after the ``2C`` header line.
-
-    Returns a dict mapping node-id → [x, y, z] and the line index
-    after the block-end marker (``-3``).
-    """
+    """Parse a node block starting after a ``2C`` header line."""
     nodes: dict[int, np.ndarray] = {}
     i = start
     while i < len(lines):
@@ -30,47 +21,49 @@ def _parse_nodes(lines: list[str], start: int) -> tuple[dict[int, np.ndarray], i
         if line.startswith(" -3"):
             return nodes, i + 1
         if line.startswith(" -1"):
-            # FRD node format: " -1" + node_id(10) + x(12) + y(12) + z(12)
             try:
                 nid = int(line[3:13])
                 x = float(line[13:25])
                 y = float(line[25:37])
                 z = float(line[37:49])
-                nodes[nid] = np.array([x, y, z])
             except (ValueError, IndexError):
-                pass
+                i += 1
+                continue
+            nodes[nid] = np.array([x, y, z], dtype=float)
         i += 1
     return nodes, i
 
 
-def _parse_field_block(lines: list[str], start: int) -> tuple[dict[str, Any] | None, int]:
-    """Parse a single results field block (displacement, stress, …).
+def _field_name_from_header(header: str, component_names: list[str]) -> str:
+    normalized = header.upper()
+    if "DISP" in normalized:
+        return "displacement"
+    if "STRESS" in normalized:
+        return "stress"
+    if "NDTEMP" in normalized or "TEMP" in normalized:
+        return "temperature"
+    if "FORC" in normalized:
+        return "force"
+    return component_names[0].lower() if component_names else "field"
 
-    A field block begins with a ``100C`` header (field name / components),
-    followed by ``-4`` component-name lines and ``-1`` data lines,
-    ending with ``-3``.
 
-    Returns (field_dict, next_line_index).  field_dict has keys
-    ``name``, ``component_names``, ``values`` (dict[node_id → ndarray]).
-    """
-    # The 100C line carries the field name.
+def _parse_field_block(
+    lines: list[str],
+    start: int,
+) -> tuple[tuple[str, dict[str, Any]] | None, int]:
+    """Parse a single results field block."""
     header = lines[start] if start < len(lines) else ""
-    # Typical: " 100CL 101         1           1PSTEP               1  1"
-    # Field name starts at column 5, length ~6, but easier to regex.
-    m = re.search(r"100C[A-Z]*\s+\d+", header)
-    if not m:
+    if not re.search(r"100C[A-Z]*\s+\d+", header):
         return None, start + 1
 
-    # Read component names from "-4" lines that follow.
-    comp_names: list[str] = []
+    component_names: list[str] = []
     i = start + 1
     while i < len(lines) and lines[i].startswith(" -4"):
         name_part = lines[i][5:17].strip()
         if name_part:
-            comp_names.append(name_part)
+            component_names.append(name_part)
         i += 1
 
-    # Read data lines ("-1" prefix) until "-3".
     values: dict[int, np.ndarray] = {}
     while i < len(lines):
         line = lines[i]
@@ -80,51 +73,30 @@ def _parse_field_block(lines: list[str], start: int) -> tuple[dict[str, Any] | N
         if line.startswith(" -1"):
             try:
                 nid = int(line[3:13])
-                # Each value occupies 12 chars after the node id.
-                vals = []
+                components: list[float] = []
                 pos = 13
                 while pos + 12 <= len(line):
-                    vals.append(float(line[pos : pos + 12]))
+                    components.append(float(line[pos : pos + 12]))
                     pos += 12
-                values[nid] = np.array(vals)
             except (ValueError, IndexError):
-                pass
+                i += 1
+                continue
+            values[nid] = np.array(components, dtype=float)
         i += 1
 
-    field_name = "UNKNOWN"
-    if "DISP" in header.upper():
-        field_name = "displacement"
-    elif "STRESS" in header.upper():
-        field_name = "stress"
-    elif "NDTEMP" in header.upper() or "TEMP" in header.upper():
-        field_name = "temperature"
-    elif "FORC" in header.upper():
-        field_name = "force"
-    else:
-        # Use first component name or fallback.
-        field_name = comp_names[0].lower() if comp_names else "field"
-
-    return {
-        "name": field_name,
-        "component_names": comp_names,
-        "values": values,
-    }, i
+    field_name = _field_name_from_header(header, component_names)
+    return (
+        field_name,
+        {
+            "name": field_name,
+            "component_names": component_names,
+            "values": values,
+        },
+    ), i
 
 
 def parse_frd(frd_path: Path) -> dict[str, Any]:
-    """Parse a CalculiX .frd result file.
-
-    Parameters
-    ----------
-    frd_path : Path
-        Path to the .frd file.
-
-    Returns
-    -------
-    dict
-        Keys: ``nodes``, ``fields`` (list of field dicts each with
-        ``name``, ``component_names``, ``values``).
-    """
+    """Parse an ASCII CalculiX `.frd` file into node and field dictionaries."""
     if not frd_path.exists():
         raise FileNotFoundError(f"FRD file not found: {frd_path}")
 
@@ -132,89 +104,124 @@ def parse_frd(frd_path: Path) -> dict[str, Any]:
     lines = text.splitlines()
 
     nodes: dict[int, np.ndarray] = {}
-    fields: list[dict[str, Any]] = []
+    fields: dict[str, dict[str, Any]] = {}
 
     i = 0
     while i < len(lines):
         line = lines[i]
-
-        # Node block header: starts with "    2C"
         if line.strip().startswith("2C"):
             parsed_nodes, i = _parse_nodes(lines, i + 1)
             nodes.update(parsed_nodes)
             continue
-
-        # Field block header: starts with " 100C"
         if " 100C" in line:
-            field, i = _parse_field_block(lines, i)
-            if field:
-                fields.append(field)
+            parsed_field, i = _parse_field_block(lines, i)
+            if parsed_field:
+                field_name, field_payload = parsed_field
+                fields[field_name] = field_payload
             continue
-
         i += 1
 
-    logger.info("Parsed FRD: %d nodes, %d field blocks", len(nodes), len(fields))
-
+    logger.info("Parsed FRD: %d nodes, %d fields", len(nodes), len(fields))
     return {"nodes": nodes, "fields": fields}
 
 
+def _values_from_field_data(field_data: Any) -> dict[int, np.ndarray]:
+    raw_values = field_data.get("values", {}) if isinstance(field_data, dict) else field_data
+
+    if isinstance(raw_values, dict):
+        return {
+            int(node_id): np.asarray(value, dtype=float)
+            for node_id, value in raw_values.items()
+        }
+    if isinstance(raw_values, list):
+        return {
+            index + 1: np.atleast_1d(np.asarray(value, dtype=float))
+            for index, value in enumerate(raw_values)
+        }
+    return {}
+
+
+def _lookup_field(parsed: dict[str, Any], field_name: str) -> dict[str, Any] | None:
+    fields = parsed.get("fields")
+    if isinstance(fields, dict):
+        value = fields.get(field_name)
+        if value is None:
+            return None
+        return value if isinstance(value, dict) else {"values": value}
+    if isinstance(fields, list):
+        for item in fields:
+            if isinstance(item, dict) and item.get("name") == field_name:
+                return item
+    return None
+
+
+def _metric_key(field_name: str, field_data: dict[str, Any], values: dict[int, np.ndarray]) -> str:
+    component_count = max((len(arr) for arr in values.values()), default=0)
+    component_names = [str(name).upper() for name in field_data.get("component_names", [])]
+    if field_name == "stress" and (
+        component_count >= 6 or {"SXX", "SYY", "SZZ"} <= set(component_names)
+    ):
+        return "von_mises"
+    return field_name
+
+
+def _scalar_metric(field_name: str, metric_key: str, vector: np.ndarray) -> float:
+    data = np.atleast_1d(vector.astype(float))
+    if field_name == "stress" and metric_key == "von_mises" and len(data) >= 6:
+        sxx, syy, szz, sxy, syz, szx = data[:6]
+        return float(
+            np.sqrt(
+                0.5 * ((sxx - syy) ** 2 + (syy - szz) ** 2 + (szz - sxx) ** 2)
+                + 3.0 * (sxy**2 + syz**2 + szx**2)
+            )
+        )
+    return float(np.linalg.norm(data))
+
+
 def extract_field_extremes(parsed: dict[str, Any], field_name: str) -> dict[str, Any]:
-    """Extract min/max values and locations for a named field.
-
-    Parameters
-    ----------
-    parsed : dict
-        Output of ``parse_frd``.
-    field_name : str
-        Field to query (e.g. ``"displacement"``, ``"stress"``).
-
-    Returns
-    -------
-    dict
-        Keys: ``field``, ``max_magnitude``, ``max_node``,
-        ``min_magnitude``, ``min_node``.
-    """
-    nodes = parsed.get("nodes", {})
-    for field in parsed.get("fields", []):
-        if field["name"] != field_name:
-            continue
-
-        values = field["values"]
-        if not values:
-            return {
-                "field": field_name,
-                "max_magnitude": 0.0,
-                "max_node": None,
-                "min_magnitude": 0.0,
-                "min_node": None,
-            }
-
-        max_mag = -float("inf")
-        min_mag = float("inf")
-        max_node = None
-        min_node = None
-
-        for nid, arr in values.items():
-            mag = float(np.linalg.norm(arr))
-            if mag > max_mag:
-                max_mag = mag
-                max_node = nid
-            if mag < min_mag:
-                min_mag = mag
-                min_node = nid
-
+    """Extract approval-grade min/max statistics for a named field."""
+    field_data = _lookup_field(parsed, field_name)
+    if field_data is None:
         return {
             "field": field_name,
-            "max_magnitude": max_mag,
-            "max_node": max_node,
-            "min_magnitude": min_mag,
-            "min_node": min_node,
+            "metric": field_name,
+            "max_magnitude": None,
+            "max_node": None,
+            "min_magnitude": None,
+            "min_node": None,
         }
+
+    values = _values_from_field_data(field_data)
+    metric_key = _metric_key(field_name, field_data, values)
+    if not values:
+        return {
+            "field": field_name,
+            "metric": metric_key,
+            "max_magnitude": 0.0,
+            "max_node": None,
+            "min_magnitude": 0.0,
+            "min_node": None,
+        }
+
+    max_magnitude = -float("inf")
+    min_magnitude = float("inf")
+    max_node = None
+    min_node = None
+
+    for node_id, vector in values.items():
+        magnitude = _scalar_metric(field_name, metric_key, vector)
+        if magnitude > max_magnitude:
+            max_magnitude = magnitude
+            max_node = node_id
+        if magnitude < min_magnitude:
+            min_magnitude = magnitude
+            min_node = node_id
 
     return {
         "field": field_name,
-        "max_magnitude": None,
-        "max_node": None,
-        "min_magnitude": None,
-        "min_node": None,
+        "metric": metric_key,
+        "max_magnitude": max_magnitude,
+        "max_node": max_node,
+        "min_magnitude": min_magnitude,
+        "min_node": min_node,
     }

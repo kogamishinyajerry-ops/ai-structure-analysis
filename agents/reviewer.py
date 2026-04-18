@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from schemas.sim_state import FaultClass, SimState
-from tools.frd_parser import parse_frd
+from tools.frd_parser import extract_field_extremes, parse_frd
 
 logger = logging.getLogger(__name__)
 
@@ -28,34 +28,6 @@ RERUN_FAULTS = {
     FaultClass.SOLVER_TIMESTEP,
     FaultClass.SOLVER_SYNTAX,
 }
-
-
-def _extract_field_extremes(parsed: dict[str, Any], field_name: str) -> dict[str, float] | None:
-    """Extract a simple max-magnitude summary from parsed FRD-like data."""
-    fields = parsed.get("fields")
-    if not isinstance(fields, dict):
-        return None
-
-    field_data = fields.get(field_name)
-    if field_data is None:
-        return None
-
-    values = field_data.get("values") if isinstance(field_data, dict) else field_data
-    if values is None:
-        return None
-
-    magnitudes: list[float] = []
-    for value in values:
-        if isinstance(value, (list, tuple)):
-            magnitudes.extend(abs(float(component)) for component in value)
-        else:
-            magnitudes.append(abs(float(value)))
-
-    if not magnitudes:
-        return None
-
-    return {"max_magnitude": max(magnitudes)}
-
 
 def _review_upstream_fault(state: SimState, fault_class: FaultClass) -> dict[str, Any]:
     """Convert an upstream fault into a reviewer verdict without re-parsing FRD."""
@@ -154,8 +126,8 @@ def run(state: SimState) -> dict[str, Any]:
         if ref_val == 0:
             continue
 
-        extremes = _extract_field_extremes(parsed, field_name)
-        if extremes is None:
+        extremes = extract_field_extremes(parsed, field_name)
+        if extremes.get("max_magnitude") is None:
             logger.warning("Field '%s' not found in parsed results.", field_name)
             missing_fields.append(field_name)
             continue

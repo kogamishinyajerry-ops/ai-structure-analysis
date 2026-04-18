@@ -149,4 +149,8 @@ def run(state: SimState) -> dict[str, Any]:
         "frd_path": result["frd_path"],
         "artifacts": new_artifacts,
         "solve_path": str(deck_path),
+        "solve_metadata": {
+            "wall_time_s": result["wall_time_s"],
+            "ccx_version": result["ccx_version"],
+        },
     }
