@@ -29,6 +29,7 @@ RERUN_FAULTS = {
     FaultClass.SOLVER_SYNTAX,
 }
 
+
 def _review_upstream_fault(state: SimState, fault_class: FaultClass) -> dict[str, Any]:
     """Convert an upstream fault into a reviewer verdict without re-parsing FRD."""
     history = state.get("history", []).copy()

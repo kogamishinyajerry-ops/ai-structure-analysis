@@ -54,7 +54,7 @@ def export_vtp(results: dict[str, Any], output_dir: Path) -> Path:
             f"{_format_array(flattened)}</DataArray>"
         )
         if field_name == "stress" and component_names:
-            point_data_blocks.append(f'        <!-- components: {", ".join(component_names)} -->')
+            point_data_blocks.append(f"        <!-- components: {', '.join(component_names)} -->")
 
     connectivity_text = " ".join(str(value) for value in connectivity)
     offsets_text = " ".join(str(value) for value in offsets)

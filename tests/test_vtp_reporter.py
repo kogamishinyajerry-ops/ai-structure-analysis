@@ -28,4 +28,4 @@ def test_export_vtp_writes_point_cloud(tmp_path):
     content = vtp_path.read_text(encoding="utf-8")
     assert "<VTKFile" in content
     assert 'Name="displacement"' in content
-    assert "NumberOfPoints=\"2\"" in content
+    assert 'NumberOfPoints="2"' in content

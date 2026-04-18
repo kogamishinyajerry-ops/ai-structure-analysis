@@ -130,8 +130,7 @@ def _values_from_field_data(field_data: Any) -> dict[int, np.ndarray]:
 
     if isinstance(raw_values, dict):
         return {
-            int(node_id): np.asarray(value, dtype=float)
-            for node_id, value in raw_values.items()
+            int(node_id): np.asarray(value, dtype=float) for node_id, value in raw_values.items()
         }
     if isinstance(raw_values, list):
         return {
