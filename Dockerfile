@@ -14,7 +14,9 @@
 # as ``ghcr.io/kogamishinyajerry-ops/ai-fea-engine:p1-base`` and consumed
 # by the hot-smoke CI lane added in later P1 phases.
 
-FROM python:3.11-slim-bookworm AS base
+# ADR-002 requires CalculiX 2.21. Debian bookworm ships 2.20, so we pin the
+# base image to trixie (2025+ Debian testing/stable) which ships 2.21.
+FROM python:3.11-slim-trixie AS base
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
