@@ -8,7 +8,11 @@ from schemas.sim_state import FaultClass, SimState
 
 class TestRouter:
     def test_accept_routes_to_viz(self):
-        state = SimState(verdict="accept")
+        state = SimState(verdict="Accept")
+        assert route_reviewer(state) == "viz"
+
+    def test_accept_with_note_routes_to_viz(self):
+        state = SimState(verdict="Accept with Note")
         assert route_reviewer(state) == "viz"
 
     @pytest.mark.parametrize(
@@ -29,13 +33,13 @@ class TestRouter:
         ],
     )
     def test_rerun_routes_by_fault_class(self, fault_class: FaultClass, expected_node: str):
-        state = SimState(verdict="re-run", fault_class=fault_class, retry_budgets={})
+        state = SimState(verdict="Re-run", fault_class=fault_class, retry_budgets={})
         assert route_reviewer(state) == expected_node
 
     def test_rerun_routes_to_human_fallback_when_budget_exceeded(self):
         # Even if fault class is solver, if budget is exceeded, it should go to human_fallback
         state = SimState(
-            verdict="re-run",
+            verdict="Re-run",
             fault_class=FaultClass.SOLVER_CONVERGENCE,
             retry_budgets={"solver": MAX_RETRIES},
         )
@@ -43,8 +47,13 @@ class TestRouter:
 
         # Test just below budget
         state_below = SimState(
-            verdict="re-run",
+            verdict="Re-run",
             fault_class=FaultClass.SOLVER_CONVERGENCE,
             retry_budgets={"solver": MAX_RETRIES - 1},
         )
         assert route_reviewer(state_below) == "solver"
+
+    @pytest.mark.parametrize("verdict", ["Needs Review", "Reject", None])
+    def test_non_rerun_failures_route_to_human_fallback(self, verdict):
+        state = SimState(verdict=verdict, fault_class=FaultClass.UNKNOWN, retry_budgets={})
+        assert route_reviewer(state) == "human_fallback"

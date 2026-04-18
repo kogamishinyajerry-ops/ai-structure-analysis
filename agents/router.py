@@ -19,9 +19,25 @@ FAULT_TO_NODE: dict[FaultClass, str] = {
 MAX_RETRIES = 3
 
 
+def _normalize_verdict(verdict: str | None) -> str:
+    """Normalize reviewer verdict labels to routing tokens."""
+    if not verdict:
+        return ""
+
+    normalized = verdict.strip().lower().replace("_", " ").replace("-", " ")
+    normalized = " ".join(normalized.split())
+    if normalized in {"accept", "accept with note"}:
+        return "accept"
+    if normalized == "re run":
+        return "re-run"
+    if normalized in {"needs review", "reject"}:
+        return normalized
+    return normalized
+
+
 def route_reviewer(state: SimState) -> str:
     """Determine the next node after reviewer validation."""
-    verdict = state.get("verdict")
+    verdict = _normalize_verdict(state.get("verdict"))
     fault_class = state.get("fault_class", FaultClass.NONE)
     budgets = state.get("retry_budgets", {})
 
