@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -13,12 +14,15 @@ DB_DIR.mkdir(exist_ok=True)
 DB_PATH = DB_DIR / "checkpoints.sqlite"
 
 
-def get_checkpointer() -> Generator[SqliteSaver, None, None]:
+@contextmanager
+def get_checkpointer(db_path: Path | None = None) -> Iterator[SqliteSaver]:
     """Provide a configured SQLite checkpointer for LangGraph persistence.
 
     Usage:
         with get_checkpointer() as checkpointer:
             app = graph.compile(checkpointer=checkpointer)
     """
-    with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
+    target_path = db_path or DB_PATH
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(target_path, check_same_thread=False) as conn:
         yield SqliteSaver(conn)
