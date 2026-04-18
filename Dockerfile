@@ -51,9 +51,12 @@ WORKDIR /workspace
 # Install the project first (dependency-only layer) for cache friendliness.
 COPY pyproject.toml ./pyproject.toml
 COPY README.md ./README.md
+ENV PIP_DEFAULT_TIMEOUT=180 \
+    PIP_RETRIES=5
+
 RUN python -m pip install --upgrade pip \
-    && python -m pip install -e ".[dev,agents,solvers,viz]" \
-    && python -m pip install gmsh
+    && python -m pip install --no-cache-dir -e ".[dev,agents,solvers,viz]" \
+    && python -m pip install --no-cache-dir gmsh
 
 # Finally copy the rest of the repo.
 COPY . .
