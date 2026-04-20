@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from reporters.markdown import generate_report
+from reporters.html_dashboard import generate_dashboard
 from schemas.sim_state import FaultClass, SimState
 from tools.frd_parser import extract_field_extremes, parse_frd
 
@@ -74,14 +75,21 @@ def run(state: SimState) -> dict[str, Any]:
     # Generate the Markdown report
     report_path = generate_report(report_ctx, report_dir)
 
+    # Generate the Premium HTML Dashboard
+    dashboard_path = generate_dashboard(report_ctx, report_dir)
+
     # Collect artifacts
     new_artifacts = state.get("artifacts", []).copy()
     new_artifacts.append(str(report_path))
+    new_artifacts.append(str(dashboard_path))
 
-    logger.info("Viz agent complete. Report at %s", report_path)
+    logger.info("Viz agent complete. Report at %s, Dashboard at %s", report_path, dashboard_path)
 
     return {
         "fault_class": FaultClass.NONE,
-        "reports": {"markdown": str(report_path)},
+        "reports": {
+            "markdown": str(report_path),
+            "html": str(dashboard_path)
+        },
         "artifacts": new_artifacts,
     }

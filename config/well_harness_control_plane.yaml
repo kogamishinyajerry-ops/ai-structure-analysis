@@ -1,10 +1,10 @@
 notion:
   enabled: true
   token_env: "NOTION_API_KEY"
-  notion_version: "2026-03-11"
+  notion_version: "2022-06-28"
   root_page_id: "345c68942bed80f6a092c9c2b3d3f5b9"
   data_source_ids:
-    tasks: "f17ba02b-d6d7-4aa7-b375-bd705038f47d"
+    tasks: "b6bff7b9-65f7-4cde-a927-a66e038a9f7d"
     decisions: "2b99ac18-0ba5-4b0a-9f38-18075b3bd6b6"
     sessions: "6644423a-671b-4def-8e42-7414ba0d8d4a"
 

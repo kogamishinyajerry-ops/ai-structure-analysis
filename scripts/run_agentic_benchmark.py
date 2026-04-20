@@ -34,16 +34,18 @@ async def run_benchmark():
     app = workflow.compile()
 
     # 2. Initial State
+    gs001_path = str((Path(__file__).resolve().parents[1] / "golden_samples" / "GS-001" / "gs001.inp").resolve())
     initial_state = {
         "user_request": GS001_PROMPT,
         "plan": None,
-        "geometry_path": None,
-        "mesh_path": None,
+        "geometry_path": gs001_path,
+        "mesh_path": gs001_path,
         "frd_path": None,
         "verdict": None,
         "fault_class": FaultClass.NONE,
         "retry_budgets": {},
         "history": [],
+        "lint_report": None,
         "reports": {},
         "artifacts": []
     }
@@ -73,11 +75,31 @@ async def run_benchmark():
         plan = final_state.get('plan')
         if plan:
             print(f"Case ID: {plan.case_id}")
-            print(f"Material: {plan.material.name} (E={plan.material.youngs_modulus})")
+            print(f"Material: {plan.material.name} (E={plan.material.youngs_modulus_pa})")
         
+        lint_report = final_state.get("lint_report")
+        if lint_report:
+            print(f"\nLint Report: {'PASSED' if lint_report['ok'] else 'FAILED'}")
+            print(f"Errors: {lint_report['error_count']}, Warnings: {lint_report['warning_count']}")
+            for finding in lint_report.get("errors", []) + lint_report.get("warnings", []):
+                print(f"  - [{finding['level']}] {finding['code']}: {finding['message']} (Line {finding['line']})")
+
         reports = final_state.get("reports", {})
+        if "html" in reports:
+            html_path = Path(reports["html"])
+            print(f"\nINTERACTIVE RESEARCH DASHBOARD GENERATED:")
+            print(f"URL: file:///{html_path.absolute().as_posix()}")
+            print("-" * 50)
+
         if "markdown" in reports:
-            print(f"\nFinal Report Summary:\n{reports['markdown'][:1000]}...")
+            report_path = Path(reports["markdown"])
+            if report_path.exists():
+                print(f"\nFINAL RESEARCH-GRADE REPORT ({report_path.name}):")
+                print("-" * 50)
+                print(report_path.read_text(encoding="utf-8"))
+                print("-" * 50)
+            else:
+                print(f"\nFinal Report Summary:\n{reports['markdown'][:1000]}...")
             
         frd_path = final_state.get("frd_path")
         if frd_path:

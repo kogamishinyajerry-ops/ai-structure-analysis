@@ -57,5 +57,8 @@ class SimState(TypedDict):
     # 5. Fault History
     history: Annotated[list[dict[str, Any]], append_history]
 
-    # 6. Outputs
+    # 6. Lint Gate
+    lint_report: dict[str, Any] | None
+
+    # 7. Outputs
     reports: dict[str, str] | None

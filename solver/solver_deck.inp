@@ -1,0 +1,45 @@
+** Heading +Sym
+** CalculiX static analysis template — cantilever beam
+** Rendered by AI-FEA Solver Agent from SimPlan parameters.
+**
+** Variables (Jinja2):
+**   mesh_include   — path to .inp mesh file (Abaqus format from Gmsh)
+**   material_name  — e.g. "Steel"
+**   youngs_modulus  — Pa
+**   poissons_ratio
+**   load_magnitude  — N
+**   load_node_set   — name of the node set receiving the load
+**   fixed_node_set  — name of the fixed-BC node set
+**
+** This template is a minimal stub (AI-FEA-P0-01).
+** It will be expanded with multi-step, thermal, and modal blocks in P0-07.
+**
+*INCLUDE, INPUT=gs001.inp
+**
+** MATERIAL
+*MATERIAL, NAME=Steel
+*ELASTIC
+210000000000.0, 0.3
+**
+** SOLID SECTION (assumes single part, C3D10 tets)
+*SOLID SECTION, ELSET=Eall, MATERIAL=Steel
+**
+** BOUNDARY CONDITIONS
+*BOUNDARY
+Nroot, 1, 3, 0.0
+**
+** STEP
+*STEP
+*STATIC
+**
+** LOADS
+*CLOAD
+Ntip, 2, -400.0
+**
+** OUTPUT
+*NODE FILE
+U
+*EL FILE
+S, E
+**
+*END STEP

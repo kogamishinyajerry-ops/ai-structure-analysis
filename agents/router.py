@@ -24,8 +24,18 @@ MAX_RETRIES = 3
 def route_architect(state: SimState) -> str:
     """Route after Architect node based on plan success."""
     if state.get("plan") and state.get("fault_class") == FaultClass.NONE:
+        if state.get("mesh_path"):
+            return "lint_deck"
         return "geometry"
     return "human_fallback"
+
+
+def route_lint(state: SimState) -> str:
+    """Route after Lint-Deck node — pass to solver or short-circuit to reviewer."""
+    if state.get("fault_class") == FaultClass.NONE:
+        return "solver"
+    # Lint errors detected — skip solver entirely, let reviewer handle the fault
+    return "reviewer"
 
 
 def route_reviewer(state: SimState) -> str:

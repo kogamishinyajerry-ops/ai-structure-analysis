@@ -58,7 +58,9 @@ def extract_structured_data(
         # Extract text from content blocks
         content_text = ""
         for block in message.content:
-            if block.type == "text":
+            # Minimax M2.7 returns ThinkingBlock as the first block.
+            # We only care about the final text block containing the answer/JSON.
+            if block.type == "text" and hasattr(block, "text"):
                 content_text += block.text
         
         if not content_text:

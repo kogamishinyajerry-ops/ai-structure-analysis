@@ -19,7 +19,7 @@ import yaml
 
 from .schemas import HarnessRunRecord, HarnessRunStatus
 
-NOTION_API_BASE_URL = "https://api.notion.com/v1"
+NOTION_API_BASE_URL = "https://api.notion.com"
 DEFAULT_NOTION_VERSION = "2026-03-11"
 
 
@@ -163,10 +163,10 @@ class NotionRunRegistrar:
 
         try:
             with self._http_client() as client:
-                session_response = self._request(client, "POST", "/pages", json_body=session_body)
+                session_response = self._request(client, "POST", "/v1/pages", json_body=session_body)
                 session_page_id = session_response["id"]
                 for task_body in task_bodies:
-                    task_response = self._request(client, "POST", "/pages", json_body=task_body)
+                    task_response = self._request(client, "POST", "/v1/pages", json_body=task_body)
                     task_page_ids.append(task_response["id"])
         except Exception as exc:
             return NotionSyncResult(
@@ -232,7 +232,7 @@ class NotionRunRegistrar:
         
         try:
             with self._http_client() as client:
-                task_response = self._request(client, "POST", "/pages", json_body=task_body)
+                task_response = self._request(client, "POST", "/v1/pages", json_body=task_body)
                 return NotionSyncResult(
                     attempted=True,
                     success=True,
@@ -436,7 +436,12 @@ class NotionRunRegistrar:
         json_body: Dict[str, Any],
     ) -> Dict[str, Any]:
         response = client.request(method, path, json=json_body)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            import logging
+            logging.getLogger(__name__).error(f"Notion API error: {exc.response.text}")
+            raise
         return response.json()
 
     def _query_data_source_pages(
@@ -454,7 +459,7 @@ class NotionRunRegistrar:
             response = self._request(
                 client,
                 "POST",
-                f"/data_sources/{data_source_id}/query",
+                f"/v1/databases/{data_source_id}/query",
                 json_body=payload,
             )
             results.extend(response.get("results", []))
@@ -468,8 +473,13 @@ class NotionRunRegistrar:
         page_id: str,
         properties: Dict[str, Any],
     ) -> Dict[str, Any]:
-        response = client.request("PATCH", f"/pages/{page_id}", json={"properties": properties})
-        response.raise_for_status()
+        response = client.request("PATCH", f"/v1/pages/{page_id}", json={"properties": properties})
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            import logging
+            logging.getLogger(__name__).error(f"Notion API error: {exc.response.text}")
+            raise
         return response.json()
 
     @staticmethod
@@ -730,6 +740,53 @@ class NotionRunRegistrar:
             self._paragraph_block("3. 审批决定：填写 Verdict、Approval Status 和审批说明。"),
             self._paragraph_block("4. 下一步：填写是否需要新建 issue、补 PR、还是继续重跑。"),
         ]
+
+    def update_task_from_sync_plan(self, run_id: str, sync_plan: Dict[str, Any]) -> NotionSyncResult:
+        """Update an existing Notion task page with properties from control_plane_sync.json."""
+        if not self._config.is_configured:
+            return NotionSyncResult(attempted=False, success=False, skipped_reason="Notion sync disabled")
+
+        notion_data = sync_plan.get("notion", {})
+        if not notion_data:
+            return NotionSyncResult(attempted=True, success=False, error_message="No notion payload in sync plan")
+
+        try:
+            with self._http_client() as client:
+                # 1. Find the task by Run ID
+                query_payload = {
+                    "filter": {
+                        "property": "Run ID",
+                        "rich_text": {
+                            "equals": run_id
+                        }
+                    }
+                }
+                response = self._request(
+                    client, "POST", f"/v1/databases/{self._config.data_sources.tasks}/query", json_body=query_payload
+                )
+
+                results = response.get("results", [])
+                if not results:
+                    return NotionSyncResult(attempted=True, success=False, error_message=f"No task found for Run ID {run_id}")
+
+                task_page_id = results[0]["id"]
+
+                # 2. Patch properties
+                properties = {}
+                if "status" in notion_data:
+                    properties["Status"] = self._select_prop(notion_data["status"])
+                if "summary" in notion_data:
+                    properties["Summary"] = self._rich_text_prop(notion_data["summary"])
+                if "verification" in notion_data:
+                    properties["Review Summary"] = self._rich_text_prop(notion_data["verification"])
+                if "next_step" in notion_data:
+                    properties["Next Action"] = self._rich_text_prop(notion_data["next_step"])
+
+                self._update_page_properties(client, task_page_id, properties)
+
+                return NotionSyncResult(attempted=True, success=True, task_page_ids=[task_page_id])
+        except Exception as exc:
+            return NotionSyncResult(attempted=True, success=False, error_message=str(exc))
 
     @staticmethod
     def _title_prop(value: str) -> Dict[str, Any]:

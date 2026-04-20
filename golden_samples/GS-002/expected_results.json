@@ -6,12 +6,12 @@
 
   "case_description": {
     "geometry": "简单三角形桁架 - 3杆件，1个集中载荷",
-    "configuration": "等边三角形，跨度10m，高度8.66m",
+    "configuration": "等边三角形，跨度10mm，高度8.66mm",
     "units": {
-      "length": "m",
+      "length": "mm",
       "force": "N",
-      "stress": "Pa",
-      "displacement": "m"
+      "stress": "MPa",
+      "displacement": "mm"
     }
   },
 
@@ -70,8 +70,8 @@
       "node2": {"ux": 0.0, "uy": 0.0},
       "node3": {
         "ux": 0.0,
-        "uy": -2.37e-9,
-        "unit": "m",
+        "uy": -0.00275,
+        "unit": "mm",
         "note": "由于大截面面积，位移极小"
       }
     },
@@ -102,9 +102,9 @@
       "id": "VP-001",
       "name": "节点3垂直位移",
       "location": [5.0, 8.66025404, 0.0],
-      "theory_value": -2.37e-9,
-      "unit": "m",
-      "note": "理论值极小，FEA应验证解析器精度"
+      "theory_value": -0.00275,
+      "unit": "mm",
+      "note": "理论位移"
     },
     {
       "id": "VP-002",

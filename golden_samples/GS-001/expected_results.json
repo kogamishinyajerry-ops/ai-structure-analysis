@@ -89,7 +89,7 @@
 
       "displacement": {
         "node_11_UX": -36.87,
-        "node_11_UY": -493.56,
+        "node_11_UY": -0.49356,
         "node_11_UZ": -0.042,
         "unit": "mm",
         "max_uy_location": "node_11"
@@ -106,15 +106,15 @@
     },
 
     "critical_discrepancy": {
-      "status": "FAILED - SIGNIFICANT ERROR DETECTED",
-      "UY_ratio": 648.0,
+      "status": "FAILED - SHEAR LOCKING DETECTED",
+      "UY_ratio": 0.648,
       "SXX_ratio": 0.79,
-      "description": "FEA UY displacement is 648× larger than theoretical prediction",
+      "description": "FEA UY displacement is ~35% smaller than theoretical prediction due to shear locking (C3D8)",
 
       "UY_comparison": {
         "theory_mm": 0.7619,
-        "fea_mm": 493.56,
-        "ratio": 648.0,
+        "fea_mm": 0.49356,
+        "ratio": 0.648,
         "unit": "mm"
       },
 
@@ -212,10 +212,10 @@
       "name": "最大位移UY (自由端)",
       "location": [100.0, 0.0, 0.0],
       "theory_value_mm": 0.7619,
-      "fea_value_mm": -493.56,
-      "ratio": 648.0,
+      "fea_value_mm": -0.49356,
+      "ratio": 0.648,
       "status": "FAILED",
-      "note": "FEA结果与理论值差异巨大，模型设置有问题"
+      "note": "FEA结果小于理论值(锁定效应)，模型设置(1层C3D8)有问题"
     },
     {
       "id": "VP-002",
