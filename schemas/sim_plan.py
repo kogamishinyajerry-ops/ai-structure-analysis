@@ -26,6 +26,7 @@ class AnalysisType(StrEnum):
     MODAL = "modal"
     PRESTRESS_MODAL = "prestress_modal"
     CYCLIC_SYMMETRY = "cyclic_symmetry"
+    TRANSIENT_DYNAMIC = "transient_dynamic"
     STEADY_THERMAL = "steady_thermal"  # stretch goal
     THERMO_STRUCTURAL = "thermo_structural"  # stretch goal
 

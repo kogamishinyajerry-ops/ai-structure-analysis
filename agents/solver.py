@@ -29,9 +29,13 @@ def _render_inp_deck(plan: Any, mesh_inp_path: str, output_dir: Path) -> Path:
 
     Returns the path to the rendered ``solver_deck.inp``.
     """
-    # Choose template based on analysis type.  For P0-07 we only ship
-    # the cantilever/static template; future phases add modal, thermal, etc.
-    template_name = "cantilever_static.inp.j2"
+    # Choose template based on analysis type.
+    template_map = {
+        "static": "cantilever_static.inp.j2",
+        "steady_thermal": "steady_thermal.inp.j2",
+        "transient_dynamic": "transient_dynamic.inp.j2",
+    }
+    template_name = template_map.get(str(plan.analysis_type), "cantilever_static.inp.j2")
     template_path = TEMPLATE_DIR / template_name
 
     if not template_path.exists():
@@ -46,32 +50,52 @@ def _render_inp_deck(plan: Any, mesh_inp_path: str, output_dir: Path) -> Path:
     # --- Map SimPlan fields to template variables ---
     material = plan.material
 
-    # Default load extraction — take the first concentrated_force load.
+    # Generic Load extraction
     load_magnitude = 0.0
     load_node_set = "Nall"
+    heat_flux = None
+
     for load in plan.loads:
         if load.kind == "concentrated_force":
             load_magnitude = load.parameters.get("magnitude", 0.0)
             load_node_set = load.parameters.get("node_set", "Nall")
+        elif load.kind == "heat_flux":
+            heat_flux = load.parameters.get("magnitude", 0.0)
+            load_node_set = load.parameters.get("node_set", "Nall")
+        # Stop at first matching load for P0 sandbox
+        if load_magnitude or heat_flux:
             break
 
-    # Default BC extraction — take the first fixed BC.
+    # Generic BC extraction
     fixed_node_set = "Nfix"
+    temp_node_set = None
+    temperature = None
+
     for bc in plan.boundary_conditions:
         if bc.kind == "fixed":
             fixed_node_set = bc.parameters.get("node_set", "Nfix")
-            break
+        elif bc.kind in ("temperature", "fixed_temperature"):
+            temperature = bc.parameters.get("value", 0.0)
+            temp_node_set = bc.parameters.get("node_set", "Nfix")
 
     rendered = template.render(
         mesh_include=mesh_inp_path,
         material_name=material.name,
         youngs_modulus=material.youngs_modulus_pa,
         poissons_ratio=material.poissons_ratio,
+        density_kg_m3=material.density_kg_m3,
+        thermal_conductivity=material.thermal_conductivity,
+        specific_heat=material.specific_heat,
         yield_strength_pa=getattr(material, "yield_strength_pa", None),
         tangent_modulus_pa=getattr(material, "tangent_modulus_pa", None),
         load_magnitude=load_magnitude,
         load_node_set=load_node_set,
         fixed_node_set=fixed_node_set,
+        heat_flux=heat_flux,
+        temperature=temperature,
+        temp_node_set=temp_node_set,
+        damping_alpha=getattr(plan.solver, "damping_alpha", None),
+        damping_beta=getattr(plan.solver, "damping_beta", None),
         nonlinear=plan.solver.nonlinear,
         max_increments=plan.solver.max_increments,
     )

@@ -1,0 +1,51 @@
+** Heading +Sym
+** CalculiX steady thermal template
+** Rendered by AI-FEA Solver Agent from SimPlan parameters.
+**
+** Variables (Jinja2):
+**   mesh_include         — path to .inp mesh file
+**   material_name        — e.g. "Steel"
+**   thermal_conductivity — W/(m.K)
+**   specific_heat        — J/(kg.K) (optional)
+**   temp_node_set        — node set for fixed temperature
+**   temperature          — fixed temperature value (K or C)
+**   load_node_set        — node set for heat flux
+**   heat_flux            — concentrated flux value (W)
+**
+*INCLUDE, INPUT={{ mesh_include }}
+**
+** MATERIAL
+*MATERIAL, NAME={{ material_name }}
+*CONDUCTIVITY
+{{ thermal_conductivity | default(50.0) }}
+{% if specific_heat %}
+*SPECIFIC HEAT
+{{ specific_heat }}
+{% endif %}
+**
+** SOLID SECTION (assumes single part)
+*SOLID SECTION, ELSET=Eall, MATERIAL={{ material_name }}
+**
+** BOUNDARY CONDITIONS (DOF 11 = Temperature)
+{% if temp_node_set and temperature is not none %}
+*BOUNDARY
+{{ temp_node_set }}, 11, 11, {{ temperature }}
+{% endif %}
+**
+** STEP
+*STEP
+*HEAT TRANSFER, STEADY STATE
+**
+** LOADS (Concentrated heat flux on nodes, DOF 11)
+{% if load_node_set and heat_flux is not none %}
+*CFLUX
+{{ load_node_set }}, 11, {{ heat_flux }}
+{% endif %}
+**
+** OUTPUT
+*NODE FILE
+NT
+*EL FILE
+HFL
+**
+*END STEP
