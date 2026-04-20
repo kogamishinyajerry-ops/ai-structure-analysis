@@ -62,7 +62,7 @@ class GeometrySpec(BaseModel):
 
 
 class MaterialSpec(BaseModel):
-    """Isotropic linear-elastic material."""
+    """Isotropic linear-elastic material with optional bilinear plasticity."""
 
     name: str = "Steel"
     youngs_modulus_pa: float = Field(210e9, description="Young's modulus [Pa]")
@@ -70,6 +70,10 @@ class MaterialSpec(BaseModel):
     density_kg_m3: float = Field(7850.0, description="Density [kg/m³]")
     thermal_conductivity: float | None = Field(None, description="[W/m·K] — for thermal analyses")
     specific_heat: float | None = Field(None, description="[J/kg·K] — for thermal analyses")
+    
+    # Plasticity properties (Bilinear Isotropic Hardening)
+    yield_strength_pa: float | None = Field(None, description="Yield strength threshold for material plastic behavior [Pa]")
+    tangent_modulus_pa: float | None = Field(None, description="Post-yield tangent modulus (bilinear model) [Pa]")
 
 
 class LoadSpec(BaseModel):

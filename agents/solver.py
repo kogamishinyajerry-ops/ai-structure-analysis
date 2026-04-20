@@ -67,9 +67,13 @@ def _render_inp_deck(plan: Any, mesh_inp_path: str, output_dir: Path) -> Path:
         material_name=material.name,
         youngs_modulus=material.youngs_modulus_pa,
         poissons_ratio=material.poissons_ratio,
+        yield_strength_pa=getattr(material, "yield_strength_pa", None),
+        tangent_modulus_pa=getattr(material, "tangent_modulus_pa", None),
         load_magnitude=load_magnitude,
         load_node_set=load_node_set,
         fixed_node_set=fixed_node_set,
+        nonlinear=plan.solver.nonlinear,
+        max_increments=plan.solver.max_increments,
     )
 
     deck_path = output_dir / "solver_deck.inp"

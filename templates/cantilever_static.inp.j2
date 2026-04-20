@@ -20,6 +20,13 @@
 *MATERIAL, NAME={{ material_name }}
 *ELASTIC
 {{ youngs_modulus }}, {{ poissons_ratio }}
+{% if yield_strength_pa %}
+*PLASTIC
+{{ yield_strength_pa }}, 0.0
+{% if tangent_modulus_pa %}
+{{ yield_strength_pa + tangent_modulus_pa * 1.0 }}, 1.0
+{% endif %}
+{% endif %}
 **
 ** SOLID SECTION (assumes single part, C3D10 tets)
 *SOLID SECTION, ELSET=Eall, MATERIAL={{ material_name }}
@@ -29,8 +36,11 @@
 {{ fixed_node_set }}, 1, 3, 0.0
 **
 ** STEP
-*STEP
+*STEP{% if nonlinear %}, NLGEOM=ON{% endif %}
 *STATIC
+{% if nonlinear %}
+0.1, 1.0, 1e-5, 1.0
+{% endif %}
 **
 ** LOADS
 *CLOAD
