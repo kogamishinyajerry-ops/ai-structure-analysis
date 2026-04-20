@@ -96,7 +96,11 @@ async def run_benchmark():
             if report_path.exists():
                 print(f"\nFINAL RESEARCH-GRADE REPORT ({report_path.name}):")
                 print("-" * 50)
-                print(report_path.read_text(encoding="utf-8"))
+                try:
+                    text = report_path.read_text(encoding="utf-8")
+                    print(text.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding))
+                except Exception:
+                    print("Error printing report content.")
                 print("-" * 50)
             else:
                 print(f"\nFinal Report Summary:\n{reports['markdown'][:1000]}...")

@@ -13,8 +13,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from reporters.markdown import generate_report
 from reporters.html_dashboard import generate_dashboard
+from reporters.markdown import generate_report
+from reporters.vtp import export_vtp
 from schemas.sim_state import FaultClass, SimState
 from tools.frd_parser import extract_field_extremes, parse_frd
 
@@ -77,13 +78,18 @@ def run(state: SimState) -> dict[str, Any]:
 
     # Generate the Premium HTML Dashboard
     dashboard_path = generate_dashboard(report_ctx, report_dir)
+    
+    # Export VTP point cloud for ParaView
+    vtp_path = export_vtp(parsed, report_dir)
 
     # Collect artifacts
     new_artifacts = state.get("artifacts", []).copy()
     new_artifacts.append(str(report_path))
     new_artifacts.append(str(dashboard_path))
+    if vtp_path and vtp_path.exists():
+        new_artifacts.append(str(vtp_path))
 
-    logger.info("Viz agent complete. Report at %s, Dashboard at %s", report_path, dashboard_path)
+    logger.info("Viz agent complete. Report at %s, Dashboard at %s, VTP at %s", report_path, dashboard_path, vtp_path)
 
     return {
         "fault_class": FaultClass.NONE,
