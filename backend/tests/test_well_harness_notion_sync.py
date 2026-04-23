@@ -328,3 +328,73 @@ def test_notion_reconcile_skips_when_not_configured(tmp_path):
     assert result.attempted is False
     assert result.success is False
     assert "disabled" in (result.skipped_reason or "")
+
+
+# ---------------------------------------------------------------------------
+# AI-FEA-S2.1-02 Gate-fix coverage: create_standalone_task ADR-010 defaults
+# ---------------------------------------------------------------------------
+
+def test_create_standalone_task_adr010_field_defaults(tmp_path, monkeypatch):
+    """create_standalone_task must emit ADR-010 sprint/model/tokens/branch/sha
+    fields with safe defaults — no NameError and no run_record reference.
+    (Gate check S2.1-02 identified this gap.)
+    """
+    config_path = tmp_path / "well_harness_control_plane.yaml"
+    _write_config(config_path, enabled=True)
+    monkeypatch.setenv("TEST_NOTION_TOKEN", "secret-token")
+
+    requests_seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(request)
+        if request.method == "POST" and "/pages" in request.url.path:
+            return httpx.Response(200, json={"id": "standalone-page-1"})
+        raise AssertionError(f"Unexpected: {request.method} {request.url}")
+
+    client = httpx.Client(
+        base_url="https://api.notion.com/v1",
+        transport=httpx.MockTransport(handler),
+    )
+    registrar = NotionRunRegistrar.from_default_path(config_path, client=client)
+    monkeypatch.setattr(
+        registrar,
+        "_github_metadata",
+        lambda: {
+            "repository": "kogamishinyajerry-ops/ai-structure-analysis",
+            "repo_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis",
+            "branch": "main",
+            "commit_sha": "aabbccdd1234",
+            "commit_short": "aabbccd",
+            "commit_url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/commit/aabbccdd1234",
+        },
+    )
+
+    # Should NOT raise NameError — that was the gate-fix bug
+    result = registrar.create_standalone_task(
+        case_id="AI-FEA-S2.1-XX",
+        run_id="run-20260423-AI-FEA-S2.1-XX-aabbccd",
+    )
+
+    assert result.attempted is True
+    assert result.success is True
+    assert requests_seen, "Expected at least one HTTP request"
+
+    body = json.loads(requests_seen[0].content.decode("utf-8"))
+    props = body["properties"]
+
+    # ADR-010 field defaults ---------------------------------------------------
+    # Sprint must default to "S2.1" (not a NameError crash)
+    assert props["Sprint"]["select"]["name"] == "S2.1", \
+        "Sprint default should be S2.1"
+
+    # Model, Branch, Start SHA must be present but None (omitted from Notion)
+    assert props["Model"] is None, "Model should default to None"
+    assert props["Branch"] is None, "Branch should default to None"
+    assert props["Start SHA"] is None, "Start SHA should default to None"
+
+    # Tokens Used / Tokens Budget must emit number=null (not crash)
+    assert props["Tokens Used"]["number"] is None, "Tokens Used should be null"
+    assert props["Tokens Budget"]["number"] is None, "Tokens Budget should be null"
+
+    # ADR Link must be a url prop with empty/None value (not crash)
+    assert "url" in props["ADR Link"], "ADR Link should be a url prop"

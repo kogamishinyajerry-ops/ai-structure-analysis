@@ -25,5 +25,22 @@ This runbook outlines the steps to apply the Notion schema migration for the S2.
 3. **Idempotency**
    The script is idempotent. Running it multiple times will not duplicate properties or fail if properties already exist.
    
+## GitHub Actions 触发流程
+
+The schema migration script and `well_harness` execution are orchestrated via GitHub Actions `.github/workflows/well_harness.yml`.
+
+1. **Pull Request Trigger (`pull_request`)**
+   - Automatically executes `well_harness` run against the `case_id` parsed from the PR title (e.g. `[AI-FEA-S2.1-03]`).
+   - Syncs the local results back to Notion via `notion_sync.py`, linking the run to the PR.
+
+2. **Approval Dispatch (`repository_dispatch: notion_approval`)**
+   - Once a Notion Task reaches a human approval verdict, Kogami triggers the dispatch payload.
+   - The workflow will automatically `squash merge` the PR if `Accept` or `close` the PR if `Reject`.
+
+3. **Post-Merge Mainline Sync (`push: main`)**
+   - Automatically dry-runs the S2.1 schema migration upon ADR modifications to validate contract alignment.
+   - Triggers an automated smoke verification run (`GS-001`) to assert pipeline integrity.
+
 ## Verification
 - Verify the newly added fields (Sprint, Model, Tokens Used, Tokens Budget, Branch, ADR Link, Start SHA) appear in both tasks and sessions databases.
+- Confirm that PRs correctly trigger the `well_harness` runs and drop summary comments.

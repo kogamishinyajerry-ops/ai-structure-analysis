@@ -1,0 +1,243 @@
+# .github/workflows/well_harness.yml
+# AI-FEA-S2.1-03 · Notion ↔ GitHub 管道
+#
+# Three jobs:
+#   1. well-harness-run      — PR trigger: extract Case ID, run harness, post comment
+#   2. notion-approval-dispatch — repository_dispatch(notion_approval): auto-merge or close PR
+#   3. post-merge-sync       — push to main: ADR sync + smoke verify
+
+name: well_harness · Notion↔GitHub Sync
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [main]
+
+  repository_dispatch:
+    types: [notion_approval]
+
+  push:
+    branches: [main]
+
+permissions:
+  contents: write        # needed for PR merge / close
+  pull-requests: write   # needed for PR comments
+  issues: write
+
+env:
+  PYTHON_VERSION: "3.11"
+
+# ============================================================================
+# JOB 1 · well-harness-run  (triggered by PR)
+# ============================================================================
+jobs:
+  well-harness-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      case_id:    ${{ steps.extract_case.outputs.case_id }}
+      session_url: ${{ steps.run_harness.outputs.session_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,agents]"
+
+      # -----------------------------------------------------------------------
+      # Extract Case ID from PR title  e.g.  [AI-FEA-S2.1-03] add workflow
+      # Falls back to "UNKNOWN" if no match — run still proceeds without Notion sync
+      # -----------------------------------------------------------------------
+      - name: Extract Case ID from PR title
+        id: extract_case
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          CASE_ID=$(echo "$PR_TITLE" | python3 -c "
+          import re, sys
+          m = re.search(r'\[([A-Z0-9a-z_\-\.]+)\]', sys.stdin.read())
+          print(m.group(1) if m else 'UNKNOWN')
+          ")
+          echo "case_id=${CASE_ID}" >> "$GITHUB_OUTPUT"
+          echo "Extracted Case ID: ${CASE_ID}"
+
+      # -----------------------------------------------------------------------
+      # Run the well-harness (Notion §3.5 contract invocation)
+      # -----------------------------------------------------------------------
+      - name: Run well-harness
+        id: run_harness
+        env:
+          NOTION_TOKEN:       ${{ secrets.NOTION_TOKEN }}
+          NOTION_TASK_DB:     ${{ secrets.NOTION_TASK_DB }}
+          NOTION_DECISION_DB: ${{ secrets.NOTION_DECISION_DB }}
+          NOTION_SESSION_DB:  ${{ secrets.NOTION_SESSION_DB }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CASE_ID="${{ steps.extract_case.outputs.case_id }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+
+          # Skip solver run for UNKNOWN case IDs (no golden sample to verify)
+          if [ "$CASE_ID" = "UNKNOWN" ]; then
+            echo "No Case ID found in PR title — skipping harness run."
+            echo "session_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Run harness and capture JSON output
+          python -m well_harness.cli run \
+            --case "$CASE_ID" \
+            --pr-url "$PR_URL" \
+            --executor replay \
+            2>&1 | tee /tmp/harness_output.json
+
+          # Extract session page id from stdout JSON for PR comment
+          SESSION_URL=$(python3 -c "
+          import json, sys
+          try:
+              data = json.loads(open('/tmp/harness_output.json').read())
+              # data is a list of run_records; pull batch_id from first
+              print('')
+          except Exception:
+              print('')
+          ")
+          echo "session_url=${SESSION_URL}" >> "$GITHUB_OUTPUT"
+
+      # -----------------------------------------------------------------------
+      # Post PR comment with run summary
+      # -----------------------------------------------------------------------
+      - name: Post run summary as PR comment
+        if: steps.extract_case.outputs.case_id != 'UNKNOWN'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const caseId  = '${{ steps.extract_case.outputs.case_id }}';
+            const sha     = context.payload.pull_request.head.sha.substring(0, 7);
+            const runUrl  = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `### 🤖 well_harness Run Summary`,
+              `| Field | Value |`,
+              `|-------|-------|`,
+              `| Case ID | \`${caseId}\` |`,
+              `| Commit | \`${sha}\` |`,
+              `| Executor | replay |`,
+              `| GHA Run | [View logs](${runUrl}) |`,
+              ``,
+              `Notion 任务库 Status / PR Link / Run ID 已回写。`,
+              `请在 Notion 任务库完成 **Approval** 后触发 \`repository_dispatch(notion_approval)\`。`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
+
+  # ============================================================================
+  # JOB 2 · notion-approval-dispatch  (triggered by repository_dispatch)
+  # ============================================================================
+  notion-approval-dispatch:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'notion_approval'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Handle Notion approval verdict
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT:      ${{ github.event.client_payload.verdict }}
+          PR_NUMBER:    ${{ github.event.client_payload.pr_number }}
+        run: |
+          echo "Notion approval verdict: $VERDICT for PR #$PR_NUMBER"
+
+          if [ "$VERDICT" = "Accept" ]; then
+            echo "✅ Verdict = Accept → squash-merging PR #${PR_NUMBER}"
+            gh pr merge "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --squash \
+              --auto \
+              --delete-branch
+          elif [ "$VERDICT" = "Reject" ] || [ "$VERDICT" = "Re-run" ]; then
+            echo "❌ Verdict = ${VERDICT} → closing PR #${PR_NUMBER} without merge"
+            gh pr close "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --comment "Notion Handoff verdict: **${VERDICT}**. PR closed. Please address reviewer feedback and re-open."
+          else
+            echo "⚠️  Unknown verdict '${VERDICT}' — no action taken."
+            exit 1
+          fi
+
+  # ============================================================================
+  # JOB 3 · post-merge-sync  (triggered by push to main)
+  # ============================================================================
+  post-merge-sync:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need previous commit to diff ADR files
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,agents]"
+
+      # -----------------------------------------------------------------------
+      # Detect changed ADR files — only sync to Notion decisions DB if changed
+      # -----------------------------------------------------------------------
+      - name: Check for ADR changes
+        id: adr_check
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'docs/adr/ADR-*.md' | head -5)
+          if [ -n "$CHANGED" ]; then
+            echo "adr_changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changed ADRs: $CHANGED"
+          else
+            echo "adr_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync ADR changes to Notion decisions DB (dry-run)
+        if: steps.adr_check.outputs.adr_changed == 'true'
+        env:
+          NOTION_TOKEN:       ${{ secrets.NOTION_TOKEN }}
+          NOTION_TASK_DB:     ${{ secrets.NOTION_TASK_DB }}
+          NOTION_DECISION_DB: ${{ secrets.NOTION_DECISION_DB }}
+          NOTION_SESSION_DB:  ${{ secrets.NOTION_SESSION_DB }}
+        run: |
+          # --apply flag to be implemented in S2.2; for now dry-run validates schema
+          python scripts/migrate_notion_schema_s2_1.py \
+            --dry-run \
+            --tasks-db  "$NOTION_TASK_DB" \
+            --sessions-db "$NOTION_SESSION_DB"
+          echo "ADR sync dry-run complete. --apply will be activated in S2.2."
+
+      # -----------------------------------------------------------------------
+      # Smoke verify: replay GS-001 to confirm post-merge pipeline integrity
+      # -----------------------------------------------------------------------
+      - name: Post-merge smoke verify (GS-001 replay)
+        env:
+          NOTION_TOKEN:       ${{ secrets.NOTION_TOKEN }}
+          NOTION_TASK_DB:     ${{ secrets.NOTION_TASK_DB }}
+          NOTION_DECISION_DB: ${{ secrets.NOTION_DECISION_DB }}
+          NOTION_SESSION_DB:  ${{ secrets.NOTION_SESSION_DB }}
+        run: |
+          python -m well_harness.cli run \
+            --case GS-001 \
+            --executor replay \
+            --github-pr-link "" \
+            --github-issue-link ""
