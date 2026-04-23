@@ -174,11 +174,43 @@ class NotionRunRegistrar:
 
         try:
             with self._http_client() as client:
-                session_response = self._request(client, "POST", "/pages", json_body=session_body)
-                session_page_id = session_response["id"]
-                for task_body in task_bodies:
-                    task_response = self._request(client, "POST", "/pages", json_body=task_body)
-                    task_page_ids.append(task_response["id"])
+                # Find existing session by Run Batch
+                existing_session_id = None
+                session_pages = self._query_data_source_pages(
+                    client, 
+                    self._config.data_sources.sessions,
+                    filter_prop={"property": "Run Batch", "rich_text": {"equals": batch_id}}
+                )
+                if session_pages:
+                    existing_session_id = session_pages[0]["id"]
+                
+                # Find existing tasks
+                existing_tasks_by_run_id = {}
+                task_pages = self._query_data_source_pages(
+                    client,
+                    self._config.data_sources.tasks,
+                    filter_prop={"property": "Session Batch", "rich_text": {"equals": batch_id}}
+                )
+                for page in task_pages:
+                    run_id = self._page_property_text(page, "Run ID")
+                    if run_id:
+                        existing_tasks_by_run_id[run_id] = page["id"]
+
+                if existing_session_id:
+                    session_response = self._update_page_properties(client, existing_session_id, session_body["properties"])
+                    session_page_id = existing_session_id
+                else:
+                    session_response = self._request(client, "POST", "/pages", json_body=session_body)
+                    session_page_id = session_response["id"]
+                
+                for task_body, run_record in zip(task_bodies, run_records):
+                    existing_task_id = existing_tasks_by_run_id.get(run_record.run_id)
+                    if existing_task_id:
+                        task_response = self._update_page_properties(client, existing_task_id, task_body["properties"])
+                        task_page_ids.append(existing_task_id)
+                    else:
+                        task_response = self._request(client, "POST", "/pages", json_body=task_body)
+                        task_page_ids.append(task_response["id"])
         except Exception as exc:
             return NotionSyncResult(
                 attempted=True,
@@ -243,7 +275,14 @@ class NotionRunRegistrar:
                 ),
                 "GitHub PR Link": self._url_prop(github_pr_link),
                 "GitHub Issue Link": self._url_prop(github_issue_link),
-                "Session Batch": self._rich_text_prop(batch_id),
+                                "Session Batch": self._rich_text_prop(batch_id),
+                "Sprint": self._select_prop(run_record.sprint) if run_record.sprint else self._select_prop("S2.1"),
+                "Model": self._select_prop(run_record.model) if run_record.model else None,
+                "Tokens Used": self._number_prop(run_record.tokens_used),
+                "Tokens Budget": self._number_prop(run_record.tokens_budget),
+                "Branch": self._rich_text_prop(run_record.branch) if run_record.branch else None,
+                "ADR Link": self._url_prop(run_record.adr_link),
+                "Start SHA": self._rich_text_prop(run_record.start_sha) if run_record.start_sha else None,
             },
         }
 
@@ -262,6 +301,63 @@ class NotionRunRegistrar:
                 success=False,
                 error_message=str(exc),
             )
+
+    def register_decision(
+        self,
+        decisions: Optional[List[Dict[str, Any]]] = None,
+    ) -> NotionSyncResult:
+        if not decisions:
+            return NotionSyncResult(
+                attempted=False, success=True, skipped_reason="No decisions provided."
+            )
+            
+        if not self._config.is_configured or not self._config.data_sources.decisions:
+            return NotionSyncResult(
+                attempted=False,
+                success=False,
+                skipped_reason=(
+                    f"Notion sync is disabled or missing decisions data source. "
+                    "The run still completed locally."
+                ),
+            )
+
+        task_page_ids = []
+        try:
+            with self._http_client() as client:
+                for decision in decisions:
+                    decision_body = self.build_decision_request(decision)
+                    task_response = self._request(client, "POST", "/pages", json_body=decision_body)
+                    task_page_ids.append(task_response["id"])
+        except Exception as exc:
+            return NotionSyncResult(
+                attempted=True,
+                success=False,
+                task_page_ids=task_page_ids,
+                error_message=str(exc),
+            )
+
+        return NotionSyncResult(
+            attempted=True,
+            success=True,
+            task_page_ids=task_page_ids,
+        )
+
+    def build_decision_request(self, decision: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "parent": {
+                "type": "data_source_id",
+                "data_source_id": self._config.data_sources.decisions,
+            },
+            "properties": {
+                "Decision": self._title_prop(decision.get("title", "Untitled Decision")),
+                "Status": self._select_prop(decision.get("status", "Proposed")),
+                "Context": self._rich_text_prop(decision.get("context", "")),
+                "Consequences": self._rich_text_prop(decision.get("consequences", "")),
+            },
+            "children": [
+                self._paragraph_block(decision.get("details", ""))
+            ]
+        }
 
     def build_graph_run_id(
         self,
@@ -413,7 +509,14 @@ class NotionRunRegistrar:
                 "GitHub PR Link": self._url_prop(github_pr_link or ""),
                 "GitHub Issue Link": self._url_prop(github_issue_link or ""),
                 "Command": self._rich_text_prop(invoked_command),
-                "Execution Note": self._rich_text_prop(note_text),
+                                "Execution Note": self._rich_text_prop(note_text),
+                "Sprint": self._select_prop(run_records[0].sprint) if run_records[0].sprint else self._select_prop("S2.1"),
+                "Model": self._select_prop(run_records[0].model) if run_records[0].model else None,
+                "Tokens Used": self._number_prop(run_records[0].tokens_used),
+                "Tokens Budget": self._number_prop(run_records[0].tokens_budget),
+                "Branch": self._rich_text_prop(run_records[0].branch) if run_records[0].branch else None,
+                "ADR Link": self._url_prop(run_records[0].adr_link),
+                "Start SHA": self._rich_text_prop(run_records[0].start_sha) if run_records[0].start_sha else None,
             },
             "children": self._session_children(
                 batch_id, run_records, invoked_command, executor_mode, github
@@ -448,12 +551,19 @@ class NotionRunRegistrar:
                 "GitHub Commit Link": self._url_prop(github["commit_url"]),
                 "Approval Status": self._select_prop(self._approval_status(run_record)),
                 "Verdict": self._select_prop(self._verdict(run_record)),
-                "Reviewer": self._rich_text_prop(""),
+                
                 "Review Summary": self._rich_text_prop(run_record.verification.summary),
                 "Next Action": self._rich_text_prop(self._next_action(run_record)),
                 "GitHub PR Link": self._url_prop(github_pr_link or ""),
                 "GitHub Issue Link": self._url_prop(github_issue_link or ""),
-                "Session Batch": self._rich_text_prop(batch_id),
+                                "Session Batch": self._rich_text_prop(batch_id),
+                "Sprint": self._select_prop(run_record.sprint) if run_record.sprint else self._select_prop("S2.1"),
+                "Model": self._select_prop(run_record.model) if run_record.model else None,
+                "Tokens Used": self._number_prop(run_record.tokens_used),
+                "Tokens Budget": self._number_prop(run_record.tokens_budget),
+                "Branch": self._rich_text_prop(run_record.branch) if run_record.branch else None,
+                "ADR Link": self._url_prop(run_record.adr_link),
+                "Start SHA": self._rich_text_prop(run_record.start_sha) if run_record.start_sha else None,
             },
             "children": self._task_children(run_record, batch_id, session_title, github),
         }
@@ -486,6 +596,7 @@ class NotionRunRegistrar:
         self,
         client: httpx.Client,
         data_source_id: str,
+        filter_prop: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
         next_cursor: Optional[str] = None
@@ -494,6 +605,8 @@ class NotionRunRegistrar:
             payload: Dict[str, Any] = {"page_size": 100}
             if next_cursor:
                 payload["start_cursor"] = next_cursor
+            if filter_prop:
+                payload["filter"] = filter_prop
             response = self._request(
                 client,
                 "POST",
@@ -518,7 +631,7 @@ class NotionRunRegistrar:
     @staticmethod
     def _build_batch_id(run_records: List[HarnessRunRecord]) -> str:
         anchor = min(run_records, key=lambda record: record.started_at)
-        return anchor.started_at.replace(":", "").replace("-", "").replace("+00:00", "Z")
+        return anchor.run_id.replace("-", "").replace("+00:00", "Z")
 
     @staticmethod
     def _task_status(run_record: HarnessRunRecord) -> str:
@@ -783,6 +896,12 @@ class NotionRunRegistrar:
     @staticmethod
     def _select_prop(value: str) -> Dict[str, Any]:
         return {"select": {"name": value}}
+
+    @staticmethod
+    def _number_prop(value: Optional[int]) -> Dict[str, Any]:
+        if value is None:
+            return {'number': None}
+        return {'number': value}
 
     @staticmethod
     def _url_prop(value: str) -> Dict[str, Any]:

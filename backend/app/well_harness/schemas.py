@@ -126,6 +126,13 @@ class HarnessRunRecord:
     artifacts: List[ArtifactRecord] = field(default_factory=list)
     handoff: Optional[HandoffPacket] = None
     project_state_dir: Optional[str] = None
+    sprint: Optional[str] = None
+    model: Optional[str] = None
+    tokens_used: Optional[int] = None
+    tokens_budget: Optional[int] = None
+    branch: Optional[str] = None
+    adr_link: Optional[str] = None
+    start_sha: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -149,4 +156,11 @@ class HarnessRunRecord:
             "artifacts": [asdict(item) for item in self.artifacts],
             "handoff": None if self.handoff is None else asdict(self.handoff),
             "project_state_dir": self.project_state_dir,
+            "sprint": self.sprint,
+            "model": self.model,
+            "tokens_used": self.tokens_used,
+            "tokens_budget": self.tokens_budget,
+            "branch": self.branch,
+            "adr_link": self.adr_link,
+            "start_sha": self.start_sha,
         }
