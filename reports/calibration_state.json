@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "established_by": "ADR-012 / AR-2026-04-25-001 / DEC-T0-2026-04-25-001",
-  "doc": "Append-only state for T1 calibration cap. Entries ordered by PR number (monotonic with merge time on this repo). Last 5 entries determine the ceiling per AR-2026-04-25-001 §1 formula. Pre-ADR-011-baseline PRs excluded; PR #17 (the ADR-011 establishment) is also excluded as bootstrap baseline per T0 verdict.",
+  "doc": "Append-only state for T1 calibration cap. Entries are ordered by `merged_at` (ISO 8601) at read time — PR-number is NOT a reliable proxy for merge order (PR #20 merged before #18 and #19 on 2026-04-25). Last 5 entries determine the ceiling per AR-2026-04-25-001 §1 formula. Pre-ADR-011-baseline PRs excluded; PR #17 (the ADR-011 establishment) is also excluded as bootstrap baseline per T0 verdict. R2 contract (post Codex R1, 2026-04-26): the load path FAILS CLOSED on missing file, schema_version mismatch, duplicate `pr`, missing `merged_at`, or unknown `r1_outcome`.",
   "outcome_canon": "APPROVE | APPROVE_WITH_NITS | CHANGES_REQUIRED | BLOCKER (NITS counts as APPROVE; CR/BLOCKER count as CHANGES_REQUIRED)",
   "entries": [
     {

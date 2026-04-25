@@ -8,7 +8,8 @@ self-pass field by calling this script; the field is read-only to T1.
 
 Formula (canonical, ratified in AR-2026-04-25-001 §1):
 
-    Rolling window:  last 5 PRs to main (≥ ADR-011 baseline; pre-ADR excluded)
+    Rolling window:  last 5 PRs to main, ordered by `merged_at` (ISO 8601).
+                     ≥ ADR-011 baseline; pre-ADR excluded.
     Outcome canon:   APPROVE | APPROVE_WITH_NITS | CHANGES_REQUIRED | BLOCKER
                      (NITS counts as APPROVE; CR/BLOCKER count as CHANGES_REQUIRED)
 
@@ -30,12 +31,22 @@ Invocations:
     python3 scripts/compute_calibration_cap.py --check <CEILING>
         exits 1 if claimed CEILING > computed ceiling (PR-template / CI use)
 
-State source: reports/calibration_state.json (append-only). State file is the
-single source of truth; this script is a pure function over its contents.
+State source: reports/calibration_state.json (append-only, hard-validated).
+The script is a pure function over its contents and FAILS CLOSED on any
+shape violation: missing file, schema mismatch, duplicate PR, missing
+merged_at, unknown outcome — all exit non-zero with a clear stderr message.
 
 Honesty caveat (T0 self-rated 88% on ratification): the recovery thresholds
 (2 → step up, 3 → reset) are reasonable but not empirically grounded yet;
 revisit after 10 more PRs of post-ADR-012 data.
+
+R2 changes (post Codex R1 CHANGES_REQUIRED, 2026-04-26):
+  * load_state() now sorts by merged_at, not PR number — the repo already
+    has a counterexample (PR #20 merged before #18 and #19).
+  * Missing/malformed state file is now a hard error (was: returned [] →
+    fail-open at 95%/OPTIONAL).
+  * schema_version, duplicate PRs, missing merged_at, and unknown outcomes
+    are all hard-validated.
 """
 
 from __future__ import annotations
@@ -46,11 +57,19 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# Canonical: NITS counts as APPROVE; everything else counts as CHANGES_REQUIRED.
+# Canonical: NITS counts as APPROVE; everything else (CR, BLOCKER) counts as CR.
 APPROVE_OUTCOMES = frozenset({"APPROVE", "APPROVE_WITH_NITS"})
+CANONICAL_OUTCOMES = frozenset({"APPROVE", "APPROVE_WITH_NITS", "CHANGES_REQUIRED", "BLOCKER"})
 
 # Rung ladder, low → high. Recovery moves one index up.
 RUNGS: tuple[int, ...] = (30, 50, 80, 95)
+
+# Schema version this script supports. Bump only with a corresponding ADR.
+SUPPORTED_SCHEMA_VERSION = 1
+
+
+class CalibrationStateError(Exception):
+    """Hard error reading or validating the calibration state file."""
 
 
 @dataclass(frozen=True)
@@ -141,21 +160,90 @@ def compute_calibration(outcomes: list[str]) -> CalibrationResult:
     )
 
 
+def _validate_state_dict(data: object) -> list[dict]:
+    """Hard-validate a parsed calibration_state.json document.
+
+    Raises CalibrationStateError on any shape violation. Returns the
+    validated entries list (each entry guaranteed to have pr/merged_at/
+    r1_outcome of the right type).
+    """
+    if not isinstance(data, dict):
+        raise CalibrationStateError("state file root must be a JSON object")
+
+    schema_version = data.get("schema_version")
+    if schema_version != SUPPORTED_SCHEMA_VERSION:
+        raise CalibrationStateError(
+            f"schema_version must be {SUPPORTED_SCHEMA_VERSION}, got {schema_version!r}"
+        )
+
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        raise CalibrationStateError("'entries' must be a list")
+
+    seen_prs: set[int] = set()
+    for i, e in enumerate(entries):
+        if not isinstance(e, dict):
+            raise CalibrationStateError(f"entries[{i}] must be a JSON object")
+
+        pr = e.get("pr")
+        if not isinstance(pr, int) or pr <= 0:
+            raise CalibrationStateError(
+                f"entries[{i}].pr must be a positive int, got {pr!r}"
+            )
+        if pr in seen_prs:
+            raise CalibrationStateError(
+                f"entries[{i}].pr={pr} is a duplicate of an earlier entry"
+            )
+        seen_prs.add(pr)
+
+        merged_at = e.get("merged_at")
+        if not isinstance(merged_at, str) or not merged_at:
+            raise CalibrationStateError(
+                f"entries[{i}].merged_at (ISO 8601 string) is required"
+            )
+
+        outcome = e.get("r1_outcome")
+        if outcome not in CANONICAL_OUTCOMES:
+            raise CalibrationStateError(
+                f"entries[{i}].r1_outcome must be one of "
+                f"{sorted(CANONICAL_OUTCOMES)}, got {outcome!r}"
+            )
+
+    return entries
+
+
 def load_state(state_path: Path) -> list[str]:
     """Read calibration_state.json and return chronologically-ordered R1 outcomes.
 
-    Empty file (or missing file) yields an empty list, which by formula maps
-    to ceiling 95% (the "0 of last 5" branch). Callers must distinguish
-    "no history" from "all-good history" by inspecting the returned length.
+    Raises CalibrationStateError on missing file, invalid JSON, schema-version
+    mismatch, duplicate PR rows, missing merged_at, or unknown outcomes.
+
+    Sorting is by `merged_at` ISO 8601 timestamp (lexicographic == chronological
+    for ISO 8601). This is the fix for Codex R1 HIGH #1: the previous
+    implementation sorted by PR number, but the repo already contains a
+    counterexample (PR #20 merged_at 2026-04-25T08:33:51Z is BEFORE
+    PR #18 at 08:53:09Z).
     """
     if not state_path.exists():
-        return []
-    with state_path.open() as f:
-        data = json.load(f)
-    entries = data.get("entries", [])
-    # Order by PR number (monotonic with merge time on this repo).
-    entries_sorted = sorted(entries, key=lambda e: e.get("pr", 0))
-    return [e.get("r1_outcome", "CHANGES_REQUIRED") for e in entries_sorted]
+        raise CalibrationStateError(
+            f"calibration state file not found: {state_path}. "
+            "This file is required; it must be initialised by the ADR-012 "
+            "establishing PR and append-only thereafter."
+        )
+
+    try:
+        with state_path.open() as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise CalibrationStateError(
+            f"calibration state file is not valid JSON: {state_path}: {e}"
+        ) from e
+
+    entries = _validate_state_dict(data)
+
+    # Sort by merged_at (ISO 8601 lexicographic == chronological).
+    entries_sorted = sorted(entries, key=lambda e: e["merged_at"])
+    return [e["r1_outcome"] for e in entries_sorted]
 
 
 def gate_label(result: CalibrationResult) -> str:
@@ -192,7 +280,12 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv[1:])
 
-    outcomes = load_state(args.state)
+    try:
+        outcomes = load_state(args.state)
+    except CalibrationStateError as e:
+        sys.stderr.write(f"calibration state error: {e}\n")
+        return 1
+
     result = compute_calibration(outcomes)
 
     if args.check is not None:

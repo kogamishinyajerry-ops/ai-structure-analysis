@@ -64,9 +64,9 @@ Independently of the ceiling, ADR-011 §T2 amendments (M1-M5 triggers — govern
 
 **Sources of truth:**
 
-- `reports/calibration_state.json` — append-only state file, schema v1. Each entry: `{pr, sha, title, merged_at, r1_outcome, r1_severity, r1_review_report, notes}`. Authoritative for the formula's input.
-- `scripts/compute_calibration_cap.py` — pure function over the state file. Outputs `{ceiling, mandatory_codex, blocking, basis, entry_count, gate_label}` JSON. Has `--human` and `--check <claimed-ceiling>` modes.
-- `tests/test_compute_calibration_cap.py` — 42 unit tests covering each rung, recovery transitions, BLOCKER/NITS canon, edge cases, JSON output.
+- `reports/calibration_state.json` — append-only state file, schema v1. Each entry: `{pr, sha, title, merged_at, r1_outcome, r1_severity, r1_review_report, notes}`. Authoritative for the formula's input. **Entries are sorted by `merged_at` (ISO 8601) at read time** — PR-number is NOT a reliable proxy for merge order (the bootstrap state already contains a counterexample: PR #20 merged before #18 and #19 on 2026-04-25).
+- `scripts/compute_calibration_cap.py` — pure function over the state file. Outputs `{ceiling, mandatory_codex, blocking, basis, entry_count, gate_label}` JSON. Has `--human` and `--check <claimed-ceiling>` modes. **Fails closed**: missing state file, schema-version mismatch, duplicate `pr`, missing `merged_at`, or unknown `r1_outcome` all produce a hard `CalibrationStateError` and exit 1 — never a silent fail-open.
+- `tests/test_compute_calibration_cap.py` — unit tests covering each rung, recovery transitions, BLOCKER/NITS canon, the merged_at-vs-PR-number counterexample regression, and every adversarial state-validation path.
 
 **T1 invocation surface:**
 
