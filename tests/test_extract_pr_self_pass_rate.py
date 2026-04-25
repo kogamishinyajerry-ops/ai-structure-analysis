@@ -470,3 +470,113 @@ def test_r4_nested_details_with_indented_code_inside(mod):
         "95%\n"
     )
     assert mod.extract_claim(body) == 95
+
+
+# ---------------------------------------------------------------------------
+# R5 hardening — post Codex R4 (2026-04-26)
+#
+# Codex R4 found two residual gaps:
+# (a) HIGH: depth >64 nesting exhausts the fixpoint cap with hider
+#     openers still present; the leftover pseudo-balanced text leaks.
+# (b) MEDIUM: the paired hider regex never matches unmatched/malformed
+#     openers like `<details>30%<details>99%</details>` — the orphan
+#     opener `<details>30%` survives stripping and 30% leaks as the
+#     parsed claim.
+# R5 fix: after the fixpoint loop, _HTML_HIDER_OPENER_RE detects ANY
+# surviving opener and the strip wipes from that opener to EOF. Both
+# bug classes collapse to a fail-closed None (or to whatever was
+# visible BEFORE the surviving opener — usually nothing past the
+# heading).
+# ---------------------------------------------------------------------------
+
+
+def test_r5_codex_unmatched_outer_repro_returns_none(mod):
+    """Codex R4 MEDIUM repro: orphan outer <details> with inner pair.
+
+    Previous R4 strip leaves `<details>30%` after one pass; the lazy
+    regex never closes it, so 30% leaks. R5 wipes from the surviving
+    opener to EOF, so neither 30% nor 99% (and not the visible 95%)
+    can be parsed → claim is None (fail closed).
+    """
+    body = "## Self-pass-rate\n\n<details>30%<details>99%</details>\n\n95%\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_depth_65_exceeds_cap_returns_none(mod):
+    """Codex R4 HIGH repro: 65 nested layers exceed the 64-iter cap.
+
+    Pre-R5 the function returned the layer-text from whatever was
+    leaked by cap exhaustion (Codex got `64`). Post-R5: any surviving
+    opener after the fixpoint terminates → wipe to EOF → None.
+    """
+    nested = "10%"
+    for i in range(65):
+        nested = f"<details>{nested} {i}%</details>"
+    body = f"## Self-pass-rate\n\n{nested}\n\n95%\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_depth_64_still_works(mod):
+    """Regression guard: depth ≤64 must still parse the visible claim
+    correctly. Builds 64 nested layers and a visible 95% AFTER the
+    closer; the fixpoint terminates within the cap and no opener
+    survives to trigger the R5 wipe."""
+    nested = "10%"
+    for _ in range(64):
+        nested = f"<details>{nested}</details>"
+    body = f"## Self-pass-rate\n\n{nested}\n\n95%\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r5_unmatched_lone_opener_returns_none(mod):
+    """A single unmatched `<details>` after the heading must wipe the
+    rest of the body (fail closed) — even though pre-opener heading
+    is intact, the post-opener percentage is untrustworthy."""
+    body = "## Self-pass-rate\n\n<details>30%\n\n95%\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_unmatched_summary_opener_returns_none(mod):
+    """Same gap class for <summary>/<script>/<style>."""
+    body = "## Self-pass-rate\n\n<summary>30%\n\n95%\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_unmatched_script_opener_returns_none(mod):
+    body = '## Self-pass-rate\n\n<script type="x">30%\n\n95%\n'
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_unmatched_style_opener_returns_none(mod):
+    body = "## Self-pass-rate\n\n<style>30%\n\n95%\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r5_visible_claim_before_orphan_opener_still_parses(mod):
+    """If the visible claim is BEFORE the orphan opener, the R5 wipe
+    leaves the heading + claim intact. This is the only non-None case
+    for malformed bodies — the user's claim was visible before the
+    hider attempt began."""
+    body = "## Self-pass-rate\n\n95%\n\n<details>99%\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r5_orphan_opener_inside_fenced_code_does_not_trigger(mod):
+    """Fenced code is stripped FIRST, so a fake `<details>` inside it
+    must not cause a false R5 wipe. Visible claim must still parse."""
+    body = "## Self-pass-rate\n\n" "**95%**\n\n" "```\n" "example: <details>30%\n" "```\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r5_orphan_opener_inside_html_comment_does_not_trigger(mod):
+    """HTML comments are stripped FIRST, so a fake `<details>` inside
+    a comment must not cause a false R5 wipe."""
+    body = "## Self-pass-rate\n\n" "**95%**\n\n" "<!-- example: <details>30% -->\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r5_orphan_close_tag_alone_does_not_trigger(mod):
+    """A bare `</details>` (no opener) is NOT a hider opener; the R5
+    regex matches `<details ...>` only. Should not fail-close."""
+    body = "## Self-pass-rate\n\n**95%** </details>\n"
+    assert mod.extract_claim(body) == 95

@@ -84,6 +84,17 @@ _HTML_HIDER_RE = re.compile(
     r"</\1\s*>",
     re.DOTALL | re.IGNORECASE,
 )
+# R5 (post Codex R4, 2026-04-26): match any opening hider tag (no closer
+# required). Used as a fail-closed guard AFTER the fixpoint loop:
+# - depth >64 nesting exhausts the cap with openers still present
+# - unmatched/malformed hider openers (no matching close) survive paired
+#   stripping entirely
+# Either way, a surviving opener means visible-vs-hidden boundaries are
+# unreliable past that point, so we wipe from the opener to EOF.
+_HTML_HIDER_OPENER_RE = re.compile(
+    r"<(?:details|summary|script|style)\b[^>]*>",
+    re.IGNORECASE,
+)
 # Match indented code lines: ^( {4,}|\t) followed by anything, plus
 # the trailing newline. We strip the line's content but keep the
 # newline so paragraph boundaries are preserved.
@@ -119,6 +130,29 @@ def _strip_hidden_constructs(body: str) -> str:
     constructs before line-level ones so a `<details>` containing
     a fenced code block collapses cleanly.
 
+    R5 hardening (post Codex R4, 2026-04-26): two residual gaps
+    closed:
+
+    1. Depth >64 cap bypass. The fixpoint loop has a defensive cap;
+       a body of 65+ deeply nested `<details>` exhausts it before
+       all layers peel. Codex's repro built `<details>...<details>
+       64%</details>...</details>` and got `64` as the parsed claim.
+    2. Unmatched/malformed openers. The R4 paired regex requires a
+       balanced close. A body like
+           ## Self-pass-rate
+           <details>30%<details>99%</details>
+           95%
+       leaves the orphan `<details>30%` opener after one strip pass.
+       The lazy regex won't pair it with anything (no surviving
+       closer), so `30%` leaks as the parsed claim.
+
+    R5 fix: after the fixpoint loop, if ANY hider opener survives
+    (cap-exhausted nesting OR unmatched malformed tag), wipe from
+    that opener to EOF. Visible-vs-hidden boundaries are unreliable
+    past a surviving opener — fail closed (return whatever was
+    visible BEFORE the opener; downstream `extract_claim` returns
+    None if the claim window is gone).
+
     Pinned by adversarial tests in tests/test_extract_pr_self_pass_rate.py.
     """
     for _ in range(64):
@@ -131,6 +165,11 @@ def _strip_hidden_constructs(body: str) -> str:
         body = _INDENTED_CODE_LINE_RE.sub("", body)  # R3: indented code
         if body == before:
             break
+    # R5 fail-closed guard. Catches depth-cap exhaustion AND unmatched
+    # malformed openers in a single check.
+    m = _HTML_HIDER_OPENER_RE.search(body)
+    if m:
+        body = body[: m.start()]
     return body
 
 
