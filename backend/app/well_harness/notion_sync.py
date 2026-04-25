@@ -7,6 +7,7 @@ into the project-specific task/session data sources configured for this repo.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from collections import Counter, defaultdict
 from contextlib import nullcontext
@@ -43,6 +44,11 @@ class NotionSyncConfig:
     root_page_id: str
     data_sources: NotionDataSources
     github_repository: Optional[str] = None
+    # P2 / Notion task 345c6894…b9b9 — opt-in GitHub PR/Issue writeback.
+    # When True AND a github_pr_link is provided to register_batch(), a
+    # summary comment is posted to the linked PR/Issue after Notion writeback
+    # succeeds. No-op without a token (gh-writeback module handles fallback).
+    github_writeback_enabled: bool = False
 
     @property
     def token(self) -> Optional[str]:
@@ -73,6 +79,9 @@ class NotionSyncConfig:
                 decisions=str(data_source_ids.get("decisions", "")) or None,
             ),
             github_repository=str((raw.get("github", {}) or {}).get("repository", "")) or None,
+            github_writeback_enabled=bool(
+                (raw.get("github", {}) or {}).get("writeback_enabled", False)
+            ),
         )
 
 
@@ -189,12 +198,87 @@ class NotionRunRegistrar:
                 error_message=str(exc),
             )
 
+        # Optional GitHub writeback (P2). Opt-in via config; no-op without token.
+        # Failures post-Notion-success are logged as soft errors — do NOT mask
+        # the successful Notion writeback.
+        self._maybe_post_github_writeback(
+            run_records=run_records,
+            github_pr_link=github_pr_link,
+            github_issue_link=github_issue_link,
+            session_page_id=session_page_id,
+        )
+
         return NotionSyncResult(
             attempted=True,
             success=True,
             batch_id=batch_id,
             session_page_id=session_page_id,
             task_page_ids=task_page_ids,
+        )
+
+    def _maybe_post_github_writeback(
+        self,
+        run_records: List[HarnessRunRecord],
+        github_pr_link: Optional[str],
+        github_issue_link: Optional[str],
+        session_page_id: Optional[str],
+    ) -> None:
+        if not self._config.github_writeback_enabled:
+            return
+        if not self._config.github_repository:
+            return
+
+        # Prefer PR link; fall back to issue link.
+        target_link = github_pr_link or github_issue_link
+        if not target_link:
+            return
+
+        # Extract issue/PR number from a URL of the form
+        # https://github.com/<owner>/<repo>/(pull|issues)/<n>[...]
+        match = re.search(r"/(?:pull|issues)/(\d+)\b", target_link)
+        if not match:
+            return
+        try:
+            number = int(match.group(1))
+        except ValueError:
+            return
+
+        # Lazy import keeps github_writeback dep optional from notion_sync's
+        # perspective (callers without the module installed don't break).
+        try:
+            from backend.app.well_harness import github_writeback as gw
+        except ImportError:
+            return
+
+        if not gw.writeback_enabled():
+            return
+
+        github = self._github_metadata()
+        notion_url = (
+            f"https://www.notion.so/{session_page_id.replace('-', '')}"
+            if session_page_id
+            else None
+        )
+        # Build a multi-record summary block. Each run gets its case_id +
+        # verdict line; the PR comment shows aggregate state at run-completion.
+        lines = []
+        for r in run_records:
+            verdict = self._verdict(r)
+            lines.append(f"- **{r.case_id}** — {verdict}")
+        summary_text = "\n".join(lines) if lines else "_no run records_"
+
+        body = gw.build_run_summary_comment(
+            case_id=run_records[0].case_id if run_records else "BATCH",
+            verdict=self._session_outcome(run_records),
+            summary_text=summary_text,
+            notion_url=notion_url,
+            commit_sha=github.get("commit_sha") or None,
+        )
+
+        gw.post_pr_comment(
+            repo=self._config.github_repository,
+            pr_number=number,
+            body=body,
         )
 
     def create_standalone_task(
