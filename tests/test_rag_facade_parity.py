@@ -455,18 +455,42 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
     # assignment chain works regardless of how `KnowledgeBase` came to
     # be in scope.
     seen_aliases = set(aliases) | {"KnowledgeBase"}
+
+    def _value_resolves_to_alias(value: ast.AST) -> bool:
+        """True if `value` either is or might be a known KB alias.
+
+        R6 (post Codex R5 MEDIUM): handles three RHS shapes —
+        - `cls = KnowledgeBase`                       → bare Name
+        - `KB = KnowledgeBase if cond else AltClass`  → IfExp
+        - `KB := KnowledgeBase`                       → NamedExpr value
+        For IfExp, conservatively flag if EITHER branch matches; a
+        statically-undecidable conditional must err toward catching the
+        bypass, not letting it through.
+        """
+        if isinstance(value, ast.Name):
+            return value.id in seen_aliases
+        if isinstance(value, ast.IfExp):
+            return _value_resolves_to_alias(value.body) or _value_resolves_to_alias(value.orelse)
+        if isinstance(value, ast.NamedExpr):  # `(KB := KnowledgeBase)`
+            return _value_resolves_to_alias(value.value)
+        return False
+
     # Multi-pass to follow chains: `cls = KnowledgeBase; cls2 = cls`.
     for _ in range(8):  # bounded fixpoint
         before = len(seen_aliases)
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Assign):
-                continue
-            value = node.value
-            if not isinstance(value, ast.Name) or value.id not in seen_aliases:
-                continue
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    seen_aliases.add(target.id)
+            # Plain `target = value` assignment.
+            if isinstance(node, ast.Assign):
+                if not _value_resolves_to_alias(node.value):
+                    continue
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        seen_aliases.add(target.id)
+            # `(target := value)` — walrus expression. Add target name
+            # to the alias set so subsequent `target()` is flagged.
+            elif isinstance(node, ast.NamedExpr):
+                if isinstance(node.target, ast.Name) and _value_resolves_to_alias(node.value):
+                    seen_aliases.add(node.target.id)
         if len(seen_aliases) == before:
             break
     return seen_aliases
@@ -497,6 +521,16 @@ def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
         # class name itself, regardless of the parent module's binding.
         if isinstance(func, ast.Attribute) and func.attr == "KnowledgeBase":
             return True
+        # R6 (post Codex R5 LOW): `(KB := KnowledgeBase)()` — Call.func
+        # is a NamedExpr whose value resolves to a KB alias. The walrus
+        # binds KB AND immediately calls it; both halves are caught
+        # here (the alias-walk also adds KB for downstream use).
+        if isinstance(func, ast.NamedExpr):
+            inner = func.value
+            if isinstance(inner, ast.Name) and inner.id in aliases:
+                return True
+            if isinstance(inner, ast.Attribute) and inner.attr == "KnowledgeBase":
+                return True
     return False
 
 
@@ -1038,5 +1072,112 @@ class TestR5StarImportAndClassMethod:
             "b = a\n"
             "c = b\n"
             "def f(): return c()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+
+# ---------------------------------------------------------------------------
+# R6 hardening — IfExp + walrus alias forms (post Codex R5 R6 MEDIUM/LOW)
+#
+# Codex R5 R6 found two more alias forms the alias-walk missed:
+# - MEDIUM: `KB = KnowledgeBase if cond else AltClass; KB()` — IfExp
+#   value not propagated; the assignment-walk only matched bare Name.
+# - LOW: `(KB := KnowledgeBase)()` — walrus expression as Call.func
+#   on Python 3.8+ (repo's floor is 3.11). Neither the alias-walk nor
+#   the constructor scan recognised NamedExpr.
+#
+# R6 fix:
+# - _knowledgebase_local_aliases() recurses through IfExp.body /
+#   IfExp.orelse / NamedExpr.value to detect either-branch matches
+#   (conservative: flag if EITHER side resolves to a KB alias).
+# - _knowledgebase_local_aliases() also walks `target := value`
+#   NamedExpr nodes and binds the target to the alias set.
+# - _calls_knowledgebase_constructor() also recognises `Call.func` as
+#   `NamedExpr` whose `.value` resolves to a KB alias — catches the
+#   in-place call form `(KB := KnowledgeBase)()`.
+# ---------------------------------------------------------------------------
+
+
+class TestR6IfExpAndWalrusAliases:
+    """Codex R5 R6 repros for the two new alias forms."""
+
+    def test_codex_r6_ifexp_alias_either_branch_is_caught(self):
+        """The exact Codex R5 R6 MEDIUM repro:
+            from backend.app.rag.kb import KnowledgeBase
+            KB = KnowledgeBase if cond else AltClass
+            def advise(q): return KB()
+        Pre-R6: KB binding from IfExp not propagated. Post-R6:
+        IfExp.body/orelse walked; if EITHER resolves to a KB alias,
+        target is bound."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "KB = KnowledgeBase if cond else AltClass\n"
+            "def advise(q): return KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r6_ifexp_with_kb_in_orelse_is_caught(self):
+        """KB on the orelse branch only (still must flag — conservative)."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "KB = AltClass if cond else KnowledgeBase\n"
+            "def f(): return KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r6_ifexp_with_neither_branch_is_kb_is_not_flagged(self):
+        """Both branches non-KB → no false positive."""
+        tree = _parse("Foo = AltClass if cond else OtherClass\n" "def f(): return Foo()\n")
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r6_nested_ifexp_chain_is_caught(self):
+        """`a = X if c1 else (Y if c2 else KnowledgeBase); a()`."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "a = X if c1 else (Y if c2 else KnowledgeBase)\n"
+            "def f(): return a()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_codex_r6_walrus_call_is_caught(self):
+        """The exact Codex R5 R6 LOW repro: `(KB := KnowledgeBase)()`.
+        The walrus binds AND immediately calls; the call's func is
+        NamedExpr whose value is the KB alias."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "def f(): return (KB := KnowledgeBase)()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r6_walrus_call_via_aliased_name_is_caught(self):
+        """`(KB := AnotherAlias)()` after `AnotherAlias = KnowledgeBase`."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "AnotherAlias = KnowledgeBase\n"
+            "def f(): return (KB := AnotherAlias)()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r6_walrus_assignment_propagates_alias(self):
+        """`(KB := KnowledgeBase); KB()` — walrus binds KB, later
+        bare-name call is also flagged via the aliases set."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "def f():\n"
+            "    (KB := KnowledgeBase)\n"
+            "    return KB()\n"
+        )
+        # The alias-walk binds KB; subsequent KB() call flagged.
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r6_walrus_with_non_kb_value_is_not_flagged(self):
+        """`(KB := AltClass)()` — KB is not a KB alias, no false flag."""
+        tree = _parse("def f(): return (KB := AltClass)()\n")
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r6_walrus_attribute_form_is_caught(self):
+        """`(K := kb.KnowledgeBase)()` — attribute-form via walrus."""
+        tree = _parse(
+            "from backend.app.rag import kb\n" "def f(): return (K := kb.KnowledgeBase)()\n"
         )
         assert _calls_knowledgebase_constructor(tree)

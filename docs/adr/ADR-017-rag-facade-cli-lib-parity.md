@@ -143,6 +143,10 @@ R5 fix (post Codex R4 R5 MEDIUM/LOW): two residual gaps in the R4 alias resoluti
 - MEDIUM (star-import bypass): `from backend.app.rag.kb import *; KB = KnowledgeBase; KB()` defeated `_calls_knowledgebase_constructor` because the alias-walk only seeded names from explicit `import KnowledgeBase` constructs. Fix: always seed the assignment-walk fixpoint with `KnowledgeBase` itself, so subsequent `cls = KnowledgeBase` chains propagate regardless of how `KnowledgeBase` came into scope.
 - LOW (class-method false negative): `class Helper: def get_kb(self): ...` caused `_calls_get_kb_singleton()` to falsely reject a legitimate `kb.get_kb()` usage at module scope. Fix: restrict the local-shadow check to module-level functions (`tree.body`), not all `FunctionDef` nodes — class methods and nested defs no longer trigger false rejection.
 
+R6 fix (post Codex R5 R6 MEDIUM/LOW): two more alias-RHS forms closed:
+- MEDIUM (IfExp / conditional alias): `KB = KnowledgeBase if cond else AltClass; KB()` defeated `_knowledgebase_local_aliases` because the assignment-walk only matched bare `Name` RHS. Fix: a recursive `_value_resolves_to_alias()` helper walks `IfExp.body` / `IfExp.orelse` / `NamedExpr.value`. If EITHER IfExp branch matches a KB alias the target is bound (conservative: a statically-undecidable conditional must err toward catching the bypass).
+- LOW (walrus / NamedExpr): `(KB := KnowledgeBase)()` defeated both the alias-walk and the constructor scan. Fix: the alias-walk visits `NamedExpr` targets and binds them when `.value` resolves to a KB alias. The constructor scan also recognises `Call.func` as `NamedExpr` directly (covers the in-place call form on Python 3.11+).
+
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 
 ---
