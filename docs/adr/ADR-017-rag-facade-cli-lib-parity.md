@@ -133,6 +133,12 @@ R2 fix (post Codex R1 MEDIUM): rules #3/#4 also record relative-import targets (
 
 R3 fix (post Codex R3 MEDIUM): rule #5 added — the §97-108 singleton-policy assertion was promised in the R2 ADR text but missing from the test file. R3 adds three integration tests + 13 synthetic-fixture predicate tests.
 
+R4 fix (post Codex R4 MEDIUM/LOW): the R3 predicates were syntax-pinned and let three live bypass classes through. R4 hardens them:
+- `_knowledgebase_local_aliases()` resolves `from x import KnowledgeBase as KB` and simple `cls = KnowledgeBase` chains (multi-hop fixpoint, bounded 8 iterations) so renamed/aliased constructor calls (`KB()`, `cls()`, `c()` after `a = KB; b = a; c = b`) are flagged.
+- `_calls_get_kb_singleton()` is now provenance-aware: rejects locally-defined `def get_kb` shadows when no `get_kb` is imported from `backend.app.rag.kb` / `.kb` / `backend.app.rag` (closes the Codex repro `def get_kb(): return KB(); def f(): return get_kb()`). Reflective `getattr(kb, "get_kb")()` is documented as a known LOW — pure-AST checks cannot resolve that.
+- `_annotation_mentions_knowledgebase()` skips inside `type[X]` / `Type[X]` subscripts — `cls: type[KnowledgeBase]` accepts a class object, not an instance, so it is not a singleton bypass. `Annotated[KB, ...]` and `List[KB]` carry instances and remain flagged.
+- Module docstring (line 5) updated: `rag_facade.py` is the SOLE choke point; `agent_facade.py` does NOT import RAG (matches R2 enforcement).
+
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 
 ---
