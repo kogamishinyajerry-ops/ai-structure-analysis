@@ -10,8 +10,8 @@
 ### 安装步骤
 
 ```bash
-# 1. 进入项目根目录
-cd ai-structure-analysis
+# 1. 进入项目目录
+cd "/Users/Zhuanz/20260408 AI StructureAnalysis"
 
 # 2. 创建虚拟环境
 python3 -m venv venv

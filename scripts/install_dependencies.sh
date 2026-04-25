@@ -53,6 +53,8 @@ python3 -m pip install --user --force-reinstall vtk pyvista
 echo ""
 echo "验证安装..."
 python3 -c "
+import sys
+sys.path.insert(0, '/Users/Zhuanz/Library/Python/3.9/lib/python/site-packages')
 import pyvista
 print(f'PyVista版本: {pyvista.__version__}')
 "
