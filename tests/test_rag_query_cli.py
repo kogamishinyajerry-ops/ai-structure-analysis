@@ -277,3 +277,105 @@ def test_every_registered_source_can_be_filter(tmp_path, capsys):
         )
         capsys.readouterr()  # drain
         assert rc in (0, 1)  # 1 = no hits is fine; we only assert no crash
+
+
+# ---------------------------------------------------------------------------
+# --json output mode
+# ---------------------------------------------------------------------------
+
+
+def test_json_with_results(tmp_path, capsys):
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "UNIQUE_TOKEN_AAAAA",
+            "--root",
+            str(repo),
+            "--k",
+            "3",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = _json.loads(out)
+    assert parsed["query"] == "UNIQUE_TOKEN_AAAAA"
+    assert parsed["k"] == 3
+    assert parsed["source_filter"] is None
+    assert "embedder" in parsed
+    assert isinstance(parsed["result_count"], int)
+    assert isinstance(parsed["results"], list)
+    if parsed["results"]:
+        first = parsed["results"][0]
+        assert "rank" in first and "score" in first and "source" in first
+        assert "chunk_id" in first and "text" in first
+
+
+def test_json_empty_returns_1(tmp_path, capsys):
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "anything",
+            "--root",
+            str(repo),
+            "--no-ingest",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1  # empty store
+    parsed = _json.loads(out)
+    assert parsed["result_count"] == 0
+    assert parsed["results"] == []
+
+
+def test_json_source_filter_field(tmp_path, capsys):
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "UNIQUE_TOKEN",
+            "--root",
+            str(repo),
+            "--source-filter",
+            "gs-theory",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    parsed = _json.loads(out)
+    assert parsed["source_filter"] == "gs-theory"
+    for r in parsed["results"]:
+        assert r["source"] == "gs-theory"
+
+
+def test_json_single_record(tmp_path, capsys):
+    """Output must be exactly one JSON object — no banner, no trailing text."""
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    main(
+        [
+            "query_cli.py",
+            "--query",
+            "anything",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out.strip()
+    parsed = _json.loads(out)
+    assert isinstance(parsed, dict)

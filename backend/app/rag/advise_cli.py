@@ -21,6 +21,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -123,6 +124,11 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Mock backend only: skip in-memory ingest of the live repo",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit one JSON record on stdout instead of human-readable lines",
+    )
     args = parser.parse_args(argv[1:])
 
     if args.k <= 0:
@@ -163,6 +169,32 @@ def main(argv: list[str]) -> int:
         k=args.k,
         source_filter=args.source_filter,
     )
+
+    if args.json:
+        payload = {
+            "embedder": kb.embedder_id,
+            "verdict": args.verdict,
+            "fault": args.fault,
+            "query": advice.query,
+            "source_filter": args.source_filter,
+            "hit_count": len(advice.results),
+            "by_source": {
+                src: len(rs) for src, rs in sorted(advice.grouped_by_source.items())
+            },
+            "summary": advice.summary,
+            "results": [
+                {
+                    "rank": r.rank,
+                    "score": r.score,
+                    "source": r.chunk.source,
+                    "chunk_id": r.chunk.chunk_id,
+                    "text": r.chunk.text,
+                }
+                for r in advice.results
+            ],
+        }
+        print(json.dumps(payload))
+        return 0 if not advice.is_empty() else 1
 
     print(f"[advise-rag] embedder: {kb.embedder_id}")
     print(f"[advise-rag] verdict:  {args.verdict!r}")

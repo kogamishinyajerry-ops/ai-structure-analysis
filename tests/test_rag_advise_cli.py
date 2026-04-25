@@ -332,3 +332,112 @@ def test_accept_verdict_query_does_not_include_adr(tmp_path, capsys):
             break
     else:
         pytest.fail("query: line not found in output")
+
+
+# ---------------------------------------------------------------------------
+# --json output mode
+# ---------------------------------------------------------------------------
+
+
+def test_json_with_results(tmp_path, capsys):
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--k",
+            "3",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = _json.loads(out)
+    assert parsed["verdict"] == "Reject"
+    assert parsed["fault"] == "solver_convergence"
+    assert "ADR" in parsed["query"]  # governance-biasing
+    assert "embedder" in parsed
+    assert isinstance(parsed["hit_count"], int)
+    assert isinstance(parsed["by_source"], dict)
+    assert "summary" in parsed
+    assert isinstance(parsed["results"], list)
+    if parsed["results"]:
+        first = parsed["results"][0]
+        assert "rank" in first and "score" in first and "source" in first
+        assert "chunk_id" in first and "text" in first
+
+
+def test_json_empty_corpus_returns_1(tmp_path, capsys):
+    import json as _json
+
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(tmp_path),  # empty repo — no docs/, no golden_samples/
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    parsed = _json.loads(out)
+    assert parsed["hit_count"] == 0
+    assert parsed["results"] == []
+    assert parsed["by_source"] == {}
+
+
+def test_json_source_filter_propagates(tmp_path, capsys):
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--source-filter",
+            "gs-theory",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    parsed = _json.loads(out)
+    assert parsed["source_filter"] == "gs-theory"
+    for r in parsed["results"]:
+        assert r["source"] == "gs-theory"
+
+
+def test_json_single_record(tmp_path, capsys):
+    """Output must be exactly one JSON object — no banner, no trailing text."""
+    import json as _json
+
+    repo = _make_synth_repo(tmp_path)
+    main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out.strip()
+    parsed = _json.loads(out)
+    assert isinstance(parsed, dict)
