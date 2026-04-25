@@ -5,3 +5,14 @@ repos:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: hf1-path-guard
+        name: HF1 forbidden-zone path guard (ADR-011 §HF1)
+        description: Reject staged diffs that touch the HF1 forbidden zone unless HF1_GUARD_OVERRIDE='<reason>' is set. The script reads `git diff --cached --name-status -z` itself, covering renames (both sides) and deletes that pre-commit's filter would otherwise hide.
+        entry: python3 scripts/hf1_path_guard.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
