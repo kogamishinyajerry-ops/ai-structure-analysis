@@ -143,3 +143,137 @@ class _StdinShim:
 
     def read(self) -> str:
         return self._text
+
+
+# ---------------------------------------------------------------------------
+# R2 hardening — adversarial hidden-marker bypass cases (Codex R1 HIGH #2)
+# ---------------------------------------------------------------------------
+
+
+def test_r2_html_comment_bypass_codex_repro(mod):
+    """The exact Codex reproduction: hidden 30% via HTML comment, visible 95%.
+
+    Before R2: returned 30 (hidden marker). After R2: returns 95 (visible).
+    """
+    body = "## Self-pass-rate\n\n<!-- 30% -->\n\n**95%**\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r2_html_comment_with_only_hidden_returns_none(mod):
+    """If the only `N%` after the heading is inside an HTML comment,
+    the result must be None (no visible claim)."""
+    body = "## Self-pass-rate\n\n<!-- 30% -->\n\nTBD.\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r2_multiline_html_comment_stripped(mod):
+    body = """## Self-pass-rate
+
+<!--
+This is a multi-line comment
+with a hidden 50% claim.
+-->
+
+80%
+"""
+    assert mod.extract_claim(body) == 80
+
+
+def test_r2_fenced_backtick_code_bypass(mod):
+    """A fenced code block hiding `30%` must not be the parsed claim."""
+    body = """## Self-pass-rate
+
+```
+30%
+```
+
+95%
+"""
+    assert mod.extract_claim(body) == 95
+
+
+def test_r2_fenced_tilde_code_bypass(mod):
+    """Tilde fences (~~~) are also treated as code blocks."""
+    body = """## Self-pass-rate
+
+~~~
+30%
+~~~
+
+95%
+"""
+    assert mod.extract_claim(body) == 95
+
+
+def test_r2_fenced_with_language_tag(mod):
+    """```python ... ``` should also be stripped."""
+    body = """## Self-pass-rate
+
+```python
+SELF_PASS_RATE = "30%"
+```
+
+**80%**
+"""
+    assert mod.extract_claim(body) == 80
+
+
+def test_r2_inline_code_bypass(mod):
+    """Inline code spans like `30%` must not be the parsed claim."""
+    body = "## Self-pass-rate\n\nExample: `30%`. Actual: **75%**\n"
+    assert mod.extract_claim(body) == 75
+
+
+def test_r2_combined_bypass_attempts(mod):
+    """A bad-faith body using multiple hidden constructs at once."""
+    body = """## Self-pass-rate
+
+<!-- 30% -->
+
+```
+50%
+```
+
+`60%`
+
+<!-- 70% -->
+
+**95%**
+"""
+    assert mod.extract_claim(body) == 95
+
+
+def test_r2_only_hidden_constructs_returns_none(mod):
+    """If every `N%` is hidden, no claim is found."""
+    body = """## Self-pass-rate
+
+<!-- 30% -->
+
+```
+80%
+```
+
+`95%`
+"""
+    assert mod.extract_claim(body) is None
+
+
+def test_r2_html_comment_before_heading_does_not_consume_heading(mod):
+    """Make sure stripping an HTML comment doesn't accidentally remove
+    text adjacent to the section heading."""
+    body = "<!-- TODO: revisit -->\n\n## Self-pass-rate\n\n50%\n"
+    assert mod.extract_claim(body) == 50
+
+
+def test_r2_multiple_self_pass_rate_sections(mod):
+    """If a body has two Self-pass-rate sections (template + copy-paste
+    artifact), the FIRST visible claim wins."""
+    body = """## Self-pass-rate
+
+50%
+
+## Self-pass-rate
+
+80%
+"""
+    assert mod.extract_claim(body) == 50
