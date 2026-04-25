@@ -8,7 +8,7 @@
 - **Branch:** `feature/AI-FEA-ADR-011-pivot-claude-code-takeover` (R5 APPROVE) ; `feature/AI-FEA-ADR-011-amendments-AR-2026-04-25-001` (this amendment cycle)
 - **Amendment cycles:**
   - 2026-04-25 R1→R5 — original Codex review arc (FF-01 baseline)
-  - **2026-04-25 AR-2026-04-25-001** — T0 ratified amendments to §T2 (Codex role rewording), §HF2 (subagent activity-type split), §HF1 (zone narrowing — `docs/adr/`/`docs/governance/` moved to PR-protected zone, `scripts/hf1_path_guard.py` self-protection + `.github/workflows/**` added), §Known Gaps (ADR-012/013 number reassignment), §Cross-References (import-linter reference unbound)
+  - **2026-04-25 AR-2026-04-25-001** — T0 ratified amendments to §T2 (Codex role rewording), §HF2 (subagent activity-type split), §HF1 (zone narrowing — `docs/adr/`/`docs/governance/` moved to PR-protected zone, `scripts/hf1_path_guard.py` self-protection + `.github/workflows/**` added), §Enforcement Maturity (post-FF-06 state model + CI port deferred to ADR-013), §Rollback (weighted-zone table updated to HF1.1-HF1.9 + separate PR-protected-zone bypass metric), §Known Gaps (ADR-012/013 number reassignment), §Cross-References (import-linter reference unbound), and §Calibration Mode (note that ADR-012 supersedes self-pass-rate honor-system)
 
 ---
 
@@ -112,21 +112,26 @@ When subagent IS used, the existing rule remains: prompt must explicitly declare
 | HF4 | Artifact 落入 Decisions DB 但 Notion Handoff 缺失 | **现状**：Notion sync 脚本输出对账 + 人工核对；**目标**：notion_sync.py 端到端 diff 守卫（已部分实现，contract 迁移 in-flight on `feature/AI-FEA-S2.1-02-notion-sync-contract-align`） | 回滚 Decisions 记录；补 Handoff 后重发 |
 | HF5 | Codex verify 结论与 repo 真值不一致 | **现状**：人工对账（Codex 报告 vs `git diff`）；**目标**：`Codex-verified` trailer 存在性 + claim-id 校验 hook（FF-07 跟踪） | T0 Gate 召回；以 repo 为准修 Notion / Codex 上下文 |
 
-### Enforcement Maturity (Codex R1 BLOCKING #1 回应)
+### Enforcement Maturity (post-FF-06, post-AR-2026-04-25-001)
 
-ADR-011 v1 把 HF1/HF5 的 Detection 写成既成事实是 **过度声明**。当前 `.pre-commit-config.yaml` 仅含 `ruff`，CI 仅含 lint+pytest，**没有 path-guard、没有 trailer-presence 校验**。在自动化检测落地前，HF 规则的 enforcement 实际是：
+ADR-011 v1 把 HF1/HF5 的 Detection 写成既成事实是 **过度声明** — Codex R1 BLOCKING #1 正确指出。当前真实状态如下（2026-04-25 post-FF-06 amendment cycle）：
 
-1. **T1 自检**（每条 commit 前 T1 主动检查 forbidden zone diff、subagent trailer 完整性）
-2. **PR review**（人工对照本 ADR 的 forbidden-zone 清单复核）
-3. **post-merge audit**（Codex 周期性抽查最近 N commit 的 trailer 与 zone 边界）
+| HF rule | Detection layer | Status |
+|---|---|---|
+| **HF1 (hard-stop zone)** | pre-commit `scripts/hf1_path_guard.py` reads `git diff --cached --name-status -z` (covers renames + deletes). Script also supports CI invocation via `--from-diff <ref>` mode (pure function ready); workflow integration ports the call into `.github/workflows/ci.yml`. | pre-commit ✅ **landed in FF-06 (PR #22, commit `ac98fc3`)**. CI port pending in **ADR-013** (T0 §2 placed CI status check under ADR-013 alongside branch protection). The `--from-diff` script mode lands in this AR-2026-04-25-001 amendment cycle so ADR-013 can wire it without code change. |
+| **HF1 (PR-protected zone)** | branch protection (per ADR-013 — pending) + mandatory Codex M1 trigger (per amended §T2) | ADR-013 in flight; Codex M1 active immediately upon AR-2026-04-25-001 ratification |
+| HF2 (subagent split) | T1 self-check + `claude-hud` token counter + `reports/hf2_calibration.md` log | honor-system, calibration window through 2026-05-23 |
+| HF3 (sample registry) | manual PR review against FP-001/002/003 evidence | honor-system, **FF-08 pending** (deadline 2026-05-23) |
+| HF4 (Notion handoff) | `notion_sync.py` diff guard partial; manual reconciliation | honor-system + partial automation; in-flight on `feature/AI-FEA-S2.1-02-notion-sync-contract-align` |
+| HF5 (Codex verify) | manual reconciliation of Codex tool report vs `git diff` | honor-system, **FF-07 pending** (deadline 2026-05-23) |
 
-跟踪任务（必须在本 ADR Accept 后 ≤ 4 周内排期）：
+**Tracking tasks (FF-06 partially done; FF-07/08 still tracking):**
 
-- **FF-06**：`pre-commit` hook 实现 forbidden-zone path-guard（HF1 detection automation）
-- **FF-07**：CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）
-- **FF-08**：`golden_samples/<id>` registry schema 校验（HF3 detection automation）
+- **FF-06** **partially done** — pre-commit hook ✅ landed (PR #22, commit `ac98fc3`, R1+R2 Codex APPROVE); script `--from-diff` mode ✅ landed (this AR-2026-04-25-001 amendment cycle); CI workflow integration **pending ADR-013** (T0 §2 placed CI status check under ADR-013)
+- **FF-07**: CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）— deadline 2026-05-23
+- **FF-08**: `golden_samples/<id>` registry schema 校验（HF3 detection automation）— deadline 2026-05-23
 
-在 FF-06/07/08 落地前，**任何 HF 触发依赖 T1 主动声明 + PR review 复核**。这是 honor-system，而非可审计控制 — Codex R1 BLOCKING #1 已正确指出。
+In summary: **HF1 pre-commit enforcement landed in FF-06; CI enforcement pending ADR-013** (which will wire `scripts/hf1_path_guard.py --from-diff origin/main...HEAD` into `.github/workflows/ci.yml`). HF5/HF3 remain honor-system pending FF-07/08. HF2 is calibration-mode honor-system through 2026-05-23, then hard-stop. HF4 is partial automation + manual reconciliation.
 
 ### Calibration Mode (HF2 解除自相矛盾)
 
@@ -197,13 +202,15 @@ Codex-verified: <claim-id>@<sha>
 观察窗口 4 周（2026-04-25 → 2026-05-23），与 Calibration Mode 同步。若出现以下任一（指标已加 denominator 与严重度分层，回应 Codex R1 BLOCKING #2）：
 
 - **Codex verification mismatch rate > 15%**，**且**该周期内累积 verified claim ≥ 20。低于 20 时只记录、不触发 rollback（小样本不可靠）。
-- **HF1 触发按区域加权 > 2 weighted points**，权重表 (覆盖 §HF1 forbidden zone 全部 8 类，无遗漏)：
-  - solver core (`agents/solver.py`, `tools/calculix_driver.py`, `agents/router.py`, `agents/geometry.py`) = **1.0 / 次**
-  - schema / toolchain pin (`schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`, `Makefile` 中 `docker-base`/`hot-smoke`/`docker-probe` 段) = **0.5 / 次**
-  - governance docs (`docs/adr/**`, `docs/governance/**`) = **0.3 / 次**
-  - golden_samples write (`golden_samples/**`) = **1.0 / 次**
+- **HF1 hard-stop 触发按区域加权 > 2 weighted points** (covers HF1.1-HF1.9 hard-stop zone per AR-2026-04-25-001 §3 amendment; PR-protected-zone bypass tracked separately below):
+  - solver core (`agents/solver.py`, `tools/calculix_driver.py`, `agents/router.py`, `agents/geometry.py`) = **1.0 / 次** — HF1.1-HF1.3
+  - schema / toolchain pin (`schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`, `Makefile`) = **0.5 / 次** — HF1.4-HF1.6
+  - golden_samples write (`golden_samples/**`) = **1.0 / 次** — HF1.7
+  - meta-protection (`scripts/hf1_path_guard.py`, `.github/workflows/**`) = **0.5 / 次** — HF1.8-HF1.9 (NEW per AR-2026-04-25-001)
 
-  例：solver core 误改 1 次 + governance docs 越权 1 次 = 1.3 weighted points (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)；Makefile docker-base 段误改 5 次 = 2.5 (触发)。
+  例：solver core 误改 1 次 = 1.0 (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)；Makefile 误改 5 次 = 2.5 (触发)；CI workflow 误改 4 次 = 2.0 (临界)。
+
+- **PR-protected zone bypass > 2 incidents per window** — tracks unreviewed direct-pushes to `docs/adr/**`, `docs/governance/**`, `docs/failure_patterns/**` (these are no longer HF1 but their integrity depends on branch protection per ADR-013). Each bypass = **0.3 / 次** for the rollback metric, separate denominator from HF1 hard-stop.
 - **HF2 calibration window 关闭后**，HF2 hard-stop 触发频次 > 1 / 周。
 
 任一触发则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用一个只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
