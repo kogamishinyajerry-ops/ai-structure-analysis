@@ -42,15 +42,53 @@ AI-Structure-FEA was bootstrapped on a triple-model split: Antigravity (Claude S
 
 ## Hard-Floor Rules (HF1 – HF5)
 
-任一触发即 **STOP + 召回 T0 Gate + 回滚未推送 commit**。
+任一 HF 触发即 **STOP + 召回 T0 Gate + 回滚未推送 commit**（HF2 例外见 §Calibration Mode）。
 
-| ID  | Trigger | Detection | Recovery |
-|-----|---------|-----------|----------|
-| HF1 | Diff 触及 forbidden zones (`agents/solver.py`, `tools/calculix_driver.py`, `golden_samples/**`, 治理类 docs 未先开 ADR) | pre-commit hook + CI path-guard | 立即 `git reset --soft`，先开 ADR / 申请 Gate |
-| HF2 | 单会话 drift > 5 turns / 40k tokens / 3 files / 500 LOC 且未拆分 subagent | T1 自检 + claude-hud 计数 | 当前 turn 结束前必须 spawn subagent；否则停手 |
-| HF3 | 新增 sample 无 golden-standard 引用 | sample registry schema 校验 | 标记 `insufficient_evidence`，不进入回归集 |
-| HF4 | Artifact 落入 Decisions DB 但 Notion Handoff 缺失 | Notion sync diff 检查 | 回滚 Decisions 记录；补 Handoff 后重发 |
-| HF5 | Codex verify 结论与 repo 真值不一致 | `Codex-verified` trailer vs git diff 校验 | T0 Gate 召回；以 repo 为准修 Notion / Codex 上下文 |
+**Forbidden zone (HF1) 完整清单** (扩展自 Codex R1 SHOULD_FIX #1，去除盲区)：
+
+- `agents/solver.py`, `tools/calculix_driver.py` — 求解器实现
+- `agents/router.py` — ADR-004 fault routing
+- `agents/geometry.py` — ADR-008 N-3 dummy-geometry guard
+- `schemas/sim_state.py` — ADR-004 FaultClass enum (downstream 类型契约)
+- `tests/test_toolchain_probes.py` — ADR-002 toolchain pin assertion
+- `Dockerfile` + `Makefile` 中 `docker-base` / `hot-smoke` 段 — ADR-002 CalculiX 2.21 pin
+- `golden_samples/**` — 全部只读
+- `docs/governance/**`, `docs/adr/**` — 必须先开新 ADR 或在已有 ADR 加 supersede
+
+| ID  | Trigger | Detection (现状 / 目标) | Recovery |
+|-----|---------|------------------------|----------|
+| HF1 | Diff 触及上方 forbidden zone 任一路径 | **现状**：T1 自检 + PR review；**目标**：pre-commit path-guard + CI 二次校验（FF-06 跟踪） | 立即 `git reset --soft`，先开 ADR / 申请 Gate |
+| HF2 | 单会话 drift > 5 turns / 40k tokens / 3 files / 500 LOC 且未拆分 subagent | T1 自检 + claude-hud 计数（手动） | 4 周 Calibration Mode 期内可附 ≤30 字理由继续；之后强制 spawn subagent，否则停手 |
+| HF3 | 新增 sample 无 golden-standard 引用 | **现状**：人工 PR review；**目标**：sample registry schema 校验 + CI（FF-08 跟踪） | 标记 `insufficient_evidence`，不进入回归集 |
+| HF4 | Artifact 落入 Decisions DB 但 Notion Handoff 缺失 | **现状**：Notion sync 脚本输出对账 + 人工核对；**目标**：notion_sync.py 端到端 diff 守卫（已部分实现，contract 迁移 in-flight on `feature/AI-FEA-S2.1-02-notion-sync-contract-align`） | 回滚 Decisions 记录；补 Handoff 后重发 |
+| HF5 | Codex verify 结论与 repo 真值不一致 | **现状**：人工对账（Codex 报告 vs `git diff`）；**目标**：`Codex-verified` trailer 存在性 + claim-id 校验 hook（FF-07 跟踪） | T0 Gate 召回；以 repo 为准修 Notion / Codex 上下文 |
+
+### Enforcement Maturity (Codex R1 BLOCKING #1 回应)
+
+ADR-011 v1 把 HF1/HF5 的 Detection 写成既成事实是 **过度声明**。当前 `.pre-commit-config.yaml` 仅含 `ruff`，CI 仅含 lint+pytest，**没有 path-guard、没有 trailer-presence 校验**。在自动化检测落地前，HF 规则的 enforcement 实际是：
+
+1. **T1 自检**（每条 commit 前 T1 主动检查 forbidden zone diff、subagent trailer 完整性）
+2. **PR review**（人工对照本 ADR 的 forbidden-zone 清单复核）
+3. **post-merge audit**（Codex 周期性抽查最近 N commit 的 trailer 与 zone 边界）
+
+跟踪任务（必须在本 ADR Accept 后 ≤ 4 周内排期）：
+
+- **FF-06**：`pre-commit` hook 实现 forbidden-zone path-guard（HF1 detection automation）
+- **FF-07**：CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）
+- **FF-08**：`golden_samples/<id>` registry schema 校验（HF3 detection automation）
+
+在 FF-06/07/08 落地前，**任何 HF 触发依赖 T1 主动声明 + PR review 复核**。这是 honor-system，而非可审计控制 — Codex R1 BLOCKING #1 已正确指出。
+
+### Calibration Mode (HF2 解除自相矛盾)
+
+ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附理由继续 — Codex R1 SHOULD_FIX #2 正确指出这是矛盾。本节明确：
+
+- **Calibration window**: 2026-04-25 → **2026-05-23**（4 周）
+- 期内 HF2 触发 = T1 在该 turn 内附 ≤30 字理由 + 在 `reports/hf2_calibration.log` 追加一行；可继续。
+- 期后 HF2 触发 = 真 STOP；必须当场 spawn subagent 或停手。
+- Calibration window 结束时，T1 必须基于 `hf2_calibration.log` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
+
+在 calibration window 内 HF2 是 **soft floor**，期后回归 hard floor。其他 HF 不受此例外影响。
 
 ---
 
@@ -95,21 +133,31 @@ Codex-verified: <claim-id>@<sha>
 ### Risks
 
 1. **单驱动瓶颈** — 当 Codex 验证不可用（额度耗尽 / 服务异常）时，critical claim 无法获得独立验证；缓解：`cx-auto 20` 多账号自动切换。
-2. **Subagent 边界违规成本** — Allowed/Forbidden 描述不准会导致 rollback；缓解：HF1 路径守卫前置。
-3. **In-flight S2.1-02 collision (watch-item)** — 本 ADR 的首次 Notion sync 可能与 `feature/AI-FEA-S2.1-02-notion-sync-contract-align` 的契约迁移在 Notion DB schema 上撞车。**主 session 须在 commit 前手工核对 FF-01b**（"先验证 S2.1-02 是否已合并；未合并则 ADR-011 的 Notion 同步走旧契约，并在 ADR 里补一条 follow-up 标注"）。
-4. **HF2 误判** — 5/40k/3/500 阈值可能在大型 schema refactor 时过早触发；首 4 周允许 T1 在每次触发时附 30 字理由继续，统计真实违规率，再决定是否调阈 [verify]。
-5. **T0 召回延迟** — Gate 是人工触发，深夜事件可能滞留；明确 SLA 由后续 ADR 补。
+2. **Subagent 边界违规成本** — Allowed/Forbidden 描述不准会导致 rollback；缓解：HF1 path-guard 前置（FF-06 automation 落地前依赖人工 review）。
+3. **In-flight S2.1-02 collision (watch-item)** — 本 ADR 的首次 Notion sync 可能与 `feature/AI-FEA-S2.1-02-notion-sync-contract-align` 的契约迁移在 Notion DB schema 上撞车。**主 session 须在 commit 前手工核对 FF-01b**（"先验证 S2.1-02 是否已合并；未合并则 ADR-011 的 Notion 同步走旧契约，并在 ADR 里补一条 follow-up 标注"）。FF-01b 实测发现 Decisions DS 实际 schema 与 `notion_sync.register_decision()` 期望字段差距更大（缺 `Branch`/`Session Batch`/`ADR Link` 三项），S2.1-02 的 `Sprint` 添加并未对齐 — 应另开 ADR 修 schema。
+4. **HF2 自相矛盾** — 见上方 §Calibration Mode（Codex R1 SHOULD_FIX #2 修复）。期内 soft floor，期后 hard floor；终止日期 2026-05-23 不可滑动。
+5. **T0 召回延迟** — Gate 是人工触发，深夜事件可能滞留；明确 SLA 由后续 ADR 补（候选 SLA：工作日 4h，周末 24h；本 ADR 不强制）。
+6. **Enforcement maturity gap** — HF1/HF5 现阶段是 honor-system（见 §Enforcement Maturity）。在 FF-06/07/08 落地前，治理可信度依赖 T1 自检 + PR review。Codex R1 BLOCKING #1 正确指出该差距；本 ADR 接受并以排期对冲，不靠装作已有 hook 来 over-claim。
 
 ---
 
 ## Rollback
 
-观察窗口 4 周。若出现以下任一：
+观察窗口 4 周（2026-04-25 → 2026-05-23），与 Calibration Mode 同步。若出现以下任一（指标已加 denominator 与严重度分层，回应 Codex R1 BLOCKING #2）：
 
-- Codex verification mismatch rate **> 15%**（HF5 触发频次 ÷ 总 verified claim 数）；或
-- Subagent 边界违规导致 **> 2 次 HF1 触发**；
+- **Codex verification mismatch rate > 15%**，**且**该周期内累积 verified claim ≥ 20。低于 20 时只记录、不触发 rollback（小样本不可靠）。
+- **HF1 触发按区域加权 > 2 weighted points**，权重表：
+  - solver core (`agents/solver.py`, `tools/calculix_driver.py`, `agents/router.py`, `agents/geometry.py`) = **1.0 / 次**
+  - schema / toolchain pin (`schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`) = **0.5 / 次**
+  - governance docs (`docs/adr/**`, `docs/governance/**`) = **0.3 / 次**
+  - golden_samples write = **1.0 / 次**
 
-则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用 Antigravity 作为只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
+  例：solver core 误改 1 次 + governance docs 越权 1 次 = 1.3 weighted points (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)。
+- **HF2 calibration window 关闭后**，HF2 hard-stop 触发频次 > 1 / 周。
+
+任一触发则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用一个只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
+
+**记录责任** — calibration window 内由 T1 在 `reports/hf_audit_2026-04-25_to_2026-05-23.md` 累计每条 HF / verified claim 数据；FF-06/07/08 落地后转为自动统计。
 
 ---
 
@@ -126,11 +174,21 @@ Codex-verified: <claim-id>@<sha>
 
 ---
 
+## Known Gaps (Codex R1 NICE_TO_HAVE 回应 — 显式声明非默认存在)
+
+以下治理元素 ADR-011 没有规定，且仓库当前不具备。未来 ADR 必须补：
+
+1. **`main` 分支保护** — GitHub 端的 required-reviews / required-status-checks / disallow-force-push 设置；当前仅 `README.md:81` 声明 "all code via PR"，不可执法。Tracked: ADR-012 候选。
+2. **PR review 状态机** — 本 ADR 没有规定 PR 必须经过 (a) Codex post-commit review (b) reviewer 至少 1 人 (c) 所有 conversation resolved 才能 merge 的状态流。Tracked: ADR-012 候选。
+3. **Subagent 失败回滚 SOP** — 当 subagent 越界（HF1）、超时、或返回 INSUFFICIENT_EVIDENCE 时，T1 应当 (a) 不引用 subagent 输出 (b) 落 `reports/subagent_failures/` 记录 (c) 决定降级路径。本 ADR 没有具体 SOP。Tracked: ADR-013 候选。
+4. **FailurePattern 与 ADR 的 promotion 路径** — FF-02 已经创建 `docs/failure_patterns/`；但 FP → ADR 的 promotion 规则（什么时候一个 FP 必须升级为 ADR）未规定。Tracked: 与 ADR-012 合并。
+
 ## Cross-References
 
-- Phase 1.5 Foundation-Freeze 任务集 **FF-01 .. FF-05**；本 ADR = **FF-01**（governance baseline）。
-- In-flight branch **`feature/AI-FEA-S2.1-02-notion-sync-contract-align`** — 本 ADR 不阻塞，独立分支落地；FF-01b 由主 session 手工核对契约对齐。
-- **GS-001 / GS-002 / GS-003** deviation attribution = **FF-02**，是 Phase 2 Web Console 激活的硬前置（本 ADR 不直接修 GS，仅授权 FF-02 开工）。
-- 本仓库 `README.md` 的 5 development rules 与本 ADR 的 9 Golden Rules 一致；后续如有冲突以 ADR 为准。
-- `docs/architecture.md` 与 `docs/well_harness_architecture.md` 的四层架构图与本 ADR 第 9 条 Golden Rule 对齐。
+- Phase 1.5 Foundation-Freeze 任务集 **FF-01 .. FF-05**；本 ADR = **FF-01**（governance baseline）。R2 修订引入 **FF-06/07/08** automation 跟踪与 **R2 retro 任务**。
+- In-flight branch **`feature/AI-FEA-S2.1-02-notion-sync-contract-align`** — 本 ADR 不阻塞，独立分支落地；FF-01b 实测发现 Decisions DS schema 缺 `Branch`/`Session Batch`/`ADR Link`，与 S2.1-02 的 `Sprint` 添加方向不一致，应另开 ADR 修 schema。
+- **GS-001 / GS-002 / GS-003** deviation attribution = **FF-02**（已完成，见 `docs/failure_patterns/FP-001/002/003`）；FP 提议 GS 状态全部 → `insufficient_evidence`，是 Phase 2 Web Console 激活的硬前置之一。
+- 本仓库 `README.md:79-86` 的 5 development rules 与本 ADR 的 9 Golden Rules **部分重叠** (Rules #1, #4 大致对应 README #1, #2; Rules #3, #5 对应 README #3, #5; Rules #2, #6, #7, #8, #9 在 README 中不存在或仅隐含)。后续 README 与 ADR 冲突时以 ADR 为准；同时跟踪 README 同步 (FF-09 候选)。
+- `docs/architecture.md:7` 与 `docs/well_harness_architecture.md:23` 描述了系统组件与闭环，但 **未定义到可执法的 four-layer import 边界**。本 ADR 第 9 条 Golden Rule 是首次声明该边界 — 实际 lint enforcement (e.g. `import-linter`) 跟踪 ADR-012 候选。
 - Notion 控制塔页：[AI StructureAnalysis 项目中枢](https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9) (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`，已与 `config/well_harness_control_plane.yaml` 对齐)。
+- **Codex R1 review report** — `reports/codex_tool_reports/adr_011_r1_review.md` (CHANGES_REQUIRED, addressed in R2 amendment)。
