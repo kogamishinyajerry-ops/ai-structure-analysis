@@ -3,12 +3,18 @@
 See README.md in this directory for the full corpus catalogue.
 """
 
+from backend.app.rag.sources.gs_theory import (
+    SOURCE_LABEL as GS_THEORY_SOURCE,
+    iter_gs_theory_documents,
+)
 from backend.app.rag.sources.project_governance import (
-    iter_governance_documents,
     SOURCE_LABEL as PROJECT_GOVERNANCE_SOURCE,
+    iter_governance_documents,
 )
 
 __all__ = [
-    "iter_governance_documents",
+    "GS_THEORY_SOURCE",
     "PROJECT_GOVERNANCE_SOURCE",
+    "iter_governance_documents",
+    "iter_gs_theory_documents",
 ]
