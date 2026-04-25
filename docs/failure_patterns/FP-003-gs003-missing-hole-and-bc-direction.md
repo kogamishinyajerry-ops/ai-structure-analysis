@@ -54,8 +54,8 @@ README (`golden_samples/GS-003/README.md:7-21, 96-99`) and `expected_results.jso
 - Rerun CalculiX; recompute `K_t` from peak SXX at the hole edge; compare against `plane_stress_theory.py` Peterson curve.
 
 ### ARCHITECTURAL
-- Reinforces **ADR-012** (proposed: "Golden-sample triplet contract"): a triplet-validation gate should reject any GS where the README diagram axis disagrees with the `.inp` BC axis.
-- Reinforces **ADR-013** (proposed: "Comparison-validity precondition"): the router should refuse to claim `REFERENCE_MISMATCH` against a Peterson `K_t` reference when the FEA mesh has no concentration feature.
+- Reinforces a future ADR (number TBD; was "ADR-012 (proposed)" in earlier draft, reassigned per AR-2026-04-25-001): **"Golden-sample triplet contract"** — a triplet-validation gate should reject any GS where the README diagram axis disagrees with the `.inp` BC axis.
+- Reinforces a future ADR (number TBD; was "ADR-013 (proposed)" in earlier draft, reassigned): **"Comparison-validity precondition"** — the router should refuse to claim `REFERENCE_MISMATCH` against a Peterson `K_t` reference when the FEA mesh has no concentration feature.
 
 ## Open questions
 

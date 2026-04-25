@@ -2,19 +2,63 @@
 """HF1 forbidden-zone path guard for AI-Structure-FEA (FF-06).
 
 Implements automated detection of HF1 zone violations as specified in
-ADR-011 §Hard-Floor Rules. Designed to run as a `pre-commit` local hook
-configured with ``pass_filenames: false`` — the guard reads the staged
-index directly via ``git diff --cached --name-status -z`` so that
-**rename old-paths** and **deleted paths** also enter the check
-(pre-commit's default file list filters those out, which would let
-``rename agents/router.py -> agents/router_old.py`` and
-``delete agents/solver.py`` slip past the zone).
+ADR-011 §Hard-Floor Rules. Two invocation modes:
+
+1. **pre-commit mode** (default): reads staged index via
+   ``git diff --cached --name-status -z``. Configured in
+   ``.pre-commit-config.yaml`` with ``pass_filenames: false`` so
+   pre-commit's own file filter cannot mask renames-old-side or deletes.
+
+2. **CI mode** (``--from-diff <ref>``): reads the diff between
+   ``<ref>`` and HEAD via ``git diff <ref>...HEAD --name-status -z``.
+   Mode is ready (pure function + tests); workflow integration in
+   ``.github/workflows/ci.yml`` is **deferred to ADR-013** per
+   AR-2026-04-25-001 §2 (T0 placed CI required-status-check under
+   ADR-013 alongside branch protection). Until ADR-013 lands, HF1
+   enforcement on PRs is pre-commit only — contributors who skip
+   pre-commit can bypass it; this is the gap ADR-013 closes.
+
+Both modes use the same ``parse_name_status_z`` parser, which extracts
+both old- and new- paths from rename/copy records (R/C) and includes
+deletion paths (D) — covering the BLOCKER from FF-06 R1 review where
+pre-commit's filtered file list silently bypassed the zone for ``mv``
+and ``rm`` of zone files.
 
 The zone is hard-coded in this file by design — per FF-06 charter, the
 guard must not parse ADR-011 markdown at runtime (too fragile against
 typos/refactors). When ADR-011 §HF1 changes, the corresponding entry in
-``ZONE`` must be updated in the same PR (and that PR is itself an HF1
-trigger, requiring a new/superseding ADR per ADR-011 §HF1 Recovery).
+``ZONE`` must be updated in the same PR.
+
+**HF1.8 self-protection bootstrap note:** This script is itself in the
+HF1 zone under HF1.8 (added per AR-2026-04-25-001 §3). The
+self-protection clause takes effect on the **next** modification of
+this file — i.e., the PR that introduced HF1.8 (AR-2026-04-25-001
+amendment cycle, PR #23) bootstraps the protection but is not itself
+blocked by it. Future modifications require either (a) explicit ADR
+cover, or (b) ``HF1_GUARD_OVERRIDE='<reason citing ADR>'``.
+
+The same bootstrap applies to HF1.9 (``.github/workflows/**``): the PR
+that introduces HF1.9 modifies the workflow file as part of the
+bootstrap; subsequent modifications require ADR cover.
+
+Per AR-2026-04-25-001 §3 (T0 ratification), the zone is split into
+two surfaces:
+
+  HF1 hard-stop zone (this script enforces; pre-commit + CI):
+    - execution truth (solver, router, geometry, schemas, tests)
+    - toolchain pin (Dockerfile, Makefile)
+    - Gold Standard data (golden_samples/)
+    - meta-protection (this script itself; CI workflows)
+
+  PR-protected zone (NOT enforced here; relies on branch protection
+  + mandatory Codex per ADR-011 §T2 amendment):
+    - docs/adr/**, docs/governance/**, docs/failure_patterns/**
+
+The PR-protected zone was previously HF1 hard-stop (ADR-011 v1
+HF1.8), but every governance amendment touched it, creating a
+chicken-egg recovery clause. T0 ruling §3 dropped it from HF1 in
+favor of branch protection (ADR-013) + mandatory Codex M1 trigger
+(ADR-011 §T2 amendment). See AR-2026-04-25-001 §3 for the rationale.
 
 Override mechanism: setting ``HF1_GUARD_OVERRIDE='<non-empty reason>'``
 allows the local commit through and emits a stderr warning. **The
@@ -43,6 +87,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
@@ -57,8 +102,11 @@ class ZoneEntry:
     adr_ref: str
 
 
-# HF1 forbidden zone — sourced from ADR-011 §Hard-Floor Rules (Forbidden zone (HF1) 完整清单).
+# HF1 forbidden zone — sourced from ADR-011 §Hard-Floor Rules.
 # Update both this list AND ADR-011 in the same PR if the zone changes.
+# Self-protection (HF1.8 — entry for this script itself) means every
+# modification of this file must come through a PR; direct unreviewed
+# commits to scripts/hf1_path_guard.py trigger the guard against itself.
 ZONE: tuple[ZoneEntry, ...] = (
     ZoneEntry("agents/solver.py", "exact", "HF1.1 — solver implementation", "ADR-011 §HF1 #1"),
     ZoneEntry(
@@ -95,14 +143,18 @@ ZONE: tuple[ZoneEntry, ...] = (
     ZoneEntry(
         "golden_samples/", "prefix", "HF1.7 — golden samples are read-only", "ADR-011 §HF1 #7"
     ),
+    # NEW per AR-2026-04-25-001 §3 — meta-protection + CI enforcement
     ZoneEntry(
-        "docs/governance/",
-        "prefix",
-        "HF1.8 — governance docs require new/superseding ADR",
-        "ADR-011 §HF1 #8",
+        "scripts/hf1_path_guard.py",
+        "exact",
+        "HF1.8 — meta-protection: path-guard cannot silently self-modify",
+        "ADR-011 §HF1 #8 (per AR-2026-04-25-001)",
     ),
     ZoneEntry(
-        "docs/adr/", "prefix", "HF1.8 — ADR docs require new/superseding ADR", "ADR-011 §HF1 #8"
+        ".github/workflows/",
+        "prefix",
+        "HF1.9 — CI enforcement workflows are governance surface",
+        "ADR-011 §HF1 #9 (per AR-2026-04-25-001)",
     ),
 )
 
@@ -171,6 +223,32 @@ def parse_name_status_z(blob: str) -> list[str]:
     return paths
 
 
+def _run_git_diff(args: list[str], context: str) -> str:
+    """Run a `git diff` invocation; on failure, print and exit(2)."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        sys.stderr.write(
+            f"HF1 path-guard: cannot invoke `git` ({context}); "
+            "refusing to allow commit. Install git or configure environment.\n"
+        )
+        sys.exit(2)
+    if result.returncode != 0:
+        sys.stderr.write(
+            f"HF1 path-guard: `git diff {' '.join(args)}` failed "
+            f"(rc={result.returncode}, context={context}); "
+            "refusing to allow commit.\n"
+            f"stderr: {result.stderr.strip()}\n"
+        )
+        sys.exit(2)
+    return result.stdout
+
+
 def get_staged_paths() -> list[str]:
     """Run ``git diff --cached --name-status -z`` and return all paths
     affected by the staged index, including both sides of renames/
@@ -180,27 +258,27 @@ def get_staged_paths() -> list[str]:
     nothing staged. The guard's caller treats empty as "nothing to
     check" → exit 0.
     """
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--name-status", "-z"],
-            capture_output=True,
-            text=True,
-            check=False,
+    return parse_name_status_z(
+        _run_git_diff(["--cached", "--name-status", "-z"], context="pre-commit mode")
+    )
+
+
+def get_paths_from_diff(ref: str) -> list[str]:
+    """Run ``git diff <ref>...HEAD --name-status -z`` and return all
+    paths in the diff, including both sides of renames/copies and
+    deletions. Used by CI mode (``--from-diff <ref>``) to verify HF1
+    compliance against a base ref.
+
+    The triple-dot syntax (``<ref>...HEAD``) compares the merge base
+    of ``<ref>`` and HEAD against HEAD, which matches the semantics
+    of GitHub PR diffs.
+    """
+    return parse_name_status_z(
+        _run_git_diff(
+            [f"{ref}...HEAD", "--name-status", "-z"],
+            context=f"CI mode (--from-diff {ref})",
         )
-    except (FileNotFoundError, OSError):
-        sys.stderr.write(
-            "HF1 path-guard: cannot invoke `git`; refusing to allow commit. "
-            "Install git or configure pre-commit accordingly.\n"
-        )
-        sys.exit(2)
-    if result.returncode != 0:
-        sys.stderr.write(
-            f"HF1 path-guard: `git diff --cached --name-status` failed "
-            f"(rc={result.returncode}); refusing to allow commit.\n"
-            f"stderr: {result.stderr.strip()}\n"
-        )
-        sys.exit(2)
-    return parse_name_status_z(result.stdout)
+    )
 
 
 def check_paths_and_report(paths: list[str]) -> int:
@@ -244,17 +322,37 @@ def check_paths_and_report(paths: list[str]) -> int:
 
 
 def main(argv: list[str]) -> int:
-    """CLI entry point. Sources staged paths from the git index directly.
+    """CLI entry point. Two modes:
 
-    pre-commit is configured with ``pass_filenames: false``; positional
-    arguments to this script are intentionally ignored at runtime so
-    pre-commit's filter (``--diff-filter=ACMRTUXB`` + existing-paths
-    only) cannot mask deletes or rename old-paths.
+    - **Default (pre-commit)**: source paths from staged index via
+      ``git diff --cached``. Configured with ``pass_filenames: false``
+      in ``.pre-commit-config.yaml`` so positional args are ignored
+      (pre-commit's own filter would mask renames-old-side and deletes).
 
-    For testing, call ``check_paths_and_report(paths)`` directly.
+    - **--from-diff <ref>** (CI): source paths from the diff between
+      ``<ref>`` and HEAD via ``git diff <ref>...HEAD``. Used by
+      ``.github/workflows/ci.yml`` to enforce HF1 on every PR.
+
+    For unit testing, call ``check_paths_and_report(paths)`` directly.
     """
-    del argv  # explicitly ignored — see docstring
-    paths = get_staged_paths()
+    parser = argparse.ArgumentParser(
+        description="HF1 forbidden-zone path guard (ADR-011 §HF1)."
+    )
+    parser.add_argument(
+        "--from-diff",
+        metavar="REF",
+        default=None,
+        help="CI mode: check paths in `git diff REF...HEAD` instead of "
+        "the staged index. REF is typically `origin/main` or the PR base SHA.",
+    )
+    # Allow trailing positional args for pre-commit compat (ignored).
+    parser.add_argument("positional", nargs="*", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv[1:])
+
+    if args.from_diff:
+        paths = get_paths_from_diff(args.from_diff)
+    else:
+        paths = get_staged_paths()
     return check_paths_and_report(paths)
 
 
