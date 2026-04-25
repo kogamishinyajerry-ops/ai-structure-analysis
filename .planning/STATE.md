@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `post-pivot-foundation-freeze-2026-04-25 · post-#17/#18-merge`
-> **Last updated:** 2026-04-25 (after PR #17 merge `34722ea` and PR #18 merge `77e6813`; PR #19 self-merge in flight)
+> **Stamp:** `post-pivot-foundation-freeze-2026-04-25 · post-#17/#18/#19-merge · pre-FF-06`
+> **Last updated:** 2026-04-25 (after PR #17 → #18 → #19 merge chain; main = `4a64cfd`; Codex review reports archived at `reports/codex_tool_reports/`)
 > **Maintained by:** T1 (Claude Code CLI · Opus 4.7) per ADR-011 §6 Sessions fully traced.
 
 This file is the **repo-side execution status snapshot**. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is the human-facing process SSOT. When they conflict, **git is authoritative**; STATE.md is updated to match git, and Notion is patched from STATE.md.
@@ -13,7 +13,7 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Foundation | ✅ Done (Sprint 2) | See `docs/PHASE1_SPRINT2_COMPLETION.md` and `PHASE1_SPRINT1_COMPLETION.md`. |
-| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Active (governance baseline merged 2026-04-25; FF-06/07/08 enforcement open through 2026-05-23) | FF-01 (ADR-011) and FF-02 (FailurePatterns) merged; FF-05 (this PR) in self-merge; FF-06/07/08 are the remaining gate. |
+| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Active (governance baseline merged 2026-04-25; FF-06/07/08 enforcement open through 2026-05-23) | FF-01 (ADR-011), FF-02 (FailurePatterns), and FF-05 (STATE.md) all merged. FF-06/07/08 (path-guard, trailer-check, GS registry) are the remaining gate before Phase 2. |
 | Phase 2 — Web Console | ⏳ Planned (next active) | Gated by FF-06/07/08 (HF1 path-guard, HF5 trailer check, HF3 GS registry) per ADR-011 §Enforcement Maturity. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
@@ -28,7 +28,7 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 | FF-02 — GS deviation attribution → FailurePatterns | ✅ Merged (PR #18 · 2026-04-25) | (deleted post-merge) | `77e6813` (squash) | 3 FPs (FP-001/002/003); recommends GS-001/002/003 → `insufficient_evidence`. Codex R1 (CHANGES_REQUIRED, 1 HIGH + 3 MEDIUM) → R2 APPROVE. |
 | FF-03 — Routing v6.2 doc (supersede Antigravity) | ⚪ Pending | — | — | Lower priority: ADR-011 already encodes the routing; this would be a thin pointer doc. |
 | FF-04 — Onboarding manual (Claude Code edition) | ⚪ Pending | — | — | New-contributor entry doc. |
-| FF-05 — STATE.md | 🟡 PR #19 in Codex review (R1 CHANGES_REQUIRED → R2 pending) | `feature/AI-FEA-FF-05-state-md` | TBD on self-merge | Adopts `.planning/` directory convention from cfd-harness-unified for cross-project consistency. |
+| FF-05 — STATE.md | ✅ Merged (PR #19 · 2026-04-25) | (deleted post-merge) | `4a64cfd` (squash) | Adopts `.planning/` directory convention from cfd-harness-unified. Codex R1 (CHANGES_REQUIRED, 1 HIGH stale-state + 1 MEDIUM ADR-012/013 inventions) → R2 APPROVE. |
 | FF-06 — pre-commit path-guard for HF1 forbidden zone | ⚪ Pending | — | — | Per ADR-011 §Enforcement Maturity. Hard deadline 2026-05-23. |
 | FF-07 — CI commit-trailer presence + claim-id format check (HF5) | ⚪ Pending | — | — | Same hard deadline. |
 | FF-08 — `golden_samples/<id>` registry schema validation (HF3) | ⚪ Pending | — | — | Same hard deadline. |
@@ -36,20 +36,20 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 
 ---
 
-## Active branches (post-#17/#18 merge · 2026-04-25)
+## Active branches (post-#17/#18/#19 merge · 2026-04-25)
 
 ```
-feature/AI-FEA-FF-05-state-md                      (this PR #19; in Codex review)
+chore/post-merge-cleanup-state-and-codex-archive   (this PR — STATE.md self-update lag fix + Codex log archive)
 feature/AI-FEA-S2.1-02-notion-sync-contract-align  (origin tracked; WIP stashed in stash@{0} as of 2026-04-25 pivot session, not touched by FF-* work)
 ```
 
-`main == origin/main == 77e6813` (after PR #20 revert + PR #17 ADR-011 + PR #18 FF-02 merges).
+`main == origin/main == 4a64cfd` (after PR #20 revert + PR #17 ADR-011 + PR #18 FF-02 + PR #19 FF-05 merges).
 
 ## Open PRs
 
 | PR | Branch | Status |
 |----|--------|--------|
-| #19 | `feature/AI-FEA-FF-05-state-md` | OPEN · Codex R1 CHANGES_REQUIRED → R2 pending (this commit is the R1 fix) |
+| (this) | `chore/post-merge-cleanup-state-and-codex-archive` | OPEN · post-merge housekeeping; PR self-references STATE.md update — see commit message for the self-update-lag pattern |
 
 ---
 
