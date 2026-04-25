@@ -9,6 +9,7 @@ import pytest
 try:
     from backend.app.rag.preflight_publish import (
         PublishResult,
+        find_existing_preflight_comment,
         is_github_writeback_available,
         publish_preflight,
     )
@@ -337,3 +338,254 @@ def test_callback_returning_bare_object_does_not_crash():
     assert result.comment_url is None
     assert result.status_code is None
     assert result.error is None
+
+
+# ---------------------------------------------------------------------------
+# action field — distinguishes posted vs updated
+# ---------------------------------------------------------------------------
+
+
+def test_post_mode_sets_action_posted():
+    record = _CallRecord()
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        post_callback=_make_callback(_StubResult(), record),
+    )
+    assert result.posted
+    assert result.action == "posted"
+
+
+def test_failed_post_does_not_set_action():
+    record = _CallRecord()
+    failed = _StubResult(posted=False, status_code=403, error="Forbidden")
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        post_callback=_make_callback(failed, record),
+    )
+    assert result.action is None
+
+
+# ---------------------------------------------------------------------------
+# Mode validation
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_mode_returns_error():
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        mode="reposts-by-airdrop",
+        post_callback=_make_callback(_StubResult(), _CallRecord()),
+    )
+    assert not result.posted
+    assert "invalid mode" in (result.error or "")
+
+
+def test_upsert_mode_requires_header_marker():
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        mode="upsert",
+        header_marker="",
+        post_callback=_make_callback(_StubResult(), _CallRecord()),
+    )
+    assert not result.posted
+    assert "upsert" in (result.error or "").lower()
+
+
+# ---------------------------------------------------------------------------
+# find_existing_preflight_comment
+# ---------------------------------------------------------------------------
+
+
+def test_find_existing_comment_empty_list():
+    assert find_existing_preflight_comment([], "<!-- ai-fea-preflight -->") is None
+
+
+def test_find_existing_comment_no_match():
+    comments = [
+        {"id": 1, "body": "random text"},
+        {"id": 2, "body": "<!-- other-marker -->\n\nhi"},
+    ]
+    assert find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->") is None
+
+
+def test_find_existing_comment_match():
+    comments = [
+        {"id": 1, "body": "random"},
+        {"id": 42, "body": "<!-- ai-fea-preflight -->\n\nbody"},
+    ]
+    found = find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->")
+    assert found is not None
+    assert found["id"] == 42
+
+
+def test_find_existing_comment_returns_first_match():
+    comments = [
+        {"id": 10, "body": "<!-- ai-fea-preflight -->\n\nfirst"},
+        {"id": 20, "body": "<!-- ai-fea-preflight -->\n\nsecond"},
+    ]
+    found = find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->")
+    assert found["id"] == 10
+
+
+def test_find_existing_comment_empty_marker_returns_none():
+    comments = [{"id": 1, "body": "anything"}]
+    assert find_existing_preflight_comment(comments, "") is None
+
+
+def test_find_existing_comment_marker_must_be_at_start():
+    """Marker buried mid-body should NOT match (only owned comments upsert)."""
+    comments = [
+        {"id": 1, "body": "user-prefix\n<!-- ai-fea-preflight -->\nbody"},
+    ]
+    assert find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->") is None
+
+
+def test_find_existing_comment_handles_non_string_body():
+    """Defensive: GitHub responses with unexpected shapes shouldn't crash."""
+    comments = [
+        {"id": 1, "body": None},
+        {"id": 2, "body": 12345},
+        {"id": 3, "body": "<!-- ai-fea-preflight -->\nok"},
+    ]
+    found = find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->")
+    assert found["id"] == 3
+
+
+# ---------------------------------------------------------------------------
+# upsert mode — no prior comment → POST
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_no_prior_falls_through_to_post():
+    post_record = _CallRecord()
+
+    def _list_cb(repo, pr_number, **kwargs):
+        return []  # no prior comments
+
+    def _patch_cb(repo, comment_id, body, **kwargs):
+        raise AssertionError("patch should not be called when no prior comment")
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        mode="upsert",
+        post_callback=_make_callback(_StubResult(), post_record),
+        list_callback=_list_cb,
+        patch_callback=_patch_cb,
+    )
+    assert result.posted
+    assert result.action == "posted"
+    assert post_record.n_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# upsert mode — prior comment exists → PATCH
+# ---------------------------------------------------------------------------
+
+
+def test_upsert_with_prior_calls_patch():
+    post_record = _CallRecord()
+    patch_record = _CallRecord()
+
+    prior_id = 12345
+
+    def _list_cb(repo, pr_number, **kwargs):
+        return [
+            {"id": 999, "body": "unrelated"},
+            {"id": prior_id, "body": "<!-- ai-fea-preflight -->\n\nold body"},
+        ]
+
+    def _patch_cb(repo, comment_id, body, **kwargs):
+        patch_record.repo = repo
+        patch_record.pr_number = comment_id  # reuse field for comment_id
+        patch_record.body = body
+        patch_record.n_calls += 1
+        return _StubResult(
+            posted=True,
+            comment_url="https://example.com/c/12345-updated",
+            status_code=200,
+        )
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=42,
+        mode="upsert",
+        post_callback=_make_callback(_StubResult(), post_record),
+        list_callback=_list_cb,
+        patch_callback=_patch_cb,
+    )
+    assert result.posted
+    assert result.action == "updated"
+    assert result.comment_url == "https://example.com/c/12345-updated"
+    assert result.status_code == 200
+    # POST never called
+    assert post_record.n_calls == 0
+    # PATCH called with the right comment id
+    assert patch_record.n_calls == 1
+    assert patch_record.pr_number == prior_id
+    # PATCH body still has the marker
+    assert patch_record.body.startswith("<!-- ai-fea-preflight -->")
+
+
+def test_upsert_patch_failure_propagates():
+    """PATCH 422 should give an updated=None result with error preserved."""
+    patch_record = _CallRecord()
+
+    def _list_cb(repo, pr_number, **kwargs):
+        return [{"id": 7, "body": "<!-- ai-fea-preflight -->\n\nold"}]
+
+    def _patch_cb(repo, comment_id, body, **kwargs):
+        patch_record.n_calls += 1
+        return _StubResult(posted=False, status_code=422, error="Unprocessable")
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        mode="upsert",
+        list_callback=_list_cb,
+        patch_callback=_patch_cb,
+    )
+    assert not result.posted
+    assert result.status_code == 422
+    assert result.error == "Unprocessable"
+    assert result.action is None
+    assert patch_record.n_calls == 1
+
+
+def test_upsert_invalid_prior_id_returns_error():
+    """If list returns a comment with a non-int or zero id, fail loudly."""
+
+    def _list_cb(repo, pr_number, **kwargs):
+        return [{"id": "not-an-int", "body": "<!-- ai-fea-preflight -->\n\nold"}]
+
+    def _patch_cb(repo, comment_id, body, **kwargs):
+        raise AssertionError("patch should not be called with invalid id")
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo="owner/repo",
+        pr_number=1,
+        mode="upsert",
+        list_callback=_list_cb,
+        patch_callback=_patch_cb,
+    )
+    assert not result.posted
+    assert "invalid id" in (result.error or "").lower()
+
+
+def test_publish_result_action_field_exposed():
+    r = PublishResult(posted=True, action="posted")
+    assert r.action == "posted"
+    r2 = PublishResult(posted=False)
+    assert r2.action is None
