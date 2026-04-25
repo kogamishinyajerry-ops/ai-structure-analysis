@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 WS_SCHEMA_VERSION: Literal["v1"] = "v1"
 
@@ -37,12 +37,27 @@ TerminalStatus = Literal["success", "error", "cancelled", "handoff"]
 
 ConfidenceIndicator = Literal["high", "medium", "low", "n/a"]
 
-# SHA-256 hex digest with `sha256:` prefix (44 chars total: "sha256:" + 64).
+# SHA-256 hex digest with `sha256:` prefix (71 chars total: "sha256:" (7)
+# + 64 hex chars). The pattern below is anchored on those exact bounds.
 DigestStr = Annotated[
     str,
     Field(
         pattern=r"^sha256:[0-9a-f]{64}$",
-        description="SHA-256 hex digest with sha256: prefix",
+        description="SHA-256 hex digest with sha256: prefix (71 chars total)",
+    ),
+]
+
+# ISO-8601 UTC timestamp accepted by the schema. The pattern allows
+# both bare `YYYY-MM-DDTHH:MM:SSZ` and the fractional-second variant
+# `YYYY-MM-DDTHH:MM:SS.SSSSSSZ`. Anchored on `Z` (Zulu / UTC) — agents
+# emit UTC-only per ADR-014; non-UTC timestamps are a contract violation
+# and should fail validation rather than passing through silently.
+ISO8601_UTC_PATTERN = r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$"
+ISO8601UtcStr = Annotated[
+    str,
+    Field(
+        pattern=ISO8601_UTC_PATTERN,
+        description="ISO-8601 UTC timestamp (e.g. '2026-04-26T12:34:56Z')",
     ),
 ]
 
@@ -55,13 +70,13 @@ class _BaseEvent(BaseModel):
     schema_version: Literal["v1"] = WS_SCHEMA_VERSION
     run_id: str = Field(..., min_length=1)
     seq: int = Field(..., ge=0)
-    ts: str = Field(..., description="ISO-8601 UTC timestamp")
+    ts: ISO8601UtcStr
 
 
 class RunStarted(_BaseEvent):
     event: Literal["run.started"] = "run.started"
     task_spec_digest: DigestStr
-    started_at: str | None = None
+    started_at: ISO8601UtcStr | None = None
     submitted_by: str | None = None
 
 
@@ -103,6 +118,20 @@ class RagQueried(_BaseEvent):
     top_k_titles: tuple[str, ...] = Field(default_factory=tuple)
     scores: tuple[float, ...] = Field(default_factory=tuple)
     source_filter: str | None = None
+
+    @model_validator(mode="after")
+    def _titles_and_scores_are_paired(self) -> RagQueried:
+        """R2 (post Codex R1 MED): top_k_titles[i] ↔ scores[i] must be
+        the same length. The frontend treats them as parallel arrays;
+        a divergence would mis-render scores against titles silently.
+        """
+        if len(self.top_k_titles) != len(self.scores):
+            raise ValueError(
+                f"top_k_titles ({len(self.top_k_titles)}) and "
+                f"scores ({len(self.scores)}) must be the same length "
+                f"(parallel arrays — element i is title↔score)"
+            )
+        return self
 
 
 class QuantitySummary(BaseModel):

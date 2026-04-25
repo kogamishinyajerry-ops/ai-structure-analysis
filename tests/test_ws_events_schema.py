@@ -497,3 +497,145 @@ def test_no_event_carries_secret_or_internal_fields():
                     f"{cls.__name__}.{fname} contains forbidden substring "
                     f"{forbidden!r} — ADR-014 privacy boundary violated"
                 )
+
+
+# ---------------------------------------------------------------------------
+# R2 — ts ISO-8601 validation (Codex R1 MED on PR #50)
+# ---------------------------------------------------------------------------
+
+
+class TestR2TimestampValidation:
+    def test_valid_ts_accepted(self):
+        from schemas.ws_events import RunStarted
+
+        ev = RunStarted(
+            run_id="RUN-X",
+            seq=0,
+            ts="2026-04-26T12:34:56Z",
+            task_spec_digest="sha256:" + "a" * 64,
+        )
+        assert ev.ts == "2026-04-26T12:34:56Z"
+
+    def test_fractional_seconds_accepted(self):
+        from schemas.ws_events import RunStarted
+
+        ev = RunStarted(
+            run_id="RUN-X",
+            seq=0,
+            ts="2026-04-26T12:34:56.123456Z",
+            task_spec_digest="sha256:" + "a" * 64,
+        )
+        assert ev.ts.endswith("Z")
+
+    def test_ts_without_z_rejected(self):
+        from schemas.ws_events import RunStarted
+
+        with pytest.raises(ValidationError):
+            RunStarted(
+                run_id="RUN-X",
+                seq=0,
+                ts="2026-04-26T12:34:56",
+                task_spec_digest="sha256:" + "a" * 64,
+            )
+
+    def test_non_utc_offset_rejected(self):
+        """Pattern is anchored on Z; +08:00 etc. is rejected."""
+        from schemas.ws_events import RunStarted
+
+        with pytest.raises(ValidationError):
+            RunStarted(
+                run_id="RUN-X",
+                seq=0,
+                ts="2026-04-26T12:34:56+08:00",
+                task_spec_digest="sha256:" + "a" * 64,
+            )
+
+    def test_garbage_string_rejected(self):
+        from schemas.ws_events import RunStarted
+
+        with pytest.raises(ValidationError):
+            RunStarted(
+                run_id="RUN-X",
+                seq=0,
+                ts="not a timestamp",
+                task_spec_digest="sha256:" + "a" * 64,
+            )
+
+    def test_started_at_optional_but_validated_when_present(self):
+        from schemas.ws_events import RunStarted
+
+        # None is fine.
+        RunStarted(
+            run_id="RUN-X",
+            seq=0,
+            ts="2026-04-26T12:34:56Z",
+            task_spec_digest="sha256:" + "a" * 64,
+            started_at=None,
+        )
+        # Garbage is rejected.
+        with pytest.raises(ValidationError):
+            RunStarted(
+                run_id="RUN-X",
+                seq=0,
+                ts="2026-04-26T12:34:56Z",
+                task_spec_digest="sha256:" + "a" * 64,
+                started_at="bad",
+            )
+
+
+# ---------------------------------------------------------------------------
+# R2 — RagQueried titles ↔ scores parallel-array invariant (Codex R1 MED)
+# ---------------------------------------------------------------------------
+
+
+class TestR2RagQueriedPairing:
+    def test_equal_length_titles_and_scores_accepted(self):
+        from schemas.ws_events import RagQueried
+
+        ev = RagQueried(
+            run_id="RUN-X",
+            seq=1,
+            ts="2026-04-26T12:00:00Z",
+            query_digest="sha256:" + "b" * 64,
+            top_k_titles=("doc-a", "doc-b", "doc-c"),
+            scores=(0.9, 0.7, 0.5),
+        )
+        assert len(ev.top_k_titles) == len(ev.scores)
+
+    def test_empty_titles_and_empty_scores_accepted(self):
+        from schemas.ws_events import RagQueried
+
+        ev = RagQueried(
+            run_id="RUN-X",
+            seq=1,
+            ts="2026-04-26T12:00:00Z",
+            query_digest="sha256:" + "b" * 64,
+        )
+        assert ev.top_k_titles == ()
+        assert ev.scores == ()
+
+    def test_titles_longer_than_scores_rejected(self):
+        from schemas.ws_events import RagQueried
+
+        with pytest.raises(ValidationError, match="same length"):
+            RagQueried(
+                run_id="RUN-X",
+                seq=1,
+                ts="2026-04-26T12:00:00Z",
+                query_digest="sha256:" + "b" * 64,
+                top_k_titles=("doc-a", "doc-b"),
+                scores=(0.9,),
+            )
+
+    def test_scores_longer_than_titles_rejected(self):
+        from schemas.ws_events import RagQueried
+
+        with pytest.raises(ValidationError, match="same length"):
+            RagQueried(
+                run_id="RUN-X",
+                seq=1,
+                ts="2026-04-26T12:00:00Z",
+                query_digest="sha256:" + "b" * 64,
+                top_k_titles=("doc-a",),
+                scores=(0.9, 0.7),
+            )

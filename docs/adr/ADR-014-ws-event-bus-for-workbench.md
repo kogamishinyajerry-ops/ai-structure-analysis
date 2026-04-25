@@ -138,13 +138,13 @@ This ADR alone produces no executable code beyond the schema file; the workbench
 | `backend/app/api/ws_runs.py` | Phase 2.0 follow-up | Claude Code | the `/ws/runs/{run_id}` endpoint |
 | `frontend/` | Phase 2.0 follow-up | Claude Code | React/TS skeleton consuming the bus |
 
-The schema PR (this one) and the runtime PRs land sequentially; no PR depends on R2 of PR #24/#25 because no path here changes governance enforcement. **This PR's self-pass-rate is `50%`** — under the BLOCKING ceiling currently in force, deliberately conservative because the schema is the contract the rest of Phase 2 will follow.
+The schema PR (this one) and the runtime PRs land sequentially; no PR depends on R2 of PR #24/#25 because no path here changes governance enforcement. **This PR's self-pass-rate is `30%`** — at the BLOCKING ceiling currently in force, deliberately conservative because the schema is the contract the rest of Phase 2 will follow.
 
 ---
 
 ## Codex review expectation
 
-This PR triggers M1 (governance text in `docs/adr/` and `schemas/`) and M2 (executable assertions in the test file). It does NOT trigger M3 (no HF1 hot-zone touched), M4 (no enforcement coupling — the schema is read-only contract), or M5 (50% claim is below the 50% threshold in the M5 trigger language; but under the current 30% BLOCKING ceiling the cap-check still fires).
+This PR triggers M1 (governance text in `docs/adr/` and `schemas/`) and M2 (executable assertions in the test file). It does NOT trigger M3 (no HF1 hot-zone touched), M4 (no enforcement coupling — the schema is read-only contract). M5 fires under the current 30% BLOCKING regime; the cap-check enforces the ceiling on every PR until 5/5 trailing R1 outcomes turn around.
 
 Self-pass-rate: **30%** — match the current BLOCKING ceiling. We are deliberately conservative on the contract PR because every downstream Phase 2 PR will pivot off it; Codex review here saves N future R2 cycles.
 
