@@ -1,6 +1,6 @@
 ---
 id: FP-003
-status: proposed
+status: applied
 created: 2026-04-25
 related_gs: [GS-003]
 related_adr: [ADR-011]
