@@ -55,6 +55,17 @@
       "r1_review_report": null,
       "r1_review_report_pending_archive": true,
       "notes": "pre-commit pass_filenames misses rename old-paths and deletes (silent HF1 bypass); HF1.6 over-blocks Makefile other targets; override audit trail unenforceable"
+    },
+    {
+      "pr": 23,
+      "sha": "e53b0f7",
+      "title": "[ADR-011] T0 amendments AR-2026-04-25-001 (T2 + HF1 + HF2 + numbering)",
+      "merged_at": "2026-04-25T12:06:52Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "3 BLOCKER + 1 SHOULD_FIX",
+      "r1_review_report": null,
+      "r1_review_report_pending_archive": true,
+      "notes": "ADR-011 amendments PR — Codex R1 returned 3 BLOCKER + 1 SHOULD_FIX, fixed in commit e96904d, then merged after CI green. R1 review report still pending archive into reports/codex_tool_reports/."
     }
   ],
   "computed_at_bootstrap": {
