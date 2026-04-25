@@ -36,7 +36,7 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 
 ---
 
-## Active branches (post-#17/#18/#19 merge · 2026-04-25)
+## Governance-chain branches (post-#17/#18/#19 merge · 2026-04-25)
 
 ```
 chore/post-merge-cleanup-state-and-codex-archive   (this PR — STATE.md self-update lag fix + Codex log archive)
@@ -45,11 +45,26 @@ feature/AI-FEA-S2.1-02-notion-sync-contract-align  (origin tracked; WIP stashed 
 
 `main == origin/main == 4a64cfd` (after PR #20 revert + PR #17 ADR-011 + PR #18 FF-02 + PR #19 FF-05 merges).
 
-## Open PRs
+## Open PRs (governance-chain · this session)
 
 | PR | Branch | Status |
 |----|--------|--------|
 | (this) | `chore/post-merge-cleanup-state-and-codex-archive` | OPEN · post-merge housekeeping; PR self-references STATE.md update — see commit message for the self-update-lag pattern |
+
+## Open PRs (Phase 1 sprint work · pre-pivot, not in governance chain)
+
+The following PRs were opened on 2026-04-18 and remain OPEN as of 2026-04-25. They are orthogonal to the Phase 1.5 governance pivot (PRs #17-#21) and are owned by their original sprint authors. STATE.md tracks them here for repo-wide situational awareness; **disposition (rebase / close / merge under ADR-006) is not in scope for the FF-* work** and will be handled separately.
+
+| PR | Branch | Title |
+|----|--------|-------|
+| #11 | `feature/AI-FEA-P1-02-hot-smoke` | AI-FEA-P1-02 hot-smoke: real ccx on GS-001 inside P1-01 image |
+| #12 | `feature/AI-FEA-P1-03-golden-sample-validation` | AI-FEA-P1-03 golden-sample validation: fix 37.7% deviation (shear lock) on GS-001 |
+| #13 | `feature/AI-FEA-P1-04a-rag-audit` | AI-FEA-P1-04a: RAG corpus audit — empirical SCRATCH-REBUILD evidence |
+| #14 | `feature/AI-FEA-P1-06-gate-solve-lint` | AI-FEA-P1-06: Gate-Solve static .inp lint — pre-solver defect shield |
+| #15 | `feature/AI-FEA-P1-06b-wire-linter-solver` | AI-FEA-P1-06b: wire Gate-Solve linter into Solver node (stacked on #14) |
+| #16 | `feature/AI-FEA-P1-05-reviewer-fault-injection` | AI-FEA-P1-05: Reviewer fault-injection baseline + ADR-004 mirror |
+
+**Carry-over flag:** these PRs predate ADR-011 and therefore predate the T0/T1/T2 routing contract. Any rebase onto current main must (a) inherit ADR-011 § HF1-HF5 zoning, (b) decide whether their original review trail is sufficient or whether re-review under v6.2 is required. This is a separate decision from FF-06/07/08.
 
 ---
 
