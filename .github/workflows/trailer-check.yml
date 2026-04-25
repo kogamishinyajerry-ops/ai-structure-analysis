@@ -1,0 +1,43 @@
+name: Trailer Check (FF-07 / HF5)
+
+# ADR-011 §Commit Trailer Convention enforcement.
+# Runs on every pull_request to main; checks every commit in the PR
+# range for execution-attribution + valid Codex-verified format.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  trailer-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compute PR commit range
+        id: range
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          echo "Base: $BASE_SHA"
+          echo "Head: $HEAD_SHA"
+          echo "range=$BASE_SHA..$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Check commit trailers
+        run: |
+          set -euo pipefail
+          python3 scripts/check_commit_trailers.py "${{ steps.range.outputs.range }}"
