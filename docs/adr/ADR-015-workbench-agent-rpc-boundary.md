@@ -60,7 +60,7 @@ The Phase 2.1 first-run scope is **single-trusted-operator-per-server** (per ADR
 - The browser is assumed to be on the same network as the backend (LAN / VPN) and has been pre-authenticated at the session boundary
 - `POST /runs` requires an `X-Workbench-Token` header that matches `os.environ["WORKBENCH_TOKEN"]` (a per-deployment secret)
 - The same token gates `GET /runs/{id}/nodes/{name}/io` (the digest-fetch endpoint from ADR-014)
-- WS handshake is upgraded only when the matching token is present in the `Sec-WebSocket-Protocol` header
+- WS handshake is gated by a query-string `?token=...` (browsers cannot set arbitrary headers on WS upgrade); the WS endpoint validates the token against `os.environ["WORKBENCH_TOKEN"]` before accepting the connection
 
 This is intentionally simple. A future ADR will introduce per-user identity once the workbench has more than one operator. **No OAuth / JWT in Phase 2.1.**
 
@@ -68,21 +68,33 @@ This is intentionally simple. A future ADR will introduce per-user identity once
 
 ## Confirmation protocol (NL → SimPlan → user-signed run)
 
-The Phase 2.1 user flow:
+The Phase 2.1 user flow (R2 — post Codex R1 fix for the edit-flow gap):
 
 1. Browser sends `POST /runs/draft { "nl_request": "..." }` with the workbench token
-2. Backend calls `task_spec_builder.draft_from_nl(nl_request)` → returns `(sim_plan, draft_id, confirmation_token)`
+2. Backend calls `task_spec_builder.draft_from_nl(nl_request)`:
+   - architect runs ONCE → SimPlan
+   - server stores `(draft_id → original_plan)` in an in-process draft registry (Phase 2.1 single-operator scope; Phase 3 may swap for Redis or a persistent store)
+   - returns `(sim_plan, draft_id, draft_token)` where `draft_token = HMAC(draft_id || canonical-JSON(original_plan))`
 3. Browser displays the rendered SimPlan; user can edit or accept
-4. Browser sends `POST /runs/submit { "draft_id": ..., "confirmation_token": ..., "edits": {...} }` with the workbench token
-5. Backend rebuilds the SimPlan with edits applied, validates `confirmation_token` ties draft_id ↔ rebuilt SimPlan via HMAC, and only then invokes `run_orchestrator.invoke(sim_plan)`
+4. **If the user edits**, browser calls `POST /runs/precommit { "draft_id", "edited_plan", "draft_token" }` with the workbench token:
+   - server validates `draft_token` against the STORED original plan
+   - server applies `edited_plan` (constrained: same `case_id` as the draft — case identity is fixed at draft time)
+   - server returns `(rebuilt_plan, submit_token)` where `submit_token = HMAC(draft_id || canonical-JSON(rebuilt_plan))`
+   If no edits, the browser uses the original `draft_token` as the submit_token directly (rebuilt_plan == original_plan).
+5. Browser sends `POST /runs/submit { "draft_id", "submit_token" }` with the workbench token:
+   - server looks up the rebuilt plan it computed in step 4 (or the original_plan if no edits)
+   - validates `submit_token` against that plan via HMAC
+   - on success, `discard_draft(draft_id)` and invokes `run_orchestrator.invoke(sim_plan)`
 
-The `confirmation_token` is HMAC-SHA256 of the canonical-JSON-serialized SimPlan, keyed by the workbench token. It guarantees:
+**Why two tokens?** The original (R1) design minted a single token over the pre-edit plan and rechecked against the post-edit plan. Codex R1 caught the contradiction: any legitimate edit invalidated the token, so the protocol could not actually accept edits. The R2 fix splits the flow — the SERVER re-mints the token over the rebuilt plan during the precommit step. The client never holds the workbench secret, so a client-side re-mint is impossible. Each token witnesses the plan version it was issued for.
 
-- the SimPlan the user confirmed in step 3 is identical to the SimPlan that runs in step 5 (no silent drift)
-- a draft cannot be submitted by a third party who didn't see the rendered SimPlan
-- replay of the same `confirmation_token` against a different `draft_id` fails
+The HMAC-SHA256 is keyed by `WORKBENCH_TOKEN` and computed over `draft_id || NUL || canonical-JSON(plan)`. It guarantees:
 
-**No LLM regeneration between draft and submit.** Architect agent runs ONCE per request — at draft time. If user edits, the edits are applied as a structured diff to the draft SimPlan; the agent is not re-invoked.
+- the SimPlan the user committed to (in step 4 if edited, or step 2 if accepted as-is) is identical to the SimPlan that runs in step 5 (no silent drift)
+- a draft cannot be submitted by a third party who didn't see the rendered SimPlan and complete the precommit step
+- replay of the same `submit_token` against a different `draft_id` fails
+
+**No LLM regeneration between draft and submit.** Architect agent runs ONCE per request — at draft time. Edits are deterministic server-mediated transformations of the original plan; the LLM is not re-invoked.
 
 ---
 
