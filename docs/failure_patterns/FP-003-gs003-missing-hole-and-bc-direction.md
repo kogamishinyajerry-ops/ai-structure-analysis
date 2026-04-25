@@ -9,7 +9,7 @@ blocks: [Phase-2-activation, FF-02]
 owner: claude-code-takeover
 schema_version: 1
 gs_artifact_pin:
-  expected_results_version: "(metadata.version field in GS-003/expected_results.json)"
+  expected_results_version: "1.0"
   inp_sha: "n/a (working tree)"
   readme_sha: "n/a (working tree)"
 ---
@@ -41,12 +41,14 @@ README (`golden_samples/GS-003/README.md:7-21, 96-99`) and `expected_results.jso
 
 ## Recommended action
 
+**All SHORT-TERM and ARCHITECTURAL items below are *hypotheses pending GS-revalidation* per ADR-011 §HF3.** A FailurePattern's authority is limited to attribution and to the IMMEDIATE governance status update; the listed paths/ADRs must be re-validated (hot-smoke + review) before any code or schema action is taken.
+
 ### IMMEDIATE
-- Mark GS-003 status `insufficient_evidence` in Notion control plane.
-- Pin current `expected_results.json` metadata version in the `gs_artifact_pin` frontmatter.
+- Mark GS-003 status `insufficient_evidence` in Notion control plane. **Per ADR-011 §HF3, this case has no defensible GS reference: the `.inp` mesh has no hole feature so a `K_t ≈ 2.506` Peterson reference cannot be validated against this geometry, irrespective of solver behavior.**
+- Pin current `expected_results.json` metadata version in the `gs_artifact_pin` frontmatter (now pinned to `"1.0"`).
 - Cross-link FP-003 from ADR-011 consequences.
 
-### SHORT-TERM (≤ 2 weeks)
+### SHORT-TERM (≤ 2 weeks) — *hypotheses, require GS-revalidation*
 - Regenerate `gs003.inp` from a parametric geometry source that actually contains the hole (refined mesh ≥ ~200 elements with biased seeding around the hole edge).
 - Correct the BCs to: `UY = 0.5` on top edge (y=200), `UY = 0` on bottom edge (y=0), `UX` free except at one anchor node.
 - Rerun CalculiX; recompute `K_t` from peak SXX at the hole edge; compare against `plane_stress_theory.py` Peterson curve.

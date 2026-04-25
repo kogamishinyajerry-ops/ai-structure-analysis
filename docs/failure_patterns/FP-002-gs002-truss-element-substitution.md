@@ -9,7 +9,7 @@ blocks: [Phase-2-activation, FF-02]
 owner: claude-code-takeover
 schema_version: 1
 gs_artifact_pin:
-  expected_results_version: "(metadata.version field in GS-002/expected_results.json)"
+  expected_results_version: "1.0"
   inp_sha: "n/a (working tree)"
   readme_sha: "n/a (working tree)"
 ---
@@ -39,12 +39,14 @@ Truss theory (axial-only, pin-jointed) and B31 (rotational DOFs at every node) y
 
 ## Recommended action
 
+**All SHORT-TERM and ARCHITECTURAL items below are *hypotheses pending GS-revalidation* per ADR-011 §HF3.** A FailurePattern's authority is limited to attribution and to the IMMEDIATE governance status update; the listed paths/ADRs must be re-validated (hot-smoke + review) before any code or schema action is taken.
+
 ### IMMEDIATE
-- Mark GS-002 status `insufficient_evidence` in Notion control plane.
-- Pin `expected_results.json` metadata version in the `gs_artifact_pin` frontmatter.
+- Mark GS-002 status `insufficient_evidence` in Notion control plane. **Per ADR-011 §HF3, this case has no defensible GS reference: README/JSON declare a T3D2 truss while the `.inp` ships a B31 frame, so the comparison reference is not defensible.**
+- Pin `expected_results.json` metadata version in the `gs_artifact_pin` frontmatter (now pinned to `"1.0"`).
 - Cross-link FP-002 from ADR-011 consequences.
 
-### SHORT-TERM (≤ 2 weeks)
+### SHORT-TERM (≤ 2 weeks) — *hypotheses, require GS-revalidation*
 Two-track decision (pick one and record in a small ADR / runbook):
 
 - **Track A (preserve truss intent — recommended)**: Rewrite `gs002.inp` with `*ELEMENT, TYPE=T3D2` and pin-joint BCs (constrain only translational DOFs); regenerate FRD; theory remains valid. Cheapest, aligns with file naming.

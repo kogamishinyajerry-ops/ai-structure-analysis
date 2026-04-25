@@ -35,13 +35,17 @@ UY ratio FEA/theory = **648×** (`golden_samples/GS-001/expected_results.json:11
 - `golden_samples/GS-001/gs001.inp:6-50, 53-63, 67-72`
 - `golden_samples/GS-001/cantilever_theory.py` — uses SI (L=100 m, E=210e9 Pa); disagrees with both README and JSON
 
-## Resolution of the README vs JSON conflict
+## Reading of the README vs JSON conflict
 
-**Both are partially wrong; the underlying confusion is unit interpretation.** The README v2 (2026-04-09) updated the case to "cantilever" but kept v1's unit assumption (meters). The JSON v3 corrected units to mm but then concluded the *model* is broken. Defensible reading: the model with mm-N-MPa runs correctly as a 3D solid block under bending — but its *comparison reference* (Euler-Bernoulli) is wrong, not the FEA. The JSON's "FAILED model setup" verdict is too strong; the README's "FEA is baseline" is unfalsifiable.
+**Observed:** README v2 (2026-04-09) updated the case to "cantilever" but kept v1's unit assumption (meters). JSON v3 corrected units to mm but concluded the *model* is broken. The two artifacts therefore disagree on whether the FEA model is broken or the comparison reference is broken.
 
-Per ADR-011 HF3, this case has **no defensible GS reference** → status should be **`insufficient_evidence`**, not `pending_review`.
+**Hypothesis (NOT verified in present working tree):** if rerun under the mm-N-MPa unit convention declared in JSON v3, the 3D-solid FEA model *may* produce a defensible bending result while the Euler-Bernoulli comparison would still be inappropriate (slenderness L/h = 10 places it at the thin-beam boundary). This hypothesis requires a hot-smoke ccx run + manual cross-check before being treated as fact; it is *not* asserted here.
+
+Per ADR-011 §HF3, with two mutually-incompatible artifacts and no externally-defensible reference, this case has **no defensible GS reference** → status should be **`insufficient_evidence`**, not `pending_review`.
 
 ## Recommended action
+
+**All SHORT-TERM and ARCHITECTURAL items below are *hypotheses pending GS-revalidation* per ADR-011 §HF3.** A FailurePattern's authority is limited to attribution and to the IMMEDIATE governance status update; the listed paths/ADRs must be re-validated (hot-smoke + review) before any code or schema action is taken.
 
 ### IMMEDIATE
 - Mark GS-001 as `insufficient_evidence` in the Notion control plane (do **not** edit `golden_samples/**` per HF1).

@@ -31,6 +31,8 @@ gs_artifact_pin:                             # SHA / version pin — invalidates
 ---
 ```
 
+**Severity is intentionally not a frontmatter field at the FF-02 level.** Phase / task blocking is signaled by the `blocks: [...]` field instead, and human-vs-machine adjudication priority is governed by ADR-011 §HF1-HF5 zoning, not by a per-FP severity tag. If a downstream consumer (e.g., FF-08 GS registry schema) needs a numeric severity, it must derive it from `classification` + `blocks` and pin its mapping in its own ADR, not retroactively introduce a field here.
+
 Body sections (in order):
 
 1. **Observed deviation** — concrete numbers, file:line citations.
