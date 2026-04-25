@@ -48,6 +48,10 @@ viz = [
     "pyvista>=0.42",
     "matplotlib>=3.7",
 ]
+rag = [
+    "sentence-transformers>=2.7",
+    "chromadb>=0.5",
+]
 
 [project.urls]
 Homepage = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
