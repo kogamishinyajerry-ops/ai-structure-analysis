@@ -139,6 +139,10 @@ R4 fix (post Codex R4 MEDIUM/LOW): the R3 predicates were syntax-pinned and let 
 - `_annotation_mentions_knowledgebase()` skips inside `type[X]` / `Type[X]` subscripts — `cls: type[KnowledgeBase]` accepts a class object, not an instance, so it is not a singleton bypass. `Annotated[KB, ...]` and `List[KB]` carry instances and remain flagged.
 - Module docstring (line 5) updated: `rag_facade.py` is the SOLE choke point; `agent_facade.py` does NOT import RAG (matches R2 enforcement).
 
+R5 fix (post Codex R4 R5 MEDIUM/LOW): two residual gaps in the R4 alias resolution closed:
+- MEDIUM (star-import bypass): `from backend.app.rag.kb import *; KB = KnowledgeBase; KB()` defeated `_calls_knowledgebase_constructor` because the alias-walk only seeded names from explicit `import KnowledgeBase` constructs. Fix: always seed the assignment-walk fixpoint with `KnowledgeBase` itself, so subsequent `cls = KnowledgeBase` chains propagate regardless of how `KnowledgeBase` came into scope.
+- LOW (class-method false negative): `class Helper: def get_kb(self): ...` caused `_calls_get_kb_singleton()` to falsely reject a legitimate `kb.get_kb()` usage at module scope. Fix: restrict the local-shadow check to module-level functions (`tree.body`), not all `FunctionDef` nodes — class methods and nested defs no longer trigger false rejection.
+
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 
 ---

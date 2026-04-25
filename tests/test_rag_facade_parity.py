@@ -447,7 +447,14 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
     #    (only Name targets; complex unpacking is skipped — vanishingly
     #    rare in a 100-line facade and the facade has private helpers
     #    excluded from public-API checks anyway.)
-    seen_aliases = set(aliases)
+    # R5 (post Codex R4 R5 MEDIUM): always seed `KnowledgeBase` itself.
+    # Codex repro: `from backend.app.rag.kb import *; KB = KnowledgeBase`
+    # — star-import binds `KnowledgeBase` without an explicit `import as`,
+    # so the import-walk doesn't seed it. Without seeding, `KB =
+    # KnowledgeBase` doesn't propagate. Always seeding ensures the
+    # assignment chain works regardless of how `KnowledgeBase` came to
+    # be in scope.
+    seen_aliases = set(aliases) | {"KnowledgeBase"}
     # Multi-pass to follow chains: `cls = KnowledgeBase; cls2 = cls`.
     for _ in range(8):  # bounded fixpoint
         before = len(seen_aliases)
@@ -531,10 +538,16 @@ def _calls_get_kb_singleton(tree: ast.AST) -> bool:
                 if from_rag_pkg and alias.name == "kb":
                     rag_kb_module_aliases.add(alias.asname or alias.name)
 
-    # Detect a locally-defined `def get_kb` shadow.
+    # Detect a MODULE-LEVEL local `def get_kb` shadow.
+    # R5 (post Codex R4 R5 LOW): scan only top-level definitions, not
+    # nested class methods. Codex repro: `class Helper: def get_kb(self):
+    # ...` — `ast.walk` would have flagged this even though only
+    # module-level shadows defeat the singleton import. Only check
+    # tree.body (Module-level FunctionDef nodes).
+    module_body = getattr(tree, "body", [])
     locally_defined_get_kb = any(
         isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == "get_kb"
-        for n in ast.walk(tree)
+        for n in module_body
     )
     if locally_defined_get_kb and not get_kb_imported_from_rag:
         return False  # singleton-shadow bypass — fail closed
@@ -894,3 +907,136 @@ class TestR4DocstringConsistency:
         text = path.read_text(encoding="utf-8")
         head = "\n".join(text.splitlines()[:30])
         assert "SOLE choke point" in head
+
+
+# ---------------------------------------------------------------------------
+# R5 hardening — star-import + class-method false negative (post Codex R4 R5)
+#
+# Codex R4 R5 found:
+# - MEDIUM: `from backend.app.rag.kb import *; KB = KnowledgeBase; KB()`
+#   bypassed _calls_knowledgebase_constructor because the alias-walk
+#   only seeded names from explicit `import KnowledgeBase` constructs.
+# - LOW: a class method `def get_kb(self)` (e.g., `class Helper:
+#   def get_kb(self): ...`) caused `_calls_get_kb_singleton()` to
+#   falsely reject a legitimate `kb.get_kb()` usage in the module.
+#
+# R5 fix:
+# - _knowledgebase_local_aliases() now ALWAYS seeds the assignment
+#   chain with `KnowledgeBase` itself, so `KB = KnowledgeBase` works
+#   regardless of how `KnowledgeBase` came into scope (star-import,
+#   explicit import, etc.).
+# - _calls_get_kb_singleton() restricts the locally-defined-get_kb
+#   shadow check to MODULE-LEVEL functions (tree.body), not all
+#   FunctionDef nodes. Class methods and nested defs no longer
+#   trigger false rejection.
+# ---------------------------------------------------------------------------
+
+
+class TestR5StarImportAndClassMethod:
+    """The two Codex R4 R5 repros."""
+
+    def test_codex_r5_star_import_with_assigned_alias_is_caught(self):
+        """The exact Codex R4 R5 MEDIUM repro:
+            from backend.app.rag.kb import *
+            KB = KnowledgeBase
+            def advise(q): return KB()
+        Pre-R5: alias-walk seed missed `KnowledgeBase` (no `import as`),
+        so `KB` chain didn't propagate, ctor=False. Post-R5: always-seed
+        catches the assignment chain and `KB()` is flagged."""
+        tree = _parse(
+            "from backend.app.rag.kb import *\n"
+            "KB = KnowledgeBase\n"
+            "def advise(q): return KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_codex_r5_star_import_full_repro_yields_violation(self):
+        """The full Codex repro (also has kb.get_kb() before KB()):
+            from backend.app.rag import kb
+            from backend.app.rag.kb import *
+            KB = KnowledgeBase
+            def advise(q):
+                kb.get_kb()
+                return KB()
+        Singleton check passes (real kb.get_kb call), but the ctor
+        check now FLAGS this — exactly the right outcome."""
+        tree = _parse(
+            "from backend.app.rag import kb\n"
+            "from backend.app.rag.kb import *\n"
+            "KB = KnowledgeBase\n"
+            "def advise(q):\n"
+            "    kb.get_kb()\n"
+            "    return KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+        assert _calls_get_kb_singleton(tree)  # the real call still detected
+
+    def test_r5_star_import_direct_constructor_is_caught(self):
+        """`from .kb import *; KnowledgeBase()` — direct call, no alias."""
+        tree = _parse("from backend.app.rag.kb import *\nKnowledgeBase()\n")
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_codex_r5_class_method_get_kb_does_not_shadow(self):
+        """The exact Codex R4 R5 LOW repro:
+            from backend.app.rag import kb
+            class Helper:
+                def get_kb(self): return 1
+            def advise(q): return kb.get_kb()
+        Pre-R5: ast.walk found Helper.get_kb method and falsely set
+        locally_defined_get_kb=True → singleton check rejected.
+        Post-R5: only module-level defs scanned, so kb.get_kb() passes."""
+        tree = _parse(
+            "from backend.app.rag import kb\n"
+            "class Helper:\n"
+            "    def get_kb(self): return 1\n"
+            "def advise(q): return kb.get_kb()\n"
+        )
+        assert _calls_get_kb_singleton(tree)
+
+    def test_r5_nested_function_get_kb_does_not_shadow(self):
+        """A nested `def get_kb` inside another function does not shadow
+        the module-level singleton import either."""
+        tree = _parse(
+            "from backend.app.rag import kb\n"
+            "def outer():\n"
+            "    def get_kb(): return 1\n"
+            "    return get_kb()\n"
+            "def advise(q): return kb.get_kb()\n"
+        )
+        assert _calls_get_kb_singleton(tree)
+
+    def test_r5_module_level_get_kb_shadow_is_still_rejected(self):
+        """Regression guard: module-level `def get_kb` MUST still be
+        flagged as a shadow, even after the class-method narrowing."""
+        tree = _parse("def get_kb(): return 1\n" "def advise(q): return get_kb()\n")
+        assert not _calls_get_kb_singleton(tree)
+
+    def test_r5_async_module_level_get_kb_shadow_is_rejected(self):
+        """`async def get_kb` at module level is also a shadow."""
+        tree = _parse(
+            "async def get_kb(): return 1\n" "async def advise(q): return await get_kb()\n"
+        )
+        assert not _calls_get_kb_singleton(tree)
+
+    def test_r5_class_method_does_not_block_real_get_kb_import(self):
+        """Even if the class method is named get_kb AND a real import
+        of get_kb exists, the singleton check should pass (the real
+        import takes precedence; the method is in a different scope)."""
+        tree = _parse(
+            "from backend.app.rag.kb import get_kb\n"
+            "class Helper:\n"
+            "    def get_kb(self): return 1\n"
+            "def advise(q): return get_kb()\n"
+        )
+        assert _calls_get_kb_singleton(tree)
+
+    def test_r5_assignment_chain_after_star_import(self):
+        """Multi-hop chain post star-import: `import *; a=KB; b=a; b()`."""
+        tree = _parse(
+            "from backend.app.rag.kb import *\n"
+            "a = KnowledgeBase\n"
+            "b = a\n"
+            "c = b\n"
+            "def f(): return c()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
