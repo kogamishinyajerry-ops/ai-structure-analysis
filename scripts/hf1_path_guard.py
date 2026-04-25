@@ -3,22 +3,40 @@
 
 Implements automated detection of HF1 zone violations as specified in
 ADR-011 §Hard-Floor Rules. Designed to run as a `pre-commit` local hook
-receiving staged file paths via positional arguments
-(`pass_filenames: true`).
+configured with ``pass_filenames: false`` — the guard reads the staged
+index directly via ``git diff --cached --name-status -z`` so that
+**rename old-paths** and **deleted paths** also enter the check
+(pre-commit's default file list filters those out, which would let
+``rename agents/router.py -> agents/router_old.py`` and
+``delete agents/solver.py`` slip past the zone).
 
 The zone is hard-coded in this file by design — per FF-06 charter, the
 guard must not parse ADR-011 markdown at runtime (too fragile against
 typos/refactors). When ADR-011 §HF1 changes, the corresponding entry in
-`ZONE` must be updated in the same PR (and that PR is itself an HF1
+``ZONE`` must be updated in the same PR (and that PR is itself an HF1
 trigger, requiring a new/superseding ADR per ADR-011 §HF1 Recovery).
 
-Override mechanism: setting `HF1_GUARD_OVERRIDE='<non-empty reason>'`
-allows the commit through but emits a stderr warning that the reviewer
-must see. The reason is required (empty string is treated as not set);
-this mirrors ADR-011 §Calibration Mode practice for HF2.
+Override mechanism: setting ``HF1_GUARD_OVERRIDE='<non-empty reason>'``
+allows the local commit through and emits a stderr warning. **The
+override is a local escape hatch only.** This hook cannot enforce that
+the reason is cited in the commit message or surfaced to PR review;
+that audit trail is FF-07's scope (CI commit-trailer presence + claim
+format check). Until FF-07 lands, override usage relies on reviewer
+discipline.
+
+Scope caveat for HF1.6 (Dockerfile / Makefile): ADR-011 §HF1.6 names
+specific sections (``docker-base`` / ``docker-probe`` / ``hot-smoke``)
+rather than whole files, but parsing Makefile/Dockerfile syntax to
+detect line-level scope is out of scope for FF-06 (would require a
+makefile parser). This guard therefore protects the **whole**
+``Dockerfile`` and ``Makefile`` files conservatively. If that becomes
+too disruptive in practice, the right fix is either (a) move the
+protected targets to dedicated files (e.g., ``Makefile.docker`` /
+``Dockerfile.toolchain``), or (b) amend ADR-011 §HF1.6 to whole-file
+scope. Both are tracked as follow-up amendments to ADR-011.
 
 Exit codes:
-    0  no zone violation (or override active with reason)
+    0  no zone violation (or override active with non-empty reason)
     1  zone violation; commit rejected
     2  CLI usage error
 """
@@ -26,6 +44,7 @@ Exit codes:
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 
@@ -64,13 +83,13 @@ ZONE: tuple[ZoneEntry, ...] = (
     ZoneEntry(
         "Dockerfile",
         "exact",
-        "HF1.6 — ADR-002 CalculiX 2.21 pin (docker-base/docker-probe/hot-smoke)",
+        "HF1.6 — ADR-002 CalculiX 2.21 pin (whole-file; narrowing tracked separately)",
         "ADR-011 §HF1 #6",
     ),
     ZoneEntry(
         "Makefile",
         "exact",
-        "HF1.6 — ADR-002 CalculiX 2.21 pin (docker-base/docker-probe/hot-smoke)",
+        "HF1.6 — ADR-002 CalculiX 2.21 pin (whole-file; narrowing tracked separately)",
         "ADR-011 §HF1 #6",
     ),
     ZoneEntry(
@@ -98,18 +117,99 @@ def path_hits_zone(path: str, entry: ZoneEntry) -> bool:
 
 def find_violations(paths: list[str]) -> list[tuple[str, ZoneEntry]]:
     hits: list[tuple[str, ZoneEntry]] = []
+    seen: set[str] = set()
     for p in paths:
+        if p in seen:
+            continue
         for entry in ZONE:
             if path_hits_zone(p, entry):
                 hits.append((p, entry))
+                seen.add(p)
                 break
     return hits
 
 
-def main(argv: list[str]) -> int:
-    paths = [a for a in argv[1:] if a]
+def parse_name_status_z(blob: str) -> list[str]:
+    """Parse `git diff --cached --name-status -z` output.
+
+    Records:
+      - A/M/D/T/U/X/B: ``<status>\\0<path>\\0``
+      - R<score>/C<score>: ``<status>\\0<old>\\0<new>\\0``
+                           (both old AND new are returned so renaming
+                           a zone path away or copying out of zone is
+                           still detected)
+
+    Empty input → empty list.
+    """
+    if not blob:
+        return []
+    fields = blob.split("\0")
+    # `-z` produces a trailing NUL; split() leaves a final empty element.
+    if fields and fields[-1] == "":
+        fields.pop()
+    paths: list[str] = []
+    i = 0
+    n = len(fields)
+    while i < n:
+        status = fields[i]
+        i += 1
+        if not status:
+            continue
+        if status[0] in ("R", "C"):
+            # rename / copy — next two fields are old and new
+            if i + 1 < n:
+                paths.append(fields[i])
+                paths.append(fields[i + 1])
+                i += 2
+            else:
+                # malformed; bail rather than misparse
+                break
+        else:
+            if i < n:
+                paths.append(fields[i])
+                i += 1
+    return paths
+
+
+def get_staged_paths() -> list[str]:
+    """Run ``git diff --cached --name-status -z`` and return all paths
+    affected by the staged index, including both sides of renames/
+    copies and the path of staged deletions.
+
+    Returns empty list if git is missing, the call fails, or there is
+    nothing staged. The guard's caller treats empty as "nothing to
+    check" → exit 0.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-status", "-z"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        sys.stderr.write(
+            "HF1 path-guard: cannot invoke `git`; refusing to allow commit. "
+            "Install git or configure pre-commit accordingly.\n"
+        )
+        sys.exit(2)
+    if result.returncode != 0:
+        sys.stderr.write(
+            f"HF1 path-guard: `git diff --cached --name-status` failed "
+            f"(rc={result.returncode}); refusing to allow commit.\n"
+            f"stderr: {result.stderr.strip()}\n"
+        )
+        sys.exit(2)
+    return parse_name_status_z(result.stdout)
+
+
+def check_paths_and_report(paths: list[str]) -> int:
+    """Pure check: take a path list, decide pass/fail, write report.
+
+    Tests call this directly with synthetic paths; main() calls it after
+    sourcing paths from the staged index.
+    """
     if not paths:
-        # No staged files — pre-commit may invoke us with no args on amend.
         return 0
 
     violations = find_violations(paths)
@@ -123,8 +223,11 @@ def main(argv: list[str]) -> int:
         for p, entry in violations:
             sys.stderr.write(f"  - {p}\n      {entry.rule}  ({entry.adr_ref})\n")
         sys.stderr.write(
-            "Reviewer note: HF1_GUARD_OVERRIDE must be cited in the commit "
-            "message and inspected at PR review time.\n"
+            "Local-only escape hatch: this hook cannot enforce that the\n"
+            "  override reason is cited in the commit message or visible at\n"
+            "  PR review. CI commit-trailer enforcement is FF-07's scope.\n"
+            "  Until FF-07 lands, please cite this override in the commit\n"
+            "  message manually so the reviewer can see it.\n"
         )
         return 0
 
@@ -138,6 +241,21 @@ def main(argv: list[str]) -> int:
         "     in the commit message; reviewer must accept the override at PR time.\n"
     )
     return 1
+
+
+def main(argv: list[str]) -> int:
+    """CLI entry point. Sources staged paths from the git index directly.
+
+    pre-commit is configured with ``pass_filenames: false``; positional
+    arguments to this script are intentionally ignored at runtime so
+    pre-commit's filter (``--diff-filter=ACMRTUXB`` + existing-paths
+    only) cannot mask deletes or rename old-paths.
+
+    For testing, call ``check_paths_and_report(paths)`` directly.
+    """
+    del argv  # explicitly ignored — see docstring
+    paths = get_staged_paths()
+    return check_paths_and_report(paths)
 
 
 if __name__ == "__main__":

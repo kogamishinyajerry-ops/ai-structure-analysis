@@ -115,28 +115,105 @@ def test_first_match_wins_no_double_count(guard):
     assert len(hits) == 1
 
 
+def test_duplicate_paths_only_reported_once(guard):
+    """If git surfaces the same path twice (e.g., parsed from rename), don't double-count."""
+    hits = guard.find_violations(["agents/solver.py", "agents/solver.py"])
+    assert len(hits) == 1
+
+
 # ---------------------------------------------------------------------------
-# main() — exit codes and override
+# parse_name_status_z — git rename/delete coverage
 # ---------------------------------------------------------------------------
 
 
-def test_main_exit_zero_on_no_args(guard, capsys, monkeypatch):
-    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
-    assert guard.main(["hf1_path_guard.py"]) == 0
-    captured = capsys.readouterr()
-    assert captured.err == ""
+def test_parse_empty_returns_empty(guard):
+    assert guard.parse_name_status_z("") == []
 
 
-def test_main_exit_zero_on_safe_files(guard, capsys, monkeypatch):
+def test_parse_single_modify(guard):
+    blob = "M\0agents/router.py\0"
+    assert guard.parse_name_status_z(blob) == ["agents/router.py"]
+
+
+def test_parse_single_add(guard):
+    blob = "A\0backend/new.py\0"
+    assert guard.parse_name_status_z(blob) == ["backend/new.py"]
+
+
+def test_parse_single_delete(guard):
+    """Delete must surface the deleted path so HF1 catches `rm agents/solver.py`."""
+    blob = "D\0agents/solver.py\0"
+    assert guard.parse_name_status_z(blob) == ["agents/solver.py"]
+
+
+def test_parse_rename_returns_both_sides(guard):
+    """Rename A->B must surface BOTH A and B so renaming a zone path away triggers."""
+    blob = "R100\0agents/router.py\0agents/router_old.py\0"
+    paths = guard.parse_name_status_z(blob)
+    assert paths == ["agents/router.py", "agents/router_old.py"]
+
+
+def test_parse_copy_returns_both_sides(guard):
+    blob = "C75\0Makefile\0Makefile.copy\0"
+    paths = guard.parse_name_status_z(blob)
+    assert paths == ["Makefile", "Makefile.copy"]
+
+
+def test_parse_mixed_records(guard):
+    blob = (
+        "M\0backend/main.py\0"
+        "D\0agents/solver.py\0"
+        "R100\0agents/router.py\0agents/router_v2.py\0"
+        "A\0docs/quickstart.md\0"
+    )
+    paths = guard.parse_name_status_z(blob)
+    assert paths == [
+        "backend/main.py",
+        "agents/solver.py",
+        "agents/router.py",
+        "agents/router_v2.py",
+        "docs/quickstart.md",
+    ]
+
+
+def test_rename_of_zone_file_caught(guard):
+    """Integration: rename old-path is in zone → must flag."""
+    blob = "R100\0agents/router.py\0agents/router_old.py\0"
+    paths = guard.parse_name_status_z(blob)
+    hits = guard.find_violations(paths)
+    hit_paths = {p for p, _ in hits}
+    assert "agents/router.py" in hit_paths
+
+
+def test_delete_of_zone_file_caught(guard):
+    blob = "D\0schemas/sim_state.py\0"
+    paths = guard.parse_name_status_z(blob)
+    hits = guard.find_violations(paths)
+    assert len(hits) == 1
+    assert hits[0][0] == "schemas/sim_state.py"
+
+
+# ---------------------------------------------------------------------------
+# check_paths_and_report — pure decision + reporting (no git IO)
+# ---------------------------------------------------------------------------
+
+
+def test_check_no_paths_returns_zero(guard, capsys, monkeypatch):
     monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
-    rc = guard.main(["hf1_path_guard.py", "backend/app/main.py", "docs/quickstart.md"])
+    assert guard.check_paths_and_report([]) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_check_safe_paths_returns_zero(guard, capsys, monkeypatch):
+    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
+    rc = guard.check_paths_and_report(["backend/app/main.py", "docs/quickstart.md"])
     assert rc == 0
     assert capsys.readouterr().err == ""
 
 
-def test_main_exit_one_on_zone_violation(guard, capsys, monkeypatch):
+def test_check_zone_violation_returns_one(guard, capsys, monkeypatch):
     monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
-    rc = guard.main(["hf1_path_guard.py", "agents/solver.py"])
+    rc = guard.check_paths_and_report(["agents/solver.py"])
     assert rc == 1
     err = capsys.readouterr().err
     assert "HF1 forbidden-zone violation" in err
@@ -146,43 +223,35 @@ def test_main_exit_one_on_zone_violation(guard, capsys, monkeypatch):
     assert "Resolution paths" in err
 
 
-def test_main_override_with_reason_allows_pass(guard, capsys, monkeypatch):
+def test_check_override_with_reason_passes(guard, capsys, monkeypatch):
     monkeypatch.setenv("HF1_GUARD_OVERRIDE", "hot-fix CVE-2026-0001 per security incident")
-    rc = guard.main(["hf1_path_guard.py", "agents/solver.py"])
+    rc = guard.check_paths_and_report(["agents/solver.py"])
     assert rc == 0
     err = capsys.readouterr().err
     assert "HF1 OVERRIDE active" in err
     assert "hot-fix CVE-2026-0001" in err
-    assert "Reviewer note" in err
+    assert "Local-only escape hatch" in err
+    assert "FF-07" in err
 
 
-def test_main_override_with_empty_reason_still_blocks(guard, capsys, monkeypatch):
-    """Empty HF1_GUARD_OVERRIDE must not bypass the guard."""
+def test_check_override_empty_reason_blocks(guard, capsys, monkeypatch):
     monkeypatch.setenv("HF1_GUARD_OVERRIDE", "")
-    rc = guard.main(["hf1_path_guard.py", "agents/solver.py"])
+    rc = guard.check_paths_and_report(["agents/solver.py"])
     assert rc == 1
     err = capsys.readouterr().err
     assert "HF1 forbidden-zone violation" in err
-    assert "OVERRIDE" not in err.split("violation")[0]  # no override banner before violation
+    assert "OVERRIDE active" not in err
 
 
-def test_main_override_with_whitespace_reason_blocks(guard, capsys, monkeypatch):
-    """Whitespace-only reason is rejected the same as empty."""
+def test_check_override_whitespace_reason_blocks(guard, capsys, monkeypatch):
     monkeypatch.setenv("HF1_GUARD_OVERRIDE", "   \t  ")
-    rc = guard.main(["hf1_path_guard.py", "Dockerfile"])
+    rc = guard.check_paths_and_report(["Dockerfile"])
     assert rc == 1
 
 
-def test_main_lists_all_violations_not_just_first(guard, capsys, monkeypatch):
+def test_check_lists_all_violations(guard, capsys, monkeypatch):
     monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
-    rc = guard.main(
-        [
-            "hf1_path_guard.py",
-            "agents/solver.py",
-            "schemas/sim_state.py",
-            "Dockerfile",
-        ]
-    )
+    rc = guard.check_paths_and_report(["agents/solver.py", "schemas/sim_state.py", "Dockerfile"])
     assert rc == 1
     err = capsys.readouterr().err
     assert "agents/solver.py" in err
@@ -190,28 +259,59 @@ def test_main_lists_all_violations_not_just_first(guard, capsys, monkeypatch):
     assert "Dockerfile" in err
 
 
-def test_script_invocable_via_subprocess(monkeypatch, tmp_path):
-    """Smoke-test that the script can be invoked end-to-end as pre-commit would."""
-    import subprocess
+# ---------------------------------------------------------------------------
+# main() — git invocation contract (mocked)
+# ---------------------------------------------------------------------------
 
-    here = Path(__file__).resolve()
-    repo_root = here.parent.parent
-    guard_path = repo_root / "scripts" / "hf1_path_guard.py"
 
-    env = {k: v for k, v in __import__("os").environ.items() if k != "HF1_GUARD_OVERRIDE"}
+def test_main_ignores_argv_paths_uses_git(guard, capsys, monkeypatch):
+    """main() must NOT use argv for paths (pre-commit's filter would
+    miss deletes/renames). It always reads from git."""
+    captured = {}
 
-    # Safe file → exit 0
-    rc = subprocess.run(
-        [sys.executable, str(guard_path), "backend/app/main.py"],
-        capture_output=True,
-        env=env,
-    ).returncode
+    def fake_git_paths():
+        captured["called"] = True
+        return ["agents/solver.py"]
+
+    monkeypatch.setattr(guard, "get_staged_paths", fake_git_paths)
+    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
+    # Pass argv that, if used, would NOT trigger a violation. But
+    # main() must ignore argv and use git-supplied paths.
+    rc = guard.main(["hf1_path_guard.py", "backend/app/main.py"])
+    assert captured["called"] is True
+    assert rc == 1  # because git supplied a zone path
+    err = capsys.readouterr().err
+    assert "agents/solver.py" in err
+
+
+def test_main_no_staged_paths_returns_zero(guard, capsys, monkeypatch):
+    monkeypatch.setattr(guard, "get_staged_paths", lambda: [])
+    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
+    rc = guard.main(["hf1_path_guard.py"])
     assert rc == 0
+    assert capsys.readouterr().err == ""
 
-    # Zone file → exit 1
-    rc = subprocess.run(
-        [sys.executable, str(guard_path), "agents/router.py"],
-        capture_output=True,
-        env=env,
-    ).returncode
+
+def test_main_git_returns_rename_caught(guard, capsys, monkeypatch):
+    """Integration: git surfaces a rename of a zone path; main() must
+    block (this is the BLOCKER scenario from R1)."""
+    monkeypatch.setattr(
+        guard,
+        "get_staged_paths",
+        lambda: ["agents/router.py", "agents/router_old.py"],
+    )
+    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
+    rc = guard.main(["hf1_path_guard.py"])
     assert rc == 1
+    err = capsys.readouterr().err
+    assert "agents/router.py" in err  # old path (in zone) flagged
+
+
+def test_main_git_returns_delete_caught(guard, capsys, monkeypatch):
+    """Integration: git surfaces a delete of a zone path; main() must block."""
+    monkeypatch.setattr(guard, "get_staged_paths", lambda: ["agents/solver.py"])
+    monkeypatch.delenv("HF1_GUARD_OVERRIDE", raising=False)
+    rc = guard.main(["hf1_path_guard.py"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "agents/solver.py" in err
