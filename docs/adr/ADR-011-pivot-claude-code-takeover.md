@@ -86,7 +86,7 @@ ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附
 - **Calibration window**: 2026-04-25 → **2026-05-23**（4 周）
 - 期内 HF2 触发 = T1 在该 turn 内附 ≤30 字理由 + 在 `reports/hf2_calibration.md` 追加一行；可继续。
 - 期后 HF2 触发 = 真 STOP；必须当场 spawn subagent 或停手。
-- Calibration window 结束时，T1 必须基于 `hf2_calibration.log` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
+- Calibration window 结束时，T1 必须基于 `reports/hf2_calibration.md` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
 
 在 calibration window 内 HF2 是 **soft floor**，期后回归 hard floor。其他 HF 不受此例外影响。
 
@@ -146,13 +146,13 @@ Codex-verified: <claim-id>@<sha>
 观察窗口 4 周（2026-04-25 → 2026-05-23），与 Calibration Mode 同步。若出现以下任一（指标已加 denominator 与严重度分层，回应 Codex R1 BLOCKING #2）：
 
 - **Codex verification mismatch rate > 15%**，**且**该周期内累积 verified claim ≥ 20。低于 20 时只记录、不触发 rollback（小样本不可靠）。
-- **HF1 触发按区域加权 > 2 weighted points**，权重表：
+- **HF1 触发按区域加权 > 2 weighted points**，权重表 (覆盖 §HF1 forbidden zone 全部 8 类，无遗漏)：
   - solver core (`agents/solver.py`, `tools/calculix_driver.py`, `agents/router.py`, `agents/geometry.py`) = **1.0 / 次**
-  - schema / toolchain pin (`schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`) = **0.5 / 次**
+  - schema / toolchain pin (`schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`, `Makefile` 中 `docker-base`/`hot-smoke`/`docker-probe` 段) = **0.5 / 次**
   - governance docs (`docs/adr/**`, `docs/governance/**`) = **0.3 / 次**
-  - golden_samples write = **1.0 / 次**
+  - golden_samples write (`golden_samples/**`) = **1.0 / 次**
 
-  例：solver core 误改 1 次 + governance docs 越权 1 次 = 1.3 weighted points (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)。
+  例：solver core 误改 1 次 + governance docs 越权 1 次 = 1.3 weighted points (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)；Makefile docker-base 段误改 5 次 = 2.5 (触发)。
 - **HF2 calibration window 关闭后**，HF2 hard-stop 触发频次 > 1 / 周。
 
 任一触发则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用一个只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
@@ -181,13 +181,13 @@ Codex-verified: <claim-id>@<sha>
 1. **`main` 分支保护** — GitHub 端的 required-reviews / required-status-checks / disallow-force-push 设置；当前仅 `README.md:81` 声明 "all code via PR"，不可执法。Tracked: ADR-012 候选。
 2. **PR review 状态机** — 本 ADR 没有规定 PR 必须经过 (a) Codex post-commit review (b) reviewer 至少 1 人 (c) 所有 conversation resolved 才能 merge 的状态流。Tracked: ADR-012 候选。
 3. **Subagent 失败回滚 SOP** — 当 subagent 越界（HF1）、超时、或返回 INSUFFICIENT_EVIDENCE 时，T1 应当 (a) 不引用 subagent 输出 (b) 落 `reports/subagent_failures/` 记录 (c) 决定降级路径。本 ADR 没有具体 SOP。Tracked: ADR-013 候选。
-4. **FailurePattern 与 ADR 的 promotion 路径** — FF-02 已经创建 `docs/failure_patterns/`；但 FP → ADR 的 promotion 规则（什么时候一个 FP 必须升级为 ADR）未规定。Tracked: 与 ADR-012 合并。
+4. **FailurePattern 与 ADR 的 promotion 路径** — FF-02 在独立分支 `feature/AI-FEA-FF-02-failure-patterns` 已经创建 `docs/failure_patterns/` 与 `FP-001/002/003`（见该分支 commit `020f2d3`）。本分支 (`feature/AI-FEA-ADR-011-pivot-claude-code-takeover`) 不包含这些文件 — 两个分支独立 PR review。FP → ADR 的 promotion 规则（什么时候一个 FP 必须升级为 ADR）未规定。Tracked: 与 ADR-012 合并。
 
 ## Cross-References
 
 - Phase 1.5 Foundation-Freeze 任务集 **FF-01 .. FF-05**；本 ADR = **FF-01**（governance baseline）。R2 修订引入 **FF-06/07/08** automation 跟踪与 **R2 retro 任务**。
 - In-flight branch **`feature/AI-FEA-S2.1-02-notion-sync-contract-align`** — 本 ADR 不阻塞，独立分支落地；FF-01b 实测发现 Decisions DS schema 缺 `Branch`/`Session Batch`/`ADR Link`，与 S2.1-02 的 `Sprint` 添加方向不一致，应另开 ADR 修 schema。
-- **GS-001 / GS-002 / GS-003** deviation attribution = **FF-02**（已完成，见 `docs/failure_patterns/FP-001/002/003`）；FP 提议 GS 状态全部 → `insufficient_evidence`，是 Phase 2 Web Console 激活的硬前置之一。
+- **GS-001 / GS-002 / GS-003** deviation attribution = **FF-02**。Subagent 完成于独立分支 `feature/AI-FEA-FF-02-failure-patterns` (commit `020f2d3`，4 个新文件：`docs/failure_patterns/README.md` + `FP-001/002/003`)。本分支不携带这些文件；两个分支独立合入 main 后才能在 main 上同时观察到。FP 提议 GS 状态全部 → `insufficient_evidence`，是 Phase 2 Web Console 激活的硬前置之一。
 - 本仓库 `README.md:79-86` 的 5 development rules 与本 ADR 的 9 Golden Rules **部分重叠** (Rules #1, #4 大致对应 README #1, #2; Rules #3, #5 对应 README #3, #5; Rules #2, #6, #7, #8, #9 在 README 中不存在或仅隐含)。后续 README 与 ADR 冲突时以 ADR 为准；同时跟踪 README 同步 (FF-09 候选)。
 - `docs/architecture.md:7` 与 `docs/well_harness_architecture.md:23` 描述了系统组件与闭环，但 **未定义到可执法的 four-layer import 边界**。本 ADR 第 9 条 Golden Rule 是首次声明该边界 — 实际 lint enforcement (e.g. `import-linter`) 跟踪 ADR-012 候选。
 - Notion 控制塔页：[AI StructureAnalysis 项目中枢](https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9) (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`，已与 `config/well_harness_control_plane.yaml` 对齐)。
