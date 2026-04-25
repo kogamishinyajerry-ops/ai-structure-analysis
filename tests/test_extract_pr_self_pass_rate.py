@@ -287,38 +287,34 @@ def test_r2_multiple_self_pass_rate_sections(mod):
 
 def test_r3_details_block_bypass_codex_repro(mod):
     """Codex R2 repro verbatim: <details> hides 30%, visible 95%."""
-    body = "## Self-pass-rate\n\n" "<details><summary>x</summary>30%</details>\n\n" "95%\n"
+    body = "## Self-pass-rate\n\n<details><summary>x</summary>30%</details>\n\n95%\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_details_with_attributes_is_stripped(mod):
     """`<details open>` and arbitrary attribute values still strip cleanly."""
-    body = (
-        "## Self-pass-rate\n\n"
-        '<details open class="x" data-foo="30%">30%</details>\n\n'
-        "**95%**\n"
-    )
+    body = '## Self-pass-rate\n\n<details open class="x" data-foo="30%">30%</details>\n\n**95%**\n'
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_summary_only_block_is_stripped(mod):
-    body = "## Self-pass-rate\n\n" "<summary>Hidden 30%</summary>\n\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n<summary>Hidden 30%</summary>\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_script_block_is_stripped(mod):
-    body = "## Self-pass-rate\n\n" "<script>alert('30%')</script>\n\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n<script>alert('30%')</script>\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_style_block_is_stripped(mod):
-    body = "## Self-pass-rate\n\n" "<style>.foo::before{content:'30%'}</style>\n\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n<style>.foo::before{content:'30%'}</style>\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_details_uppercase_tag_is_stripped(mod):
     """HTML tags are case-insensitive."""
-    body = "## Self-pass-rate\n\n" "<DETAILS><SUMMARY>x</SUMMARY>30%</DETAILS>\n\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n<DETAILS><SUMMARY>x</SUMMARY>30%</DETAILS>\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
@@ -338,13 +334,13 @@ def test_r3_details_multiline_body_is_stripped(mod):
 
 def test_r3_indented_4_space_code_block_bypass(mod):
     """4+ leading spaces renders as monospace; the value is hidden in the UI."""
-    body = "## Self-pass-rate\n\n" "    30%\n" "\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n    30%\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_indented_tab_code_block_bypass(mod):
     """Leading tab is also a CommonMark indented-code marker."""
-    body = "## Self-pass-rate\n\n" "\t30%\n" "\n" "**95%**\n"
+    body = "## Self-pass-rate\n\n\t30%\n\n**95%**\n"
     assert mod.extract_claim(body) == 95
 
 
@@ -363,34 +359,32 @@ def test_r3_combined_hider_and_indented_bypass(mod):
 
 def test_r3_all_hidden_returns_none(mod):
     """If every percent is hidden, extractor returns None (not a stale value)."""
-    body = "## Self-pass-rate\n\n" "<details>30%</details>\n" "    40%\n" "<!-- 50% -->\n"
+    body = "## Self-pass-rate\n\n<details>30%</details>\n    40%\n<!-- 50% -->\n"
     assert mod.extract_claim(body) is None
 
 
 def test_r3_visible_text_with_indent_under_4_spaces_kept(mod):
     """3 leading spaces is NOT a code block; the percent stays visible."""
-    body = (
-        "## Self-pass-rate\n\n" "   30%\n"  # 3 spaces — paragraph continuation, not code
-    )
+    body = "## Self-pass-rate\n\n   30%\n"  # 3 spaces — paragraph continuation, not code
     assert mod.extract_claim(body) == 30
 
 
 def test_r3_details_inside_fenced_block_already_stripped_by_fence(mod):
     """Defense-in-depth: a <details> inside a fenced code block was
     already stripped by the fence rule; R3 just removes a second copy."""
-    body = "## Self-pass-rate\n\n" "```\n<details>30%</details>\n```\n\n" "95%\n"
+    body = "## Self-pass-rate\n\n```\n<details>30%</details>\n```\n\n95%\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_self_closing_details_does_not_consume_following_paragraph(mod):
     """A bare `<details/>` shouldn't eat the next paragraph's percent."""
-    body = "## Self-pass-rate\n\n" "<details></details>\n\n" "95%\n"
+    body = "## Self-pass-rate\n\n<details></details>\n\n95%\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r3_indented_code_block_does_not_eat_following_visible_paragraph(mod):
     """A blank line ends an indented code block; the next paragraph stays visible."""
-    body = "## Self-pass-rate\n\n" "    30%\n" "    still in code\n" "\n" "95%\n"
+    body = "## Self-pass-rate\n\n    30%\n    still in code\n\n95%\n"
     assert mod.extract_claim(body) == 95
 
 
@@ -446,7 +440,7 @@ def test_r4_nested_with_attributes(mod):
 
 def test_r4_all_hidden_with_nested_returns_none(mod):
     """If every percent is inside a nested hider, no claim found."""
-    body = "## Self-pass-rate\n\n" "<details><details>10%</details>20%</details>\n"
+    body = "## Self-pass-rate\n\n<details><details>10%</details>20%</details>\n"
     assert mod.extract_claim(body) is None
 
 
@@ -564,14 +558,14 @@ def test_r5_visible_claim_before_orphan_opener_still_parses(mod):
 def test_r5_orphan_opener_inside_fenced_code_does_not_trigger(mod):
     """Fenced code is stripped FIRST, so a fake `<details>` inside it
     must not cause a false R5 wipe. Visible claim must still parse."""
-    body = "## Self-pass-rate\n\n" "**95%**\n\n" "```\n" "example: <details>30%\n" "```\n"
+    body = "## Self-pass-rate\n\n**95%**\n\n```\nexample: <details>30%\n```\n"
     assert mod.extract_claim(body) == 95
 
 
 def test_r5_orphan_opener_inside_html_comment_does_not_trigger(mod):
     """HTML comments are stripped FIRST, so a fake `<details>` inside
     a comment must not cause a false R5 wipe."""
-    body = "## Self-pass-rate\n\n" "**95%**\n\n" "<!-- example: <details>30% -->\n"
+    body = "## Self-pass-rate\n\n**95%**\n\n<!-- example: <details>30% -->\n"
     assert mod.extract_claim(body) == 95
 
 
