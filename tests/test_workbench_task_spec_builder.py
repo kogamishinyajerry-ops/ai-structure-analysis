@@ -13,9 +13,15 @@ pytest.importorskip("schemas.sim_plan")
 
 from backend.app.workbench.task_spec_builder import (  # noqa: E402
     ConfirmationError,
+    DraftNotFoundError,
+    EditValidationError,
     _canonical_json,
     _hmac_token,
     _new_draft_id,
+    _registry_clear,
+    _registry_size,
+    apply_edits_and_remint,
+    discard_draft,
     draft_from_nl,
     verify_confirmation,
 )
@@ -23,6 +29,14 @@ from schemas.sim_plan import AnalysisType, GeometrySpec, PhysicsSpec, SimPlan  #
 
 SECRET = b"workbench-token-fixture-32-bytes!"
 ALT_SECRET = b"different-workbench-token-32-byts"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry():
+    """Each test starts and ends with an empty draft registry."""
+    _registry_clear()
+    yield
+    _registry_clear()
 
 
 def _sample_plan(case_id: str = "AI-FEA-P0-11") -> SimPlan:
@@ -247,3 +261,199 @@ def test_verify_confirmation_uses_constant_time_compare():
         "verify_confirmation should compare via secrets.compare_digest "
         "to defeat timing-oracle attacks; saw direct equality instead"
     )
+
+
+# ---------------------------------------------------------------------------
+# R2 — edit-flow contract (Codex R1 HIGH on PR #54)
+# ---------------------------------------------------------------------------
+
+
+def _edited_plan(case_id: str = "AI-FEA-P0-11") -> SimPlan:
+    """A plausibly-edited variant of the same case_id, different geometry."""
+    return SimPlan(
+        case_id=case_id,
+        physics=PhysicsSpec(type=AnalysisType.STATIC),
+        geometry=GeometrySpec(
+            mode="knowledge",
+            ref="naca",
+            params={"profile": "NACA0012", "span": 2.0, "chord": 0.5},  # edited
+        ),
+    )
+
+
+class TestR2DraftRegistry:
+    def test_draft_from_nl_populates_registry(self):
+        plan = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=plan):
+            assert _registry_size() == 0
+            _, draft_id, _ = draft_from_nl("static beam", workbench_secret=SECRET)
+            assert _registry_size() == 1
+
+    def test_discard_draft_removes_from_registry(self):
+        plan = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=plan):
+            _, draft_id, _ = draft_from_nl("x", workbench_secret=SECRET)
+        assert _registry_size() == 1
+        discard_draft(draft_id)
+        assert _registry_size() == 0
+
+    def test_discard_draft_is_idempotent(self):
+        discard_draft("draft-nonexistent")  # must not raise
+        discard_draft("draft-nonexistent")
+
+    def test_two_drafts_keep_independent_state(self):
+        plan_a = _sample_plan(case_id="AI-FEA-P0-11")
+        plan_b = _sample_plan(case_id="AI-FEA-P0-12")
+        with patch(
+            "agents.architect._extract_structured_data",
+            side_effect=[plan_a, plan_b],
+        ):
+            _, id_a, _ = draft_from_nl("a", workbench_secret=SECRET)
+            _, id_b, _ = draft_from_nl("b", workbench_secret=SECRET)
+        assert _registry_size() == 2
+        assert id_a != id_b
+
+
+class TestR2ApplyEditsAndRemint:
+    """The Codex R1 fix surface: edits no longer break the HMAC binding
+    because the SERVER re-mints the token over the rebuilt plan."""
+
+    def test_apply_edits_returns_new_token_for_edited_plan(self):
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+
+        edited = _edited_plan()
+        rebuilt, submit_token = apply_edits_and_remint(
+            workbench_secret=SECRET,
+            draft_id=draft_id,
+            draft_token=draft_token,
+            edited_plan=edited,
+        )
+        assert rebuilt == edited
+        # The submit_token validates against the EDITED plan, not the
+        # original — this is the entire point of the R2 fix.
+        verify_confirmation(
+            workbench_secret=SECRET,
+            draft_id=draft_id,
+            plan=edited,
+            confirmation_token=submit_token,
+        )
+
+    def test_submit_token_does_not_match_original_plan(self):
+        """Sanity check: the new submit_token is bound to the edited plan,
+        so verifying against the original plan must fail."""
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+
+        edited = _edited_plan()
+        _, submit_token = apply_edits_and_remint(
+            workbench_secret=SECRET,
+            draft_id=draft_id,
+            draft_token=draft_token,
+            edited_plan=edited,
+        )
+        with pytest.raises(ConfirmationError):
+            verify_confirmation(
+                workbench_secret=SECRET,
+                draft_id=draft_id,
+                plan=original,
+                confirmation_token=submit_token,
+            )
+
+    def test_apply_edits_rejects_unknown_draft_id(self):
+        edited = _edited_plan()
+        with pytest.raises(DraftNotFoundError):
+            apply_edits_and_remint(
+                workbench_secret=SECRET,
+                draft_id="draft-never-issued",
+                draft_token="00" * 32,
+                edited_plan=edited,
+            )
+
+    def test_apply_edits_rejects_invalid_draft_token(self):
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, _ = draft_from_nl("x", workbench_secret=SECRET)
+
+        # Caller supplies a wrong token (e.g. one minted with a
+        # different secret).
+        bogus = _hmac_token(ALT_SECRET, draft_id, original)
+        with pytest.raises(ConfirmationError):
+            apply_edits_and_remint(
+                workbench_secret=SECRET,
+                draft_id=draft_id,
+                draft_token=bogus,
+                edited_plan=_edited_plan(),
+            )
+
+    def test_apply_edits_rejects_case_id_mismatch(self):
+        """case_id is the run identity — edits cannot change it."""
+        original = _sample_plan(case_id="AI-FEA-P0-11")
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+
+        # Same shape, different case_id.
+        forged = _edited_plan(case_id="AI-FEA-P0-99")
+        with pytest.raises(EditValidationError):
+            apply_edits_and_remint(
+                workbench_secret=SECRET,
+                draft_id=draft_id,
+                draft_token=draft_token,
+                edited_plan=forged,
+            )
+
+    def test_apply_edits_uses_constant_time_compare_for_draft_token(self):
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+
+        import secrets as secrets_mod
+
+        called = {"hit": False}
+        real = secrets_mod.compare_digest
+
+        def spy(a, b):
+            called["hit"] = True
+            return real(a, b)
+
+        with patch("backend.app.workbench.task_spec_builder.secrets.compare_digest", spy):
+            apply_edits_and_remint(
+                workbench_secret=SECRET,
+                draft_id=draft_id,
+                draft_token=draft_token,
+                edited_plan=_edited_plan(),
+            )
+        assert called["hit"]
+
+    def test_no_edits_path_token_still_validates(self):
+        """If user accepts the draft without edits, the original
+        draft_token still validates against the original plan via the
+        normal verify_confirmation flow (no apply_edits_and_remint
+        needed)."""
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            produced, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+        # Direct submit (no edits) is still valid.
+        verify_confirmation(
+            workbench_secret=SECRET,
+            draft_id=draft_id,
+            plan=produced,
+            confirmation_token=draft_token,
+        )
+
+    def test_edited_token_is_distinct_from_draft_token(self):
+        """Replay defense: the submit_token differs from the draft_token
+        when the plan changed, so a leaked draft_token cannot be reused
+        to submit a different rebuilt plan."""
+        original = _sample_plan()
+        with patch("agents.architect._extract_structured_data", return_value=original):
+            _, draft_id, draft_token = draft_from_nl("x", workbench_secret=SECRET)
+        _, submit_token = apply_edits_and_remint(
+            workbench_secret=SECRET,
+            draft_id=draft_id,
+            draft_token=draft_token,
+            edited_plan=_edited_plan(),
+        )
+        assert submit_token != draft_token
