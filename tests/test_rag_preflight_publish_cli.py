@@ -509,3 +509,258 @@ def test_cli_hint_default_provider_in_advisor_only_path(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "advisor-only@v0" in out
+
+
+# ---------------------------------------------------------------------------
+# --json output mode
+# ---------------------------------------------------------------------------
+
+
+def test_json_dry_run_emits_valid_json(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--case-id",
+            "GS-X",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["mode"] == "dry-run"
+    assert parsed["dry_run_reason"] == "--post not set"
+    assert parsed["verdict"] == "Reject"
+    assert parsed["fault"] == "solver_convergence"
+    assert parsed["case_id"] == "GS-X"
+    assert "markdown" in parsed
+    assert "## Preflight" in parsed["markdown"]
+    assert isinstance(parsed["advice_hit_count"], int)
+    assert parsed["quantity_count"] == 0  # advisor-only
+
+
+def test_json_dry_run_explicit_flag(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--dry-run",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["dry_run_reason"] == "forced"
+
+
+def test_json_with_hint_json_includes_quantity_count(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    hint_path = tmp_path / "hint.json"
+    hint_path.write_text(
+        json.dumps(
+            {
+                "case_id": "GS-001",
+                "provider": "manual@v0",
+                "quantities": [
+                    {"name": "u", "value": 1.0, "unit": "mm"},
+                    {"name": "s", "value": 200.0, "unit": "MPa"},
+                ],
+            }
+        )
+    )
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Accept",
+            "--fault",
+            "none",
+            "--root",
+            str(repo),
+            "--hint-json",
+            str(hint_path),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["quantity_count"] == 2
+    assert parsed["case_id"] == "GS-001"
+
+
+def test_json_post_path_success(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=True, action="posted", comment_url="https://x/c/99", status_code=201
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "42",
+            "--post",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["mode"] == "post"
+    assert parsed["target"] == "owner/repo#42"
+    assert parsed["publish_mode"] == "post"
+    assert parsed["posted"] is True
+    assert parsed["action"] == "posted"
+    assert parsed["comment_url"] == "https://x/c/99"
+    assert parsed["status_code"] == 201
+    assert parsed["error"] is None
+
+
+def test_json_post_path_failure_rc_1(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=False, action=None, comment_url=None, status_code=403, error="Forbidden"
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--repo",
+            "o/r",
+            "--pr",
+            "1",
+            "--post",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 1
+    parsed = json.loads(out)
+    assert parsed["posted"] is False
+    assert parsed["status_code"] == 403
+    assert parsed["error"] == "Forbidden"
+    assert parsed["action"] is None
+
+
+def test_json_post_path_empty_summary_rc_0(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=False,
+            action=None,
+            comment_url=None,
+            error="summary is empty",
+            summary_was_empty=True,
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--repo",
+            "o/r",
+            "--pr",
+            "1",
+            "--post",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["summary_was_empty"] is True
+
+
+def test_json_upsert_mode_round_trips(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=True, action="updated", comment_url="https://x/c/1-updated", status_code=200
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--repo",
+            "o/r",
+            "--pr",
+            "1",
+            "--post",
+            "--mode",
+            "upsert",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    parsed = json.loads(out)
+    assert parsed["publish_mode"] == "upsert"
+    assert parsed["action"] == "updated"
+
+
+def test_json_output_is_single_record(tmp_path, capsys):
+    """Output must be exactly one JSON object on stdout (no trailing text)."""
+    repo = _make_synth_repo(tmp_path)
+    main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out.strip()
+    # Must round-trip cleanly; no extra lines
+    parsed = json.loads(out)
+    assert isinstance(parsed, dict)
+    # Re-serialise and compare the parsed shape (don't compare strings —
+    # whitespace varies)
+    assert json.loads(json.dumps(parsed)) == parsed

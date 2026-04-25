@@ -204,6 +204,12 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Print the rendered markdown to stdout; do not POST. (default if --post not set)",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit one JSON record on stdout (suitable for piping). "
+        "Compatible with both dry-run and --post.",
+    )
 
     args = parser.parse_args(argv[1:])
 
@@ -245,6 +251,23 @@ def main(argv: list[str]) -> int:
     # Dry-run path (default unless --post)
     is_dry = args.dry_run or not args.post
     if is_dry:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "mode": "dry-run",
+                        "dry_run_reason": "forced" if args.dry_run else "--post not set",
+                        "verdict": args.verdict,
+                        "fault": args.fault,
+                        "case_id": summary.case_id,
+                        "confidence_indicator": summary.confidence_indicator,
+                        "quantity_count": len(summary.quantity_lines),
+                        "advice_hit_count": len(summary.advice_lines),
+                        "markdown": summary.markdown,
+                    }
+                )
+            )
+            return 0
         print(f"[publish-rag] mode: DRY-RUN ({'forced' if args.dry_run else '--post not set'})")
         print(f"[publish-rag] verdict: {args.verdict!r}  fault: {args.fault!r}")
         print(f"[publish-rag] case_id: {summary.case_id}  confidence: {summary.confidence_indicator}")
@@ -267,6 +290,31 @@ def main(argv: list[str]) -> int:
         mode=args.mode,
         header_marker=args.header_marker,
     )
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "mode": "post",
+                    "verdict": args.verdict,
+                    "fault": args.fault,
+                    "case_id": summary.case_id,
+                    "target": f"{args.repo}#{args.pr}",
+                    "publish_mode": args.mode,
+                    "posted": result.posted,
+                    "action": result.action,
+                    "comment_url": result.comment_url,
+                    "status_code": result.status_code,
+                    "error": result.error,
+                    "summary_was_empty": result.summary_was_empty,
+                }
+            )
+        )
+        if result.summary_was_empty:
+            return 0
+        if result.posted:
+            return 0
+        return 1
 
     print(f"[publish-rag] verdict: {args.verdict!r}  fault: {args.fault!r}")
     print(f"[publish-rag] target: {args.repo}#{args.pr}  mode: {args.mode}")
