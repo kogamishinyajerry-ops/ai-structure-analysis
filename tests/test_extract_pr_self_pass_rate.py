@@ -392,3 +392,81 @@ def test_r3_indented_code_block_does_not_eat_following_visible_paragraph(mod):
     """A blank line ends an indented code block; the next paragraph stays visible."""
     body = "## Self-pass-rate\n\n" "    30%\n" "    still in code\n" "\n" "95%\n"
     assert mod.extract_claim(body) == 95
+
+
+# ---------------------------------------------------------------------------
+# R4 adversarial — nested hider blocks (Codex R3 finding 2026-04-26)
+# ---------------------------------------------------------------------------
+
+
+def test_r4_nested_details_codex_r3_repro(mod):
+    """Codex R3 repro verbatim:
+    `<details><summary>x</summary><details>99%</details>30%</details>` + visible 95%
+    Pre-R4: returned 30 (single-pass regex stripped only inner <details>).
+    Post-R4: returns 95 (fixpoint iteration collapses both layers).
+    """
+    body = (
+        "## Self-pass-rate\n\n"
+        "<details><summary>x</summary><details>99%</details>30%</details>\n\n"
+        "95%\n"
+    )
+    assert mod.extract_claim(body) == 95
+
+
+def test_r4_triply_nested_details(mod):
+    """Three layers deep. Each iteration of the fixpoint loop peels
+    one layer; we cap at 64 so this is well within bounds."""
+    body = (
+        "## Self-pass-rate\n\n"
+        "<details><details><details>10%</details>20%</details>30%</details>\n\n"
+        "95%\n"
+    )
+    assert mod.extract_claim(body) == 95
+
+
+def test_r4_alternating_nested_details_summary(mod):
+    """Alternating <details>/<summary> nesting (the R3 hider tag set
+    treats both as visible-hiders so they all collapse)."""
+    body = (
+        "## Self-pass-rate\n\n"
+        "<details><summary><details>10%</details>summary text 20%</summary>30%</details>\n\n"
+        "95%\n"
+    )
+    assert mod.extract_claim(body) == 95
+
+
+def test_r4_nested_with_attributes(mod):
+    body = (
+        "## Self-pass-rate\n\n"
+        '<details open><details class="x" data-foo="30%">99%</details>30%</details>\n\n'
+        "95%\n"
+    )
+    assert mod.extract_claim(body) == 95
+
+
+def test_r4_all_hidden_with_nested_returns_none(mod):
+    """If every percent is inside a nested hider, no claim found."""
+    body = "## Self-pass-rate\n\n" "<details><details>10%</details>20%</details>\n"
+    assert mod.extract_claim(body) is None
+
+
+def test_r4_fixpoint_loop_terminates_within_cap(mod):
+    """Defensive: the fixpoint loop has a hard 64-iteration cap and
+    each iteration strictly shrinks the body, so even pathological
+    deeply-nested input must terminate."""
+    # 50 nested layers — well within the 64-iter cap.
+    body = "## Self-pass-rate\n\n" + ("<details>" * 50) + "10%" + ("</details>" * 50) + "\n\n95%\n"
+    assert mod.extract_claim(body) == 95
+
+
+def test_r4_nested_details_with_indented_code_inside(mod):
+    """Nested <details> with an indented code block inside also collapses."""
+    body = (
+        "## Self-pass-rate\n\n"
+        "<details>outer\n"
+        "    30%\n"
+        "    <details>99%</details>\n"
+        "</details>\n\n"
+        "95%\n"
+    )
+    assert mod.extract_claim(body) == 95

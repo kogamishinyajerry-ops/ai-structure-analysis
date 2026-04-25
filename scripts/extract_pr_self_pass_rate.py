@@ -68,8 +68,20 @@ _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 # - Indented code blocks: per CommonMark, a paragraph-fresh line with 4+
 #   leading spaces or a leading tab renders as monospace. We collapse
 #   any such run-of-lines to a blank line so its `N%` does not match.
+#
+# R4 hardening (post Codex R3): the regex matches ONLY innermost hider
+# blocks — its content must not contain any opening hider tag. The
+# negative lookahead `(?!<(?:details|summary|script|style)\b)` asserts
+# the next char does not start another hider. This guarantees that
+# nested same-tag blocks like
+#   <details><details>99%</details>30%</details>
+# only have their innermost layer stripped per pass; the outer fixpoint
+# loop in `_strip_hidden_constructs` peels each remaining layer until
+# the body stops changing.
 _HTML_HIDER_RE = re.compile(
-    r"<(details|summary|script|style)\b[^>]*>.*?</\1\s*>",
+    r"<(details|summary|script|style)\b[^>]*>"
+    r"(?:(?!<(?:details|summary|script|style)\b).)*?"
+    r"</\1\s*>",
     re.DOTALL | re.IGNORECASE,
 )
 # Match indented code lines: ^( {4,}|\t) followed by anything, plus
@@ -88,19 +100,37 @@ _PERCENT_RE = re.compile(r"\b(\d{1,3})\s*%")
 
 def _strip_hidden_constructs(body: str) -> str:
     """Remove HTML comments, fenced/inline code, raw-HTML hiders,
-    and indented code blocks.
+    and indented code blocks. Iterates to a fixpoint so NESTED
+    same-tag hiders collapse cleanly.
+
+    R4 hardening (post Codex R3, 2026-04-26): the R3 single-pass
+    `_HTML_HIDER_RE` regex is non-recursive — a body like
+
+        <details><summary>x</summary><details>99%</details>30%</details>
+
+    only stripped the inner `<details>` on the first pass, leaving
+    `<details>30%</details>` to leak through as the parsed claim.
+    Codex R3 produced this exact repro. R4 fix: iterate every
+    stripper until the body stops changing. Each iteration strictly
+    shrinks `body`, so termination is bounded by O(len(body)). The
+    explicit cap of 64 iterations is a defensive guard.
+
+    Order is important within each pass — strip block-level
+    constructs before line-level ones so a `<details>` containing
+    a fenced code block collapses cleanly.
 
     Pinned by adversarial tests in tests/test_extract_pr_self_pass_rate.py.
-    Order is important — strip block-level constructs before line-level
-    ones so a `<details>` containing a fenced code block collapses
-    cleanly rather than leaving a stray ``` to confuse the next pass.
     """
-    body = _HTML_COMMENT_RE.sub("", body)
-    body = _HTML_HIDER_RE.sub("", body)  # R3: <details>/<summary>/etc.
-    body = _FENCED_BACKTICK_RE.sub("", body)
-    body = _FENCED_TILDE_RE.sub("", body)
-    body = _INLINE_CODE_RE.sub("", body)
-    body = _INDENTED_CODE_LINE_RE.sub("", body)  # R3: indented code
+    for _ in range(64):
+        before = body
+        body = _HTML_COMMENT_RE.sub("", body)
+        body = _HTML_HIDER_RE.sub("", body)  # R3: <details>/<summary>/etc.
+        body = _FENCED_BACKTICK_RE.sub("", body)
+        body = _FENCED_TILDE_RE.sub("", body)
+        body = _INLINE_CODE_RE.sub("", body)
+        body = _INDENTED_CODE_LINE_RE.sub("", body)  # R3: indented code
+        if body == before:
+            break
     return body
 
 
