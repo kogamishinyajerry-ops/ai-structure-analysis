@@ -2,8 +2,10 @@
   "case_id": "GS-003",
   "case_name": "平面应力分析 - 带孔平板单轴拉伸",
   "analysis_type": "static_analysis",
+  "status": "insufficient_evidence",
+  "failure_pattern_ref": "FP-003",
+  "status_reason": "GS-003 has no hole in the mesh and the prescribed displacement direction contradicts the case description",
   "structure_type": "plane_stress",
-
   "case_description": {
     "geometry": "矩形平板，中央圆孔，单轴拉伸",
     "dimensions": {
@@ -20,14 +22,12 @@
       "direction": "x"
     }
   },
-
   "material_params": {
     "name": "STEEL",
     "E": 210000.0,
     "E_unit": "MPa",
     "nu": 0.3
   },
-
   "theoretical_solutions": {
     "strain": {
       "value": 0.0025,
@@ -69,7 +69,6 @@
       }
     }
   },
-
   "input_file_params": {
     "source": "gs003.inp",
     "element_type": "CPS4R",
@@ -77,7 +76,6 @@
     "num_nodes": 15,
     "mesh_description": "粗网格简化的带孔板"
   },
-
   "validation_points": [
     {
       "id": "VP-001",
@@ -105,11 +103,13 @@
       "tolerance": 0.001
     }
   ],
-
   "acceptance_criteria": {
     "stress_concentration_validation": {
       "description": "验证应力集中现象",
-      "expected_Kt_range": [2.0, 3.0],
+      "expected_Kt_range": [
+        2.0,
+        3.0
+      ],
       "note": "FEA的Kt应接近Peterson公式预测值"
     },
     "mesh_quality": {
@@ -117,12 +117,17 @@
       "note": "8单元网格为简化模型"
     }
   },
-
   "metadata": {
     "created_at": "2026-04-09T02:00:00Z",
     "version": "1.0",
     "author": "Structure Analysis Team",
-    "tags": ["benchmark", "static", "plane_stress", "stress_concentration", "validation"],
+    "tags": [
+      "benchmark",
+      "static",
+      "plane_stress",
+      "stress_concentration",
+      "validation"
+    ],
     "notes": [
       "经典应力集中问题，用于验证FEA的应力集中捕捉能力",
       "Kirsch公式适用于无限大板，Peterson公式考虑有限宽度修正",

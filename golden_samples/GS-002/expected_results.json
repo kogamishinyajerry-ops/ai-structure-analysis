@@ -2,8 +2,10 @@
   "case_id": "GS-002",
   "case_name": "简单桁架结构静力学分析",
   "analysis_type": "static_analysis",
+  "status": "insufficient_evidence",
+  "failure_pattern_ref": "FP-002",
+  "status_reason": "GS-002 advertises a truss but ships beam elements; theoretical and FEA quantities are comparing different physics",
   "structure_type": "truss",
-
   "case_description": {
     "geometry": "简单三角形桁架 - 3杆件，1个集中载荷",
     "configuration": "等边三角形，跨度10m，高度8.66m",
@@ -14,17 +16,55 @@
       "displacement": "m"
     }
   },
-
   "structure_params": {
     "nodes": [
-      {"id": 1, "x": 0.0, "y": 0.0, "z": 0.0, "support": "fixed"},
-      {"id": 2, "x": 10.0, "y": 0.0, "z": 0.0, "support": "roller_y"},
-      {"id": 3, "x": 5.0, "y": 8.66025404, "z": 0.0, "support": "free"}
+      {
+        "id": 1,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "support": "fixed"
+      },
+      {
+        "id": 2,
+        "x": 10.0,
+        "y": 0.0,
+        "z": 0.0,
+        "support": "roller_y"
+      },
+      {
+        "id": 3,
+        "x": 5.0,
+        "y": 8.66025404,
+        "z": 0.0,
+        "support": "free"
+      }
     ],
     "members": [
-      {"id": 1, "from": 1, "to": 3, "length": 10.0, "area": 10.0, "angle": 60.0},
-      {"id": 2, "from": 2, "to": 3, "length": 10.0, "area": 10.0, "angle": 120.0},
-      {"id": 3, "from": 1, "to": 2, "length": 10.0, "area": 10.0, "angle": 0.0}
+      {
+        "id": 1,
+        "from": 1,
+        "to": 3,
+        "length": 10.0,
+        "area": 10.0,
+        "angle": 60.0
+      },
+      {
+        "id": 2,
+        "from": 2,
+        "to": 3,
+        "length": 10.0,
+        "area": 10.0,
+        "angle": 120.0
+      },
+      {
+        "id": 3,
+        "from": 1,
+        "to": 2,
+        "length": 10.0,
+        "area": 10.0,
+        "angle": 0.0
+      }
     ],
     "material": {
       "name": "STEEL",
@@ -33,7 +73,6 @@
       "nu": 0.0
     }
   },
-
   "theoretical_solutions": {
     "reactions": {
       "node1_Rx": 0.0,
@@ -66,11 +105,17 @@
       }
     },
     "displacements": {
-      "node1": {"ux": 0.0, "uy": 0.0},
-      "node2": {"ux": 0.0, "uy": 0.0},
+      "node1": {
+        "ux": 0.0,
+        "uy": 0.0
+      },
+      "node2": {
+        "ux": 0.0,
+        "uy": 0.0
+      },
       "node3": {
         "ux": 0.0,
-        "uy": -2.37e-9,
+        "uy": -2.37e-09,
         "unit": "m",
         "note": "由于大截面面积，位移极小"
       }
@@ -82,7 +127,6 @@
       "displacement": "δ = F × L / (E × A)"
     }
   },
-
   "input_file_params": {
     "source": "gs002.inp",
     "element_type": "T3D2",
@@ -96,13 +140,16 @@
       "unit": "N"
     }
   },
-
   "validation_points": [
     {
       "id": "VP-001",
       "name": "节点3垂直位移",
-      "location": [5.0, 8.66025404, 0.0],
-      "theory_value": -2.37e-9,
+      "location": [
+        5.0,
+        8.66025404,
+        0.0
+      ],
+      "theory_value": -2.37e-09,
       "unit": "m",
       "note": "理论值极小，FEA应验证解析器精度"
     },
@@ -123,12 +170,15 @@
       "tolerance": 0.05
     }
   ],
-
   "acceptance_criteria": {
     "parse_validation": {
       "description": "验证T3D2桁架单元的FRD解析",
-      "element_types": ["T3D2"],
-      "stresses": ["SXX (axial stress)"]
+      "element_types": [
+        "T3D2"
+      ],
+      "stresses": [
+        "SXX (axial stress)"
+      ]
     },
     "force_balance": {
       "description": "验证力平衡",
@@ -137,12 +187,16 @@
       "tolerance": 0.001
     }
   },
-
   "metadata": {
     "created_at": "2026-04-09T02:00:00Z",
     "version": "1.0",
     "author": "Structure Analysis Team",
-    "tags": ["benchmark", "static", "truss", "validation"],
+    "tags": [
+      "benchmark",
+      "static",
+      "truss",
+      "validation"
+    ],
     "notes": [
       "简单静定桁架，用于验证桁架单元解析",
       "由于大截面面积(A=10m²)，位移和应力数值较小",
