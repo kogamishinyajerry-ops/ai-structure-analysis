@@ -119,10 +119,12 @@ The discipline test asserts that the workbench does NOT take a per-request `Know
 
 This PR adds a new test file, **`tests/test_rag_facade_parity.py`**, asserting:
 
-1. **Only `rag_facade.py` and `agent_facade.py` import from `backend.app.rag.*` outside the rag package itself.** Walks all `backend/app/workbench/*.py` (when present) and asserts.
+1. **Only `rag_facade.py` imports from `backend.app.rag.*` inside `backend/app/workbench/`.** R2 fix (post Codex R1 HIGH): the previous wording allowed both `rag_facade.py` and `agent_facade.py`, but the ADR's stated intent is a single choke point. `agent_facade.py` does NOT import `backend.app.rag.*`; agents that internally call RAG do so via the agent-internal call site, not via the workbench facade.
 2. **`rag_facade.py` does not import `backend.app.rag.cli` / `query_cli` / `advise_cli` / `preflight_publish_cli` / `coverage_audit`.** The facade goes through the library, not the CLI shell.
 3. **CLI parity surface check.** For each CLI module that exists (skipped if not present yet — RAG track lands in PRs #38–#47), assert the CLI module imports the corresponding library module. Detects when someone adds a new CLI subcommand without backing it with a library function.
 4. **No CLI module imports another CLI module's `main`.** CLI modules compose through the library, never through each other's `main()`.
+
+R2 fix (post Codex R1 MEDIUM): rules #3/#4 also record relative-import targets (`from . import kb`, `from .kb import X`, `from .. import kb`) so the parity surface cannot be bypassed by switching to relative syntax.
 
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 

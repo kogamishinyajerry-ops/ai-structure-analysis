@@ -26,7 +26,12 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKBENCH_DIR = _REPO_ROOT / "backend" / "app" / "workbench"
 _RAG_DIR = _REPO_ROOT / "backend" / "app" / "rag"
-_FACADE_NAMES = {"rag_facade.py", "agent_facade.py"}
+# R2 (post Codex R1 HIGH): the choke point is ONLY rag_facade.py.
+# agent_facade.py imports agents.*, but if an agent internally calls
+# backend.app.rag.* that's the agent's concern — agent_facade itself
+# does NOT need RAG access. Forcing rag_facade as the single workbench
+# RAG entry-point matches docs/adr/ADR-017 §41-42,49.
+_RAG_FACADE_NAME = "rag_facade.py"
 
 # CLI/library pairs as the RAG track defines them. Each tuple is
 # (cli_module_filename, library_module_filename). When a CLI exists, it
@@ -60,11 +65,26 @@ def _module_predicate_from_rag(module: str | None) -> bool:
 
 
 def _imports_modules(tree: ast.AST) -> set[str]:
-    """Collect every `from X import …` target and `import X` name."""
+    """Collect every `from X import …` target and `import X` name.
+
+    R2 (post Codex R1 MEDIUM): also records relative-import targets so
+    the contract tests cannot be bypassed by `from . import kb` or
+    `from .<sub> import X` syntax. The recorded form for relative
+    imports is the bare module name (`kb`, `query_cli`) — the same
+    form a CLI would use to import its library sibling.
+    """
     seen: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            seen.add(node.module)
+        if isinstance(node, ast.ImportFrom):
+            if node.module:
+                # Absolute or relative-with-module: `from .kb import X` or
+                # `from kb import X`. Record the module name.
+                seen.add(node.module)
+            elif node.level >= 1:
+                # Relative-with-bare-module: `from . import kb`. Each
+                # alias is itself a module reference.
+                for alias in node.names:
+                    seen.add(alias.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 seen.add(alias.name)
@@ -92,13 +112,19 @@ def _workbench_py_files() -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def test_only_facade_modules_import_rag_from_workbench():
-    """ADR-017 rule #1: rag_facade.py is the choke point for RAG library."""
+def test_only_rag_facade_imports_rag_from_workbench():
+    """ADR-017 rule #1: rag_facade.py is the SOLE choke point for RAG library.
+
+    R2 fix (post Codex R1 HIGH): the previous _FACADE_NAMES set allowed
+    both rag_facade.py and agent_facade.py. The ADR explicitly says
+    rag_facade is the single choke point — agents that call RAG do so
+    internally; agent_facade.py itself does NOT need RAG access.
+    """
     if not _WORKBENCH_DIR.is_dir():
         pytest.skip(f"{_WORKBENCH_DIR} does not exist yet — Phase 2.1 follow-up")
     violations: list[str] = []
     for path in _workbench_py_files():
-        if path.name in _FACADE_NAMES:
+        if path.name == _RAG_FACADE_NAME:
             continue
         tree = _parse_file(path)
         if tree is None:
@@ -115,8 +141,8 @@ def test_only_facade_modules_import_rag_from_workbench():
                             f"{path.relative_to(_REPO_ROOT)}:{node.lineno}: imports `{alias.name}`"
                         )
     assert not violations, (
-        "ADR-017 violation — only rag_facade.py / agent_facade.py may import "
-        "backend.app.rag.* from the workbench package:\n  " + "\n  ".join(violations)
+        "ADR-017 violation — ONLY rag_facade.py may import backend.app.rag.* "
+        "from the workbench package:\n  " + "\n  ".join(violations)
     )
 
 
@@ -260,3 +286,53 @@ class TestPredicates:
             # Each forbidden module is either a CLI shell or the coverage_audit
             # CLI-shaped tool. "cli" alone (PR #38 ingest CLI) counts.
             assert tail.endswith("_cli") or tail == "cli" or tail == "coverage_audit"
+
+
+class TestR2RelativeImportNoBypass:
+    """Codex R1 MEDIUM: rules #3/#4 ignored `from . import kb` syntax."""
+
+    def test_relative_bare_import_records_each_alias(self):
+        """`from . import kb` records 'kb' (was missing pre-R2)."""
+        tree = _parse("from . import kb\n")
+        assert "kb" in _imports_modules(tree)
+
+    def test_relative_bare_import_with_multiple_names(self):
+        tree = _parse("from . import kb, query_cli\n")
+        names = _imports_modules(tree)
+        assert "kb" in names
+        assert "query_cli" in names
+
+    def test_relative_with_alias_records_each_alias_target(self):
+        """`from . import kb as K` still records the source name 'kb'."""
+        tree = _parse("from . import kb as K\n")
+        # We record the source name, not the alias target — that's what
+        # rules #3/#4 actually need to assert against the lib-name table.
+        assert "kb" in _imports_modules(tree)
+
+    def test_relative_with_module_records_module_name(self):
+        """`from .kb import X` records 'kb' — covered by the existing
+        path because node.module='kb'."""
+        tree = _parse("from .kb import advise\n")
+        assert "kb" in _imports_modules(tree)
+
+    def test_double_relative_bare_import(self):
+        """`from .. import x` (parent-relative) also records 'x'."""
+        tree = _parse("from .. import kb\n")
+        assert "kb" in _imports_modules(tree)
+
+
+class TestR2RagFacadeIsSoleChokePoint:
+    """Codex R1 HIGH: previously _FACADE_NAMES allowed both rag_facade
+    and agent_facade; the ADR says only rag_facade."""
+
+    def test_facade_constant_is_only_rag_facade(self):
+        assert _RAG_FACADE_NAME == "rag_facade.py"
+
+    def test_agent_facade_is_not_a_legal_rag_import_site(self):
+        """Synthetic check: a hypothetical agent_facade.py importing
+        backend.app.rag.* must be a violation under the R2 contract."""
+        # The actual file-walk happens in the integration test
+        # `test_only_rag_facade_imports_rag_from_workbench`. This
+        # synthetic test pins the constant so a future PR can't
+        # silently re-include agent_facade.py.
+        assert _RAG_FACADE_NAME != "agent_facade.py"
