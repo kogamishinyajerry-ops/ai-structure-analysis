@@ -1,0 +1,38 @@
+name: Golden Samples Validation (FF-08 / HF3)
+
+# ADR-011 §HF3 + Golden Rule #5 enforcement.
+# Validates golden_samples/<id>/ structure on every PR that touches
+# golden_samples/, plus weekly cron sweep.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "golden_samples/**"
+      - "scripts/validate_golden_samples.py"
+      - ".github/workflows/golden-samples-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "golden_samples/**"
+      - "scripts/validate_golden_samples.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate golden samples
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_golden_samples.py
