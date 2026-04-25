@@ -1,0 +1,740 @@
+{
+  "generated_at": "2026-04-18T14:10:08+00:00",
+  "sqlite": {
+    "db_path": "/Users/Zhuanz/20260408 AI StructureAnalysis/data/knowledge_base/chroma.sqlite3",
+    "num_collections": 1,
+    "collections": [
+      {
+        "name": "fea_knowledge",
+        "dim": 384
+      }
+    ],
+    "num_embeddings": 8,
+    "metadata_key_histogram": {
+      "category": 8,
+      "chroma:document": 8,
+      "topic": 8
+    },
+    "doc_count": 8,
+    "doc_length_stats": {
+      "min": 49,
+      "max": 86,
+      "avg": 65.0
+    },
+    "sample_docs": [
+      "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+      "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+      "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+      "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+      "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。"
+    ]
+  },
+  "content_patterns": {
+    "total_docs": 8,
+    "pattern_matches": {
+      "contains_calculix_keyword_star": 0,
+      "contains_element_code": 1,
+      "contains_error_phrase": 0,
+      "contains_fix_phrase": 0,
+      "contains_english": 3,
+      "contains_chinese": 8
+    },
+    "pct_with_calculix_syntax": 0.0
+  },
+  "recall": {
+    "corpus_size": 8,
+    "queries_tested": 15,
+    "queries_answered": 3,
+    "top5_recall_pct": 20.0,
+    "pass_dod_threshold": false,
+    "per_query": [
+      {
+        "id": "Q-01",
+        "domain": "element_choice",
+        "query": "C3D8 element predicts too stiff bending; how to fix shear locking?",
+        "expected_keywords": [
+          "C3D8I",
+          "incompatible mode",
+          "reduced integration",
+          "shear lock",
+          "C3D20"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.7826,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.9504,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 2.0068,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 2.0308,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 2.0646,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-02",
+        "domain": "element_choice",
+        "query": "Best element type for pure bending cantilever in CalculiX?",
+        "expected_keywords": [
+          "C3D8I",
+          "C3D20",
+          "hourglass",
+          "bending"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.6012,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.8823,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.9198,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.9862,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "应力集中: 几何不连续处(如孔、缺口、突变截面)会产生应力集中。理论应力集中系数Kt可通过手册查询或有限元分析确定。",
+            "distance": 1.9899,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-03",
+        "domain": "element_syntax",
+        "query": "CalculiX T3D2 truss element syntax with axial stress output",
+        "expected_keywords": [
+          "T3D2",
+          "*ELEMENT",
+          "axial",
+          "SXX"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.6413,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.6908,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.8447,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.8816,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.9148,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-04",
+        "domain": "stress_concentration",
+        "query": "Peterson stress concentration factor Kt for plate with circular hole",
+        "expected_keywords": [
+          "Peterson",
+          "Kt",
+          "stress concentration",
+          "hole",
+          "3.0"
+        ],
+        "answered_in_top5": true,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "应力集中: 几何不连续处(如孔、缺口、突变截面)会产生应力集中。理论应力集中系数Kt可通过手册查询或有限元分析确定。",
+            "distance": 1.6174,
+            "matched_keywords": [
+              "Kt"
+            ]
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.6244,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.6359,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.6968,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.7211,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-05",
+        "domain": "fault_syntax",
+        "query": "CalculiX *ERROR in input file: unknown keyword *CLAOD",
+        "expected_keywords": [
+          "*CLOAD",
+          "typo",
+          "syntax",
+          "keyword",
+          "input file"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.1,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 1.524,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.5394,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.5622,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.5902,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-06",
+        "domain": "fault_timestep",
+        "query": "time increment required is less than the minimum — how to fix?",
+        "expected_keywords": [
+          "DTMIN",
+          "cutback",
+          "time step",
+          "*STATIC",
+          "increment"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.818,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 1.8311,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.8454,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.853,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.8667,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-07",
+        "domain": "fault_convergence",
+        "query": "Residual divergence after maximum iterations in non-linear static",
+        "expected_keywords": [
+          "divergence",
+          "residual",
+          "NLGEOM",
+          "Newton",
+          "convergence"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.7952,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 1.8424,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.8634,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "应力集中: 几何不连续处(如孔、缺口、突变截面)会产生应力集中。理论应力集中系数Kt可通过手册查询或有限元分析确定。",
+            "distance": 1.8936,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.9237,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-08",
+        "domain": "fault_mesh",
+        "query": "Negative Jacobian element in CalculiX mesh",
+        "expected_keywords": [
+          "Jacobian",
+          "element",
+          "distorted",
+          "quality",
+          "negative"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.543,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.5849,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.6817,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.6993,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.7154,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-09",
+        "domain": "geometry",
+        "query": "FreeCAD export to STEP watertight check before meshing",
+        "expected_keywords": [
+          "watertight",
+          "manifold",
+          "STEP",
+          "FreeCAD",
+          "isClosed"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.8255,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.8454,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.9494,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 2.0046,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 2.0329,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-10",
+        "domain": "bc",
+        "query": "Cantilever fixed end boundary condition in CalculiX *BOUNDARY syntax",
+        "expected_keywords": [
+          "*BOUNDARY",
+          "encastre",
+          "DOF",
+          "1,1,6",
+          "fixed"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.4677,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.6711,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.7057,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.7119,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.8039,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-11",
+        "domain": "material",
+        "query": "Steel linear elastic E=210 GPa nu=0.3 CalculiX *MATERIAL block",
+        "expected_keywords": [
+          "*MATERIAL",
+          "*ELASTIC",
+          "210000",
+          "0.3",
+          "Steel"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.4376,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.6555,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.7359,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.7979,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "网格收敛性: 网格加密可提高计算精度,但计算成本增加。建议进行网格敏感性分析,找到精度和成本的平衡点。",
+            "distance": 1.8824,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-12",
+        "domain": "loads",
+        "query": "CalculiX concentrated force CLOAD on node set syntax",
+        "expected_keywords": [
+          "*CLOAD",
+          "node",
+          "DOF",
+          "load",
+          "NSET"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.3998,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.6695,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "应力集中: 几何不连续处(如孔、缺口、突变截面)会产生应力集中。理论应力集中系数Kt可通过手册查询或有限元分析确定。",
+            "distance": 1.7117,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.77,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.786,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-13",
+        "domain": "postprocessing",
+        "query": "Extract von Mises stress from CalculiX FRD file",
+        "expected_keywords": [
+          "FRD",
+          "*EL FILE",
+          "S",
+          "Mises",
+          "output"
+        ],
+        "answered_in_top5": true,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.2882,
+            "matched_keywords": [
+              "FRD",
+              "S"
+            ]
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.5456,
+            "matched_keywords": [
+              "S"
+            ]
+          },
+          {
+            "rank": 3,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.6113,
+            "matched_keywords": [
+              "S",
+              "Mises"
+            ]
+          },
+          {
+            "rank": 4,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.7209,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.7307,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-14",
+        "domain": "reviewer_policy",
+        "query": "How many Newton iterations should converge a linear elastic static job",
+        "expected_keywords": [
+          "linear",
+          "1",
+          "iteration",
+          "Newton",
+          "elastic"
+        ],
+        "answered_in_top5": true,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.871,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "von Mises应力: 用于屈服判据的等效应力,公式为σ_vm = √[(S1-S2)² + (S2-S3)² + (S3-S1)²]/2,其中S1,S2,S3为主应力。",
+            "distance": 1.899,
+            "matched_keywords": [
+              "1"
+            ]
+          },
+          {
+            "rank": 3,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.9431,
+            "matched_keywords": [
+              "1"
+            ]
+          },
+          {
+            "rank": 4,
+            "doc_preview": "梁单元理论: Euler-Bernoulli梁理论假设横截面保持平面且垂直于中性轴。弯曲应力公式σ = My/I,其中M为弯矩,y为距中性轴距离,I为截面惯性矩。",
+            "distance": 1.9544,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 2.1065,
+            "matched_keywords": []
+          }
+        ]
+      },
+      {
+        "id": "Q-15",
+        "domain": "surrogate",
+        "query": "FNO neural operator vs CalculiX ground truth validation threshold",
+        "expected_keywords": [
+          "FNO",
+          "surrogate",
+          "validation",
+          "golden",
+          "5%"
+        ],
+        "answered_in_top5": false,
+        "retrieved": [
+          {
+            "rank": 1,
+            "doc_preview": "CalculiX是一款开源有限元软件,支持静力学、动力学、热力耦合等分析。输入格式包括.inp(ABAQUS兼容)和.frd(结果文件)。",
+            "distance": 1.7648,
+            "matched_keywords": []
+          },
+          {
+            "rank": 2,
+            "doc_preview": "单元类型选择: 实体单元(C3D8,C3D4)适用于三维应力分析,壳单元(S4,S3)适用于薄壁结构,梁单元(B31,B32)适用于细长构件。",
+            "distance": 1.9203,
+            "matched_keywords": []
+          },
+          {
+            "rank": 3,
+            "doc_preview": "应力集中: 几何不连续处(如孔、缺口、突变截面)会产生应力集中。理论应力集中系数Kt可通过手册查询或有限元分析确定。",
+            "distance": 1.951,
+            "matched_keywords": []
+          },
+          {
+            "rank": 4,
+            "doc_preview": "收敛准则: 有限元求解的收敛准则通常包括力准则和位移准则。力准则检查残差力,位移准则检查位移增量。",
+            "distance": 1.9759,
+            "matched_keywords": []
+          },
+          {
+            "rank": 5,
+            "doc_preview": "位移边界条件: 在有限元分析中,位移边界条件用于约束模型刚体位移。常见类型包括固定约束、简支约束、对称约束等。",
+            "distance": 1.982,
+            "matched_keywords": []
+          }
+        ]
+      }
+    ]
+  }
+}
