@@ -16,7 +16,7 @@ from typing import (  # noqa: UP035 — Union kept for runtime PEP-604 portabili
     Union,
 )
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 VIZ_MANIFEST_SCHEMA_VERSION: Literal["v1"] = "v1"
 
@@ -42,6 +42,19 @@ class BBox(_Frozen):
 
     min: tuple[float, float, float]
     max: tuple[float, float, float]
+
+    @model_validator(mode="after")
+    def _min_le_max_per_axis(self) -> BBox:
+        """R2 (post Codex R1 MED): each axis of `min` must be <= the
+        corresponding axis of `max`. A degenerate bbox would render
+        the camera-framing logic in vtk.js incorrectly.
+        """
+        for axis in range(3):
+            lo = self.min[axis]
+            hi = self.max[axis]
+            if lo > hi:
+                raise ValueError(f"BBox axis {axis}: min={lo} > max={hi}")
+        return self
 
 
 class Units(_Frozen):
@@ -77,6 +90,16 @@ class ScalarStressField(_Frozen):
     min: float
     max: float
 
+    @model_validator(mode="after")
+    def _min_le_max(self) -> ScalarStressField:
+        """R2 (post Codex R1 MED): a stress field's `min` must be
+        <= `max`. A reversed range would cause vtk.js to render an
+        empty / inverted color map silently.
+        """
+        if self.min > self.max:
+            raise ValueError(f"ScalarStressField {self.kind}: min={self.min} > max={self.max}")
+        return self
+
 
 FieldEntry = Annotated[
     Union[DisplacementField, ScalarStressField],  # noqa: UP007 — runtime PEP-604 portability (3.9)
@@ -90,6 +113,23 @@ class IncrementEntry(_Frozen):
     type: IncrementType
     value: float
     fields: dict[str, FieldEntry]
+
+    @model_validator(mode="after")
+    def _field_keys_match_kinds(self) -> IncrementEntry:
+        """R2 (post Codex R1 MED): each `fields` dict key MUST equal
+        the `kind` of the FieldEntry it maps to. Without this check,
+        the writer could emit `{"displacement": ScalarStressField(...)}`
+        and the viewer would fetch the wrong .vtu when the user picks
+        "displacement" from the field selector.
+        """
+        for key, entry in self.fields.items():
+            if entry.kind != key:
+                raise ValueError(
+                    f"IncrementEntry.fields: key {key!r} does not match "
+                    f"entry.kind={entry.kind!r}; the dict key is the "
+                    f"viewer's field selector and must equal the entry's kind"
+                )
+        return self
 
 
 class WriterInfo(_Frozen):

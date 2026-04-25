@@ -87,9 +87,9 @@ The "(NOT emitted)" rows are deliberate scope bounds. A Phase 3 ADR can add them
       "type": "static",
       "value": 1.0,
       "fields": {
-        "displacement": {"uri": "field_0_displacement.vtu", "units": "m", "max_magnitude": 0.0023},
-        "von_mises":   {"uri": "field_0_von_mises.vtu",    "units": "Pa", "max": 1.4e8, "min": 0.0},
-        "max_principal": {"uri": "field_0_max_principal.vtu", "units": "Pa", "max": 9.8e7, "min": -1.1e8}
+        "displacement":  {"kind": "displacement",  "uri": "field_0_displacement.vtu",  "units": "m",  "max_magnitude": 0.0023},
+        "von_mises":     {"kind": "von_mises",     "uri": "field_0_von_mises.vtu",     "units": "Pa", "min": 0.0,    "max": 1.4e8},
+        "max_principal": {"kind": "max_principal", "uri": "field_0_max_principal.vtu", "units": "Pa", "min": -1.1e8, "max": 9.8e7}
       }
     }
   ],
@@ -110,7 +110,7 @@ The `units` field is **populated from the originating SimPlan**, not inferred fr
 
 ## Authorization
 
-`GET /runs/{run_id}/viz/manifest.json` and `GET /runs/{run_id}/viz/{filename}` are gated by the same `X-Workbench-Token` header from ADR-015. The viewer SPA includes the token in its requests (read from a secure HTTP-only cookie set during the operator login flow).
+`GET /runs/{run_id}/viz/manifest.json` and `GET /runs/{run_id}/viz/{filename}` are gated by the same `X-Workbench-Token` header from ADR-015. The viewer SPA stores the token in `sessionStorage` (cleared when the tab closes) and adds it to the `X-Workbench-Token` request header on each fetch. **Not** an HTTP-only cookie — JS cannot read those, so the SPA cannot include them as a custom header. The browser-tab-confined storage is acceptable for Phase 2.1's single-trusted-operator-per-server scope (per ADR-014); a multi-operator Phase 3 ADR will revisit.
 
 **No CDN / external storage.** Phase 2.x serves `.vtu` from the workbench backend's local filesystem. Phase 3 may consider object storage if multi-host becomes useful.
 

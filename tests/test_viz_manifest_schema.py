@@ -382,3 +382,104 @@ def test_writer_tool_pinned():
 def test_writer_default_tool():
     w = WriterInfo(version="0.1.0", frd_parser_version="2.1.0", wrote_at="2026-04-27T00:00:00Z")
     assert w.tool == "backend.app.viz.frd_to_vtu"
+
+
+# ---------------------------------------------------------------------------
+# R2 — invariant validators (Codex R1 MED on PR #52)
+# ---------------------------------------------------------------------------
+
+
+class TestR2BBoxOrdering:
+    def test_min_le_max_per_axis_accepted(self):
+        BBox(min=(0.0, 0.0, 0.0), max=(1.0, 2.0, 3.0))
+
+    def test_equal_min_max_accepted_degenerate_but_valid(self):
+        """A degenerate but axis-consistent bbox (point) is allowed —
+        validation only forbids inverted axes."""
+        BBox(min=(1.0, 2.0, 3.0), max=(1.0, 2.0, 3.0))
+
+    def test_x_axis_inverted_rejected(self):
+        with pytest.raises(ValidationError, match="axis 0"):
+            BBox(min=(2.0, 0.0, 0.0), max=(1.0, 1.0, 1.0))
+
+    def test_y_axis_inverted_rejected(self):
+        with pytest.raises(ValidationError, match="axis 1"):
+            BBox(min=(0.0, 5.0, 0.0), max=(1.0, 1.0, 1.0))
+
+    def test_z_axis_inverted_rejected(self):
+        with pytest.raises(ValidationError, match="axis 2"):
+            BBox(min=(0.0, 0.0, 9.0), max=(1.0, 1.0, 1.0))
+
+
+class TestR2ScalarStressFieldOrdering:
+    def test_min_le_max_accepted(self):
+        ScalarStressField(
+            kind="von_mises",
+            uri="f.vtu",
+            units="Pa",
+            min=0.0,
+            max=1.4e8,
+        )
+
+    def test_equal_min_max_accepted(self):
+        """A constant field is degenerate but legitimate (e.g. linear
+        elastic with uniform load)."""
+        ScalarStressField(
+            kind="von_mises",
+            uri="f.vtu",
+            units="Pa",
+            min=1e6,
+            max=1e6,
+        )
+
+    def test_min_greater_than_max_rejected(self):
+        with pytest.raises(ValidationError, match="min=.*> max="):
+            ScalarStressField(
+                kind="von_mises",
+                uri="f.vtu",
+                units="Pa",
+                min=1e8,
+                max=0.0,
+            )
+
+
+class TestR2IncrementFieldKeyKindMatch:
+    """The dict-key for a field MUST equal the entry's kind so the
+    viewer's field selector cannot resolve to the wrong .vtu URL."""
+
+    def test_matching_keys_and_kinds_accepted(self):
+        IncrementEntry(
+            index=0,
+            step=1,
+            type="static",
+            value=1.0,
+            fields={"displacement": _disp_field()},
+        )
+
+    def test_mismatched_key_and_kind_rejected(self):
+        # User typo: dict key "displacement" but value is von_mises.
+        # Without the validator, the viewer would fetch the von_mises
+        # .vtu when the user clicks "displacement" in the field selector.
+        with pytest.raises(ValidationError, match="key 'displacement'.*kind='von_mises'"):
+            IncrementEntry(
+                index=0,
+                step=1,
+                type="static",
+                value=1.0,
+                fields={"displacement": _vm_field()},
+            )
+
+    def test_swapped_keys_and_kinds_rejected(self):
+        # Both keys and kinds are valid individually but the dict-key
+        # ↔ entry-kind pairing is inverted.
+        with pytest.raises(ValidationError):
+            IncrementEntry(
+                index=0,
+                step=1,
+                type="static",
+                value=1.0,
+                fields={
+                    "von_mises": _disp_field(),  # kind=displacement
+                    "displacement": _vm_field(),  # kind=von_mises
+                },
+            )
