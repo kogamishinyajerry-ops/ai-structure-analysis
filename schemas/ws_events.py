@@ -15,7 +15,7 @@ file under `schemas/` per ADR-014's explicit non-touch of HF1.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -159,19 +159,23 @@ class RunFinished(_BaseEvent):
 
 
 # Discriminated union for parsing a stream of mixed events.
-WSEvent = Annotated[
-    RunStarted
-    | NodeEntered
-    | NodeProgress
-    | NodeExited
-    | ArtifactReady
-    | RagQueried
-    | SurrogateHintEvent
-    | ReviewerVerdictEvent
-    | HandoffRequired
-    | BusDropped
-    | BusGap
-    | RunFinished,
+# NOTE: typing.Union here (not X | Y) so this module loads on Python 3.9
+# environments. The PEP-604 syntax requires 3.10+ at module-level.
+WSEvent = Annotated[  # noqa: UP007
+    Union[  # noqa: UP007
+        RunStarted,
+        NodeEntered,
+        NodeProgress,
+        NodeExited,
+        ArtifactReady,
+        RagQueried,
+        SurrogateHintEvent,
+        ReviewerVerdictEvent,
+        HandoffRequired,
+        BusDropped,
+        BusGap,
+        RunFinished,
+    ],
     Field(discriminator="event"),
 ]
 
