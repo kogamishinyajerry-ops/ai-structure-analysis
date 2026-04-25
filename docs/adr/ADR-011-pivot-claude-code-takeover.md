@@ -20,7 +20,7 @@ AI-Structure-FEA was bootstrapped on a triple-model split: Antigravity (Claude S
 
 证据集中体现在三个 golden samples 上：GS-001 / GS-002 / GS-003 在 `golden_samples/` 下均已就位，但 deviation attribution 报告至今未落盘到 ADR — 这是 Phase 2 Web Console 激活的硬前置条件 (FF-02)。在评审中可以看到，每个模型都"读过"样本，但没有任何一个模型对偏差归因负最终责任。
 
-与此同时，`feature/AI-FEA-S2.1-02-notion-sync-contract-align` 分支正在迁移 Notion sync 契约（详见 `docs/runbook-schema-migration.md`）。这条分支不能被本 ADR 阻塞，但它也佐证了"治理路径必须先稳定，否则契约迁移完成后没有合法的 handoff 通道接收"。
+与此同时，`feature/AI-FEA-S2.1-02-notion-sync-contract-align` 分支正在迁移 Notion sync 契约（迁移 runbook 仅在该分支存在，路径 `docs/runbook-schema-migration.md` — **本分支不可见**；两个分支独立 PR review）。这条分支不能被本 ADR 阻塞，但它也佐证了"治理路径必须先稳定，否则契约迁移完成后没有合法的 handoff 通道接收"。
 
 因此，Phase 1.5 的 governance closure 必须先解决一个问题：**谁是这个项目里唯一对"代码已落地"负责的执行体**。
 
@@ -182,6 +182,12 @@ Codex-verified: <claim-id>@<sha>
 2. **PR review 状态机** — 本 ADR 没有规定 PR 必须经过 (a) Codex post-commit review (b) reviewer 至少 1 人 (c) 所有 conversation resolved 才能 merge 的状态流。Tracked: ADR-012 候选。
 3. **Subagent 失败回滚 SOP** — 当 subagent 越界（HF1）、超时、或返回 INSUFFICIENT_EVIDENCE 时，T1 应当 (a) 不引用 subagent 输出 (b) 落 `reports/subagent_failures/` 记录 (c) 决定降级路径。本 ADR 没有具体 SOP。Tracked: ADR-013 候选。
 4. **FailurePattern 与 ADR 的 promotion 路径** — FF-02 在独立分支 `feature/AI-FEA-FF-02-failure-patterns` 已经创建 `docs/failure_patterns/` 与 `FP-001/002/003`（见该分支 commit `020f2d3`）。本分支 (`feature/AI-FEA-ADR-011-pivot-claude-code-takeover`) 不包含这些文件 — 两个分支独立 PR review。FP → ADR 的 promotion 规则（什么时候一个 FP 必须升级为 ADR）未规定。Tracked: 与 ADR-012 合并。
+
+## Glossary (外部工具引用 — repo 内不打包)
+
+- **`cx-auto`** — `~/.local/bin/cx-auto`，本地多账号 Codex 额度切换脚本（`cx-auto 20` = 当前账号配额 < 20% 时自动切换到剩余最多的账号）。脚本不在 repo 内，是开发者本地依赖；CI 不依赖该脚本。`Risks #1` 的"`cx-auto 20` 多账号自动切换"指此工具。
+- **`claude-hud`** — Claude Code CLI 的状态栏组件，显示实时 token / context 使用率。HF2 表中"claude-hud 计数"指开发者目测该状态栏判断是否逼近 5/40k/3/500 阈值。同样是本地依赖，无 repo 内 vendoring。
+- 两者都是 honor-system 的辅助：当外部工具不可用时，T1 仍需手工自检 HF2 / 自切 Codex 账号；缺失外部工具不是 HF 触发，但也不能用作"算不到所以未触发"的借口。
 
 ## Cross-References
 
