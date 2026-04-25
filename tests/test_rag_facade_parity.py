@@ -10,6 +10,11 @@ Asserts the contract from `docs/adr/ADR-017-rag-facade-cli-lib-parity.md`:
    CLI is a thin shell over the library, never re-implements logic).
 4. No CLI module imports another CLI module's symbols (CLIs compose through
    the library, never through each other's `main()`).
+5. **Singleton policy** (ADR §97-108): `rag_facade.py` uses the
+   `kb.get_kb()` startup-singleton accessor and does NOT (a) take a
+   per-request `KnowledgeBase` parameter into any public function, nor
+   (b) construct `KnowledgeBase(...)` per call. Per-request load is
+   ~6 s + 2 GB resident — singleton-only is the contract.
 
 Pure-AST static checks. Skips gracefully when target modules don't exist
 yet — the workbench facade lands in Phase 2.1 follow-up; the RAG track
@@ -336,3 +341,249 @@ class TestR2RagFacadeIsSoleChokePoint:
         # synthetic test pins the constant so a future PR can't
         # silently re-include agent_facade.py.
         assert _RAG_FACADE_NAME != "agent_facade.py"
+
+
+# ---------------------------------------------------------------------------
+# Rule #5 — Singleton policy for KnowledgeBase (ADR §97-108)
+#
+# R3 (post Codex R3 MEDIUM): the ADR explicitly promises a discipline
+# test asserting the workbench does NOT take a per-request KnowledgeBase
+# parameter into the facade — only the singleton accessor `kb.get_kb()`.
+# The R2 test file omitted this rule entirely; Codex R3 flagged it.
+# ---------------------------------------------------------------------------
+
+
+def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
+    """True if a function-parameter annotation references `KnowledgeBase`.
+
+    Catches:
+      - `kb: KnowledgeBase`
+      - `kb: backend.app.rag.kb.KnowledgeBase`
+      - `kb: "KnowledgeBase"` (string-form forward ref)
+      - `kb: Optional[KnowledgeBase]` / `kb: KnowledgeBase | None`
+    """
+    if node is None:
+        return False
+    for sub in ast.walk(node):
+        if isinstance(sub, ast.Name) and sub.id == "KnowledgeBase":
+            return True
+        if isinstance(sub, ast.Attribute) and sub.attr == "KnowledgeBase":
+            return True
+        # forward-ref strings: `kb: "KnowledgeBase"` or `"Optional[KnowledgeBase]"`
+        if (
+            isinstance(sub, ast.Constant)
+            and isinstance(sub.value, str)
+            and "KnowledgeBase" in sub.value
+        ):
+            return True
+    return False
+
+
+def _function_takes_knowledgebase_param(fn: ast.AST) -> bool:
+    """True if any function arg/kwarg in fn is annotated as KnowledgeBase."""
+    if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+        return False
+    args = fn.args
+    all_args = (
+        list(args.posonlyargs)
+        + list(args.args)
+        + list(args.kwonlyargs)
+        + ([args.vararg] if args.vararg else [])
+        + ([args.kwarg] if args.kwarg else [])
+    )
+    return any(a is not None and _annotation_mentions_knowledgebase(a.annotation) for a in all_args)
+
+
+def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
+    """True if the module body has `KnowledgeBase(...)` constructor calls.
+
+    `kb.get_kb()` is fine; `KnowledgeBase()` or `kb.KnowledgeBase()` is not
+    (per-call construction defeats the singleton).
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "KnowledgeBase":
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == "KnowledgeBase":
+            return True
+    return False
+
+
+def _calls_get_kb_singleton(tree: ast.AST) -> bool:
+    """True if the module references `get_kb` as a callable.
+
+    Accepts `get_kb()` (after `from .kb import get_kb`) or `kb.get_kb()`
+    (after `from backend.app.rag import kb`). The actual choice of import
+    style is left to the implementer; we just check it's invoked.
+    """
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "get_kb":
+            return True
+        if isinstance(func, ast.Attribute) and func.attr == "get_kb":
+            return True
+    return False
+
+
+def test_rag_facade_uses_singleton_accessor():
+    """ADR-017 §97-108: rag_facade.py must use `kb.get_kb()` singleton.
+
+    This pins the architectural decision from Notion 2026-04-26 Q3:
+    BGE-M3 loads once at startup; per-request load is ~6 s + 2 GB.
+    """
+    facade = _WORKBENCH_DIR / _RAG_FACADE_NAME
+    if not facade.is_file():
+        pytest.skip(f"{facade} does not exist yet — Phase 2.1 follow-up adds it")
+    tree = _parse_file(facade)
+    assert tree is not None
+    assert _calls_get_kb_singleton(tree), (
+        f"ADR-017 §97-108 violation — {facade.relative_to(_REPO_ROOT)} must "
+        f"invoke `kb.get_kb()` (or `get_kb()` after relative import) to reuse "
+        f"the startup-singleton KnowledgeBase. Per-request load is ~6 s + "
+        f"2 GB resident; the facade is the gate that enforces the singleton."
+    )
+
+
+def test_rag_facade_does_not_take_knowledgebase_param():
+    """ADR-017 §108: facade public functions must not accept KnowledgeBase.
+
+    Taking `kb: KnowledgeBase` as a parameter would let a caller bypass the
+    singleton (pass a freshly-constructed KB, defeat the contract). The
+    facade reads the singleton via `get_kb()` itself; callers don't pass it.
+    """
+    facade = _WORKBENCH_DIR / _RAG_FACADE_NAME
+    if not facade.is_file():
+        pytest.skip(f"{facade} does not exist yet — Phase 2.1 follow-up adds it")
+    tree = _parse_file(facade)
+    assert tree is not None
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            if node.name.startswith("_"):
+                continue  # private helpers may pass KB internally
+            if _function_takes_knowledgebase_param(node):
+                violations.append(
+                    f"{facade.relative_to(_REPO_ROOT)}:{node.lineno}: "
+                    f"public function `{node.name}` takes a KnowledgeBase "
+                    f"parameter — use `kb.get_kb()` inside the body instead."
+                )
+    assert not violations, (
+        "ADR-017 §108 violation — facade public functions must not accept "
+        "KnowledgeBase as a parameter (defeats singleton policy):\n  " + "\n  ".join(violations)
+    )
+
+
+def test_rag_facade_does_not_construct_knowledgebase():
+    """ADR-017 §97-108: rag_facade.py must not call `KnowledgeBase(...)`.
+
+    Per-call construction defeats the startup singleton just as effectively
+    as taking it via parameter. Only `kb.get_kb()` is the legal accessor.
+    """
+    facade = _WORKBENCH_DIR / _RAG_FACADE_NAME
+    if not facade.is_file():
+        pytest.skip(f"{facade} does not exist yet — Phase 2.1 follow-up adds it")
+    tree = _parse_file(facade)
+    assert tree is not None
+    assert not _calls_knowledgebase_constructor(tree), (
+        f"ADR-017 §97-108 violation — {facade.relative_to(_REPO_ROOT)} must "
+        f"not construct `KnowledgeBase(...)` per call. Use `kb.get_kb()` "
+        f"to reuse the startup singleton (~6 s + 2 GB cost otherwise)."
+    )
+
+
+class TestR3SingletonPolicyPredicates:
+    """Codex R3 MEDIUM: the ADR §97-108 singleton-policy assertion was
+    promised but not implemented in the R2 test file. Pin the predicates
+    with synthetic fixtures so they cannot regress silently."""
+
+    def test_param_annotation_bare_name_is_caught(self):
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "def advise(query: str, kb: KnowledgeBase) -> dict: ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert _function_takes_knowledgebase_param(fn)
+
+    def test_param_annotation_dotted_path_is_caught(self):
+        tree = _parse(
+            "import backend.app.rag.kb\n"
+            "def advise(query, kb: backend.app.rag.kb.KnowledgeBase): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert _function_takes_knowledgebase_param(fn)
+
+    def test_param_annotation_string_forward_ref_is_caught(self):
+        tree = _parse('def advise(query: str, kb: "KnowledgeBase") -> dict: ...\n')
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert _function_takes_knowledgebase_param(fn)
+
+    def test_param_annotation_optional_wrapped_is_caught(self):
+        tree = _parse(
+            "from typing import Optional\n"
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "def advise(query, kb: Optional[KnowledgeBase] = None): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert _function_takes_knowledgebase_param(fn)
+
+    def test_kwonly_kb_parameter_is_caught(self):
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "def advise(query, *, kb: KnowledgeBase): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert _function_takes_knowledgebase_param(fn)
+
+    def test_unrelated_param_is_ignored(self):
+        tree = _parse("def advise(query: str, top_k: int = 3) -> dict: ...\n")
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        assert not _function_takes_knowledgebase_param(fn)
+
+    def test_lookalike_class_name_is_ignored(self):
+        """KnowledgeBaseConfig is NOT KnowledgeBase — must not match."""
+        tree = _parse(
+            "def advise(query, cfg: KnowledgeBaseConfig): ...\n"  # noqa: F821
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        # KnowledgeBaseConfig is a different Name; bare-name match is exact.
+        assert not _function_takes_knowledgebase_param(fn)
+
+    def test_constructor_call_bare_name_is_caught(self):
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n" "def f(): return KnowledgeBase()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_constructor_call_attribute_form_is_caught(self):
+        tree = _parse(
+            "from backend.app.rag import kb\n" "def f(): return kb.KnowledgeBase(arg=1)\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_get_kb_call_is_not_a_constructor(self):
+        """`get_kb()` is the accessor, NOT a constructor — must not match."""
+        tree = _parse("from backend.app.rag.kb import get_kb\n" "def f(): return get_kb()\n")
+        assert not _calls_knowledgebase_constructor(tree)
+        assert _calls_get_kb_singleton(tree)
+
+    def test_get_kb_attribute_form_is_recognized(self):
+        tree = _parse("from backend.app.rag import kb\n" "def f(): return kb.get_kb()\n")
+        assert _calls_get_kb_singleton(tree)
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_no_get_kb_in_module_returns_false(self):
+        tree = _parse("def f(query): return query\n")
+        assert not _calls_get_kb_singleton(tree)
+
+    def test_async_function_param_is_caught(self):
+        """FastAPI handlers are async; the predicate must walk async defs."""
+        tree = _parse(
+            "from backend.app.rag.kb import KnowledgeBase\n"
+            "async def advise(query, kb: KnowledgeBase): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef))
+        assert _function_takes_knowledgebase_param(fn)

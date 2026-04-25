@@ -123,8 +123,15 @@ This PR adds a new test file, **`tests/test_rag_facade_parity.py`**, asserting:
 2. **`rag_facade.py` does not import `backend.app.rag.cli` / `query_cli` / `advise_cli` / `preflight_publish_cli` / `coverage_audit`.** The facade goes through the library, not the CLI shell.
 3. **CLI parity surface check.** For each CLI module that exists (skipped if not present yet — RAG track lands in PRs #38–#47), assert the CLI module imports the corresponding library module. Detects when someone adds a new CLI subcommand without backing it with a library function.
 4. **No CLI module imports another CLI module's `main`.** CLI modules compose through the library, never through each other's `main()`.
+5. **Singleton policy** (§97-108): three assertions on `rag_facade.py` —
+   (a) the module invokes `kb.get_kb()` (or `get_kb()` after relative import) at least once;
+   (b) no public function (non-underscore-prefixed) takes a parameter annotated as `KnowledgeBase` (catches bare-name, dotted-path, string forward-ref, and `Optional[KnowledgeBase]` forms);
+   (c) no `KnowledgeBase(...)` constructor call appears in the module body (catches both bare-name and attribute-form constructions).
+   Together these prevent the three known bypass patterns: per-request load via parameter, per-call `KnowledgeBase()` construction, and forgetting the accessor entirely.
 
 R2 fix (post Codex R1 MEDIUM): rules #3/#4 also record relative-import targets (`from . import kb`, `from .kb import X`, `from .. import kb`) so the parity surface cannot be bypassed by switching to relative syntax.
+
+R3 fix (post Codex R3 MEDIUM): rule #5 added — the §97-108 singleton-policy assertion was promised in the R2 ADR text but missing from the test file. R3 adds three integration tests + 13 synthetic-fixture predicate tests.
 
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 
