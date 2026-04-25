@@ -229,7 +229,7 @@ def test_no_cli_imports_another_cli():
     if not _RAG_DIR.is_dir():
         pytest.skip(f"{_RAG_DIR} does not exist yet — RAG track (PR #38-#47)")
     cli_filenames = {p[0] for p in _CLI_LIB_PAIRS}
-    cli_module_names = {f"backend.app.rag.{name[:-len('.py')]}" for name in cli_filenames}
+    cli_module_names = {f"backend.app.rag.{name[: -len('.py')]}" for name in cli_filenames}
     cli_relative_names = {name[: -len(".py")] for name in cli_filenames}
     violations: list[str] = []
     for cli_name in cli_filenames:
@@ -729,24 +729,22 @@ class TestR3SingletonPolicyPredicates:
 
     def test_constructor_call_bare_name_is_caught(self):
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n" "def f(): return KnowledgeBase()\n"
+            "from backend.app.rag.kb import KnowledgeBase\ndef f(): return KnowledgeBase()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
     def test_constructor_call_attribute_form_is_caught(self):
-        tree = _parse(
-            "from backend.app.rag import kb\n" "def f(): return kb.KnowledgeBase(arg=1)\n"
-        )
+        tree = _parse("from backend.app.rag import kb\ndef f(): return kb.KnowledgeBase(arg=1)\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_get_kb_call_is_not_a_constructor(self):
         """`get_kb()` is the accessor, NOT a constructor — must not match."""
-        tree = _parse("from backend.app.rag.kb import get_kb\n" "def f(): return get_kb()\n")
+        tree = _parse("from backend.app.rag.kb import get_kb\ndef f(): return get_kb()\n")
         assert not _calls_knowledgebase_constructor(tree)
         assert _calls_get_kb_singleton(tree)
 
     def test_get_kb_attribute_form_is_recognized(self):
-        tree = _parse("from backend.app.rag import kb\n" "def f(): return kb.get_kb()\n")
+        tree = _parse("from backend.app.rag import kb\ndef f(): return kb.get_kb()\n")
         assert _calls_get_kb_singleton(tree)
         assert not _calls_knowledgebase_constructor(tree)
 
@@ -831,7 +829,7 @@ class TestR4AliasShadowBypass:
 
     def test_locally_defined_get_kb_without_import_is_rejected(self):
         """A local `def get_kb` and no rag import = singleton bypass."""
-        tree = _parse("def get_kb(): return object()\n" "def advise(q): return get_kb()\n")
+        tree = _parse("def get_kb(): return object()\ndef advise(q): return get_kb()\n")
         assert not _calls_get_kb_singleton(tree)
 
     def test_get_kb_imported_from_rag_kb_is_accepted(self):
@@ -853,16 +851,14 @@ class TestR4AliasShadowBypass:
         """`kb` shadowed as a local variable that's not the rag module
         must NOT count as a singleton call."""
         tree = _parse(
-            "class kb:\n    @staticmethod\n    def get_kb(): pass\n" "def f(): return kb.get_kb()\n"
+            "class kb:\n    @staticmethod\n    def get_kb(): pass\ndef f(): return kb.get_kb()\n"
         )
         assert not _calls_get_kb_singleton(tree)
 
     def test_getattr_pattern_is_not_accepted(self):
         """Documented as a known LOW: `getattr(kb, 'get_kb')()` is too
         opaque to verify statically. The predicate stays syntax-pinned."""
-        tree = _parse(
-            "from backend.app.rag import kb\n" "def f(): return getattr(kb, 'get_kb')()\n"
-        )
+        tree = _parse("from backend.app.rag import kb\ndef f(): return getattr(kb, 'get_kb')()\n")
         assert not _calls_get_kb_singleton(tree)
 
 
@@ -873,8 +869,7 @@ class TestR4TypeSubscriptNarrowing:
 
     def test_type_lower_bracket_knowledgebase_is_allowed(self):
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
-            "def f(cls: type[KnowledgeBase]): ...\n"
+            "from backend.app.rag.kb import KnowledgeBase\ndef f(cls: type[KnowledgeBase]): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert not _function_takes_knowledgebase_param(fn)
@@ -978,9 +973,7 @@ class TestR5StarImportAndClassMethod:
         so `KB` chain didn't propagate, ctor=False. Post-R5: always-seed
         catches the assignment chain and `KB()` is flagged."""
         tree = _parse(
-            "from backend.app.rag.kb import *\n"
-            "KB = KnowledgeBase\n"
-            "def advise(q): return KB()\n"
+            "from backend.app.rag.kb import *\nKB = KnowledgeBase\ndef advise(q): return KB()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
@@ -1042,14 +1035,12 @@ class TestR5StarImportAndClassMethod:
     def test_r5_module_level_get_kb_shadow_is_still_rejected(self):
         """Regression guard: module-level `def get_kb` MUST still be
         flagged as a shadow, even after the class-method narrowing."""
-        tree = _parse("def get_kb(): return 1\n" "def advise(q): return get_kb()\n")
+        tree = _parse("def get_kb(): return 1\ndef advise(q): return get_kb()\n")
         assert not _calls_get_kb_singleton(tree)
 
     def test_r5_async_module_level_get_kb_shadow_is_rejected(self):
         """`async def get_kb` at module level is also a shadow."""
-        tree = _parse(
-            "async def get_kb(): return 1\n" "async def advise(q): return await get_kb()\n"
-        )
+        tree = _parse("async def get_kb(): return 1\nasync def advise(q): return await get_kb()\n")
         assert not _calls_get_kb_singleton(tree)
 
     def test_r5_class_method_does_not_block_real_get_kb_import(self):
@@ -1127,7 +1118,7 @@ class TestR6IfExpAndWalrusAliases:
 
     def test_r6_ifexp_with_neither_branch_is_kb_is_not_flagged(self):
         """Both branches non-KB → no false positive."""
-        tree = _parse("Foo = AltClass if cond else OtherClass\n" "def f(): return Foo()\n")
+        tree = _parse("Foo = AltClass if cond else OtherClass\ndef f(): return Foo()\n")
         assert not _calls_knowledgebase_constructor(tree)
 
     def test_r6_nested_ifexp_chain_is_caught(self):
@@ -1177,7 +1168,5 @@ class TestR6IfExpAndWalrusAliases:
 
     def test_r6_walrus_attribute_form_is_caught(self):
         """`(K := kb.KnowledgeBase)()` — attribute-form via walrus."""
-        tree = _parse(
-            "from backend.app.rag import kb\n" "def f(): return (K := kb.KnowledgeBase)()\n"
-        )
+        tree = _parse("from backend.app.rag import kb\ndef f(): return (K := kb.KnowledgeBase)()\n")
         assert _calls_knowledgebase_constructor(tree)
