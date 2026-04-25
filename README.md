@@ -78,11 +78,34 @@ See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
 
 ## Development Rules
 
-1. All code lands via **PR** — no direct push to `main`.
-2. **No local absolute paths** in commits, PRs, or Notion writebacks.
-3. New agents/solvers require **Notion task review** before merge.
-4. One Case ID per PR; completion triggers Notion writeback.
-5. Architecture decisions go to the **Notion 决策库** as ADR-{nnn}.
+> **Canonical ruleset:** [ADR-011 §9 Golden Rules](docs/adr/ADR-011-pivot-claude-code-takeover.md#9-golden-rules) and [§Hard-Floor Rules HF1-HF5](docs/adr/ADR-011-pivot-claude-code-takeover.md#hard-floor-rules-hf1--hf5).
+> The bullets below are a quick-reference; when this README and ADR-011 conflict, **ADR-011 wins** and a sync PR is opened.
+
+**Workflow & boundaries**
+
+1. All code lands via **PR** — no direct push to `main`. (Golden Rule #1 + branch protection per ADR-013.)
+2. **No local absolute paths** in commits, PRs, or Notion writebacks. Enforced by `scripts/hf1_path_guard.py` pre-commit (FF-06).
+3. **HF1 hard-stop zone** (`agents/solver.py`, `agents/router.py`, `agents/geometry.py`, `tools/calculix_driver.py`, `schemas/sim_state.py`, `tests/test_toolchain_probes.py`, `Dockerfile`, `Makefile`, `golden_samples/**`, `scripts/hf1_path_guard.py`, `.github/workflows/**`) — pre-commit blocks staged diffs unless `HF1_GUARD_OVERRIDE='<reason>'` is set. See ADR-011 §Hard-Floor Rules.
+4. **PR-protected zone** (`docs/adr/`, `docs/governance/`, `docs/failure_patterns/`) — regular PR + mandatory Codex M1 trigger. Branch protection per ADR-013.
+
+**Process & traceability**
+
+5. Each commit carries `Execution-by:` and (when claims are made) `Codex-verified:` trailers — see ADR-011 §Commit Trailer Convention. Subagent work adds `· Subagent: <id>`.
+6. **One Case ID per PR**; completion triggers Notion writeback. Case ID format: `AI-FEA-P{phase}-{nn}` or `AI-FEA-S{sprint}-{nn}` for sub-sprint work.
+7. **Architecture decisions** land as `docs/adr/ADR-{nnn}-{slug}.md` AND mirror to Notion 决策库. Golden Rule #3.
+8. **Handoffs cannot bypass Notion** — phase-to-phase transitions require a clickable Notion Handoff page. Golden Rule #4.
+
+**Numerical & data integrity**
+
+9. **CalculiX is the only numerical truth source.** Any "equivalent solver" claim requires ADR + Gate. Golden Rule #2.
+10. **No golden-standard → no test.** Samples without GS reference get `insufficient_evidence` and don't enter the regression lane. Golden Rule #5; FF-08 will mechanize this.
+11. **Schema-first** — Pydantic v2 strict validation per `schemas/`; schema changes go through ADR before code. Golden Rule #7.
+12. **Four-layer import boundary** — Control / Execution / Knowledge / Evaluation; imports flow one-way: Control reads all, Execution depends on Knowledge only, Evaluation is independent of Execution. Golden Rule #9.
+
+**Calibration & reversibility**
+
+13. **Self-pass-rate is mechanical, not honor-system.** T1 reads the ceiling from `python3 scripts/compute_calibration_cap.py`; ADR-012 forbids typing a number from intuition. PR template (`.github/PULL_REQUEST_TEMPLATE.md`) prefills the field; CI `calibration-cap-check` validates the claim.
+14. **Every decision has a documented rollback path** — see each ADR's §Rollback. Golden Rule #8.
 
 ## Naming Conventions
 
