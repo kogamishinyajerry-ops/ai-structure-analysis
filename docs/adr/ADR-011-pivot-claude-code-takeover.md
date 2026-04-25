@@ -51,7 +51,7 @@ AI-Structure-FEA was bootstrapped on a triple-model split: Antigravity (Claude S
 - `agents/geometry.py` — ADR-008 N-3 dummy-geometry guard
 - `schemas/sim_state.py` — ADR-004 FaultClass enum (downstream 类型契约)
 - `tests/test_toolchain_probes.py` — ADR-002 toolchain pin assertion
-- `Dockerfile` + `Makefile` 中 `docker-base` / `hot-smoke` 段 — ADR-002 CalculiX 2.21 pin
+- `Dockerfile` + `Makefile` 中 `docker-base` / `docker-probe` / `hot-smoke` 段 — ADR-002 CalculiX 2.21 pin (`docker-probe` 同样在 forbidden zone 内：它消费 `docker-base` 镜像跑 toolchain probes，是 ADR-002 pin 的执行验证点)
 - `golden_samples/**` — 全部只读
 - `docs/governance/**`, `docs/adr/**` — 必须先开新 ADR 或在已有 ADR 加 supersede
 
