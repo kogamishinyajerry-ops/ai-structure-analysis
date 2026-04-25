@@ -33,9 +33,12 @@ def guard():
 # ---------------------------------------------------------------------------
 
 
-def test_zone_has_all_eight_categories(guard):
+def test_zone_has_all_nine_categories(guard):
+    """Per AR-2026-04-25-001 §3: HF1.1-HF1.7 (preserved) + HF1.8 (path-guard
+    self-protection, NEW) + HF1.9 (.github/workflows/, NEW). docs/adr/ and
+    docs/governance/ moved out of HF1 entirely (now PR-protected zone)."""
     rule_prefixes = {entry.rule.split(" — ", 1)[0] for entry in guard.ZONE}
-    expected = {f"HF1.{i}" for i in range(1, 9)}
+    expected = {f"HF1.{i}" for i in range(1, 10)}
     assert rule_prefixes == expected, (
         f"missing or extra HF1 zone categories: "
         f"got {sorted(rule_prefixes)}, expected {sorted(expected)}"
@@ -61,9 +64,10 @@ def test_prefix_match_hits_subdir(guard):
 
 
 def test_prefix_match_does_not_match_unrelated_file(guard):
-    entry = next(e for e in guard.ZONE if e.path == "docs/adr/")
+    entry = next(e for e in guard.ZONE if e.path == ".github/workflows/")
     assert guard.path_hits_zone("docs/quickstart.md", entry) is False
-    assert guard.path_hits_zone("docs/governance/foo.md", entry) is False
+    assert guard.path_hits_zone(".github/dependabot.yml", entry) is False
+    assert guard.path_hits_zone(".github/ISSUE_TEMPLATE/bug.md", entry) is False
 
 
 def test_unknown_match_mode_raises(guard):
@@ -84,14 +88,27 @@ def test_no_violations_for_safe_paths(guard):
         "docs/quickstart.md",
         "scripts/install_dependencies.sh",
         ".planning/STATE.md",
+        # Per AR-2026-04-25-001 §3: docs/adr/ and docs/governance/ moved
+        # out of HF1 hard-stop into PR-protected zone (branch protection
+        # + mandatory Codex enforce them; this script does not).
+        "docs/adr/ADR-011-pivot-claude-code-takeover.md",
+        "docs/adr/ADR-012-calibration-cap.md",
+        "docs/governance/whatever.md",
+        "docs/failure_patterns/FP-001.md",
     ]
     assert guard.find_violations(safe) == []
 
 
 def test_violations_for_each_zone_entry(guard):
-    """One representative path per HF1 category must be flagged."""
+    """One representative path per HF1 category must be flagged.
+
+    Per AR-2026-04-25-001 §3: HF1.8 is now `scripts/hf1_path_guard.py`
+    (meta-protection, not docs/governance/); HF1.9 is `.github/workflows/`
+    (CI enforcement). docs/adr/ + docs/governance/ are no longer HF1.
+    """
     representatives = [
         "agents/solver.py",
+        "tools/calculix_driver.py",
         "agents/router.py",
         "agents/geometry.py",
         "schemas/sim_state.py",
@@ -99,14 +116,42 @@ def test_violations_for_each_zone_entry(guard):
         "Dockerfile",
         "Makefile",
         "golden_samples/GS-001/gs001.inp",
-        "docs/adr/ADR-011-pivot-claude-code-takeover.md",
-        "docs/governance/anything.md",
-        "tools/calculix_driver.py",
+        "scripts/hf1_path_guard.py",  # HF1.8 — self-protection
+        ".github/workflows/ci.yml",  # HF1.9 — CI workflow
     ]
     hits = guard.find_violations(representatives)
     assert len(hits) == len(representatives)
     hit_paths = {p for p, _ in hits}
     assert hit_paths == set(representatives)
+
+
+def test_self_protection_rejects_path_guard_modification(guard):
+    """HF1.8 — modification of scripts/hf1_path_guard.py itself triggers."""
+    hits = guard.find_violations(["scripts/hf1_path_guard.py"])
+    assert len(hits) == 1
+    assert "HF1.8" in hits[0][1].rule
+    assert "self-modify" in hits[0][1].rule
+
+
+def test_ci_workflow_modification_triggers(guard):
+    """HF1.9 — any .github/workflows/ change is HF1."""
+    hits = guard.find_violations([".github/workflows/ci.yml"])
+    assert len(hits) == 1
+    assert "HF1.9" in hits[0][1].rule
+
+
+def test_pr_protected_zone_paths_are_NOT_hf1(guard):
+    """Per AR-2026-04-25-001 §3: docs/adr/, docs/governance/,
+    docs/failure_patterns/ are PR-protected (branch protection + Codex)
+    but NOT HF1 hard-stop. This test enforces the boundary."""
+    pr_protected = [
+        "docs/adr/ADR-011-pivot-claude-code-takeover.md",
+        "docs/adr/ADR-012-calibration-cap.md",
+        "docs/governance/something.md",
+        "docs/failure_patterns/FP-001-cantilever.md",
+        "docs/failure_patterns/README.md",
+    ]
+    assert guard.find_violations(pr_protected) == []
 
 
 def test_first_match_wins_no_double_count(guard):

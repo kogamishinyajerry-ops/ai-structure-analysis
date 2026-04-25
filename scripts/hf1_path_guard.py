@@ -13,8 +13,26 @@ index directly via ``git diff --cached --name-status -z`` so that
 The zone is hard-coded in this file by design — per FF-06 charter, the
 guard must not parse ADR-011 markdown at runtime (too fragile against
 typos/refactors). When ADR-011 §HF1 changes, the corresponding entry in
-``ZONE`` must be updated in the same PR (and that PR is itself an HF1
-trigger, requiring a new/superseding ADR per ADR-011 §HF1 Recovery).
+``ZONE`` must be updated in the same PR.
+
+Per AR-2026-04-25-001 §3 (T0 ratification), the zone is split into
+two surfaces:
+
+  HF1 hard-stop zone (this script enforces; pre-commit + CI):
+    - execution truth (solver, router, geometry, schemas, tests)
+    - toolchain pin (Dockerfile, Makefile)
+    - Gold Standard data (golden_samples/)
+    - meta-protection (this script itself; CI workflows)
+
+  PR-protected zone (NOT enforced here; relies on branch protection
+  + mandatory Codex per ADR-011 §T2 amendment):
+    - docs/adr/**, docs/governance/**, docs/failure_patterns/**
+
+The PR-protected zone was previously HF1 hard-stop (ADR-011 v1
+HF1.8), but every governance amendment touched it, creating a
+chicken-egg recovery clause. T0 ruling §3 dropped it from HF1 in
+favor of branch protection (ADR-013) + mandatory Codex M1 trigger
+(ADR-011 §T2 amendment). See AR-2026-04-25-001 §3 for the rationale.
 
 Override mechanism: setting ``HF1_GUARD_OVERRIDE='<non-empty reason>'``
 allows the local commit through and emits a stderr warning. **The
@@ -57,8 +75,11 @@ class ZoneEntry:
     adr_ref: str
 
 
-# HF1 forbidden zone — sourced from ADR-011 §Hard-Floor Rules (Forbidden zone (HF1) 完整清单).
+# HF1 forbidden zone — sourced from ADR-011 §Hard-Floor Rules.
 # Update both this list AND ADR-011 in the same PR if the zone changes.
+# Self-protection (HF1.8 — entry for this script itself) means every
+# modification of this file must come through a PR; direct unreviewed
+# commits to scripts/hf1_path_guard.py trigger the guard against itself.
 ZONE: tuple[ZoneEntry, ...] = (
     ZoneEntry("agents/solver.py", "exact", "HF1.1 — solver implementation", "ADR-011 §HF1 #1"),
     ZoneEntry(
@@ -95,14 +116,18 @@ ZONE: tuple[ZoneEntry, ...] = (
     ZoneEntry(
         "golden_samples/", "prefix", "HF1.7 — golden samples are read-only", "ADR-011 §HF1 #7"
     ),
+    # NEW per AR-2026-04-25-001 §3 — meta-protection + CI enforcement
     ZoneEntry(
-        "docs/governance/",
-        "prefix",
-        "HF1.8 — governance docs require new/superseding ADR",
-        "ADR-011 §HF1 #8",
+        "scripts/hf1_path_guard.py",
+        "exact",
+        "HF1.8 — meta-protection: path-guard cannot silently self-modify",
+        "ADR-011 §HF1 #8 (per AR-2026-04-25-001)",
     ),
     ZoneEntry(
-        "docs/adr/", "prefix", "HF1.8 — ADR docs require new/superseding ADR", "ADR-011 §HF1 #8"
+        ".github/workflows/",
+        "prefix",
+        "HF1.9 — CI enforcement workflows are governance surface",
+        "ADR-011 §HF1 #9 (per AR-2026-04-25-001)",
     ),
 )
 

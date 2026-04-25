@@ -55,8 +55,8 @@ Two-track decision (pick one and record in a small ADR / runbook):
 Track A is cheaper and aligns with the `truss_theory.py` calculator already in the directory.
 
 ### ARCHITECTURAL
-- Reinforces the case for **ADR-012** ("Golden-sample triplet contract") — element-type drift between README/JSON/INP would be caught at authoring time.
-- Reinforces **ADR-013** ("Comparison-validity precondition") — a router that knew the .inp uses B31 should refuse to compare against truss-theory references.
+- Reinforces the case for a future ADR (number TBD; was "ADR-012" in earlier draft, reassigned per AR-2026-04-25-001): **"Golden-sample triplet contract"** — element-type drift between README/JSON/INP would be caught at authoring time.
+- Reinforces a future ADR (number TBD; was "ADR-013" in earlier draft, reassigned): **"Comparison-validity precondition"** — a router that knew the .inp uses B31 should refuse to compare against truss-theory references.
 
 ## Open questions
 

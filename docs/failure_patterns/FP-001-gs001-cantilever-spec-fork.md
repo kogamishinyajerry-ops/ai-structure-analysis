@@ -58,8 +58,8 @@ Per ADR-011 §HF3, with two mutually-incompatible artifacts and no externally-de
   - **Path B**: Reclassify GS-001 as a *parser/IO regression fixture* (no theory comparison, validation = "FRD parses cleanly + node coordinates / element table round-trip").
 
 ### ARCHITECTURAL
-- This case + GS-002 + GS-003 jointly motivate **ADR-012** (proposed): "Golden-sample triplet contract" — SHA-pinned README + schema-validated `expected_results.json` + theory script as the single calculator.
-- Also motivates **ADR-013** (proposed): "Comparison-validity precondition for `REFERENCE_MISMATCH` retry routing" — refuse re-dispatch when reference physics class ≠ FEA physics class.
+- This case + GS-002 + GS-003 jointly motivate a future ADR (number TBD; was "ADR-012" in earlier draft but ADR-012 has been reassigned to calibration cap per AR-2026-04-25-001): **"Golden-sample triplet contract"** — SHA-pinned README + schema-validated `expected_results.json` + theory script as the single calculator.
+- Also motivates a future ADR (number TBD; was "ADR-013" in earlier draft, reassigned to branch protection): **"Comparison-validity precondition for `REFERENCE_MISMATCH` retry routing"** — refuse re-dispatch when reference physics class ≠ FEA physics class.
 
 ## Open questions
 
