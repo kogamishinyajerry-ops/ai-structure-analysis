@@ -1,0 +1,87 @@
+name: Calibration Cap Check
+
+# ADR-013 enforcement workflow. Validates that every PR's
+# "Self-pass-rate" claim does not exceed the mechanical ceiling
+# computed by scripts/compute_calibration_cap.py from
+# reports/calibration_state.json.
+#
+# Runs only on pull_request events (no value on push to main).
+#
+# R2 hardening (post Codex R1, 2026-04-26):
+#   * The validator scripts AND the calibration_state.json are loaded
+#     from a separate `actions/checkout` of `main`, NOT from the PR's
+#     own checkout. This closes the self-bypass hole Codex reproduced
+#     where a PR could modify scripts/compute_calibration_cap.py,
+#     scripts/extract_pr_self_pass_rate.py, or
+#     reports/calibration_state.json to make the check pass.
+#   * The PR body itself comes from the GitHub API event payload, not
+#     from any file in the PR's checkout, so it remains the legitimate
+#     untrusted input.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  calibration-cap-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (trusted validators + state)
+        # The PR is intentionally NOT checked out for the validator
+        # scripts. Only main's view of compute_calibration_cap.py,
+        # extract_pr_self_pass_rate.py, and reports/calibration_state.json
+        # is trusted. A PR can change those files in its own working
+        # tree but the check here ignores those changes.
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compute current ceiling (from trusted main)
+        id: ceiling
+        working-directory: trusted
+        run: |
+          set -euo pipefail
+          OUTPUT=$(python3 scripts/compute_calibration_cap.py)
+          CEILING=$(echo "$OUTPUT" | python3 -c "import json,sys;print(json.load(sys.stdin)['ceiling'])")
+          GATE=$(echo "$OUTPUT" | python3 -c "import json,sys;print(json.load(sys.stdin)['gate_label'])")
+          BLOCKING=$(echo "$OUTPUT" | python3 -c "import json,sys;print(json.load(sys.stdin)['blocking'])")
+          echo "ceiling=$CEILING" >> "$GITHUB_OUTPUT"
+          echo "gate=$GATE" >> "$GITHUB_OUTPUT"
+          echo "blocking=$BLOCKING" >> "$GITHUB_OUTPUT"
+          echo "Current ceiling: ${CEILING}%, gate: ${GATE}, blocking: ${BLOCKING} (computed from trusted/main)"
+
+      - name: Extract Self-pass-rate claim from PR body (trusted extractor)
+        id: claim
+        working-directory: trusted
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${PR_BODY:-}" ]]; then
+            echo "::error::PR body is empty. ADR-013 requires a 'Self-pass-rate' section."
+            exit 1
+          fi
+          # Use main's extractor — not the PR's. PR body comes from the
+          # event payload (already untrusted; that's the point — its claim
+          # must be checked against the trusted ceiling).
+          CLAIM=$(printf '%s' "$PR_BODY" | python3 scripts/extract_pr_self_pass_rate.py)
+          echo "claim=$CLAIM" >> "$GITHUB_OUTPUT"
+          echo "Claim parsed from PR body: ${CLAIM}% (extractor from trusted/main)"
+
+      - name: Validate claim does not exceed ceiling (from trusted main)
+        working-directory: trusted
+        run: |
+          set -euo pipefail
+          python3 scripts/compute_calibration_cap.py --check "${{ steps.claim.outputs.claim }}"
+          echo "::notice::Claim ${{ steps.claim.outputs.claim }}% does not exceed ceiling ${{ steps.ceiling.outputs.ceiling }}% (gate: ${{ steps.ceiling.outputs.gate }})"
