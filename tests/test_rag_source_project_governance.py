@@ -193,7 +193,9 @@ def test_iter_finds_adr_and_fp(tmp_path):
     repo = _make_synth(tmp_path)
     docs = list(iter_governance_documents(repo))
     ids = sorted(d.doc_id for d in docs)
-    assert ids == ["ADR-100", "FP-100"]
+    # R2 (post Codex R1 MEDIUM): doc_ids are now namespaced with the
+    # SOURCE_LABEL prefix to avoid cross-source chunk_id collisions.
+    assert ids == ["project-adr-fp:ADR-100", "project-adr-fp:FP-100"]
 
 
 def test_iter_skips_readme_and_empty(tmp_path):
@@ -206,7 +208,7 @@ def test_iter_skips_readme_and_empty(tmp_path):
 def test_iter_lifts_metadata_from_frontmatter(tmp_path):
     repo = _make_synth(tmp_path)
     docs = list(iter_governance_documents(repo))
-    fp_doc = next(d for d in docs if d.doc_id == "FP-100")
+    fp_doc = next(d for d in docs if d.doc_id == "project-adr-fp:FP-100")
     assert fp_doc.metadata["status"] == "proposed"
     assert fp_doc.metadata["classification"] == "test_class"
     assert fp_doc.metadata["related_gs"] == ["GS-X"]
@@ -220,7 +222,7 @@ def test_iter_lifts_metadata_from_frontmatter(tmp_path):
 def test_iter_adr_uses_filename_id_when_no_frontmatter(tmp_path):
     repo = _make_synth(tmp_path)
     docs = list(iter_governance_documents(repo))
-    adr_doc = next(d for d in docs if d.doc_id == "ADR-100")
+    adr_doc = next(d for d in docs if d.doc_id == "project-adr-fp:ADR-100")
     assert adr_doc.metadata["kind"] == "adr"
     assert "status" not in adr_doc.metadata  # ADR file had no frontmatter
 
@@ -245,7 +247,8 @@ def test_iter_handles_one_dir_missing(tmp_path):
     (adr / "ADR-007-x.md").write_text("# ADR-007\n\nbody\n")
     docs = list(iter_governance_documents(tmp_path))
     assert len(docs) == 1
-    assert docs[0].doc_id == "ADR-007"
+    # R2: SOURCE_LABEL: prefix added.
+    assert docs[0].doc_id == "project-adr-fp:ADR-007"
 
 
 def test_iter_full_text_preserved(tmp_path):
@@ -253,7 +256,7 @@ def test_iter_full_text_preserved(tmp_path):
     the cross-reference links in retrieval."""
     repo = _make_synth(tmp_path)
     docs = list(iter_governance_documents(repo))
-    fp_doc = next(d for d in docs if d.doc_id == "FP-100")
+    fp_doc = next(d for d in docs if d.doc_id == "project-adr-fp:FP-100")
     assert "---" in fp_doc.text  # frontmatter present
     assert "FP body text" in fp_doc.text  # body present
 
@@ -285,9 +288,13 @@ def test_real_repo_yields_adr_011_plus_fps():
     repo_root = Path(__file__).resolve().parent.parent
     docs = list(iter_governance_documents(repo_root))
     ids = {d.doc_id for d in docs}
-    # ADR-011 is on main; FP-001/002/003 too
-    assert "ADR-011" in ids
-    assert {"FP-001", "FP-002", "FP-003"}.issubset(ids)
+    # R2: SOURCE_LABEL: namespace prefix on every id.
+    assert "project-adr-fp:ADR-011" in ids
+    assert {
+        "project-adr-fp:FP-001",
+        "project-adr-fp:FP-002",
+        "project-adr-fp:FP-003",
+    }.issubset(ids)
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +310,110 @@ def test_main_lists_docs(tmp_path, capsys):
     assert "ADR-100" in out
     assert "FP-100" in out
     assert "status:proposed" in out  # status lifted into output
+
+
+# ---------------------------------------------------------------------------
+# R2 — Codex R1 MEDIUMs (symlink escape, inline-comment misparse, doc_id dup)
+# ---------------------------------------------------------------------------
+
+
+def test_iter_rejects_symlinks_pointing_outside_repo(tmp_path):
+    """R2 (Codex R1 MEDIUM-1): a committed symlink in docs/adr/ pointing
+    outside the repo must NOT be ingested. Live probe in R1 confirmed
+    the prior implementation read /etc/hosts via such a link."""
+    repo = _make_synth(tmp_path)
+    outside = tmp_path.parent / "outside_secret.md"
+    outside.write_text("# secret\nshould not be ingested\n")
+    link = repo / "docs" / "adr" / "ADR-999-link.md"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink not supported on this filesystem")
+    docs = list(iter_governance_documents(repo))
+    assert all("ADR-999" not in d.doc_id for d in docs), (
+        "symlink ADR-999-link.md must not be ingested"
+    )
+    assert all("secret" not in d.text for d in docs)
+
+
+def test_iter_rejects_symlinks_pointing_inside_repo(tmp_path):
+    """Even if the symlink target is INSIDE the repo, the link itself
+    is rejected — it's a different file, and its name could collide
+    with a real ADR id."""
+    repo = _make_synth(tmp_path)
+    link = repo / "docs" / "adr" / "ADR-998-self-link.md"
+    target = repo / "docs" / "adr" / "ADR-100-test.md"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink not supported")
+    docs = list(iter_governance_documents(repo))
+    assert all("ADR-998" not in d.doc_id for d in docs)
+
+
+def test_inline_yaml_comment_stripped_from_scalar_value(tmp_path):
+    """R2 (Codex R1 MEDIUM-2): `classification: geometry_invalid  # ...`
+    must parse the value as `geometry_invalid`, not the whole string
+    including the comment. The README documents this form."""
+    fp = tmp_path / "docs" / "failure_patterns"
+    fp.mkdir(parents=True)
+    (fp / "FP-501-x.md").write_text(
+        "---\n"
+        "id: FP-501\n"
+        "classification: geometry_invalid  # see ADR-002 §3 for taxonomy\n"
+        "status: proposed\n"
+        "---\n"
+        "# FP-501\n\nbody\n"
+    )
+    docs = list(iter_governance_documents(tmp_path))
+    fp_doc = next(d for d in docs if "FP-501" in d.doc_id)
+    assert fp_doc.metadata["classification"] == "geometry_invalid", (
+        "inline `# ...` comment must be stripped from scalar value"
+    )
+
+
+def test_inline_yaml_comment_on_nested_block_start(tmp_path):
+    """R2 (Codex R1 MEDIUM-2): `nested_key:  # comment` must be
+    recognized as a nested-block start (empty value after strip),
+    not as a scalar with the comment baked in."""
+    fp = tmp_path / "docs" / "failure_patterns"
+    fp.mkdir(parents=True)
+    (fp / "FP-502-x.md").write_text(
+        "---\n"
+        "id: FP-502\n"
+        "gs_artifact_pin:  # placeholder until pin populated\n"
+        "  hash: abc123\n"
+        "  case: GS-001\n"
+        "---\n"
+        "# FP-502\n\nbody\n"
+    )
+    fm, _ = _parse_frontmatter_call(tmp_path / "docs" / "failure_patterns" / "FP-502-x.md")
+    # gs_artifact_pin must be recognized as a nested dict, not a scalar.
+    assert isinstance(fm.get("gs_artifact_pin"), dict), (
+        "nested-block start with inline comment must produce a dict"
+    )
+    assert fm["gs_artifact_pin"].get("hash") == "abc123"
+    assert fm["gs_artifact_pin"].get("case") == "GS-001"
+
+
+def test_iter_raises_on_duplicate_doc_id(tmp_path):
+    """R2 (Codex R1 MEDIUM-3): two docs with the same `id` in
+    frontmatter would silently overwrite each other in the KB upsert
+    path. Detect + raise instead."""
+    fp = tmp_path / "docs" / "failure_patterns"
+    fp.mkdir(parents=True)
+    (fp / "FP-001-a.md").write_text("---\nid: FP-001\nstatus: a\n---\n# A\n\nbody A\n")
+    (fp / "FP-001-b.md").write_text("---\nid: FP-001\nstatus: b\n---\n# B\n\nbody B\n")
+    with pytest.raises(ValueError, match="duplicate doc_id"):
+        list(iter_governance_documents(tmp_path))
+
+
+def _parse_frontmatter_call(md_path):
+    """Helper: reproduce read+parse path for direct frontmatter inspection."""
+    from backend.app.rag.sources.project_governance import _parse_frontmatter
+
+    text = md_path.read_text(encoding="utf-8")
+    return _parse_frontmatter(text)
 
 
 def test_main_returns_1_when_no_docs(tmp_path, capsys):

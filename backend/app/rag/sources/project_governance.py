@@ -37,6 +37,35 @@ _H1_RE = re.compile(r"^# (.+)$", re.MULTILINE)
 _DOC_ID_RE = re.compile(r"^(ADR|FP)-(\d{3})", re.IGNORECASE)
 
 
+def _strip_inline_comment(value: str) -> str:
+    """Strip a YAML-style inline comment (`# ...`) from a scalar value,
+    preserving `#` inside quoted strings.
+
+    R2 (post Codex R1 MEDIUM): the prior parser only skipped lines
+    starting with `#`. The README explicitly documents the form
+    `key: value  # comment` for FailurePattern frontmatter, so a
+    naked `classification: geometry_invalid  # ...` baked the comment
+    into the value, and `gs_artifact_pin:  # comment` was misread as
+    a scalar instead of a nested-block start, dropping all child keys.
+    """
+    if not value:
+        return value
+    # Quoted strings: `#` is a literal character.
+    if (value.startswith("'") and value.endswith("'")) or (
+        value.startswith('"') and value.endswith('"')
+    ):
+        return value
+    # Find the first `#` preceded by whitespace (or at start).
+    idx = -1
+    for i, ch in enumerate(value):
+        if ch == "#" and (i == 0 or value[i - 1].isspace()):
+            idx = i
+            break
+    if idx >= 0:
+        return value[:idx].rstrip()
+    return value
+
+
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     """Return (frontmatter_dict, body_text). Empty dict if no frontmatter.
 
@@ -44,6 +73,11 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     nested fields actually used in this repo (gs_artifact_pin block
     and list values like `related_gs: [GS-001]`). Round-tripping is
     not required; we just need keys for retrieval filtering.
+
+    R2 (post Codex R1 MEDIUM): inline `# comment` suffixes are now
+    stripped via `_strip_inline_comment`, so `key: val  # ...` parses
+    as `val` and `nested_key:  # ...` is recognized as a nested-block
+    start (empty value after comment strip).
     """
     m = _FRONTMATTER_RE.match(text)
     if not m:
@@ -57,7 +91,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     nested_dict: dict = {}
 
     for raw_line in frontmatter_text.split("\n"):
-        # Comment + blank line skip
+        # Comment-line + blank line skip (whole-line comment).
         stripped = raw_line.rstrip()
         if not stripped or stripped.lstrip().startswith("#"):
             continue
@@ -71,7 +105,9 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
                 nested_dict = {}
             key, _, value = raw_line.partition(":")
             key = key.strip()
-            value = value.strip()
+            # Strip inline comment from the value before classifying it
+            # as scalar vs nested-block start.
+            value = _strip_inline_comment(value.strip())
             if value == "":
                 # Could be a nested-block start
                 nested_key = key
@@ -89,7 +125,8 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
                     parsed[key] = value.strip("'\"")
         elif nested_key is not None and raw_line.startswith(" ") and ":" in raw_line:
             inner_key, _, inner_value = raw_line.strip().partition(":")
-            nested_dict[inner_key.strip()] = inner_value.strip().strip("'\"")
+            inner_value = _strip_inline_comment(inner_value.strip())
+            nested_dict[inner_key.strip()] = inner_value.strip("'\"")
 
     if nested_key is not None:
         parsed[nested_key] = nested_dict
@@ -98,7 +135,13 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _extract_doc_id(path: Path, frontmatter: dict) -> str:
-    """Prefer frontmatter `id` field; fall back to filename pattern; else stem."""
+    """Prefer frontmatter `id` field; fall back to filename pattern; else stem.
+
+    R2 (post Codex R1 MEDIUM): caller MUST namespace the returned id
+    with `SOURCE_LABEL:` to avoid cross-source `chunk_id` collisions
+    in the KB store (e.g. two corpora both emitting bare `FP-001`
+    silently overwrote each other in the upsert path).
+    """
     if isinstance(frontmatter.get("id"), str) and frontmatter["id"]:
         return str(frontmatter["id"])
     m = _DOC_ID_RE.match(path.stem)
@@ -113,23 +156,54 @@ def _extract_title(body: str, fallback: str) -> str:
 
 
 def iter_governance_documents(repo_root: Path) -> Iterator[Document]:
-    """Yield Document objects for every ADR + FailurePattern markdown file."""
+    """Yield Document objects for every ADR + FailurePattern markdown file.
+
+    R2 (post Codex R1 MEDIUM):
+    - Reject symlinks and any candidate path that resolves outside
+      `repo_root` (e.g. a committed `ADR-999-link.md -> /etc/hosts`
+      previously round-tripped as a normal governance doc).
+    - Detect duplicate `doc_id`s within this source and raise a
+      `ValueError`; the KB store upserts by chunk_id derived from
+      doc_id, so silent overwrites would break retrieval. The
+      `SOURCE_LABEL:` prefix namespaces these IDs vs other sources.
+    """
+    repo_root_resolved = repo_root.resolve()
     candidates: list[tuple[Path, str]] = [
         (repo_root / "docs" / "adr", "adr"),
         (repo_root / "docs" / "failure_patterns", "failure_pattern"),
     ]
+    seen_doc_ids: set[str] = set()
     for dir_path, kind in candidates:
         if not dir_path.is_dir():
             continue
         for md in sorted(dir_path.glob("*.md")):
             if md.name.upper() == "README.MD":
                 continue
+            # Reject symlinks; reject anything that resolves outside
+            # the repo root. is_symlink uses lstat (no follow), so it
+            # catches the link itself before any resolve() call.
+            if md.is_symlink():
+                continue
+            try:
+                resolved = md.resolve()
+                resolved.relative_to(repo_root_resolved)
+            except (OSError, ValueError):
+                continue
             text = md.read_text(encoding="utf-8", errors="replace")
             if not text.strip():
                 continue
 
             frontmatter, body = _parse_frontmatter(text)
-            doc_id = _extract_doc_id(md, frontmatter)
+            raw_id = _extract_doc_id(md, frontmatter)
+            # Namespace the id with the source label (per
+            # backend/app/rag/sources/README.md docs):
+            doc_id = f"{SOURCE_LABEL}:{raw_id}"
+            if doc_id in seen_doc_ids:
+                raise ValueError(
+                    f"duplicate doc_id {doc_id!r} from {md} — would silently "
+                    f"overwrite a prior chunk in the KB store"
+                )
+            seen_doc_ids.add(doc_id)
             title = _extract_title(body, fallback=md.stem)
 
             metadata: dict = {
