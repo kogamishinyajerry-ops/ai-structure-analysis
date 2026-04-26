@@ -1,6 +1,6 @@
 # GS-001: 悬臂梁静力学分析
 
-> **⚠️ Status: `insufficient_evidence`** — see [FP-001](../../docs/failure_patterns/FP-001-*.md) for the empirical attribution.
+> **⚠️ Status: `insufficient_evidence`** — see [FP-001](../../docs/failure_patterns/FP-001-gs001-cantilever-spec-fork.md) for the empirical attribution.
 > Per ADR-011 §HF3 + Golden Rule #5 ("no GS → no test"), this case is **excluded from the regression lane** until the issues documented in FP-001 are resolved. Do not use this case as a validation benchmark.
 
 ---

@@ -1,6 +1,6 @@
 # GS-002: 简单桁架结构静力学分析
 
-> **⚠️ Status: `insufficient_evidence`** — see [FP-002](../../docs/failure_patterns/FP-002-*.md) for the empirical attribution.
+> **⚠️ Status: `insufficient_evidence`** — see [FP-002](../../docs/failure_patterns/FP-002-gs002-truss-element-substitution.md) for the empirical attribution.
 > Per ADR-011 §HF3 + Golden Rule #5 ("no GS → no test"), this case is **excluded from the regression lane** until the issues documented in FP-002 are resolved. Do not use this case as a validation benchmark.
 
 ---

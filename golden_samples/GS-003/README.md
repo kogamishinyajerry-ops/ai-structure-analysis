@@ -1,6 +1,6 @@
 # GS-003: 平面应力分析 - 带孔平板单轴拉伸
 
-> **⚠️ Status: `insufficient_evidence`** — see [FP-003](../../docs/failure_patterns/FP-003-*.md) for the empirical attribution.
+> **⚠️ Status: `insufficient_evidence`** — see [FP-003](../../docs/failure_patterns/FP-003-gs003-missing-hole-and-bc-direction.md) for the empirical attribution.
 > Per ADR-011 §HF3 + Golden Rule #5 ("no GS → no test"), this case is **excluded from the regression lane** until the issues documented in FP-003 are resolved. Do not use this case as a validation benchmark.
 
 ---
