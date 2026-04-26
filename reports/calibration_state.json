@@ -66,6 +66,16 @@
       "r1_review_report": null,
       "r1_review_report_pending_archive": true,
       "notes": "ADR-011 amendments PR — Codex R1 returned 3 BLOCKER + 1 SHOULD_FIX, fixed in commit e96904d, then merged after CI green. R1 review report still pending archive into reports/codex_tool_reports/."
+    },
+    {
+      "pr": 56,
+      "sha": "4de7b66",
+      "title": "[viz] GET /visualize/plot shim — frontend iframe parity",
+      "merged_at": "2026-04-26T03:16:14Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "2 MEDIUM + 2 LOW",
+      "r1_review_report": "reports/codex_tool_reports/pr56_r2_viz_get_shim.log",
+      "notes": "GET shim for /visualize/plot to fix frontend iframe 405. R1: 2 MEDIUM (increment_index ignored, XSS in fallback HTML) + 2 LOW (path-traversal hardening, AST-only test gap). R2: helpers extracted to fastapi-free _viz_helpers.py, html.escape applied, _CASE_ID_RE + allowed-roots anchor, 25 new behavioral tests. R2 verdict APPROVE_WITH_NITS with 1 LOW (anchor-before-stat). R2-nit fix verbatim per RETRO-V61-001 5-condition exception. Final: merged after CI green."
     }
   ],
   "computed_at_bootstrap": {
