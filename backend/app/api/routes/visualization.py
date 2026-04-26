@@ -2,16 +2,38 @@
 
 提供有限元结果可视化接口
 """
-import base64
-from io import BytesIO
-from typing import Optional
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
+import logging
 from pathlib import Path
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
 from ...services.visualization import get_visualization_service
+from ._viz_helpers import (
+    _allowed_fs_roots,
+    _apply_increment,
+    _fallback_html_render_failed,
+    _fallback_html_unavailable_pyvista,
+    _is_under_allowed_root,
+    _resolve_frd_path,
+    _validate_case_id,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/visualize", tags=["可视化"])
+
+# Re-exports for backward compat — tests imported these names from this
+# module before the R2 helper extraction.
+__all__ = [
+    "_allowed_fs_roots",
+    "_apply_increment",
+    "_fallback_html_render_failed",
+    "_fallback_html_unavailable_pyvista",
+    "_is_under_allowed_root",
+    "_resolve_frd_path",
+    "_validate_case_id",
+]
 
 
 class VisualizeRequest(BaseModel):
@@ -42,9 +64,9 @@ class VisualizeResponse(BaseModel):
     """可视化响应"""
     success: bool
     plot_type: str
-    file_path: Optional[str] = None
-    image_base64: Optional[str] = None
-    html_content: Optional[str] = None
+    file_path: str | None = None
+    image_base64: str | None = None
+    html_content: str | None = None
     message: str
 
 
@@ -58,6 +80,80 @@ def get_viz_service():
         from app.services.visualization import get_visualization_service
         _viz_service = get_visualization_service()
     return _viz_service
+
+
+@router.get("/plot")
+async def visualize_by_case_id(
+    case_id: str,
+    output_format: str = "html",
+    increment_index: int = 0,
+):
+    """GET shim — frontend iframe wraps a case_id; resolve to FRD path,
+    parse, return HTML for the 3D scene.
+
+    R2 hardening (post Codex R1, 2026-04-26):
+    - case_id format is validated against `_CASE_ID_RE` (path-traversal guard).
+    - FRD candidate paths must resolve under one of `_allowed_fs_roots()`.
+    - increment_index is honored via `_apply_increment` before rendering.
+    - All dynamic strings in fallback HTML pages are `html.escape()`'d.
+    - Server-internal details (frd_path, exception text) are logged
+      server-side, not returned to the client.
+    """
+    from fastapi.responses import HTMLResponse
+    from sqlalchemy import select
+
+    from ...db.session import AsyncSessionLocal
+    from ...models.persistence import Case
+    from ...parsers.frd_parser import FRDParser
+
+    try:
+        _validate_case_id(case_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Case).where(Case.id == case_id))
+        case = result.scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="case not found")
+
+    frd_path = _resolve_frd_path(case_id, case.frd_path)
+    if not frd_path:
+        # Don't echo server-internal paths in the response.
+        logger.warning("no FRD result on disk for case_id=%s", case_id)
+        raise HTTPException(status_code=404, detail="no FRD result on disk for this case")
+
+    parser = FRDParser()
+    parsed = parser.parse(str(frd_path))
+    if not parsed.success:
+        logger.warning("FRD parse failed for %s: %s", case_id, parsed.error_message)
+        raise HTTPException(status_code=500, detail="FRD parse failed")
+
+    _apply_increment(parsed, increment_index)
+
+    viz = get_visualization_service()
+    if not viz.is_available:
+        return HTMLResponse(content=_fallback_html_unavailable_pyvista(case.name))
+
+    html_str = None
+    for field in ("VonMises", "Mises", "Stress", "Displacement", "DISP"):
+        try:
+            html_str = viz.export_scene_as_html(parse_result=parsed, field=field)
+            if html_str:
+                break
+        except Exception:
+            logger.exception("export_scene_as_html failed for case=%s field=%s", case_id, field)
+    if html_str:
+        return HTMLResponse(content=html_str)
+
+    n_nodes = len(parsed.nodes) if hasattr(parsed, "nodes") else "?"
+    n_elements = len(parsed.elements) if hasattr(parsed, "elements") else "?"
+    n_increments = len(getattr(parsed, "increments", None) or [])
+    return HTMLResponse(
+        content=_fallback_html_render_failed(
+            case.name, case.structure_type, n_nodes, n_elements, n_increments
+        )
+    )
 
 
 @router.post("/plot", response_model=VisualizeResponse)
@@ -92,7 +188,7 @@ async def create_visualization(request: VisualizeRequest):
         if request.output_format == "html":
              # We generate HTML by skipping the usual image builders and calling export_scene_as_html
              html_str = viz.export_scene_as_html(
-                 parse_result=result, 
+                 parse_result=result,
                  field=request.component if request.plot_type == "stress" else "VonMises"
              )
              if html_str:
@@ -106,7 +202,7 @@ async def create_visualization(request: VisualizeRequest):
         inc_idx = request.increment_index
         target_displacements = result.displacements
         target_stresses = result.stresses
-        
+
         if result.increments and inc_idx < len(result.increments):
             inc = result.increments[inc_idx]
             target_displacements = inc.displacements
@@ -162,28 +258,28 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
         viz = get_visualization_service()
         from ...parsers.frd_parser import FRDParser
         parser = FRDParser()
-        
+
         res1 = parser.parse(file1)
         res2 = parser.parse(file2)
-        
+
         if not res1.success or not res2.success:
             raise HTTPException(status_code=400, detail="解析文件失败")
-            
+
         # 验证节点是否一致
         if len(res1.nodes) != len(res2.nodes):
             raise HTTPException(status_code=400, detail="模型拓扑不一致，无法直接比较")
-            
+
         # 创建差异结果对象
         from copy import deepcopy
         delta_res = deepcopy(res1)
-        
+
         # 1. 位移差异
         for nid in delta_res.displacements:
             if nid in res2.displacements:
                 d1 = res1.displacements[nid]
                 d2 = res2.displacements[nid]
                 delta_res.displacements[nid] = (d2[0]-d1[0], d2[1]-d1[1], d2[2]-d1[2])
-        
+
         # 2. 应力差异
         for nid in delta_res.stresses:
             if nid in res2.stresses:
@@ -191,14 +287,14 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
                 s2 = res2.stresses[nid]
                 if s1.von_mises and s2.von_mises:
                     delta_res.stresses[nid].von_mises = s2.von_mises - s1.von_mises
-        
+
         html_str = viz.export_scene_as_html(delta_res, field=component)
         if html_str:
             from fastapi.responses import HTMLResponse
             return HTMLResponse(content=html_str)
         else:
             raise HTTPException(status_code=500, detail="Delta HTML生成失败")
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
