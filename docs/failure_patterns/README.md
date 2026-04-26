@@ -51,6 +51,8 @@ Body sections (in order):
 
 | ID | Title | Status | Related GS | Classification |
 |----|-------|--------|------------|----------------|
-| [FP-001](./FP-001-gs001-cantilever-spec-fork.md) | Cantilever GS theory↔FEA gap unresolvable as configured | proposed | GS-001 | reference_mismatch |
-| [FP-002](./FP-002-gs002-truss-element-substitution.md) | Truss declared T3D2 but ships B31 | proposed | GS-002 | reference_mismatch |
-| [FP-003](./FP-003-gs003-missing-hole-and-bc-direction.md) | Plate-with-hole has no hole + BC direction inverted | proposed | GS-003 | geometry_invalid |
+| [FP-001](./FP-001-gs001-cantilever-spec-fork.md) | Cantilever GS theory↔FEA gap unresolvable as configured | resolved | GS-001 | reference_mismatch |
+| [FP-002](./FP-002-gs002-truss-element-substitution.md) | Truss declared T3D2 but ships B31 | resolved | GS-002 | reference_mismatch |
+| [FP-003](./FP-003-gs003-missing-hole-and-bc-direction.md) | Plate-with-hole has no hole + BC direction inverted | resolved | GS-003 | geometry_invalid |
+
+> **FP-001 / FP-002 / FP-003** were resolved by PR #32 (golden_samples/GS-001/002/003 marked `insufficient_evidence` per these FPs).

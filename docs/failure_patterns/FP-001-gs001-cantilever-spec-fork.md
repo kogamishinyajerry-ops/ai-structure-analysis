@@ -1,6 +1,6 @@
 ---
 id: FP-001
-status: applied
+status: resolved
 created: 2026-04-25
 related_gs: [GS-001]
 related_adr: [ADR-011]
