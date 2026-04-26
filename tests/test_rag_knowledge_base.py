@@ -144,9 +144,7 @@ def test_memory_store_upsert_and_count():
 
 def test_memory_store_rejects_unembedded_chunk():
     store = MemoryVectorStore()
-    chunks = [
-        Chunk(chunk_id="d:0", doc_id="d", source="s", text="x", chunk_index=0)
-    ]
+    chunks = [Chunk(chunk_id="d:0", doc_id="d", source="s", text="x", chunk_index=0)]
     with pytest.raises(ValueError, match="no embedding"):
         store.upsert(chunks)
 
@@ -232,9 +230,7 @@ def test_knowledge_base_ingest_and_query_end_to_end():
     each doc becomes 1 chunk), query with exact text → cosine = 1.0 wins."""
     text_cantilever = "Euler-Bernoulli says delta equals PL3 over 3EI."
     text_truss = "A truss has axial members carrying tension and compression."
-    kb = KnowledgeBase(
-        MockEmbedder(dim=32), MemoryVectorStore(), chunk_size=200, overlap=0
-    )
+    kb = KnowledgeBase(MockEmbedder(dim=32), MemoryVectorStore(), chunk_size=200, overlap=0)
     docs = [
         Document(
             doc_id="cantilever-1",
@@ -322,7 +318,7 @@ def test_bge_m3_embedder_lazy_imports_on_construct():
 
 
 def test_chunk_index_must_be_non_negative():
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         Chunk(chunk_id="x", doc_id="d", source="s", text="t", chunk_index=-1)
 
 
@@ -330,5 +326,5 @@ def test_retrieval_result_rank_non_negative():
     from backend.app.rag.schemas import RetrievalResult
 
     chunk = Chunk(chunk_id="x", doc_id="d", source="s", text="t", chunk_index=0, embedding=[1.0])
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         RetrievalResult(chunk=chunk, score=0.5, rank=-1)
