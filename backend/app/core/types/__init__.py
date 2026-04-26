@@ -16,8 +16,10 @@ mypy --strict must pass on this package.
 from __future__ import annotations
 
 from .enums import (
+    CanonicalElementType,
     CanonicalField,
     ComponentType,
+    CoordinateSystemKind,
     FieldLocation,
     UnitSystem,
 )
@@ -30,8 +32,10 @@ from .reader_handle import ReaderHandle
 
 __all__ = [
     "BoundaryCondition",
+    "CanonicalElementType",
     "CanonicalField",
     "ComponentType",
+    "CoordinateSystemKind",
     "FieldData",
     "FieldLocation",
     "FieldMetadata",
