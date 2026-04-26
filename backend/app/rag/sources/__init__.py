@@ -12,7 +12,15 @@ from backend.app.rag.sources.project_governance import (
     iter_governance_documents,
 )
 
+# Registry consumed by `backend.app.rag.cli`. Each entry is
+# (source_label, iter_fn(repo_root) -> Iterator[Document]).
+ALL_SOURCES: list = [
+    (PROJECT_GOVERNANCE_SOURCE, iter_governance_documents),
+    (GS_THEORY_SOURCE, iter_gs_theory_documents),
+]
+
 __all__ = [
+    "ALL_SOURCES",
     "GS_THEORY_SOURCE",
     "PROJECT_GOVERNANCE_SOURCE",
     "iter_governance_documents",
