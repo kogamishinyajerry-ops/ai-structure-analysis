@@ -80,8 +80,20 @@ def _discover_gs_readmes(repo_root: Path) -> list[Path]:
 
 
 def _discover_gs_theory_scripts(repo_root: Path) -> list[Path]:
-    """Mirrors gs_theory._is_theory_script: *.py whose lowercase name
-    contains one of theory / theoretical / analytical."""
+    """Mirror `gs_theory._is_theory_script` exactly: a Path qualifies iff
+    its lowercase stem ends with one of `_theory`, `_theoretical`, or
+    `_analytical` AND it is a regular file.
+
+    R2 (post Codex R1 MEDIUM-1 on PR #46): the prior version used
+    substring matching on the lowercase NAME and never checked
+    `is_file()`. That created two false-positive classes:
+      * `analytical_data.py` / `data_theory_notes.py` matched here but
+        the real source rejects them (suffix doesn't match), so the audit
+        reported them missing on a clean tree.
+      * a directory named `bad_theory.py/` matched here but the source
+        skips directories, again producing a phantom "missing" report.
+    Mirror the source exactly to make the audit a faithful contract check.
+    """
     gs_dir = repo_root / "golden_samples"
     if not gs_dir.is_dir():
         return []
@@ -89,10 +101,15 @@ def _discover_gs_theory_scripts(repo_root: Path) -> list[Path]:
     for sample in sorted(gs_dir.glob("GS-*")):
         if not sample.is_dir():
             continue
-        for py in sorted(sample.glob("*.py")):
-            name = py.name.lower()
-            if any(tok in name for tok in ("theory", "theoretical", "analytical")):
-                out.append(py)
+        for py in sorted(sample.iterdir()):
+            if py.suffix != ".py":
+                continue
+            stem = py.stem.lower()
+            if not stem.endswith(("_theory", "_theoretical", "_analytical")):
+                continue
+            if not py.is_file():
+                continue
+            out.append(py)
     return out
 
 
@@ -190,8 +207,16 @@ def audit_coverage(repo_root: Path) -> CoverageReport:
     raises one of those (e.g. duplicate doc_id, symlink escape from
     `iter_governance_documents`). Callers (the CLI) translate those
     into rc=2 to honor the documented exit-code contract.
+
+    R2 (post Codex R1 MEDIUM-2 on PR #46): resolve `repo_root` to an
+    absolute path up-front so that BOTH `_expected_relpaths` and
+    `_doc_paths_for_source` produce identically-formatted relpaths. A
+    relative non-dot root (e.g. `--root '20260408 AI StructureAnalysis'`
+    from the parent dir) used to make every disk-discovered file appear
+    as `repo/docs/...` while the source emitted `docs/...`, producing
+    a false "all missing + all extra" report on a clean tree.
     """
-    repo_root = Path(repo_root)
+    repo_root = Path(repo_root).resolve()
 
     project_adr_fp_paths = _doc_paths_for_source("project-adr-fp", repo_root)
     gs_theory_paths = _doc_paths_for_source("gs-theory", repo_root)
@@ -229,6 +254,22 @@ def audit_coverage(repo_root: Path) -> CoverageReport:
     gs_readme_extras = tuple(sorted(p for p in gs_extras if _is_gs_readme_path(p)))
     gs_theory_extras = tuple(sorted(p for p in gs_extras if _is_gs_theory_path(p)))
 
+    # R2 (post Codex R1 MEDIUM-3 on PR #46): paths the source emitted
+    # that match NONE of the four hardcoded heuristics used to be
+    # silently dropped here, so total_extra() stayed 0 and `--strict`
+    # could incorrectly return success when a source emitted
+    # `docs/other/UNEXPECTED.md` or an absolute `/tmp/outside.md`. Capture
+    # those into a dedicated "other" bucket so the audit fails loudly.
+    other_extras = tuple(
+        sorted(
+            p
+            for p in (*project_extras, *gs_extras)
+            if not (
+                _is_adr_path(p) or _is_fp_path(p) or _is_gs_readme_path(p) or _is_gs_theory_path(p)
+            )
+        )
+    )
+
     adr_bucket = CoverageBucket(
         name="adr",
         expected_files=tuple(sorted(adr_expected)),
@@ -257,10 +298,19 @@ def audit_coverage(repo_root: Path) -> CoverageReport:
         missing_files=tuple(sorted(set(gs_theory_expected) - gs_theory_paths)),
         extra_files=gs_theory_extras,
     )
+    # The "other" bucket has no expected/covered/missing — only extras —
+    # so it is clean iff no unrecognized paths were emitted.
+    other_bucket = CoverageBucket(
+        name="other",
+        expected_files=(),
+        covered_files=(),
+        missing_files=(),
+        extra_files=other_extras,
+    )
 
     return CoverageReport(
         repo_root=str(repo_root),
-        buckets=(adr_bucket, fp_bucket, gs_readme_bucket, gs_theory_bucket),
+        buckets=(adr_bucket, fp_bucket, gs_readme_bucket, gs_theory_bucket, other_bucket),
     )
 
 

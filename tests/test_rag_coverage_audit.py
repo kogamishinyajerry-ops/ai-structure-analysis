@@ -135,9 +135,13 @@ def test_audit_coverage_clean_synth_repo(tmp_path):
 
 
 def test_audit_coverage_bucket_names():
+    """R2 (post Codex R1 MEDIUM-3 on PR #46): the audit now reports a
+    5th `other` bucket for source-emitted paths that match none of the
+    four hardcoded heuristics (so they can no longer be silently dropped
+    from `total_extra()`)."""
     report = audit_coverage(Path("/nonexistent-dir-for-test"))
     names = [b.name for b in report.buckets]
-    assert names == ["adr", "fp", "gs-readme", "gs-theory"]
+    assert names == ["adr", "fp", "gs-readme", "gs-theory", "other"]
 
 
 # ---------------------------------------------------------------------------
@@ -433,3 +437,122 @@ def test_main_corpus_os_error_translates_to_rc_2(tmp_path, monkeypatch, capsys):
     assert rc == 2
     assert "corpus iteration failed" in err
     assert "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# R2 (post Codex R1 MEDIUM on PR #46) — 3 audit-quality fixes
+# ---------------------------------------------------------------------------
+
+
+def test_discover_gs_theory_skips_directories_with_py_suffix(tmp_path):
+    """MED-1: the source rejects `bad_theory.py/` (a directory). The
+    audit's `_discover_gs_theory_scripts` must mirror that, otherwise
+    a directory named `bad_theory.py/` produces a phantom missing entry
+    on a clean repo."""
+    sample = tmp_path / "golden_samples" / "GS-DIR"
+    sample.mkdir(parents=True)
+    (sample / "README.md").write_text("# GS-DIR\n")
+    (sample / "bad_theory.py").mkdir()  # directory, not a file
+    files = _discover_gs_theory_scripts(tmp_path)
+    assert files == [], f"directory `bad_theory.py/` must NOT match: got {[str(f) for f in files]}"
+
+
+def test_discover_gs_theory_uses_stem_suffix_not_substring(tmp_path):
+    """MED-1: the source uses `stem.endswith(_theory|_theoretical|_analytical)`,
+    not substring matching. Pre-fix the audit accepted
+    `analytical_data.py` (substring 'analytical' but suffix mismatch)
+    and `data_theory_notes.py`. Mirror the source exactly."""
+    sample = tmp_path / "golden_samples" / "GS-Y"
+    sample.mkdir(parents=True)
+    (sample / "README.md").write_text("# GS-Y\n")
+    (sample / "good_theory.py").write_text("# matches suffix\n")
+    (sample / "analytical_data.py").write_text("# substring only — must NOT match\n")
+    (sample / "data_theory_notes.py").write_text("# substring only — must NOT match\n")
+    files = _discover_gs_theory_scripts(tmp_path)
+    names = [f.name for f in files]
+    assert "good_theory.py" in names
+    assert "analytical_data.py" not in names, "substring match leaked"
+    assert "data_theory_notes.py" not in names, "substring match leaked"
+
+
+def test_audit_clean_with_relative_root_from_parent_dir(tmp_path, monkeypatch):
+    """MED-2: a relative non-dot `--root` (e.g. running from the parent
+    directory with `--root 'mychild'`) used to make every disk path
+    look like `mychild/docs/...` while the source emitted `docs/...`,
+    producing false "all missing + all extra" reports. After fix
+    `audit_coverage` resolves repo_root up-front."""
+    _make_synth_repo(tmp_path / "mychild")
+    monkeypatch.chdir(tmp_path)
+    # Pass a relative non-dot path
+    report = audit_coverage(Path("mychild"))
+    assert report.all_clean(), (
+        f"relative-root false-mismatch: "
+        f"{[(b.name, b.missing_files, b.extra_files) for b in report.buckets if not b.is_clean()]}"
+    )
+    assert report.total_missing() == 0
+    assert report.total_extra() == 0
+
+
+def test_audit_other_bucket_captures_unrecognized_extras(tmp_path, monkeypatch):
+    """MED-3: source-emitted paths matching none of the four hardcoded
+    heuristics used to disappear silently. The new "other" bucket
+    captures them so `total_extra()` reflects reality and `--strict`
+    fails when it should."""
+    import backend.app.rag.coverage_audit as cmod
+    from backend.app.rag.schemas import Document
+
+    def fake_project_iter(repo_root):
+        # Emit a path that doesn't match any hardcoded prefix
+        yield Document(
+            doc_id="project-adr-fp:WEIRD",
+            source="project-adr-fp",
+            title="weird",
+            text="x",
+            metadata={"path": "docs/other/UNEXPECTED.md"},
+        )
+
+    def empty_gs_iter(repo_root):
+        return iter([])
+
+    monkeypatch.setattr(
+        cmod,
+        "ALL_SOURCES",
+        [("project-adr-fp", fake_project_iter), ("gs-theory", empty_gs_iter)],
+    )
+
+    report = cmod.audit_coverage(tmp_path)
+    other_bucket = next(b for b in report.buckets if b.name == "other")
+    assert "docs/other/UNEXPECTED.md" in other_bucket.extra_files
+    assert report.total_extra() >= 1
+    assert not report.all_clean()
+
+
+def test_main_strict_fails_on_other_bucket_extras(tmp_path, monkeypatch, capsys):
+    """MED-3 follow-up: --strict must fail when the "other" bucket has
+    extras (pre-fix `--strict` could incorrectly return success)."""
+    import backend.app.rag.coverage_audit as cmod
+    from backend.app.rag.schemas import Document
+
+    def fake_project_iter(repo_root):
+        yield Document(
+            doc_id="project-adr-fp:UNEXPECTED",
+            source="project-adr-fp",
+            title="x",
+            text="x",
+            metadata={"path": "docs/other/UNEXPECTED.md"},
+        )
+
+    def empty_gs_iter(repo_root):
+        return iter([])
+
+    monkeypatch.setattr(
+        cmod,
+        "ALL_SOURCES",
+        [("project-adr-fp", fake_project_iter), ("gs-theory", empty_gs_iter)],
+    )
+
+    rc = cmod.main(["coverage_audit.py", "--root", str(tmp_path), "--strict"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "EXTRA" in out
+    assert "UNEXPECTED" in out
