@@ -1,8 +1,13 @@
-"""CalculiX (.frd / .dat) adapter — placeholder.
+"""CalculiX (.frd) Layer-1 adapter — RFC-001 §4.5 W2.
 
-RFC-001 §4.5 work item: 1-week refactor of the Sprint-2 ``frd_parser``
-into a Layer-1 ``ReaderHandle`` implementation, then 2 weeks for
-binary-format coverage. Lands in W2 per RFC §6.4. Cross-solver
-consistency against GS-001 (σ_max within 5% of analytical) is the
-W2 done-criterion.
+Lands the first concrete ``ReaderHandle`` implementation per
+``docs/RFC-001-strategic-pivot-and-mvp.md`` §6.4 W2 done-criterion:
+GS-001 σ_max within 5 % of the analytical solution.
+
+ADR-001/003/004 enforced: no derived quantities, no UNIT inference,
+no IO caching at this layer.
 """
+
+from .reader import CalculiXReader
+
+__all__ = ["CalculiXReader"]
