@@ -415,3 +415,201 @@ def test_post_201_with_non_dict_json_handles_gracefully():
     r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
     assert r.posted is True
     assert r.comment_url is None
+
+
+# ---------------------------------------------------------------------------
+# list_pr_comments — GET /repos/{repo}/issues/{n}/comments
+# ---------------------------------------------------------------------------
+
+
+def _mock_get_response(status_code: int, json_data, text: str = ""):
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.json.return_value = json_data
+    mock_resp.text = text or str(json_data)
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+    return mock_client, mock_resp
+
+
+def test_list_pr_comments_200_returns_data():
+    payload = [
+        {"id": 1, "body": "hi"},
+        {"id": 2, "body": "<!-- ai-fea-preflight -->\nold"},
+    ]
+    mock_client, _ = _mock_get_response(200, payload)
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == payload
+    # Verify the request shape
+    args, kwargs = mock_client.get.call_args
+    assert args[0] == "https://api.github.com/repos/o/r/issues/1/comments"
+    assert kwargs["headers"]["Authorization"] == "Bearer t"
+    assert kwargs["params"] == {"per_page": 100}
+
+
+def test_list_pr_comments_404_returns_empty():
+    """Never-raises contract: any non-200 returns []."""
+    mock_client, _ = _mock_get_response(404, {"message": "Not Found"}, "Not Found")
+    out = gw.list_pr_comments(repo="o/r", pr_number=99999, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_transport_error_returns_empty():
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = httpx.ConnectError("network down")
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_non_list_json_returns_empty():
+    """If the API returns JSON that isn't a list (proxy mangle, etc.),
+    return [] rather than confusing the caller."""
+    mock_client, _ = _mock_get_response(200, {"unexpected": "object"})
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_malformed_json_returns_empty():
+    """Bad JSON in the body must not raise."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.side_effect = ValueError("bad json")
+    mock_resp.text = "<html>"
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_invalid_repo_returns_empty():
+    """Path-traversal repos rejected by _REPO_RE must NOT reach the
+    HTTP layer — return [] without making a request."""
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="../etc/passwd", pr_number=1, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_invalid_pr_number_returns_empty():
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=0, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_no_token_returns_empty(monkeypatch):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: None)
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# patch_pr_comment — PATCH /repos/{repo}/issues/comments/{id}
+# ---------------------------------------------------------------------------
+
+
+def _mock_patch_response(status_code: int, json_data, text: str = ""):
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.json.return_value = json_data
+    mock_resp.text = text or str(json_data)
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.return_value = mock_resp
+    return mock_client, mock_resp
+
+
+def test_patch_pr_comment_200_returns_updated_url():
+    mock_client, _ = _mock_patch_response(
+        200, {"html_url": "https://github.com/o/r/issues/1#comment-99"}
+    )
+    r = gw.patch_pr_comment(
+        repo="o/r", comment_id=99, body="updated body", token="t", client=mock_client
+    )
+    assert r.posted is True
+    assert r.comment_url == "https://github.com/o/r/issues/1#comment-99"
+    assert r.status_code == 200
+    args, kwargs = mock_client.patch.call_args
+    assert args[0] == "https://api.github.com/repos/o/r/issues/comments/99"
+    assert kwargs["json"] == {"body": "updated body"}
+    assert kwargs["headers"]["Authorization"] == "Bearer t"
+
+
+def test_patch_pr_comment_404_returns_error():
+    mock_client, _ = _mock_patch_response(404, {"message": "Not Found"}, "Not Found")
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is False
+    assert r.status_code == 404
+    assert "404" in r.error
+
+
+def test_patch_pr_comment_rejects_invalid_repo():
+    r = gw.patch_pr_comment(repo="../etc/passwd", comment_id=99, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid repo" in r.error
+
+
+def test_patch_pr_comment_rejects_zero_comment_id():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=0, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+def test_patch_pr_comment_rejects_negative_comment_id():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=-5, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+def test_patch_pr_comment_rejects_empty_body():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="", token="t")
+    assert r.posted is False
+    assert "empty body" in r.error
+
+
+def test_patch_pr_comment_no_token_no_op(monkeypatch):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: None)
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi")
+    assert r.posted is False
+    assert "no GitHub token" in r.error
+
+
+def test_patch_pr_comment_truncates_body_over_64kb():
+    """Same body cap as post_pr_comment."""
+    mock_client, _ = _mock_patch_response(
+        200, {"html_url": "https://github.com/o/r/issues/1#comment-99"}
+    )
+    huge = "x" * (gw.GITHUB_COMMENT_BODY_LIMIT + 5000)
+    gw.patch_pr_comment(repo="o/r", comment_id=99, body=huge, token="t", client=mock_client)
+    args, kwargs = mock_client.patch.call_args
+    sent_body = kwargs["json"]["body"]
+    assert len(sent_body) <= gw.GITHUB_COMMENT_BODY_LIMIT
+    assert "truncated by github_writeback" in sent_body
+
+
+def test_patch_pr_comment_transport_error():
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.side_effect = httpx.ConnectError("network down")
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is False
+    assert "transport error" in r.error
+    assert "network down" in r.error
+
+
+def test_patch_pr_comment_200_with_malformed_json_does_not_raise():
+    """Same never-raises contract on the success path as post_pr_comment."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.side_effect = ValueError("bad json")
+    mock_resp.text = "<html>"
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.return_value = mock_resp
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is True
+    assert r.comment_url is None
+    assert r.status_code == 200

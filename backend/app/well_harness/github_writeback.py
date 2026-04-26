@@ -178,6 +178,139 @@ def post_pr_comment(
             c.close()
 
 
+def list_pr_comments(
+    repo: str,
+    pr_number: int,
+    *,
+    token: str | None = None,
+    client: httpx.Client | None = None,
+    timeout: float = 10.0,
+    per_page: int = 100,
+) -> list[dict]:
+    """List Issue/PR comments for `pr_number`. Never raises.
+
+    Returns the raw JSON list (each dict has at least `id`, `body`,
+    `html_url`). Returns `[]` on any failure (no token, transport
+    error, non-200 response, malformed JSON, missing repo).
+
+    Used by the upsert path in `preflight_publish.publish_preflight` to
+    locate a prior preflight comment by `header_marker`.
+
+    Pagination: GitHub paginates issue comments at 30/page by default;
+    we request `per_page=100` (the API max) and fetch a single page.
+    For typical preflight use cases (≤100 comments per PR) one page is
+    sufficient. We deliberately do not paginate further — the marker
+    search degrades gracefully to a fresh POST if a prior preflight
+    comment lives on a later page.
+    """
+    if not repo or not _REPO_RE.match(repo):
+        return []
+    if pr_number <= 0:
+        return []
+    tok = token if token is not None else _resolve_token()
+    if not tok:
+        return []
+
+    url = f"{GITHUB_API}/repos/{repo}/issues/{pr_number}/comments"
+    headers = {
+        "Authorization": f"Bearer {tok}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    owns_client = client is None
+    c = client or httpx.Client(timeout=timeout)
+    try:
+        resp = c.get(url, headers=headers, params={"per_page": per_page})
+        if resp.status_code != 200:
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, TypeError):
+            return []
+        return data if isinstance(data, list) else []
+    except httpx.HTTPError:
+        return []
+    finally:
+        if owns_client:
+            c.close()
+
+
+def patch_pr_comment(
+    repo: str,
+    comment_id: int,
+    body: str,
+    *,
+    token: str | None = None,
+    client: httpx.Client | None = None,
+    timeout: float = 10.0,
+) -> WritebackResult:
+    """PATCH an existing PR/Issue comment in place.
+
+    Endpoint: /repos/{owner}/{name}/issues/comments/{id}. GitHub treats
+    PR thread comments as Issue comments, so this works for both.
+
+    Returns a `posted=True` WritebackResult on 200 (the field is named
+    `posted` for symmetry with `post_pr_comment`; semantically here it
+    means "request succeeded — comment was updated"). Never raises on
+    transport / HTTP errors.
+
+    Mirrors `post_pr_comment`'s R2 hardening: same _REPO_RE, body cap,
+    json() / non-dict guards.
+    """
+    if not repo or not _REPO_RE.match(repo):
+        return WritebackResult(posted=False, error=f"invalid repo: {repo!r} (expected owner/name)")
+    if comment_id <= 0:
+        return WritebackResult(posted=False, error=f"invalid comment_id: {comment_id}")
+    if not body or not body.strip():
+        return WritebackResult(posted=False, error="empty body")
+
+    if len(body) > GITHUB_COMMENT_BODY_LIMIT:
+        head_len = GITHUB_COMMENT_BODY_LIMIT - len(_BODY_TRUNCATION_SUFFIX)
+        body = body[:head_len] + _BODY_TRUNCATION_SUFFIX
+
+    tok = token if token is not None else _resolve_token()
+    if not tok:
+        return WritebackResult(
+            posted=False,
+            error="no GitHub token (set GH_TOKEN/GITHUB_TOKEN or `gh auth login`)",
+        )
+
+    url = f"{GITHUB_API}/repos/{repo}/issues/comments/{comment_id}"
+    headers = {
+        "Authorization": f"Bearer {tok}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    payload = {"body": body}
+
+    owns_client = client is None
+    c = client or httpx.Client(timeout=timeout)
+    try:
+        resp = c.patch(url, headers=headers, json=payload)
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                comment_url = data.get("html_url") if isinstance(data, dict) else None
+            except (ValueError, TypeError):
+                comment_url = None
+            return WritebackResult(
+                posted=True,
+                comment_url=comment_url,
+                status_code=200,
+            )
+        return WritebackResult(
+            posted=False,
+            status_code=resp.status_code,
+            error=f"GitHub API returned {resp.status_code}: {resp.text[:200]}",
+        )
+    except httpx.HTTPError as e:
+        return WritebackResult(posted=False, error=f"transport error: {e}")
+    finally:
+        if owns_client:
+            c.close()
+
+
 def build_run_summary_comment(
     case_id: str,
     verdict: str,
