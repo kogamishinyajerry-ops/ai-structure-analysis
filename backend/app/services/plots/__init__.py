@@ -18,7 +18,7 @@ This module re-exports — no new logic. Adding PNG features here is OK
 
 from __future__ import annotations
 
-from app._frozen.sprint2.visualization import (
+from ..._frozen.sprint2.visualization import (
     VisualizationService,
     get_visualization_service,
 )

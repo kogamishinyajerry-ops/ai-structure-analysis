@@ -18,7 +18,7 @@ from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.types import UnitSystem
+from ..core.types import UnitSystem
 
 
 class TaskSpec(BaseModel):

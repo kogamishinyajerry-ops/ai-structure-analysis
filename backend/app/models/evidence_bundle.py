@@ -20,7 +20,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.core.types import FieldMetadata
+from ..core.types import FieldMetadata
 
 
 class EvidenceType(str, Enum):
