@@ -18,7 +18,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.types import FieldMetadata
 
@@ -121,6 +121,26 @@ class EvidenceItem(BaseModel):
             raise ValueError("derivation may not reference the item's own evidence_id")
         return value
 
+    @model_validator(mode="after")
+    def _check_kind_consistency(self) -> "EvidenceItem":
+        """Tie ``evidence_type`` to ``data.kind`` so the two discriminators
+        cannot disagree. Without this an item can validate as
+        ``evidence_type=REFERENCE`` while carrying ``SimulationEvidence``,
+        which silently splits ``get_evidence_by_type`` from any
+        ``data.kind``-based dispatch downstream (Codex R1 finding HIGH-1).
+        """
+        expected_kind = {
+            EvidenceType.SIMULATION: "simulation",
+            EvidenceType.REFERENCE: "reference",
+            EvidenceType.ANALYTICAL: "analytical",
+        }[self.evidence_type]
+        if self.data.kind != expected_kind:
+            raise ValueError(
+                f"evidence_type {self.evidence_type.value!r} does not match "
+                f"data.kind {self.data.kind!r}"
+            )
+        return self
+
 
 class EvidenceBundle(BaseModel):
     """Ordered set of EvidenceItems backing one report.
@@ -130,8 +150,10 @@ class EvidenceBundle(BaseModel):
       * If item ``X`` lists ``Y`` in its ``derivation``, then ``Y`` already
         appears in ``evidence_items`` *before* ``X`` (acyclic DAG, append-only).
 
-    Both are enforced by :meth:`add_evidence`. Direct mutation of
-    ``evidence_items`` bypasses validation — don't do it.
+    Enforced both by :meth:`add_evidence` (append-time) and by a
+    bundle-level ``model_validator`` that runs on every construction —
+    so loading a bundle from persisted JSON / dict cannot smuggle in
+    duplicates, forward references, or cycles.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -146,6 +168,31 @@ class EvidenceBundle(BaseModel):
     verification_summary: Optional[str] = None
     overall_status: Optional[VerificationStatus] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_evidence_items_invariants(self) -> "EvidenceBundle":
+        """Re-check uniqueness + topological order on every construction.
+
+        Without this the constructor accepts duplicate IDs, forward
+        references, and even cycles when ``evidence_items`` is passed
+        as a kwarg or hydrated from JSON (Codex R1 finding HIGH-2).
+        """
+        seen_ids: set[str] = set()
+        for item in self.evidence_items:
+            if item.evidence_id in seen_ids:
+                raise ValueError(
+                    f"duplicate evidence_id {item.evidence_id!r} in bundle "
+                    f"{self.bundle_id!r}"
+                )
+            if item.derivation:
+                missing = [eid for eid in item.derivation if eid not in seen_ids]
+                if missing:
+                    raise ValueError(
+                        f"item {item.evidence_id!r} derivation references "
+                        f"unknown / not-yet-seen IDs: {missing!r}"
+                    )
+            seen_ids.add(item.evidence_id)
+        return self
 
     def add_evidence(self, evidence: EvidenceItem) -> None:
         """Append an item, enforcing uniqueness + derivation referential integrity.

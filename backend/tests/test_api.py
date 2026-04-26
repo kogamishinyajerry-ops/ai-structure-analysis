@@ -32,17 +32,19 @@ class TestResultAPI:
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
     
+    @pytest.mark.legacy
     def test_get_supported_formats(self, client):
-        """测试获取支持的格式"""
+        """测试获取支持的格式 (RFC-001 §6.1 Bucket C: endpoint deleted with result_router)."""
         response = client.get("/api/v1/supported-formats")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert ".frd" in data["formats"]
         assert ".dat" in data["formats"]
-    
+
+    @pytest.mark.legacy
     def test_parse_result_file(self, client):
-        """测试解析结果文件"""
+        """测试解析结果文件 (RFC-001 §6.1 Bucket C: endpoint deleted with result_parser)."""
         # 创建测试文件
         dat_content = b"""
 displacement (m):
@@ -71,8 +73,9 @@ stress (Pa):
         finally:
             os.unlink(tmp_path)
     
+    @pytest.mark.legacy
     def test_parse_unsupported_format(self, client):
-        """测试不支持的格式"""
+        """测试不支持的格式 (RFC-001 §6.1 Bucket C: endpoint deleted with result_router)."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
             f.write(b"test")
             tmp_path = f.name

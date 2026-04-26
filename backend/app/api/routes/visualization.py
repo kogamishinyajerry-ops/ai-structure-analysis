@@ -249,6 +249,10 @@ async def create_visualization(request: VisualizeRequest):
                 file_path=file_path,
             )
 
+    except HTTPException:
+        # Preserve intentional 4xx / 503 status codes raised above
+        # (Codex R1 finding MEDIUM-1: catch-all was collapsing them to 500).
+        raise
     except Exception as e:
         logger.error(f"Visualization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -297,6 +301,9 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
         else:
             raise HTTPException(status_code=500, detail="Delta HTML生成失败")
 
+    except HTTPException:
+        # Preserve intentional 4xx codes raised above (Codex R1 MEDIUM-1).
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

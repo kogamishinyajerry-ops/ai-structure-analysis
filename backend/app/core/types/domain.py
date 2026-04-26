@@ -8,7 +8,8 @@ purposefully pin only the surface needed by ``ReaderHandle``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Mapping, Protocol, runtime_checkable
 
 from .enums import UnitSystem
 
@@ -64,10 +65,24 @@ class BoundaryCondition:
     ``"pressure"`` / ``"displacement"`` / ``"thermal"`` / ...). Kept open
     for now because the cross-solver translation table is still being
     surveyed; an enum will follow once it stabilises.
+
+    Deep immutability: ``components`` is wrapped in ``MappingProxyType``
+    on construction so ``frozen=True`` extends to the dict payload too
+    (Codex R1 finding MEDIUM-2 — bare ``dict`` allowed in-place mutation
+    after construction, weakening the frozen contract).
     """
 
     name: str
     kind: str
     target: str          # mesh-set label as the solver named it (NSET, ELSET, ...)
-    components: dict[str, float]
+    components: Mapping[str, float]
     unit_system: UnitSystem
+
+    def __post_init__(self) -> None:
+        # Convert any concrete mapping (typically dict) into an immutable view.
+        # ``frozen=True`` only blocks attribute reassignment; without this the
+        # caller's dict could still be mutated through ``bc.components[k] = v``.
+        if not isinstance(self.components, MappingProxyType):
+            object.__setattr__(
+                self, "components", MappingProxyType(dict(self.components))
+            )
