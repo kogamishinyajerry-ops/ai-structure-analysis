@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
-from .api import result_router, nl_router
+from .api import nl_router
 from .api.routes import knowledge, visualization, frd, report, cases, solver, sensitivity, projects
 
 from .db.session import init_db, get_db
@@ -44,7 +44,7 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(result_router, prefix="/api/v1")
+# RFC-001 §6.1 Bucket C: result_router removed (replaced by /projects/{id}/results in W4+)
 app.include_router(nl_router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(visualization.router, prefix="/api/v1")
