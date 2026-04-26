@@ -13,6 +13,7 @@ try:
         _CliHint,
         _CliQuantity,
         _load_hint_from_json,
+        _UsageError,
         main,
     )
 except ImportError as e:
@@ -225,10 +226,12 @@ def test_hint_json_loads_quantities(tmp_path, capsys):
 
 
 def test_hint_json_missing_file_exits():
+    """R2 (pre-emptive, mirrors advise_cli pattern): rc=2 via _UsageError
+    with a `.message` attribute, not plain SystemExit("msg") rc=1."""
     with pytest.raises(SystemExit) as ei:
         _load_hint_from_json(Path("/nonexistent/hint.json"))
-    # SystemExit can carry int or str; we just need a clear failure
-    msg = str(ei.value)
+    assert ei.value.code == 2
+    msg = getattr(ei.value, "message", "")
     assert "failed to read" in msg or "hint.json" in msg
 
 
@@ -509,3 +512,149 @@ def test_cli_hint_default_provider_in_advisor_only_path(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "advisor-only@v0" in out
+
+
+# ---------------------------------------------------------------------------
+# Pre-emptive R2 hardening (mirrors fixes from PR #62 / #65)
+# ---------------------------------------------------------------------------
+
+
+def test_usage_error_exits_with_code_2_not_1():
+    """Plain SystemExit(str) exits rc=1; _UsageError standardizes rc=2."""
+    err = _UsageError("test message")
+    assert err.code == 2
+    assert err.message == "test message"
+
+
+def test_main_propagates_hint_json_failure_as_rc_2(tmp_path, capsys):
+    """A bad --hint-json should surface as rc=2 (usage), not as a
+    leaked traceback or rc=1."""
+    repo = _make_synth_repo(tmp_path)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not-valid")
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--hint-json",
+            str(bad),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "publish-rag" in err
+
+
+def test_hint_json_oversize_rejected(tmp_path):
+    """Pre-emptive R2: a >1 MiB hint payload must be rejected before
+    json.loads buffers it into memory."""
+    p = tmp_path / "huge.json"
+    # Construct a JSON object whose serialized size exceeds the cap.
+    p.write_text('{"pad": "' + ("x" * (preflight_publish_cli._HINT_JSON_MAX_BYTES + 1)) + '"}')
+    with pytest.raises(SystemExit) as ei:
+        _load_hint_from_json(p)
+    assert ei.value.code == 2
+    assert "bytes" in getattr(ei.value, "message", "")
+
+
+def test_hint_json_bool_value_rejected(tmp_path):
+    """Pre-emptive R2 (mirrors PR #65 _is_positive_int): bool is
+    technically int-subclass but `value=True` is almost always a JSON
+    typo. Reject explicitly."""
+    p = tmp_path / "bool_value.json"
+    p.write_text(
+        json.dumps(
+            {
+                "case_id": "GS-1",
+                "quantities": [{"name": "x", "value": True, "unit": "mm"}],
+            }
+        )
+    )
+    with pytest.raises(SystemExit) as ei:
+        _load_hint_from_json(p)
+    assert ei.value.code == 2
+    assert "must be a number" in getattr(ei.value, "message", "")
+
+
+def test_negative_pr_returns_2(tmp_path, capsys, monkeypatch):
+    """Pre-emptive R2: --pr < 0 surfaces as rc=2 (usage) rather than
+    relying on publish_preflight to reject it as rc=1."""
+    repo = _make_synth_repo(tmp_path)
+
+    # Stub publish_preflight so we can detect that it's NOT reached.
+    called = {"n": 0}
+
+    def _fake_publish(*a, **kw):
+        called["n"] += 1
+        raise AssertionError("publish_preflight should not be reached")
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/name",
+            "--pr",
+            "-5",
+            "--post",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert called["n"] == 0
+    assert "must be a positive integer" in err
+
+
+def test_negative_max_advice_lines_returns_2(tmp_path, capsys):
+    """Pre-emptive R2: --max-advice-lines < 0 surfaces as rc=2 instead
+    of leaking ValueError from combine()."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--max-advice-lines",
+            "-1",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert ">= 0" in err
+
+
+def test_advise_value_error_translates_to_rc_2(tmp_path, capsys):
+    """Pre-emptive R2 (mirrors PR #62 fix): an unknown --verdict raises
+    ValueError inside advise(); the CLI must translate to rc=2 + a
+    clean stderr line, not leak a traceback."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "BogusVerdict",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "publish-rag" in err

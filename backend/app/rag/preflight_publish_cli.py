@@ -56,13 +56,30 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
 
 from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
 from backend.app.rag.preflight_publish import publish_preflight
 from backend.app.rag.preflight_summary import combine
 from backend.app.rag.reviewer_advisor import FAULT_QUERY_SEEDS, advise
 from backend.app.rag.sources import ALL_SOURCES
+
+
+class _UsageError(SystemExit):
+    """Pre-emptive R2 (mirrors query_cli / advise_cli): exit code 2 for
+    usage / fatal CLI errors. Plain `SystemExit("msg")` exits with code
+    1, conflicting with the docstring's `2 = usage error` contract.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(2)
+        self.message = message
+
+
+# Pre-emptive R2: cap --hint-json read size. A maliciously large JSON
+# would otherwise OOM the CLI before json.loads gets a chance to fail.
+# 1 MiB is far above any realistic preflight hint payload (~hundreds
+# of bytes typical).
+_HINT_JSON_MAX_BYTES = 1 * 1024 * 1024
 
 
 # Minimal hint duck-type. Matches preflight_summary.combine's contract.
@@ -72,7 +89,7 @@ class _CliQuantity:
     value: float
     unit: str
     confidence: str = "low"
-    location: Optional[str] = None
+    location: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,38 +101,52 @@ class _CliHint:
 
 
 def _load_hint_from_json(path: Path) -> _CliHint:
-    """Load a hint JSON into a _CliHint object. Raises SystemExit on shape errors."""
+    """Load a hint JSON into a _CliHint object.
+
+    Raises `_UsageError` (rc=2) on missing file / invalid JSON / shape
+    errors. Pre-emptive R2: bool-vs-int discrimination on `value`,
+    file-size cap before read, plain SystemExit replaced with
+    _UsageError so the documented `2 = usage error` rc contract holds.
+    """
     try:
+        # Pre-emptive R2: stat-then-read to fail fast on oversize hints
+        # without buffering them into memory first.
+        size = path.stat().st_size
+        if size > _HINT_JSON_MAX_BYTES:
+            raise _UsageError(f"--hint-json {path}: file is {size} bytes (>{_HINT_JSON_MAX_BYTES})")
         data = json.loads(path.read_text())
+    except _UsageError:
+        raise
     except (OSError, json.JSONDecodeError) as e:
-        raise SystemExit(f"[publish-rag] failed to read --hint-json {path}: {e}") from e
+        raise _UsageError(f"failed to read --hint-json {path}: {e}") from e
     if not isinstance(data, dict):
-        raise SystemExit(f"[publish-rag] --hint-json {path}: expected JSON object")
+        raise _UsageError(f"--hint-json {path}: expected JSON object")
 
     case_id = data.get("case_id")
     if not isinstance(case_id, str) or not case_id:
-        raise SystemExit("[publish-rag] --hint-json: 'case_id' (non-empty str) required")
+        raise _UsageError("--hint-json: 'case_id' (non-empty str) required")
     provider = data.get("provider", "manual@v0")
     notes = data.get("notes", "") or ""
     raw_qs = data.get("quantities", []) or []
     if not isinstance(raw_qs, list):
-        raise SystemExit("[publish-rag] --hint-json: 'quantities' must be a list")
+        raise _UsageError("--hint-json: 'quantities' must be a list")
 
     quantities: list[_CliQuantity] = []
     for i, q in enumerate(raw_qs):
         if not isinstance(q, dict):
-            raise SystemExit(f"[publish-rag] --hint-json: quantities[{i}] must be an object")
+            raise _UsageError(f"--hint-json: quantities[{i}] must be an object")
         name = q.get("name")
         value = q.get("value")
         unit = q.get("unit")
         if not isinstance(name, str) or not name:
-            raise SystemExit(f"[publish-rag] --hint-json: quantities[{i}].name required")
-        if not isinstance(value, (int, float)):
-            raise SystemExit(
-                f"[publish-rag] --hint-json: quantities[{i}].value must be a number"
-            )
+            raise _UsageError(f"--hint-json: quantities[{i}].name required")
+        # Pre-emptive R2 (mirrors PR #65 _is_positive_int pattern): bool
+        # is a subclass of int, but `value=True` here is almost certainly
+        # a JSON typo. Reject explicitly.
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise _UsageError(f"--hint-json: quantities[{i}].value must be a number")
         if not isinstance(unit, str):
-            raise SystemExit(f"[publish-rag] --hint-json: quantities[{i}].unit required")
+            raise _UsageError(f"--hint-json: quantities[{i}].unit required")
         quantities.append(
             _CliQuantity(
                 name=name,
@@ -176,7 +207,9 @@ def main(argv: list[str]) -> int:
         help="Fallback case_id if --hint-json not provided (default: <unknown-case>)",
     )
     parser.add_argument("--repo", default=None, help="GitHub owner/repo (required for --post)")
-    parser.add_argument("--pr", type=int, default=None, help="PR/Issue number (required for --post)")
+    parser.add_argument(
+        "--pr", type=int, default=None, help="PR/Issue number (required for --post)"
+    )
     parser.add_argument(
         "--mode",
         choices=["post", "upsert"],
@@ -216,6 +249,16 @@ def main(argv: list[str]) -> int:
         print("[publish-rag] --k must be a positive integer", file=sys.stderr)
         return 2
 
+    # Pre-emptive R2: --max-advice-lines < 0 raises ValueError inside
+    # combine(). Pre-validate to surface as rc=2 (usage error) instead
+    # of a leaked traceback / rc=1.
+    if args.max_advice_lines < 0:
+        print(
+            "[publish-rag] --max-advice-lines must be >= 0 (0 = no cap)",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.fault not in FAULT_QUERY_SEEDS:
         print(
             f"[publish-rag] note: fault '{args.fault}' not in FAULT_QUERY_SEEDS; "
@@ -224,20 +267,35 @@ def main(argv: list[str]) -> int:
         )
 
     # Build hint
+    # Pre-emptive R2: catch _UsageError so main() honors the
+    # documented `2 = usage error` rc contract whether main() is
+    # invoked via __main__ (which also wraps) or via tests.
     if args.hint_json is not None:
-        hint = _load_hint_from_json(args.hint_json)
+        try:
+            hint = _load_hint_from_json(args.hint_json)
+        except _UsageError as e:
+            print(f"[publish-rag] {e.message}", file=sys.stderr)
+            return 2
     else:
         hint = _CliHint(case_id=args.case_id, provider="advisor-only@v0", quantities=[])
 
     # Build KB + advice
     kb = _build_kb(args.root)
-    advice = advise(
-        kb,
-        verdict=args.verdict,
-        fault_class=args.fault,
-        k=args.k,
-        source_filter=args.source_filter,
-    )
+    # Pre-emptive R2 (mirrors advise_cli pattern, post Codex R1 on PR
+    # #62): advise() re-validates verdict / k / source_filter and raises
+    # ValueError on any mismatch. Translate to rc=2 instead of leaking
+    # a traceback.
+    try:
+        advice = advise(
+            kb,
+            verdict=args.verdict,
+            fault_class=args.fault,
+            k=args.k,
+            source_filter=args.source_filter,
+        )
+    except ValueError as e:
+        print(f"[publish-rag] {e}", file=sys.stderr)
+        return 2
 
     # Combine
     summary = combine(hint, advice, max_advice_lines=args.max_advice_lines)
@@ -247,7 +305,9 @@ def main(argv: list[str]) -> int:
     if is_dry:
         print(f"[publish-rag] mode: DRY-RUN ({'forced' if args.dry_run else '--post not set'})")
         print(f"[publish-rag] verdict: {args.verdict!r}  fault: {args.fault!r}")
-        print(f"[publish-rag] case_id: {summary.case_id}  confidence: {summary.confidence_indicator}")
+        print(
+            f"[publish-rag] case_id: {summary.case_id}  confidence: {summary.confidence_indicator}"
+        )
         print(f"[publish-rag] advice hits: {len(summary.advice_lines)}")
         print()
         print("--- markdown ---")
@@ -258,6 +318,14 @@ def main(argv: list[str]) -> int:
     # Real publish
     if not args.repo or not args.pr:
         print("[publish-rag] --post requires --repo and --pr", file=sys.stderr)
+        return 2
+
+    # Pre-emptive R2 (mirrors PR #65 _is_positive_int): a negative --pr
+    # is currently caught downstream by publish_preflight (rc=1). Pull
+    # forward to rc=2 so the rc contract (1=publish failure, 2=usage)
+    # stays clean.
+    if args.pr <= 0:
+        print(f"[publish-rag] --pr must be a positive integer, got {args.pr}", file=sys.stderr)
         return 2
 
     result = publish_preflight(
@@ -281,4 +349,8 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except _UsageError as e:
+        print(f"[publish-rag] {e.message}", file=sys.stderr)
+        sys.exit(2)
