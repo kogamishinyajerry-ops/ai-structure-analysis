@@ -3,7 +3,6 @@
   "case_name": "悬臂梁静力学分析",
   "analysis_type": "static_analysis",
   "beam_type": "cantilever",
-
   "case_description": {
     "geometry": "悬臂梁 - 一端固定，自由端集中力",
     "length": 100.0,
@@ -16,11 +15,9 @@
       "displacement": "mm"
     }
   },
-
   "theoretical_solutions": {
     "note": "欧拉-伯努利梁理论 (适用于细长梁)",
     "formula_source": "Strength of Materials - Euler-Bernoulli Beam Theory",
-
     "euler_bernoulli": {
       "max_displacement": {
         "value": 0.7619,
@@ -67,7 +64,6 @@
         "formula": "τ_max = 1.5V/A = 1.5P/A"
       }
     },
-
     "timoshenko_beam": {
       "note": "Timoshenko梁理论 (考虑剪切变形，对深梁更准确)",
       "max_displacement": {
@@ -79,14 +75,12 @@
         "shear_area_ratio": 0.9
       }
     },
-
     "fea_result": {
       "source": "calculix_cases/cantilever_beam/cantilever_beam.frd",
       "parse_status": "SUCCESS",
       "num_nodes": 44,
       "num_elements": 10,
       "element_type": "C3D8",
-
       "displacement": {
         "node_11_UX": -36.87,
         "node_11_UY": -493.56,
@@ -94,7 +88,6 @@
         "unit": "mm",
         "max_uy_location": "node_11"
       },
-
       "stress": {
         "node_1_SXX": -190.08,
         "node_1_SYY": -81.46,
@@ -104,27 +97,23 @@
         "location": "fixed_end_corner"
       }
     },
-
     "critical_discrepancy": {
       "status": "FAILED - SIGNIFICANT ERROR DETECTED",
       "UY_ratio": 648.0,
       "SXX_ratio": 0.79,
       "description": "FEA UY displacement is 648× larger than theoretical prediction",
-
       "UY_comparison": {
         "theory_mm": 0.7619,
         "fea_mm": 493.56,
         "ratio": 648.0,
         "unit": "mm"
       },
-
       "SXX_comparison": {
         "theory_MPa": 240.0,
         "fea_MPa": 190.08,
         "ratio": 0.79,
         "note": "Stress is in reasonable range (20% difference)"
       },
-
       "root_cause_analysis": [
         "1. UNIT SYSTEM ERROR: The .inp file may be using inconsistent units",
         "2. GEOMETRY ERROR: Cross-section '10.0, 10.0' in SOLID SECTION may mean thickness, not b×h",
@@ -132,7 +121,6 @@
         "4. LOAD APPLICATION: 4-node distributed load vs ideal point load",
         "5. BOUNDARY CONDITIONS: Full fixity at x=0 vs standard cantilever BC"
       ],
-
       "model_issues": {
         "primary_error": "CRITICAL - FEA model setup is incorrect for beam theory comparison",
         "secondary_error": "expected_results.json contains wrong theoretical values",
@@ -140,7 +128,6 @@
       }
     }
   },
-
   "input_file_analysis": {
     "file": "calculix_cases/cantilever_beam/cantilever_beam.inp",
     "mesh_definition": {
@@ -161,19 +148,28 @@
       "issue": "Params likely mean thickness, not b×h for beam theory"
     },
     "boundary": {
-      "fixed_nodes": [1, 12, 23, 34],
+      "fixed_nodes": [
+        1,
+        12,
+        23,
+        34
+      ],
       "description": "All DOFs constrained at x=0 plane"
     },
     "load": {
       "type": "CLOAD (concentrated force)",
-      "nodes": [11, 22, 33, 44],
+      "nodes": [
+        11,
+        22,
+        33,
+        44
+      ],
       "magnitude_each": -100.0,
       "total_load": -400.0,
       "DOF": 2,
       "direction": "Y (vertical)"
     }
   },
-
   "correct_theoretical_calculation": {
     "units": {
       "system": "mm-N-MPa",
@@ -185,32 +181,32 @@
       "elastic_modulus_E": 210000,
       "load_P": 400
     },
-
     "displacement": {
       "formula": "δ = PL³/(3EI)",
       "calculation": "δ = 400 × 100³ / (3 × 210000 × 833.33)",
       "result_mm": 0.7619,
       "result_m": 0.0007619
     },
-
     "stress": {
       "formula": "σ = Mc/I = PLc/I",
       "c": "h/2 = 5",
       "calculation": "σ = 400 × 100 × 5 / 833.33",
       "result_MPa": 240.0
     },
-
     "shear_stress": {
       "formula": "τ = 1.5V/A",
       "result_MPa": 6.0
     }
   },
-
   "validation_points": [
     {
       "id": "VP-001",
       "name": "最大位移UY (自由端)",
-      "location": [100.0, 0.0, 0.0],
+      "location": [
+        100.0,
+        0.0,
+        0.0
+      ],
       "theory_value_mm": 0.7619,
       "fea_value_mm": -493.56,
       "ratio": 648.0,
@@ -220,7 +216,11 @@
     {
       "id": "VP-002",
       "name": "固定端应力SXX",
-      "location": [0.0, 0.0, 0.0],
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "theory_value_MPa": 240.0,
       "fea_value_MPa": -190.08,
       "ratio": 0.79,
@@ -230,14 +230,17 @@
     {
       "id": "VP-003",
       "name": "节点UX位移 (泊松效应)",
-      "location": [100.0, 0.0, 0.0],
+      "location": [
+        100.0,
+        0.0,
+        0.0
+      ],
       "theory_value_mm": 0.0,
       "fea_value_mm": -36.87,
       "status": "N/A",
       "note": "3D实体模型有横向收缩"
     }
   ],
-
   "acceptance_criteria": {
     "parse_validation": {
       "description": "验证解析器能正确读取FRD文件",
@@ -251,18 +254,86 @@
       "note": "位移误差 > 600%，模型设置有根本性问题"
     }
   },
-
   "metadata": {
     "created_at": "2026-04-09T01:35:00Z",
     "updated_at": "2026-04-09T10:15:00Z",
     "version": "3.0",
     "author": "Structure Analysis Team",
-    "tags": ["benchmark", "static", "cantilever", "3D", "VALIDATION_FAILED"],
+    "tags": [
+      "benchmark",
+      "static",
+      "cantilever",
+      "3D",
+      "VALIDATION_FAILED"
+    ],
     "correction_note": "GS-001 FAILED validation - FEA model setup issue detected. Theory-FEA mismatch requires model correction.",
     "issues": [
       "expected_results.json v1.0: Wrong case type (simply supported vs cantilever)",
       "expected_results.json v2.0: Wrong theory calculation (unit error)",
       "expected_results.json v3.0: Corrected theory values, documented FEA model issues"
     ]
+  },
+  "validation_refs_v2": {
+    "schema_version": "v2-P1-03",
+    "reference_frame": "CalculiX 2.20, mm/N/MPa units, C3D8I element (post P1-03 fix)",
+    "default_tolerance_pct": 5.0,
+    "deck_notes": [
+      "Canonical deck is golden_samples/GS-001/gs001.inp (C3D8I).",
+      "Legacy shear-locked C3D8 deck preserved as gs001_c3d8_shearlock.inp",
+      "for P1-05 fault-injection basis and regression diagnosis."
+    ],
+    "metrics": [
+      {
+        "id": "free_end_deflection_uy",
+        "source": "disp",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "component": "UY",
+        "reference": 0.7619,
+        "unit": "mm",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: delta_max = P*L^3/(3*E*I) with P=400N, L=100mm, E=210GPa, I=833.33mm^4"
+      },
+      {
+        "id": "fixed_end_sxx_top_fibre",
+        "source": "stress",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          12,
+          34
+        ],
+        "component": "SXX",
+        "reference": 240.0,
+        "unit": "MPa",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (tension on top fibre)"
+      },
+      {
+        "id": "fixed_end_sxx_bottom_fibre",
+        "source": "stress",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          1,
+          23
+        ],
+        "component": "SXX",
+        "reference": 240.0,
+        "unit": "MPa",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (compression on bottom fibre, validator uses |SXX|)"
+      }
+    ],
+    "legacy_c3d8_observed_baseline": {
+      "note": "For regression: running the legacy gs001_c3d8_shearlock.inp through this validator must FAIL — it is the shear-lock diagnostic baseline.",
+      "expected_failures": {
+        "free_end_deflection_uy_pct": -35.22,
+        "fixed_end_sxx_bottom_fibre_pct": -20.8
+      }
+    }
   }
 }

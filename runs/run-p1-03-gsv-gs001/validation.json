@@ -1,0 +1,79 @@
+{
+  "run_id": "run-p1-03-gsv-gs001",
+  "generated_at": "2026-04-18T13:59:17+00:00",
+  "case_id": "GS-001",
+  "canonical": {
+    "case_id": "GS-001",
+    "frd_path": "/repo/runs/run-p1-03-gsv-gs001/solver/gs001/gs001.frd",
+    "overall_passed": true,
+    "metrics": [
+      {
+        "metric_id": "free_end_deflection_uy",
+        "reference": 0.7619,
+        "computed": 0.756693,
+        "error_pct": -0.6834,
+        "tolerance_pct": 5.0,
+        "passed": true,
+        "unit": "mm",
+        "detail": "Euler-Bernoulli: delta_max = P*L^3/(3*E*I) with P=400N, L=100mm, E=210GPa, I=833.33mm^4"
+      },
+      {
+        "metric_id": "fixed_end_sxx_top_fibre",
+        "reference": 240.0,
+        "computed": 248.5,
+        "error_pct": 3.5417,
+        "tolerance_pct": 5.0,
+        "passed": true,
+        "unit": "MPa",
+        "detail": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (tension on top fibre)"
+      },
+      {
+        "metric_id": "fixed_end_sxx_bottom_fibre",
+        "reference": 240.0,
+        "computed": 248.5,
+        "error_pct": 3.5417,
+        "tolerance_pct": 5.0,
+        "passed": true,
+        "unit": "MPa",
+        "detail": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (compression on bottom fibre, validator uses |SXX|)"
+      }
+    ]
+  },
+  "legacy_shearlock": {
+    "case_id": "GS-001",
+    "frd_path": "/repo/runs/run-p1-03-gsv-gs001/solver/gs001_c3d8_shearlock/gs001_c3d8_shearlock.frd",
+    "overall_passed": false,
+    "metrics": [
+      {
+        "metric_id": "free_end_deflection_uy",
+        "reference": 0.7619,
+        "computed": 0.49356,
+        "error_pct": -35.2198,
+        "tolerance_pct": 5.0,
+        "passed": false,
+        "unit": "mm",
+        "detail": "Euler-Bernoulli: delta_max = P*L^3/(3*E*I) with P=400N, L=100mm, E=210GPa, I=833.33mm^4"
+      },
+      {
+        "metric_id": "fixed_end_sxx_top_fibre",
+        "reference": 240.0,
+        "computed": 190.079,
+        "error_pct": -20.8004,
+        "tolerance_pct": 5.0,
+        "passed": false,
+        "unit": "MPa",
+        "detail": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (tension on top fibre)"
+      },
+      {
+        "metric_id": "fixed_end_sxx_bottom_fibre",
+        "reference": 240.0,
+        "computed": 190.079,
+        "error_pct": -20.8004,
+        "tolerance_pct": 5.0,
+        "passed": false,
+        "unit": "MPa",
+        "detail": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (compression on bottom fibre, validator uses |SXX|)"
+      }
+    ]
+  }
+}

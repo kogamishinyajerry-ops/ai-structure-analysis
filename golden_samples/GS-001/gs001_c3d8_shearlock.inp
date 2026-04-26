@@ -50,7 +50,7 @@ Simple static analysis to verify FEA solver works
 44, 100.0, 10.0, 10.0
 
 ** HEXA elements (C3D8 - 8-node brick) **
-*ELEMENT, TYPE=C3D8I, ELSET=BEAM
+*ELEMENT, TYPE=C3D8, ELSET=BEAM
 1, 1, 2, 13, 12, 23, 24, 35, 34
 2, 2, 3, 14, 13, 24, 25, 36, 35
 3, 3, 4, 15, 14, 25, 26, 37, 36
