@@ -30,10 +30,20 @@ SOURCE_LABEL = "gs-theory"
 
 
 def _is_theory_script(p: Path) -> bool:
+    """True iff the filename matches the documented Source-5 contract:
+    `*_theory.py`, `*_theoretical.py`, `*_analytical.py`.
+
+    R2 (post Codex R1 MEDIUM): the previous `any(token in name)` check
+    accepted false positives like `__test_theory__.py`, `theory.txt.py`,
+    `analytical_data.py`, and `data_theory_notes.py`, silently
+    polluting Source-5 with arbitrary helper/test files under
+    `golden_samples/GS-*`. Use stem-suffix match against the
+    documented set.
+    """
     if p.suffix != ".py":
         return False
-    name = p.name.lower()
-    return any(token in name for token in ("theory", "theoretical", "analytical"))
+    stem = p.stem.lower()
+    return stem.endswith(("_theory", "_theoretical", "_analytical"))
 
 
 def _is_safe_under_repo(p: Path, repo_root_resolved: Path) -> bool:
@@ -110,6 +120,11 @@ def iter_gs_theory_documents(repo_root: Path) -> Iterator[Document]:
             if not _is_theory_script(script):
                 continue
             if not _is_safe_under_repo(script, repo_root_resolved):
+                continue
+            # R2 (post Codex R1 MEDIUM): a directory named `bad_theory.py`
+            # would pass both is_theory_script and the safety guard, then
+            # crash with IsADirectoryError on read_text. Filter to files.
+            if not script.is_file():
                 continue
             text = script.read_text(encoding="utf-8", errors="replace")
             if not text.strip():

@@ -31,7 +31,13 @@ except ImportError as e:
         ("plane_stress_theory.py", True),
         ("buckling_theoretical.py", True),
         ("modal_analytical.py", True),
-        ("Theory_Cantilever.py", True),  # case-insensitive
+        # R2 (post Codex R1 MEDIUM): predicate now uses stem-suffix
+        # match, not substring. `Theory_Cantilever.py` is no longer a
+        # theory script — `theory` must be the trailing suffix. The
+        # case-insensitivity now applies to the suffix check via
+        # stem.lower(), demonstrated below.
+        ("Theory_Cantilever.py", False),  # `theory` at start, not end
+        ("Cantilever_THEORY.py", True),  # case-insensitive suffix
         ("theory.PY", False),  # we filter on suffix == ".py" (case-sensitive)
         ("solver.py", False),
         ("README.md", False),
@@ -242,3 +248,52 @@ def test_iter_raises_on_duplicate_doc_id(tmp_path):
         "iter_gs_theory_documents must guard against duplicate doc_ids"
     )
     assert "ValueError" in src
+
+
+# ---------------------------------------------------------------------------
+# R2 — Codex R1 MEDIUMs (predicate over-match, missing is_file before read)
+# ---------------------------------------------------------------------------
+
+
+def test_is_theory_script_uses_suffix_not_substring():
+    """R2 (Codex R1 MEDIUM-1): the documented contract is `*_theory.py`,
+    `*_theoretical.py`, `*_analytical.py`. The previous substring check
+    accepted false positives like `__test_theory__.py`, `theory.txt.py`,
+    `analytical_data.py`, and `data_theory_notes.py`."""
+    from backend.app.rag.sources.gs_theory import _is_theory_script
+
+    # True positives (documented suffix forms):
+    assert _is_theory_script(Path("cantilever_theory.py"))
+    assert _is_theory_script(Path("euler_theoretical.py"))
+    assert _is_theory_script(Path("beam_analytical.py"))
+
+    # False positives that the OLD impl accepted but contract doesn't:
+    assert not _is_theory_script(Path("__test_theory__.py")), (
+        "double-underscore wrapper is not the documented form"
+    )
+    assert not _is_theory_script(Path("theory.txt.py")), (
+        "theory must be at the END of the stem, not anywhere"
+    )
+    assert not _is_theory_script(Path("analytical_data.py")), (
+        "analytical must be at the END (suffix), not prefix"
+    )
+    assert not _is_theory_script(Path("data_theory_notes.py")), "theory must be the trailing suffix"
+
+    # Wrong extension:
+    assert not _is_theory_script(Path("cantilever_theory.txt"))
+    assert not _is_theory_script(Path("README.md"))
+
+
+def test_iter_skips_directory_named_like_theory_script(tmp_path):
+    """R2 (Codex R1 MEDIUM-2): a directory named `bad_theory.py` would
+    pass the theory predicate AND the safety guard, then crash with
+    IsADirectoryError on read_text. The fix adds an is_file() check.
+    """
+    repo = tmp_path
+    (repo / "golden_samples" / "GS-DIR").mkdir(parents=True)
+    # A directory whose name otherwise matches the theory pattern.
+    (repo / "golden_samples" / "GS-DIR" / "bad_theory.py").mkdir()
+    # Should NOT raise IsADirectoryError; should silently skip the dir.
+    docs = list(iter_gs_theory_documents(repo))
+    # No theory script ingested for GS-DIR (bad_theory.py is a directory).
+    assert not any(d.doc_id == "gs-theory:GS-DIR:bad_theory" for d in docs)
