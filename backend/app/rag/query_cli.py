@@ -60,16 +60,32 @@ def _build_kb_for_query(
     - rc=2 via _UsageError, never plain SystemExit("msg") rc=1
     - validate `--persist-dir` BEFORE constructing BgeM3Embedder so a
       missing-arg error doesn't trigger a model download
+
+    R2 (post Codex R1 on this PR, 2 MEDIUM findings):
+    - MED-1 (bge-m3 import gate): `ChromaVectorStore(...)` constructor
+      lazy-imports chromadb. The original guard only wrapped module-level
+      `from ... import ChromaVectorStore`; constructor failures (chromadb
+      missing) leaked a raw ImportError. Fix: keep both the imports AND
+      both constructor calls inside the same translator.
+    - MED-2 (mock corpus integrity): `iter_fn(root)` + `kb.ingest(docs)`
+      can raise `ValueError` / `OSError` for duplicate doc_id, symlink
+      escape, etc. (mirrors cli.py's two-phase guard). Without a catch,
+      a corpus-integrity failure on `--root` blew through main() as a
+      traceback + rc=1, breaking the docstring's `rc=2 = usage error`
+      contract. Translate to _UsageError just like cli.py does.
     """
     if embedder_choice == "mock":
         embedder = MockEmbedder(dim=32)
         store = MemoryVectorStore()
         kb = KnowledgeBase(embedder, store)
         if ingest_in_memory:
-            for _label, iter_fn in ALL_SOURCES:
-                docs = list(iter_fn(root))
-                if docs:
-                    kb.ingest(docs)
+            try:
+                for _label, iter_fn in ALL_SOURCES:
+                    docs = list(iter_fn(root))
+                    if docs:
+                        kb.ingest(docs)
+            except (ValueError, OSError) as e:
+                raise _UsageError(f"corpus ingest failed against --root {root}: {e}") from e
         return kb
 
     if embedder_choice == "bge-m3":
@@ -77,20 +93,22 @@ def _build_kb_for_query(
         if persist_dir is None:
             raise _UsageError("--persist-dir is required with --embedder bge-m3")
 
+        # R2 MED-1: the `ChromaVectorStore(...)` *constructor* lazy-imports
+        # chromadb. Wrap both the imports AND both constructor calls in the
+        # same translator so any of (sentence_transformers missing, chromadb
+        # missing-at-construct-time) maps to a clean rc=2 / single-stderr-line.
         try:
             from backend.app.rag.embedder import BgeM3Embedder
             from backend.app.rag.store import ChromaVectorStore
 
             embedder = BgeM3Embedder()
+            store = ChromaVectorStore(persist_dir=persist_dir, collection_name=collection)
         except ImportError as e:
             raise _UsageError(
                 f'bge-m3 backend unavailable: {e}. Install with: pip install -e ".[rag]"'
             ) from e
 
-        return KnowledgeBase(
-            embedder,
-            ChromaVectorStore(persist_dir=persist_dir, collection_name=collection),
-        )
+        return KnowledgeBase(embedder, store)
 
     raise _UsageError(f"unknown --embedder: {embedder_choice}")
 
