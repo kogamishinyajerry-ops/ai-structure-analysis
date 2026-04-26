@@ -2,14 +2,38 @@
 
 提供有限元结果可视化接口
 """
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ...services.visualization import get_visualization_service
+from ._viz_helpers import (
+    _allowed_fs_roots,
+    _apply_increment,
+    _fallback_html_render_failed,
+    _fallback_html_unavailable_pyvista,
+    _is_under_allowed_root,
+    _resolve_frd_path,
+    _validate_case_id,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/visualize", tags=["可视化"])
+
+# Re-exports for backward compat — tests imported these names from this
+# module before the R2 helper extraction.
+__all__ = [
+    "_allowed_fs_roots",
+    "_apply_increment",
+    "_fallback_html_render_failed",
+    "_fallback_html_unavailable_pyvista",
+    "_is_under_allowed_root",
+    "_resolve_frd_path",
+    "_validate_case_id",
+]
 
 
 class VisualizeRequest(BaseModel):
@@ -66,7 +90,14 @@ async def visualize_by_case_id(
 ):
     """GET shim — frontend iframe wraps a case_id; resolve to FRD path,
     parse, return HTML for the 3D scene.
-    Demo-grade: looks up case row, reads frd file, calls export_scene_as_html.
+
+    R2 hardening (post Codex R1, 2026-04-26):
+    - case_id format is validated against `_CASE_ID_RE` (path-traversal guard).
+    - FRD candidate paths must resolve under one of `_allowed_fs_roots()`.
+    - increment_index is honored via `_apply_increment` before rendering.
+    - All dynamic strings in fallback HTML pages are `html.escape()`'d.
+    - Server-internal details (frd_path, exception text) are logged
+      server-side, not returned to the client.
     """
     from fastapi.responses import HTMLResponse
     from sqlalchemy import select
@@ -75,78 +106,53 @@ async def visualize_by_case_id(
     from ...models.persistence import Case
     from ...parsers.frd_parser import FRDParser
 
+    try:
+        _validate_case_id(case_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Case).where(Case.id == case_id))
         case = result.scalar_one_or_none()
     if not case:
-        raise HTTPException(status_code=404, detail=f"case {case_id} not found")
+        raise HTTPException(status_code=404, detail="case not found")
 
-    cid_lower = case_id.lower().replace("-", "")
-    case_dir = Path(case.frd_path).parent if case.frd_path else Path(f"./golden_samples/{case_id}")
-    frd_candidates = [
-        case_dir / f"{cid_lower}_result.frd",
-        case_dir / f"{cid_lower}.frd",
-        case_dir / f"{case_id.lower()}.frd",
-        Path(case.frd_path).with_suffix(".frd") if case.frd_path else None,
-        Path(case.frd_path) if case.frd_path else None,
-    ]
-    frd_path = next((str(p) for p in frd_candidates if p and p.is_file()), None)
+    frd_path = _resolve_frd_path(case_id, case.frd_path)
     if not frd_path:
-        raise HTTPException(
-            status_code=404,
-            detail=f"no FRD result on disk for {case_id} (tried {frd_candidates})",
-        )
+        # Don't echo server-internal paths in the response.
+        logger.warning("no FRD result on disk for case_id=%s", case_id)
+        raise HTTPException(status_code=404, detail="no FRD result on disk for this case")
 
     parser = FRDParser()
-    parsed = parser.parse(frd_path)
+    parsed = parser.parse(str(frd_path))
     if not parsed.success:
-        raise HTTPException(status_code=500, detail=f"FRD parse failed: {parsed.error_message}")
+        logger.warning("FRD parse failed for %s: %s", case_id, parsed.error_message)
+        raise HTTPException(status_code=500, detail="FRD parse failed")
+
+    _apply_increment(parsed, increment_index)
 
     viz = get_visualization_service()
     if not viz.is_available:
-        return HTMLResponse(
-            content=f"<html><body style='background:#0d1117;color:#fff;padding:2rem;font-family:sans-serif'>"
-            f"<h2>{case.name}</h2><p>case_id={case_id} | structure={case.structure_type}</p>"
-            f"<p>FRD parsed: {parsed.file_name} ({len(parsed.nodes) if hasattr(parsed,'nodes') else '?'} nodes)</p>"
-            f"<p style='color:#f88'>PyVista not installed; 3D scene unavailable.</p>"
-            f"</body></html>"
-        )
+        return HTMLResponse(content=_fallback_html_unavailable_pyvista(case.name))
 
     html_str = None
-    last_err = None
     for field in ("VonMises", "Mises", "Stress", "Displacement", "DISP"):
         try:
             html_str = viz.export_scene_as_html(parse_result=parsed, field=field)
             if html_str:
                 break
-        except Exception as exc:
-            last_err = f"{field}: {exc}"
+        except Exception:
+            logger.exception("export_scene_as_html failed for case=%s field=%s", case_id, field)
     if html_str:
         return HTMLResponse(content=html_str)
 
     n_nodes = len(parsed.nodes) if hasattr(parsed, "nodes") else "?"
     n_elements = len(parsed.elements) if hasattr(parsed, "elements") else "?"
-    increments = parsed.increments if hasattr(parsed, "increments") else []
-    fields_avail = (
-        list(increments[0].field_results.keys())
-        if increments and hasattr(increments[0], "field_results")
-        else []
-    )
+    n_increments = len(getattr(parsed, "increments", None) or [])
     return HTMLResponse(
-        content=f"""<html><body style='background:#0d1117;color:#fff;padding:2rem;font-family:system-ui,sans-serif;line-height:1.6'>
-<h2 style='color:#39d353'>{case.name}</h2>
-<table style='border-collapse:collapse'>
-<tr><td style='padding:4px 12px;color:#7d8590'>case_id</td><td><code>{case_id}</code></td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>structure_type</td><td><code>{case.structure_type}</code></td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>frd_path</td><td><code>{frd_path}</code></td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>nodes</td><td>{n_nodes}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>elements</td><td>{n_elements}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>increments</td><td>{len(increments)}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>field_results</td><td>{', '.join(fields_avail) or '(none)'}</td></tr>
-</table>
-<p style='color:#f88;margin-top:2rem'>3D scene unavailable — export_scene_as_html returned empty for all candidate fields. Last error: {last_err or 'n/a'}</p>
-<p style='color:#7d8590;font-size:0.875rem'>FRD parsed successfully; viz layer needs a field that PyVista can render. Other API endpoints (cases, projects, solver, sensitivity, copilot) work normally.</p>
-</body></html>"""
+        content=_fallback_html_render_failed(
+            case.name, case.structure_type, n_nodes, n_elements, n_increments
+        )
     )
 
 
