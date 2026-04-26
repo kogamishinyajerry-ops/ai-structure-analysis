@@ -23,7 +23,12 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
-    """One chunk of a Document, ready for embedding."""
+    """One chunk of a Document, ready for embedding.
+
+    R2 (post Codex R1 MEDIUM): carry `title` and `metadata` from the
+    parent Document so citation-quality retrieval is possible at the
+    base layer. Both default to empty for backward compatibility.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -34,6 +39,11 @@ class Chunk(BaseModel):
     source: str
     text: str
     chunk_index: int = Field(..., ge=0)
+    title: str = Field(default="", description="parent Document.title (provenance)")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="parent Document.metadata (page/section/etc.)",
+    )
     embedding: list[float] | None = Field(
         default=None,
         description="dense embedding; None until embedder runs",

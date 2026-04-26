@@ -35,10 +35,27 @@ def test_chunk_text_empty_returns_empty():
 def test_chunk_text_overlap_correct():
     text = "a" * 100
     out = chunk_text(text, chunk_size=40, overlap=10)
-    # step = 30; chunks at [0:40], [30:70], [60:100], [90:130]
-    assert len(out) == 4
+    # step = 30; windows at [0:40], [30:70], [60:100]. The 4th window
+    # would start at i=90 but the 3rd already reached EOF (i+chunk_size
+    # = 100 = len(text)), so R2 stops emitting. (Codex R1 HIGH fix.)
+    assert len(out) == 3
     assert all(len(c) <= 40 for c in out)
     assert out[0][-10:] == out[1][:10]
+
+
+def test_chunk_text_no_redundant_tail_under_high_overlap():
+    """R2 (post Codex R1 HIGH): with overlap close to chunk_size, the
+    old loop emitted O(N/step) chunks, many fully contained in the
+    prior. Verify a 100-char input with chunk_size=40, overlap=39
+    produces no more than ceil((100-40)/1)+1 = 61 chunks, NOT 100."""
+    text = "a" * 100
+    out = chunk_text(text, chunk_size=40, overlap=39)
+    # step=1; emit windows starting at 0..60 inclusive (61 starts);
+    # each window after position 60 would extend past EOF, so we stop.
+    assert len(out) <= 61
+    assert all(len(c) <= 40 for c in out)
+    # Last chunk must reach the end of the text.
+    assert out[-1].endswith("a")
 
 
 def test_chunk_text_no_overlap():
@@ -287,6 +304,86 @@ def test_knowledge_base_source_filter_propagates():
 def test_knowledge_base_embedder_id_property():
     kb = KnowledgeBase(MockEmbedder(dim=64), MemoryVectorStore())
     assert kb.embedder_id == "mock-sha256@64"
+
+
+# ---------------------------------------------------------------------------
+# R2 — Document.title / metadata propagation (Codex R1 MEDIUM)
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_propagates_title_and_metadata_to_chunks():
+    """Each chunk must carry parent Document.title + metadata so the
+    store can persist citation-quality provenance."""
+    store = MemoryVectorStore()
+    kb = KnowledgeBase(MockEmbedder(dim=16), store, chunk_size=200, overlap=0)
+    kb.ingest(
+        [
+            Document(
+                doc_id="adr-013",
+                source="project-adr-fp",
+                title="ADR-013 Branch Protection",
+                text="Layer 3 enforces required checks on main.",
+                metadata={"section": "T2", "page": 2},
+            )
+        ]
+    )
+    res = kb.query("Layer 3", k=1)
+    assert len(res) == 1
+    chunk = res[0].chunk
+    assert chunk.title == "ADR-013 Branch Protection"
+    assert chunk.metadata.get("section") == "T2"
+    assert chunk.metadata.get("page") == 2
+
+
+def test_chunk_title_and_metadata_default_empty_for_back_compat():
+    """Chunks built by external callers without title/metadata still
+    construct cleanly (back-compat)."""
+    c = Chunk(chunk_id="x", doc_id="d", source="s", text="t", chunk_index=0)
+    assert c.title == ""
+    assert c.metadata == {}
+
+
+# ---------------------------------------------------------------------------
+# R2 — ChromaVectorStore score parity with MemoryVectorStore (Codex R1 HIGH)
+# ---------------------------------------------------------------------------
+
+
+def test_chroma_store_score_passes_negative_cosine_through():
+    """R2 (post Codex R1 HIGH): the Chroma adapter previously clamped
+    `1 - distance` with `max(0.0, ...)`, collapsing all
+    negative-cosine pairs (opposing vectors) to score=0. The fix
+    drops the clamp; this test verifies the formula is `1 - distance`
+    without floor.
+
+    Pure-source check, no chromadb dependency required.
+    """
+    import inspect
+
+    from backend.app.rag.store import ChromaVectorStore
+
+    src = inspect.getsource(ChromaVectorStore.query)
+    # Old formula was `max(0.0, 1.0 - float(dist))`. New must be the
+    # naked subtraction.
+    assert (
+        "max(0.0, 1.0 - float(dist))" not in src
+    ), "Chroma adapter still clamps — should be `1 - distance` without floor"
+    assert "1.0 - float(dist)" in src, "expected new formula `1 - distance`"
+
+
+def test_chroma_store_persists_title_and_metadata():
+    """R2 (post Codex R1 MEDIUM): the Chroma adapter previously wrote
+    only doc_id/source/chunk_index. Verify the upsert path now writes
+    title and meta_* keys.
+
+    Pure-source check; full integration test would require chromadb.
+    """
+    import inspect
+
+    from backend.app.rag.store import ChromaVectorStore
+
+    src = inspect.getsource(ChromaVectorStore.upsert)
+    assert '"title"' in src, "upsert must persist Chunk.title"
+    assert "meta_" in src, "upsert must namespace flattened metadata under meta_*"
 
 
 # ---------------------------------------------------------------------------

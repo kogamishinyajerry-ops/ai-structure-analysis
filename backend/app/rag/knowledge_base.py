@@ -42,11 +42,18 @@ def chunk_text(
     if len(text) <= chunk_size:
         return [text]
 
+    # R2 (post Codex R1 HIGH): stop emitting once the current window
+    # has reached EOF. Without this, `chunk_size=40, overlap=10` on a
+    # 100-char input emitted a 4th chunk fully contained in the 3rd
+    # (text[60:100] vs text[90:130]→[90:100]). With overlap close to
+    # chunk_size, the bloat became O(text_len/step) duplicate chunks.
     chunks: list[str] = []
     step = chunk_size - overlap
     i = 0
     while i < len(text):
         chunks.append(text[i : i + chunk_size])
+        if i + chunk_size >= len(text):
+            break
         i += step
     return chunks
 
@@ -87,6 +94,11 @@ class KnowledgeBase:
                         source=doc.source,
                         text=piece,
                         chunk_index=idx,
+                        # R2 (post Codex R1 MEDIUM): propagate title +
+                        # metadata so the chunk carries citation-quality
+                        # provenance through the store layer.
+                        title=doc.title,
+                        metadata=doc.metadata,
                         embedding=None,
                     )
                 )

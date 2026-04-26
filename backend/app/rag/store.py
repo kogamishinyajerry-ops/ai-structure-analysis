@@ -115,18 +115,35 @@ class ChromaVectorStore(VectorStore):
         for c in chunks:
             if c.embedding is None:
                 raise ValueError(f"chunk {c.chunk_id} has no embedding")
+        # R2 (post Codex R1 MEDIUM): persist title + flattened
+        # metadata so retrieval can cite the parent doc/section.
+        # Chroma metadata values must be primitives — flatten dict
+        # values to JSON-encoded strings if they aren't already
+        # str/int/float/bool.
+        import json
+
+        def _flatten_meta(c: Chunk) -> dict[str, str | int | float | bool]:
+            base: dict[str, str | int | float | bool] = {
+                "doc_id": c.doc_id,
+                "source": c.source,
+                "chunk_index": c.chunk_index,
+                "title": c.title,
+            }
+            for k, v in c.metadata.items():
+                # Chroma rejects None and complex types in metadata.
+                if isinstance(v, (str, int, float, bool)):
+                    base[f"meta_{k}"] = v
+                elif v is None:
+                    continue
+                else:
+                    base[f"meta_{k}"] = json.dumps(v, ensure_ascii=False)
+            return base
+
         self._collection.upsert(
             ids=[c.chunk_id for c in chunks],
             embeddings=[c.embedding for c in chunks],
             documents=[c.text for c in chunks],
-            metadatas=[
-                {
-                    "doc_id": c.doc_id,
-                    "source": c.source,
-                    "chunk_index": c.chunk_index,
-                }
-                for c in chunks
-            ],
+            metadatas=[_flatten_meta(c) for c in chunks],
         )
         return len(chunks)
 
@@ -147,16 +164,31 @@ class ChromaVectorStore(VectorStore):
         metas = result.get("metadatas", [[]])[0]
         dists = result.get("distances", [[]])[0]
         for i, (cid, doc, meta, dist) in enumerate(zip(ids, docs, metas, dists)):
+            # R2 (post Codex R1 MEDIUM): rehydrate title + meta_* keys
+            # back into the Chunk so retrieved results carry
+            # citation-quality provenance.
+            restored_meta: dict[str, object] = {}
+            for k, v in (meta or {}).items():
+                if k.startswith("meta_"):
+                    restored_meta[k[len("meta_") :]] = v
             chunk = Chunk(
                 chunk_id=cid,
                 doc_id=str(meta.get("doc_id", "")),
                 source=str(meta.get("source", "")),
                 text=doc,
                 chunk_index=int(meta.get("chunk_index", 0)),
+                title=str(meta.get("title", "")),
+                metadata=restored_meta,
                 embedding=None,  # chromadb doesn't return embeddings on query
             )
-            # chromadb returns distance; convert to cosine similarity (1-distance)
-            score = max(0.0, 1.0 - float(dist))
+            # R2 (post Codex R1 HIGH): chromadb's cosine "distance" is
+            # `1 - cosine_similarity`, so `similarity = 1 - distance`
+            # ranges over [-1, 1]. The previous `max(0.0, ...)` clamp
+            # collapsed all negative similarities to 0, which silently
+            # diverged from MemoryVectorStore's full-range cosine and
+            # broke the RetrievalResult.score contract documented in
+            # schemas.py. No clamp now — pass the full range through.
+            score = 1.0 - float(dist)
             out.append(RetrievalResult(chunk=chunk, score=score, rank=i))
         return out
 
