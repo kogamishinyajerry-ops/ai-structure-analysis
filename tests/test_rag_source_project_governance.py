@@ -396,6 +396,61 @@ def test_inline_yaml_comment_on_nested_block_start(tmp_path):
     assert fm["gs_artifact_pin"].get("case") == "GS-001"
 
 
+def test_inline_comment_stripper_preserves_hash_inside_quotes(tmp_path):
+    """R3 (post Codex R2 MEDIUM): the value
+    `"value # not-a-comment" # trailing comment` must round-trip as
+    `"value # not-a-comment"` — quote state must shield the inner
+    `#` from comment-stripping. The first attempt only short-circuited
+    on fully-quoted values and corrupted this form.
+    """
+    from backend.app.rag.sources.project_governance import _strip_inline_comment
+
+    # Quoted body containing `#`, plus a real trailing inline comment.
+    out = _strip_inline_comment('"value # not-a-comment" # trailing comment')
+    assert out == '"value # not-a-comment"'
+
+    # Single-quote variant.
+    out = _strip_inline_comment("'kept # inside' # comment")
+    assert out == "'kept # inside'"
+
+    # Mixed: `#` only inside the quote, no trailing.
+    out = _strip_inline_comment('"a # b"')
+    assert out == '"a # b"'
+
+    # Whole-line comment value.
+    out = _strip_inline_comment("# this is all comment")
+    assert out == ""
+
+    # No `#` at all.
+    out = _strip_inline_comment("plain value")
+    assert out == "plain value"
+
+    # Unquoted with comment.
+    out = _strip_inline_comment("plain value  # comment")
+    assert out == "plain value"
+
+
+def test_inline_comment_stripper_round_trips_through_parser(tmp_path):
+    """End-to-end: a frontmatter line with a quoted value containing `#`
+    AND a trailing inline comment must produce the unmodified quoted
+    value (minus the surrounding quotes, since _parse_frontmatter
+    strips them after comment removal)."""
+    fp = tmp_path / "docs" / "failure_patterns"
+    fp.mkdir(parents=True)
+    (fp / "FP-503-x.md").write_text(
+        "---\n"
+        "id: FP-503\n"
+        'classification: "value # not-a-comment" # trailing comment\n'
+        "---\n"
+        "# FP-503\n\nbody\n"
+    )
+    docs = list(iter_governance_documents(tmp_path))
+    fp_doc = next(d for d in docs if "FP-503" in d.doc_id)
+    # Parser strips the surrounding quotes after stripping the trailing
+    # comment, so the value reads as the inner literal.
+    assert fp_doc.metadata["classification"] == "value # not-a-comment"
+
+
 def test_iter_raises_on_duplicate_doc_id(tmp_path):
     """R2 (Codex R1 MEDIUM-3): two docs with the same `id` in
     frontmatter would silently overwrite each other in the KB upsert

@@ -41,28 +41,30 @@ def _strip_inline_comment(value: str) -> str:
     """Strip a YAML-style inline comment (`# ...`) from a scalar value,
     preserving `#` inside quoted strings.
 
-    R2 (post Codex R1 MEDIUM): the prior parser only skipped lines
-    starting with `#`. The README explicitly documents the form
-    `key: value  # comment` for FailurePattern frontmatter, so a
-    naked `classification: geometry_invalid  # ...` baked the comment
-    into the value, and `gs_artifact_pin:  # comment` was misread as
-    a scalar instead of a nested-block start, dropping all child keys.
+    Walks the value left-to-right, tracking quote state. While inside
+    `"..."` or `'...'`, `#` is literal. Outside any quote, the first
+    `#` preceded by whitespace (or at position 0) ends the value.
+
+    R3 (post Codex R2 MEDIUM): a previous version only short-circuited
+    on values that were ENTIRELY quoted (start AND end with same quote).
+    That missed the form `"value # not-a-comment" # trailing comment`,
+    which truncated to `"value`. The state-machine walk closes that gap.
+
+    Earlier round (R1→R2 MEDIUM): the original parser ignored inline
+    comments entirely; whole-line `#` skip was the only check.
     """
     if not value:
         return value
-    # Quoted strings: `#` is a literal character.
-    if (value.startswith("'") and value.endswith("'")) or (
-        value.startswith('"') and value.endswith('"')
-    ):
-        return value
-    # Find the first `#` preceded by whitespace (or at start).
-    idx = -1
+    in_quote: str | None = None
     for i, ch in enumerate(value):
-        if ch == "#" and (i == 0 or value[i - 1].isspace()):
-            idx = i
-            break
-    if idx >= 0:
-        return value[:idx].rstrip()
+        if in_quote is None:
+            if ch == "'" or ch == '"':
+                in_quote = ch
+            elif ch == "#" and (i == 0 or value[i - 1].isspace()):
+                return value[:i].rstrip()
+        else:
+            if ch == in_quote:
+                in_quote = None
     return value
 
 
