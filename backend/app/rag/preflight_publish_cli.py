@@ -58,7 +58,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-from backend.app.rag.preflight_publish import publish_preflight
+from backend.app.rag.preflight_publish import _REPO_RE, publish_preflight
 from backend.app.rag.preflight_summary import combine
 from backend.app.rag.reviewer_advisor import FAULT_QUERY_SEEDS, advise
 from backend.app.rag.sources import ALL_SOURCES
@@ -126,10 +126,19 @@ def _load_hint_from_json(path: Path) -> _CliHint:
     if not isinstance(case_id, str) or not case_id:
         raise _UsageError("--hint-json: 'case_id' (non-empty str) required")
     provider = data.get("provider", "manual@v0")
-    notes = data.get("notes", "") or ""
-    raw_qs = data.get("quantities", []) or []
+    notes_raw = data.get("notes", "")
+    notes = notes_raw if isinstance(notes_raw, str) else ""
+    # R2 (post Codex R1 MEDIUM-1 on PR #66): the prior code did
+    # `data.get("quantities", []) or []` which coerced "", 0, False,
+    # {} and None all into [] silently — invalid hint payloads were
+    # accepted as "no quantities". Treat only missing/None as empty;
+    # everything else must pass the type check below.
+    if "quantities" not in data or data.get("quantities") is None:
+        raw_qs = []
+    else:
+        raw_qs = data["quantities"]
     if not isinstance(raw_qs, list):
-        raise _UsageError("--hint-json: 'quantities' must be a list")
+        raise _UsageError(f"--hint-json: 'quantities' must be a list, got {type(raw_qs).__name__}")
 
     quantities: list[_CliQuantity] = []
     for i, q in enumerate(raw_qs):
@@ -280,7 +289,17 @@ def main(argv: list[str]) -> int:
         hint = _CliHint(case_id=args.case_id, provider="advisor-only@v0", quantities=[])
 
     # Build KB + advice
-    kb = _build_kb(args.root)
+    # R2 (post Codex R1 HIGH on PR #66): wrap _build_kb so a malformed
+    # corpus under --root (duplicate doc_ids, symlink-escape, OSError)
+    # surfaces as rc=2 instead of leaking a traceback / rc=1. Mirrors
+    # advise_cli's mock-path translator.
+    try:
+        kb = _build_kb(args.root)
+    except (ValueError, OSError) as e:
+        print(
+            f"[publish-rag] corpus ingest failed against --root {args.root}: {e}", file=sys.stderr
+        )
+        return 2
     # Pre-emptive R2 (mirrors advise_cli pattern, post Codex R1 on PR
     # #62): advise() re-validates verdict / k / source_filter and raises
     # ValueError on any mismatch. Translate to rc=2 instead of leaking
@@ -315,17 +334,39 @@ def main(argv: list[str]) -> int:
         print("--- end markdown ---")
         return 0
 
-    # Real publish
-    if not args.repo or not args.pr:
+    # Real publish — distinguish missing-arg (rc=2) from malformed-arg (rc=2).
+    # R2 (post Codex R1 MEDIUM-2 on PR #66): pre-fix used `not args.pr`
+    # which conflated `--pr 0` (invalid) and `--pr` missing into the
+    # same generic message. Also missing repo-shape and empty
+    # header-marker for upsert pre-validation — both fell through to
+    # publish_preflight as rc=1.
+    if args.repo is None or args.pr is None:
         print("[publish-rag] --post requires --repo and --pr", file=sys.stderr)
         return 2
 
-    # Pre-emptive R2 (mirrors PR #65 _is_positive_int): a negative --pr
-    # is currently caught downstream by publish_preflight (rc=1). Pull
-    # forward to rc=2 so the rc contract (1=publish failure, 2=usage)
-    # stays clean.
+    # Pre-validate repo shape with the same _REPO_RE that
+    # publish_preflight uses, so a malformed repo (whitespace,
+    # "owneronly", path-traversal) surfaces as rc=2 instead of rc=1.
+    if not args.repo.strip() or not _REPO_RE.match(args.repo):
+        print(
+            f"[publish-rag] --repo malformed: {args.repo!r} (expected owner/name)",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Mirrors PR #65 _is_positive_int: --pr 0 / negative is now distinct
+    # from "missing" above.
     if args.pr <= 0:
         print(f"[publish-rag] --pr must be a positive integer, got {args.pr}", file=sys.stderr)
+        return 2
+
+    # Upsert mode requires a non-empty header_marker (publish_preflight
+    # also enforces this; pull-forward to rc=2).
+    if args.mode == "upsert" and not args.header_marker:
+        print(
+            "[publish-rag] --mode upsert requires a non-empty --header-marker",
+            file=sys.stderr,
+        )
         return 2
 
     result = publish_preflight(
@@ -344,7 +385,12 @@ def main(argv: list[str]) -> int:
     if result.posted:
         print(f"[publish-rag] {result.action}: {result.comment_url}")
         return 0
-    print(f"[publish-rag] failed: status={result.status_code} error={result.error}")
+    # R2 (post Codex R1 LOW on PR #66): publish failures go to stderr
+    # to keep the stdout/stderr split clean for piping / monitoring.
+    print(
+        f"[publish-rag] failed: status={result.status_code} error={result.error}",
+        file=sys.stderr,
+    )
     return 1
 
 

@@ -444,10 +444,15 @@ def test_post_path_failure_returns_1(tmp_path, capsys, monkeypatch):
             "--post",
         ]
     )
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
     assert rc == 1
-    assert "failed:" in out
-    assert "Forbidden" in out
+    # R2 (post Codex R1 LOW on PR #66): failure messages now go to
+    # stderr to keep the stdout/stderr split clean for piping.
+    assert "failed:" in captured.err
+    assert "Forbidden" in captured.err
+    # Banner stays on stdout
+    assert "verdict:" in captured.out
+    assert "target:" in captured.out
 
 
 def test_post_path_empty_summary_returns_0(tmp_path, capsys, monkeypatch):
@@ -658,3 +663,193 @@ def test_advise_value_error_translates_to_rc_2(tmp_path, capsys):
     err = capsys.readouterr().err
     assert rc == 2
     assert "publish-rag" in err
+
+
+# ---------------------------------------------------------------------------
+# R2 (post Codex R1 on PR #66) — new findings
+# ---------------------------------------------------------------------------
+
+
+def test_corpus_ingest_value_error_returns_rc_2(tmp_path, capsys, monkeypatch):
+    """R2 (post Codex R1 HIGH on PR #66): _build_kb wraps ValueError /
+    OSError from ALL_SOURCES. A duplicate doc_id (raised as ValueError
+    inside KnowledgeBase.ingest) must surface as rc=2 with a clean
+    stderr line, not a traceback / rc=1."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _broken_build_kb(root):
+        raise ValueError("duplicate doc_id: ADR-100 (synthesized)")
+
+    monkeypatch.setattr(preflight_publish_cli, "_build_kb", _broken_build_kb)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "corpus ingest failed" in err
+    assert "duplicate" in err
+
+
+def test_corpus_ingest_oserror_returns_rc_2(tmp_path, capsys, monkeypatch):
+    """OSError (e.g. broken symlink) translates the same way."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _broken_build_kb(root):
+        raise OSError("symlink loop on /etc")
+
+    monkeypatch.setattr(preflight_publish_cli, "_build_kb", _broken_build_kb)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "corpus ingest failed" in err
+
+
+@pytest.mark.parametrize("bad_qs", ["", 0, False, {}])
+def test_hint_json_falsy_non_list_quantities_rejected(tmp_path, bad_qs):
+    """R2 (post Codex R1 MEDIUM-1 on PR #66): pre-fix `or []` coerced
+    "", 0, False, {} all into [] silently. Now they hit the type
+    check and produce a rc=2 _UsageError."""
+    p = tmp_path / "bad.json"
+    p.write_text(json.dumps({"case_id": "GS-1", "quantities": bad_qs}))
+    with pytest.raises(SystemExit) as ei:
+        _load_hint_from_json(p)
+    assert ei.value.code == 2
+    assert "must be a list" in getattr(ei.value, "message", "")
+
+
+def test_hint_json_null_quantities_treated_as_empty(tmp_path):
+    """null / missing 'quantities' is the only acceptable empty form."""
+    p = tmp_path / "null.json"
+    p.write_text(json.dumps({"case_id": "GS-1", "quantities": None}))
+    hint = _load_hint_from_json(p)
+    assert hint.quantities == []
+
+
+def test_hint_json_missing_quantities_treated_as_empty(tmp_path):
+    p = tmp_path / "missing.json"
+    p.write_text(json.dumps({"case_id": "GS-1"}))
+    hint = _load_hint_from_json(p)
+    assert hint.quantities == []
+
+
+@pytest.mark.parametrize(
+    "bad_repo",
+    ["owneronly", "../etc/passwd", "owner/../etc", "  owner/repo  ", " ", "/leading-slash"],
+)
+def test_post_malformed_repo_returns_rc_2(tmp_path, capsys, monkeypatch, bad_repo):
+    """R2 (post Codex R1 MEDIUM-2 on PR #66): malformed --repo
+    pre-validates against _REPO_RE and surfaces as rc=2 instead of
+    leaking through publish_preflight as rc=1."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _fail(*a, **kw):
+        raise AssertionError("publish_preflight should not be reached")
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fail)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            bad_repo,
+            "--pr",
+            "1",
+            "--post",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "malformed" in err or "owner/name" in err
+
+
+def test_post_zero_pr_returns_rc_2_with_specific_message(tmp_path, capsys, monkeypatch):
+    """R2 (post Codex R1 MEDIUM-2 on PR #66): --pr 0 used to hit the
+    generic 'requires --repo and --pr' branch (correct rc but
+    misleading message). Now distinguished from missing."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _fail(*a, **kw):
+        raise AssertionError("publish_preflight should not be reached")
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fail)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "0",
+            "--post",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "must be a positive integer" in err
+
+
+def test_post_upsert_with_empty_header_marker_returns_rc_2(tmp_path, capsys, monkeypatch):
+    """R2 (post Codex R1 MEDIUM-2 on PR #66): --mode upsert + empty
+    --header-marker pre-validates instead of failing at publish_preflight."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _fail(*a, **kw):
+        raise AssertionError("publish_preflight should not be reached")
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fail)
+
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "1",
+            "--post",
+            "--mode",
+            "upsert",
+            "--header-marker",
+            "",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "header-marker" in err
