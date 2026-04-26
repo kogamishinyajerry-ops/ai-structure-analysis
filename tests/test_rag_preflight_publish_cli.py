@@ -1059,6 +1059,32 @@ def test_json_upsert_mode_round_trips(tmp_path, capsys, monkeypatch):
     assert payload["status_code"] == 200
 
 
+def test_json_canonical_verdict_strips_whitespace(tmp_path, capsys):
+    """R2 (post Codex R1 LOW on PR #67): JSON payload's "verdict" field
+    must be the canonical (stripped) form from advice.verdict, not the
+    raw args.verdict. Otherwise machine-readers see " Reject " in JSON
+    while markdown shows "Reject"."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            " Reject ",  # surrounding whitespace
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["verdict"] == "Reject"  # canonicalized
+    # Markdown also has the canonical form (would have been already correct)
+    assert "**Verdict:** Reject" in payload["markdown"]
+
+
 def test_json_post_empty_summary_returns_rc_0(tmp_path, capsys, monkeypatch):
     repo = _make_synth_repo(tmp_path)
 

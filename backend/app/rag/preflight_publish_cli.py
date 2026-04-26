@@ -343,7 +343,12 @@ def main(argv: list[str]) -> int:
                     {
                         "mode": "dry-run",
                         "dry_run_reason": "forced" if args.dry_run else "--post not set",
-                        "verdict": args.verdict,
+                        # R2 (post Codex R1 LOW on PR #67): use the
+                        # canonical verdict from advice (matches what
+                        # combine() puts into markdown and what
+                        # advise_cli --json emits) instead of the
+                        # raw user-supplied value.
+                        "verdict": summary.verdict,
                         "fault": args.fault,
                         "case_id": summary.case_id,
                         "confidence_indicator": summary.confidence_indicator,
@@ -414,7 +419,8 @@ def main(argv: list[str]) -> int:
             json.dumps(
                 {
                     "mode": "post",
-                    "verdict": args.verdict,
+                    # R2 (post Codex R1 LOW on PR #67): canonical verdict
+                    "verdict": summary.verdict,
                     "fault": args.fault,
                     "case_id": summary.case_id,
                     "target": f"{args.repo}#{args.pr}",

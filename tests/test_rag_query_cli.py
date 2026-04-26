@@ -527,28 +527,31 @@ def test_json_output_emits_single_record(tmp_path, capsys):
 
 
 def test_json_output_no_results_returns_rc_1(tmp_path, capsys):
-    """--json + zero results → rc=1, single JSON record with empty results."""
-    repo = _make_synth_repo(tmp_path)
+    """R2 NIT (post Codex R1 on PR #67): --json + actually empty KB →
+    rc=1 with empty results array.
+
+    Pre-fix this test ran against a populated mock KB which always
+    returned top-k candidates, so the rc=1 branch was effectively
+    untested. Now we use --no-ingest against an empty repo so
+    KnowledgeBase.query returns [] deterministically."""
+    empty_repo = tmp_path / "empty_repo"
+    empty_repo.mkdir()
     rc = main(
         [
             "query_cli.py",
             "--query",
-            "absolutely-nonexistent-querystring-xyzzy",
+            "anything",
             "--root",
-            str(repo),
+            str(empty_repo),
             "--json",
-            "--source-filter",
-            "gs-theory",  # narrow to one source
+            "--no-ingest",
         ]
     )
     out = capsys.readouterr().out
     payload = json.loads(out.strip())
-    # Could be rc=0 or rc=1 depending on whether mock embedder finds noise
-    # matches; the contract is "results==[] → rc=1".
-    if not payload["results"]:
-        assert rc == 1
-    else:
-        assert rc == 0
+    assert rc == 1
+    assert payload["result_count"] == 0
+    assert payload["results"] == []
 
 
 def test_json_record_has_per_result_shape(tmp_path, capsys):
