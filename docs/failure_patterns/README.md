@@ -6,7 +6,7 @@ This directory holds **FailurePattern** entries — root-cause attributions for 
 
 - **Naming:** `FP-{nnn}-{slug}.md` (zero-padded, mirrors `docs/adr/ADR-{nnn}-{slug}.md`).
 - **Authority:** A FailurePattern does not change behavior on its own — it is governance evidence. The `recommended_action` may, in turn, motivate an ADR or a corrective PR.
-- **Status lifecycle:** `proposed → accepted → resolved | superseded`. `accepted` means the FP is the agreed root cause; `resolved` requires linked PR/commit. `superseded` requires a successor FP id.
+- **Status lifecycle:** `proposed → accepted → resolved | superseded`. `accepted` means the FP is the agreed root cause; `resolved` requires linked PR/commit. `superseded` requires a successor FP id. **Direct `proposed → resolved` is allowed** when a downstream PR/commit acts on the recommendation without a separate "accepted" governance step (the link in body or PR description satisfies the "linked PR/commit" requirement).
 - **Reference linkage:** ADR-011 §HF3 governs the relationship — any GS without a defensible reference reads as `insufficient_evidence` until a FP raises (or refutes) the deviation.
 
 ## Schema
