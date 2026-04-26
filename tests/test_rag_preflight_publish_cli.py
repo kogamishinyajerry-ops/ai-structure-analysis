@@ -752,6 +752,34 @@ def test_hint_json_missing_quantities_treated_as_empty(tmp_path):
     assert hint.quantities == []
 
 
+@pytest.mark.parametrize("bad_notes", [0, False, {}, [], 1.5])
+def test_hint_json_non_str_notes_rejected(tmp_path, bad_notes):
+    """R2 (post Codex R2 LOW on PR #66): notes follows the same
+    contract as quantities — only missing/null silently empty;
+    any other non-str type rejected explicitly."""
+    p = tmp_path / "bad_notes.json"
+    p.write_text(json.dumps({"case_id": "GS-1", "notes": bad_notes}))
+    with pytest.raises(SystemExit) as ei:
+        _load_hint_from_json(p)
+    assert ei.value.code == 2
+    assert "notes" in getattr(ei.value, "message", "")
+    assert "must be a string" in getattr(ei.value, "message", "")
+
+
+def test_hint_json_null_notes_treated_as_empty(tmp_path):
+    p = tmp_path / "null_notes.json"
+    p.write_text(json.dumps({"case_id": "GS-1", "notes": None}))
+    hint = _load_hint_from_json(p)
+    assert hint.notes == ""
+
+
+def test_hint_json_missing_notes_treated_as_empty(tmp_path):
+    p = tmp_path / "missing_notes.json"
+    p.write_text(json.dumps({"case_id": "GS-1"}))
+    hint = _load_hint_from_json(p)
+    assert hint.notes == ""
+
+
 @pytest.mark.parametrize(
     "bad_repo",
     ["owneronly", "../etc/passwd", "owner/../etc", "  owner/repo  ", " ", "/leading-slash"],

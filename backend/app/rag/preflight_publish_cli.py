@@ -126,8 +126,17 @@ def _load_hint_from_json(path: Path) -> _CliHint:
     if not isinstance(case_id, str) or not case_id:
         raise _UsageError("--hint-json: 'case_id' (non-empty str) required")
     provider = data.get("provider", "manual@v0")
-    notes_raw = data.get("notes", "")
-    notes = notes_raw if isinstance(notes_raw, str) else ""
+    # R2 (post Codex R2 LOW on PR #66): mirror the `quantities`
+    # pattern — only missing / null is silently empty; any other
+    # non-str type raises rather than silently dropping the value.
+    if "notes" not in data or data.get("notes") is None:
+        notes = ""
+    elif isinstance(data["notes"], str):
+        notes = data["notes"]
+    else:
+        raise _UsageError(
+            f"--hint-json: 'notes' must be a string, got {type(data['notes']).__name__}"
+        )
     # R2 (post Codex R1 MEDIUM-1 on PR #66): the prior code did
     # `data.get("quantities", []) or []` which coerced "", 0, False,
     # {} and None all into [] silently — invalid hint payloads were
