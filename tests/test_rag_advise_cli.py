@@ -430,9 +430,9 @@ def test_invalid_verdict_does_not_build_kb(tmp_path, monkeypatch, capsys):
     )
     capsys.readouterr()  # drain
     assert rc == 2
-    assert (
-        build_kb_called == []
-    ), "_build_kb was called despite invalid verdict — cheap-validation-first violated"
+    assert build_kb_called == [], (
+        "_build_kb was called despite invalid verdict — cheap-validation-first violated"
+    )
 
 
 def test_invalid_verdict_unknown_listed_in_error(tmp_path, capsys):
