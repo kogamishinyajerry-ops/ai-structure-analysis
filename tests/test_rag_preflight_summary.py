@@ -396,9 +396,7 @@ def test_markdown_injection_in_notes_does_not_break_block():
     # appear. Pre-fix, a notes value with `\n## hi` injected a second
     # `\n## ` line. After md_escape, newlines are collapsed so the
     # `## hi` text becomes inline within the notes line.
-    assert md.count("\n## ") == 0, (
-        f"injection created a new heading line: {md!r}"
-    )
+    assert md.count("\n## ") == 0, f"injection created a new heading line: {md!r}"
     # The injected text remains visible (escaped) inline within the notes
     assert "## hi" in md
     # `### ` headings present are only the structural ones (Surrogate /
