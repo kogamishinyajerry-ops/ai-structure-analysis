@@ -23,9 +23,7 @@ importable + testable, ready to be called.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
 
 from backend.app.rag.knowledge_base import KnowledgeBase
 from backend.app.rag.schemas import RetrievalResult
@@ -51,15 +49,12 @@ FAULT_QUERY_SEEDS: dict[str, str] = {
 # Verdict tokens that should bias the query toward governance docs.
 GOVERNANCE_BIASING_VERDICTS = {"Reject", "Re-run", "Needs Review"}
 
-
-def _empty_grouped() -> Mapping[str, tuple[RetrievalResult, ...]]:
-    """Default `grouped_by_source` factory: returns an immutable empty
-    mapping. Without `MappingProxyType` the field would default to a
-    bare dict, which a caller could mutate even on a frozen dataclass
-    (frozen freezes attribute *bindings*, not the values they reference).
-    Pre-emptive R2 hardening lifted from PR #59-style scrutiny.
-    """
-    return MappingProxyType({})
+# Canonical verdicts. Mirrors `schemas.ws_events.ReviewerVerdict` and
+# `agents.reviewer.VERDICT_*` constants. R2 (post Codex R1 MED-2 on
+# PR #61): validating verdict against this set up-front prevents the
+# silent-bias-bypass class of bugs (e.g. " Reject ", "needs review",
+# "Re-run\n" used to be accepted but never matched the bias set).
+KNOWN_VERDICTS = frozenset({"Accept", "Accept with Note", "Reject", "Needs Review", "Re-run"})
 
 
 @dataclass(frozen=True)
@@ -70,9 +65,13 @@ class ReviewerAdvice:
     verdict: str
     fault_class: str
     results: tuple[RetrievalResult, ...] = field(default_factory=tuple)
-    grouped_by_source: Mapping[str, tuple[RetrievalResult, ...]] = field(
-        default_factory=_empty_grouped
-    )
+    # NOTE: kept as a plain dict (not MappingProxyType) so the dataclass
+    # remains pickle/asdict-friendly. R2 (post Codex R1 MED-1 on PR #61):
+    # MappingProxyType broke `pickle.dumps()` and `dataclasses.asdict()`,
+    # which is a real hazard for log/comment/event surfaces that need
+    # to serialize advisor output. We keep `frozen=True` for the field
+    # binding; callers MUST treat the dict as read-only by convention.
+    grouped_by_source: dict[str, tuple[RetrievalResult, ...]] = field(default_factory=dict)
     summary: str = ""
 
     def is_empty(self) -> bool:
@@ -131,8 +130,17 @@ def advise(
         ReviewerAdvice (frozen dataclass). `is_empty()` distinguishes
         "no corpus" from "no relevant hits".
     """
-    if not isinstance(verdict, str) or not verdict.strip():
+    if not isinstance(verdict, str):
+        raise ValueError("verdict must be a string")
+    # R2 (post Codex R1 MED-2 on PR #61): strip surrounding whitespace
+    # then validate against KNOWN_VERDICTS so silent bias-bypass bugs
+    # (" Reject ", "needs review", "Re-run\n") fail loud here instead
+    # of silently producing non-biased queries downstream.
+    verdict = verdict.strip()
+    if not verdict:
         raise ValueError("verdict must be a non-empty string")
+    if verdict not in KNOWN_VERDICTS:
+        raise ValueError(f"unknown verdict: {verdict!r}. Known: {sorted(KNOWN_VERDICTS)}")
     if k <= 0:
         raise ValueError("k must be a positive integer")
 
@@ -155,9 +163,9 @@ def advise(
     grouped: dict[str, list[RetrievalResult]] = defaultdict(list)
     for r in results:
         grouped[r.chunk.source].append(r)
-    grouped_frozen: Mapping[str, tuple[RetrievalResult, ...]] = MappingProxyType(
-        {src: tuple(rs) for src, rs in grouped.items()}
-    )
+    grouped_frozen: dict[str, tuple[RetrievalResult, ...]] = {
+        src: tuple(rs) for src, rs in grouped.items()
+    }
 
     return ReviewerAdvice(
         query=query,

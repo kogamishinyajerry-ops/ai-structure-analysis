@@ -11,6 +11,7 @@ try:
     from backend.app.rag.reviewer_advisor import (
         FAULT_QUERY_SEEDS,
         GOVERNANCE_BIASING_VERDICTS,
+        KNOWN_VERDICTS,
         ReviewerAdvice,
         _build_query,
         _summarise,
@@ -316,29 +317,118 @@ def test_advise_source_filter_none_still_works():
     assert not advice.is_empty()
 
 
-def test_grouped_by_source_is_immutable_mapping():
-    """R2 NIT: the field defaults to a MappingProxyType so callers
-    cannot accidentally mutate the advisor output even though
-    ReviewerAdvice is a `frozen=True` dataclass. (frozen dataclass
-    freezes attribute bindings, not the values they reference.)
-    """
+# ---------------------------------------------------------------------------
+# R2 (post Codex R1 MED-1 on PR #61) — serialization friendliness.
+#
+# The earlier MappingProxyType wrapping enforced runtime immutability but
+# broke `pickle.dumps()` and `dataclasses.asdict()`, both of which the
+# advisor output is expected to flow through (log surfaces, PR-comment
+# pipelines, event payloads). MED-1 fix: keep grouped_by_source as a
+# plain dict; immutability is communicated by frozen=True on the binding
+# + caller convention.
+# ---------------------------------------------------------------------------
+
+
+def test_advice_pickles_round_trip():
+    import pickle
+
     kb = _populated_kb_synthetic()
-    advice = advise(kb, "Reject", "solver_convergence", k=5)
-    # Cannot rebind .grouped_by_source on a frozen dataclass.
-    with pytest.raises((AttributeError, Exception)):
-        advice.grouped_by_source = {}  # type: ignore[misc]
-    # Cannot mutate the underlying mapping either.
-    with pytest.raises(TypeError):
-        advice.grouped_by_source["new-source"] = ()  # type: ignore[index]
-    # MappingProxyType also blocks deletion.
-    with pytest.raises(TypeError):
-        del advice.grouped_by_source["project-adr-fp"]  # type: ignore[attr-defined]
+    advice = advise(kb, "Reject", "solver_convergence", k=3)
+    blob = pickle.dumps(advice)
+    restored = pickle.loads(blob)
+    assert restored.query == advice.query
+    assert restored.verdict == advice.verdict
+    assert restored.fault_class == advice.fault_class
+    assert len(restored.results) == len(advice.results)
+    assert dict(restored.grouped_by_source) == dict(advice.grouped_by_source)
+    assert restored.summary == advice.summary
 
 
-def test_default_grouped_by_source_is_immutable():
-    """The field default factory must produce a MappingProxyType too,
-    not a bare dict (the latter would be mutable even though the
-    dataclass is frozen)."""
-    advice = ReviewerAdvice(query="q", verdict="v", fault_class="fc")
-    with pytest.raises(TypeError):
-        advice.grouped_by_source["x"] = ()  # type: ignore[index]
+def test_advice_asdict_round_trip():
+    """`dataclasses.asdict` must work for downstream JSON / event surfaces.
+    MappingProxyType broke this; plain dict does not."""
+    from dataclasses import asdict
+
+    kb = _populated_kb_synthetic()
+    advice = advise(kb, "Reject", "solver_convergence", k=2)
+    d = asdict(advice)
+    assert d["verdict"] == "Reject"
+    assert d["fault_class"] == "solver_convergence"
+    assert "grouped_by_source" in d
+    assert isinstance(d["grouped_by_source"], dict)
+
+
+def test_default_advice_pickles_and_asdicts():
+    """Pickle/asdict must work even on the empty-default advice."""
+    import pickle
+    from dataclasses import asdict
+
+    advice = ReviewerAdvice(query="q", verdict="Accept", fault_class="none")
+    pickle.loads(pickle.dumps(advice))
+    asdict(advice)
+
+
+# ---------------------------------------------------------------------------
+# R2 (post Codex R1 MED-2 on PR #61) — verdict normalization + validation.
+#
+# Strip surrounding whitespace, then validate against KNOWN_VERDICTS
+# (mirrors `schemas.ws_events.ReviewerVerdict` Literal). Pre-fix, callers
+# could pass " Reject " or "Re-run\n" and silently bypass governance bias
+# because the comparison set is exact-match.
+# ---------------------------------------------------------------------------
+
+
+def test_known_verdicts_match_canonical_set():
+    """KNOWN_VERDICTS must match the 5 canonical ws_events.ReviewerVerdict
+    Literal values."""
+    assert (
+        frozenset({"Accept", "Accept with Note", "Reject", "Needs Review", "Re-run"})
+        == KNOWN_VERDICTS
+    )
+
+
+def test_advise_rejects_unknown_verdict_string():
+    kb = _populated_kb_synthetic()
+    with pytest.raises(ValueError, match="unknown verdict"):
+        advise(kb, "FullyRejected", "unknown")
+
+
+def test_advise_rejects_lowercase_verdict():
+    """'reject' lowercase is NOT canonical; must fail loud."""
+    kb = _populated_kb_synthetic()
+    with pytest.raises(ValueError, match="unknown verdict"):
+        advise(kb, "reject", "solver_convergence")
+
+
+def test_advise_strips_whitespace_around_verdict():
+    """' Reject ' must be normalized to 'Reject' so governance bias
+    actually fires (the pre-fix bug was a silent bias-bypass)."""
+    kb = _populated_kb_synthetic()
+    advice = advise(kb, "  Reject  ", "solver_convergence", k=2)
+    assert advice.verdict == "Reject"
+    # Bias must fire on the normalized verdict
+    assert "ADR" in advice.query
+    assert "FailurePattern" in advice.query
+
+
+def test_advise_strips_trailing_newline_in_verdict():
+    """'Re-run\\n' must be normalized to 'Re-run'."""
+    kb = _populated_kb_synthetic()
+    advice = advise(kb, "Re-run\n", "mesh_jacobian", k=2)
+    assert advice.verdict == "Re-run"
+    assert "ADR" in advice.query
+
+
+def test_advise_rejects_non_string_verdict():
+    kb = _populated_kb_synthetic()
+    with pytest.raises(ValueError, match="must be a string"):
+        advise(kb, 42, "unknown")  # type: ignore[arg-type]
+
+
+def test_advise_unknown_verdict_error_lists_known_set():
+    kb = _populated_kb_synthetic()
+    with pytest.raises(ValueError) as exc_info:
+        advise(kb, "BogusVerdict", "unknown")
+    msg = str(exc_info.value)
+    for v in KNOWN_VERDICTS:
+        assert v in msg, f"{v!r} not listed in error message"
