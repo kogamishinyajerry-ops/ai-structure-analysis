@@ -115,20 +115,28 @@ class ChromaVectorStore(VectorStore):
         for c in chunks:
             if c.embedding is None:
                 raise ValueError(f"chunk {c.chunk_id} has no embedding")
-        # R2-nit (post Codex R2 MEDIUM): persist title + namespaced
+        # R2-nit² (post Codex R3 MEDIUM): persist title + namespaced
         # metadata so retrieval can cite the parent doc/section, and
         # round-trip through query() without information loss.
         #
-        # Two namespaces:
-        #   meta_<k>       — primitive values, stored verbatim
-        #   meta_json_<k>  — non-primitive values, json.dumps'd; query
-        #                    decodes via json.loads on the same prefix
+        # Two NON-OVERLAPPING namespaces (post-R3 fix):
+        #   meta_p_<k>  — primitive values, stored verbatim
+        #   meta_j_<k>  — non-primitive values, json.dumps'd; query
+        #                 decodes via json.loads on the same prefix
         #
-        # Codex R2 caught two regressions in the first attempt:
-        #   (a) nested/list values were stringified on write but never
-        #       decoded on read → lossy round-trip.
-        #   (b) `json.dumps(v)` raised TypeError on non-JSON values
-        #       (e.g. datetime). Use `default=str` as a safe fallback.
+        # Codex R3 caught a key-collision in the prior R2-nit:
+        # `meta_<k>` for primitive vs `meta_j_<k>` for json overlap when
+        # a user key starts with `j_` (e.g. {"json_page": "x"} written
+        # as `meta_json_page` was misread as a json-encoded `page`
+        # entry). Switching primitive to `meta_p_<k>` makes the two
+        # prefixes disjoint at the second underscore, so user keys are
+        # always preserved verbatim.
+        #
+        # Earlier-round regressions still closed:
+        #   - lossy round-trip (R1 MEDIUM): nested/list values now
+        #     decoded back via json.loads.
+        #   - non-JSON crash (R2 MEDIUM): `default=str` lets datetime
+        #     etc. stringify rather than raise.
         #
         # Document.metadata is `dict[str, Any]` (schemas.py:43), so we
         # must accept arbitrary values without crashing ingest.
@@ -147,11 +155,9 @@ class ChromaVectorStore(VectorStore):
                 if v is None:
                     continue
                 if isinstance(v, (str, int, float, bool)):
-                    base[f"meta_{k}"] = v
+                    base[f"meta_p_{k}"] = v
                 else:
-                    base[f"meta_json_{k}"] = json.dumps(
-                        v, ensure_ascii=False, default=str
-                    )
+                    base[f"meta_j_{k}"] = json.dumps(v, ensure_ascii=False, default=str)
             return base
 
         self._collection.upsert(
@@ -181,19 +187,19 @@ class ChromaVectorStore(VectorStore):
         import json as _json
 
         for i, (cid, doc, meta, dist) in enumerate(zip(ids, docs, metas, dists)):
-            # R2-nit (post Codex R2 MEDIUM): rehydrate title +
-            # meta_<k> (verbatim) and meta_json_<k> (json.loads)
-            # so the round-trip is lossless for both primitive and
-            # nested metadata values.
+            # R2-nit² (post Codex R3 MEDIUM): rehydrate title +
+            # meta_p_<k> (verbatim) and meta_j_<k> (json.loads).
+            # Disjoint prefixes — no collision when user keys start
+            # with `p_` or `j_`.
             restored_meta: dict[str, object] = {}
             for k, v in (meta or {}).items():
-                if k.startswith("meta_json_"):
+                if k.startswith("meta_j_"):
                     try:
-                        restored_meta[k[len("meta_json_") :]] = _json.loads(v)
+                        restored_meta[k[len("meta_j_") :]] = _json.loads(v)
                     except (TypeError, ValueError):
-                        restored_meta[k[len("meta_json_") :]] = v
-                elif k.startswith("meta_"):
-                    restored_meta[k[len("meta_") :]] = v
+                        restored_meta[k[len("meta_j_") :]] = v
+                elif k.startswith("meta_p_"):
+                    restored_meta[k[len("meta_p_") :]] = v
             chunk = Chunk(
                 chunk_id=cid,
                 doc_id=str(meta.get("doc_id", "")),

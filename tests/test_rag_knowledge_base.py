@@ -383,16 +383,14 @@ def test_chroma_store_persists_title_and_metadata():
 
     src = inspect.getsource(ChromaVectorStore.upsert)
     assert '"title"' in src, "upsert must persist Chunk.title"
-    assert "meta_" in src, "upsert must namespace flattened metadata under meta_*"
+    assert "meta_p_" in src, "upsert must use `meta_p_` for primitive metadata"
 
 
 def test_chroma_metadata_namespaced_for_lossless_round_trip():
-    """R2-nit (post Codex R2 MEDIUM): the first R2 attempt JSON-stringified
-    nested values on write but rehydrated them as strings on read,
-    losing structure. The fix uses two namespaces:
-      meta_<k>      — primitive verbatim
-      meta_json_<k> — non-primitive json.dumps'd, query json.loads's it
-    Verify both write and read paths reference the namespaces.
+    """R2-nit (post Codex R2 MEDIUM): write JSON-stringifies nested
+    values; read must json.loads them back. R2-nit² (post Codex R3
+    MEDIUM) uses disjoint prefixes (`meta_p_` / `meta_j_`) to avoid
+    collision when user keys start with `j_`.
     """
     import inspect
 
@@ -400,10 +398,12 @@ def test_chroma_metadata_namespaced_for_lossless_round_trip():
 
     upsert_src = inspect.getsource(ChromaVectorStore.upsert)
     query_src = inspect.getsource(ChromaVectorStore.query)
-    assert "meta_json_" in upsert_src, (
-        "upsert must use `meta_json_` namespace for non-primitive values"
+    assert "meta_p_" in upsert_src and "meta_j_" in upsert_src, (
+        "upsert must use disjoint `meta_p_` and `meta_j_` namespaces"
     )
-    assert "meta_json_" in query_src, "query must rehydrate `meta_json_` keys via json.loads"
+    assert "meta_p_" in query_src and "meta_j_" in query_src, (
+        "query must check both `meta_p_` and `meta_j_` namespaces"
+    )
     assert "json.loads" in query_src or "_json.loads" in query_src, (
         "query must json.loads the json-namespaced values"
     )
@@ -423,6 +423,34 @@ def test_chroma_metadata_dumps_uses_default_str_for_non_json_types():
     assert "default=str" in src, (
         "upsert json.dumps must pass `default=str` so non-JSON values "
         "(datetime, pathlib.Path, etc.) don't crash ingest"
+    )
+
+
+def test_chroma_metadata_prefixes_disjoint_no_collision_for_user_j_keys():
+    """R2-nit² (post Codex R3 MEDIUM): in the prior `meta_<k>` /
+    `meta_json_<k>` scheme, a user key like `json_page` was written
+    as `meta_json_page` and misread as a json-namespaced `page`
+    entry, colliding with any actual `page` key.
+
+    Fix: disjoint prefixes `meta_p_<k>` (primitive) and `meta_j_<k>`
+    (json) — they branch at the 2nd underscore, so a user key
+    starting with `j_` becomes `meta_p_j_page`, never matching the
+    json prefix.
+
+    Source-level invariant: the read path must NOT have a bare
+    `startswith('meta_')` fallback that would re-trigger the collision.
+    """
+    import inspect
+    import re
+
+    from backend.app.rag.store import ChromaVectorStore
+
+    src = inspect.getsource(ChromaVectorStore.query)
+    assert "meta_p_" in src, "query must use the disjoint `meta_p_` prefix"
+    bare_meta_branch = re.search(r"""startswith\(["']meta_["']\)""", src)
+    assert bare_meta_branch is None, (
+        "query must NOT have a bare `startswith('meta_')` branch — that "
+        "re-introduces the R3 collision when user keys start with `j_`."
     )
 
 
