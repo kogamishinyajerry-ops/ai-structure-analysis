@@ -48,6 +48,10 @@ def _build_kb(embedder_choice: str, persist_dir: Path | None, collection: str) -
     R2 (post Codex R1 MEDIUM-3): validate `--persist-dir` BEFORE
     constructing `BgeM3Embedder()`, so a missing-arg error doesn't
     require a model download first.
+
+    R3 (post Codex R2 polish): error messages are emitted ONLY at
+    the main() catch — no double print from inside _build_kb. The
+    `_UsageError.message` carries the user-facing text.
     """
     if embedder_choice == "mock":
         embedder = MockEmbedder(dim=32)
@@ -55,10 +59,6 @@ def _build_kb(embedder_choice: str, persist_dir: Path | None, collection: str) -
     elif embedder_choice == "bge-m3":
         # Validate cheap argument before any heavy work.
         if persist_dir is None:
-            print(
-                "[ingest-rag] --persist-dir is required with --embedder bge-m3",
-                file=sys.stderr,
-            )
             raise _UsageError("--persist-dir is required with --embedder bge-m3")
 
         # Lazy import — heavy deps. Both the module import AND the
@@ -70,19 +70,54 @@ def _build_kb(embedder_choice: str, persist_dir: Path | None, collection: str) -
 
             embedder = BgeM3Embedder()
         except ImportError as e:
-            print(
-                f"[ingest-rag] bge-m3 backend unavailable: {e}. "
-                'Install with: pip install -e ".[rag]"',
-                file=sys.stderr,
-            )
-            raise _UsageError(f"bge-m3 backend unavailable: {e}") from e
+            raise _UsageError(
+                f"bge-m3 backend unavailable: {e}. "
+                'Install with: pip install -e ".[rag]"'
+            ) from e
 
         store = ChromaVectorStore(persist_dir=persist_dir, collection_name=collection)
     else:
-        print(f"[ingest-rag] unknown --embedder: {embedder_choice}", file=sys.stderr)
         raise _UsageError(f"unknown --embedder: {embedder_choice}")
 
     return KnowledgeBase(embedder, store)
+
+
+def _acquire_persist_lock(persist_dir: Path):
+    """Single-writer guard for concurrent `ingest-rag` runs targeting
+    the same `--persist-dir`.
+
+    R3 (post Codex R2 MEDIUM): chromadb's local `PersistentClient` is
+    not process-safe for concurrent writers sharing one path
+    (per https://docs.trychroma.com/reference/python/client). Without
+    a guard, two `ingest-rag --embedder bge-m3 --persist-dir <same>`
+    runs can race the on-disk KB and corrupt or duplicate writes.
+
+    Uses `fcntl.flock` (advisory, non-blocking). Returns the lock
+    file handle; caller must keep it open for the duration of the
+    write to hold the lock. Raises `_UsageError` if another process
+    already holds it.
+
+    On platforms without fcntl (Windows), this is a best-effort
+    no-op — the persistent-write race is a known platform gap that
+    needs a separate fix (e.g. portalocker) when Windows ingest is
+    actually exercised.
+    """
+    persist_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = persist_dir / ".ingest.lock"
+    f = open(lock_path, "w")
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover — Windows
+        return f
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError) as e:
+        f.close()
+        raise _UsageError(
+            f"another ingest run is writing to {persist_dir}; "
+            "refusing to race the on-disk KB"
+        ) from e
+    return f
 
 
 def main(argv: list[str]) -> int:
@@ -134,10 +169,20 @@ def main(argv: list[str]) -> int:
             return 2
         selected = [(label, fn) for (label, fn) in ALL_SOURCES if label in set(args.sources)]
 
+    # R3 (post Codex R2 MEDIUM): acquire a single-writer lock on
+    # `--persist-dir` BEFORE building the KB, so two concurrent
+    # ingest runs targeting the same dir don't race chromadb's
+    # local PersistentClient. Mock backend has no on-disk state,
+    # so no lock needed.
+    lock_handle = None
     try:
+        if args.embedder == "bge-m3" and args.persist_dir is not None:
+            lock_handle = _acquire_persist_lock(args.persist_dir)
         kb = _build_kb(args.embedder, args.persist_dir, args.collection)
     except _UsageError as e:
         print(f"[ingest-rag] {e.message}", file=sys.stderr)
+        if lock_handle is not None:
+            lock_handle.close()
         return 2
 
     print(f"[ingest-rag] embedder: {kb.embedder_id}")
@@ -151,43 +196,49 @@ def main(argv: list[str]) -> int:
     # source N-1's chunks are written. Fail-closed at the whole-CLI
     # level — the alternative (ingest each source then rollback) is
     # more complex than the corpus integrity warrants.
-    pending: list[tuple[str, list]] = []
-    for label, iter_fn in selected:
-        try:
-            docs = list(iter_fn(args.root))
-        except (ValueError, OSError) as e:
+    try:
+        pending: list[tuple[str, list]] = []
+        for label, iter_fn in selected:
+            try:
+                docs = list(iter_fn(args.root))
+            except (ValueError, OSError) as e:
+                print(
+                    f"[ingest-rag] source {label!r} failed: {e}. Aborting "
+                    "ingest before any source is written to the KB store.",
+                    file=sys.stderr,
+                )
+                return 2
+            pending.append((label, docs))
+
+        total_docs = 0
+        total_chunks = 0
+        per_source: list[tuple[str, int, int]] = []
+
+        for label, docs in pending:
+            if not docs:
+                print(f"  [{label:16s}] 0 documents (skipping)")
+                per_source.append((label, 0, 0))
+                continue
+            stats = kb.ingest(docs)
+            per_source.append((label, stats.documents_seen, stats.chunks_written))
+            total_docs += stats.documents_seen
+            total_chunks += stats.chunks_written
             print(
-                f"[ingest-rag] source {label!r} failed: {e}. Aborting "
-                "ingest before any source is written to the KB store.",
-                file=sys.stderr,
+                f"  [{label:16s}] {stats.documents_seen} docs → {stats.chunks_written} chunks "
+                f"(avg {stats.chunks_per_doc_avg:.1f} chunks/doc)"
             )
-            return 2
-        pending.append((label, docs))
 
-    total_docs = 0
-    total_chunks = 0
-    per_source: list[tuple[str, int, int]] = []
-
-    for label, docs in pending:
-        if not docs:
-            print(f"  [{label:16s}] 0 documents (skipping)")
-            per_source.append((label, 0, 0))
-            continue
-        stats = kb.ingest(docs)
-        per_source.append((label, stats.documents_seen, stats.chunks_written))
-        total_docs += stats.documents_seen
-        total_chunks += stats.chunks_written
+        print()
         print(
-            f"  [{label:16s}] {stats.documents_seen} docs → {stats.chunks_written} chunks "
-            f"(avg {stats.chunks_per_doc_avg:.1f} chunks/doc)"
+            f"[ingest-rag] TOTAL: {total_docs} docs → {total_chunks} chunks "
+            f"across {len(per_source)} sources"
         )
-
-    print()
-    print(
-        f"[ingest-rag] TOTAL: {total_docs} docs → {total_chunks} chunks "
-        f"across {len(per_source)} sources"
-    )
-    return 0 if total_chunks > 0 else 1
+        return 0 if total_chunks > 0 else 1
+    finally:
+        # R3 (post Codex R2 MEDIUM): release the persist-dir lock so a
+        # subsequent ingest can acquire it.
+        if lock_handle is not None:
+            lock_handle.close()
 
 
 if __name__ == "__main__":

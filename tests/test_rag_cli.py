@@ -181,6 +181,42 @@ def test_main_bge_m3_validates_persist_dir_before_heavy_init(tmp_path, capsys):
     assert "--persist-dir" in err
 
 
+def test_persist_lock_blocks_concurrent_writers(tmp_path):
+    """R3 (post Codex R2 MEDIUM): two concurrent acquisitions of the
+    persist-dir lock must not both succeed. Chroma's local
+    PersistentClient is not process-safe for concurrent writers,
+    so the CLI's _acquire_persist_lock must serialize them."""
+    from backend.app.rag.cli import _acquire_persist_lock, _UsageError
+
+    # First acquisition succeeds.
+    handle1 = _acquire_persist_lock(tmp_path)
+    try:
+        # Second acquisition (in same process) must fail because the
+        # first holds an exclusive flock on the same fd.
+        with pytest.raises(_UsageError) as exc_info:
+            _acquire_persist_lock(tmp_path)
+        assert "another ingest run" in exc_info.value.message
+    finally:
+        handle1.close()
+    # After releasing, a fresh acquisition succeeds again.
+    handle2 = _acquire_persist_lock(tmp_path)
+    handle2.close()
+
+
+def test_persist_lock_creates_persist_dir_if_missing(tmp_path):
+    """The lock must work even if --persist-dir doesn't exist yet."""
+    from backend.app.rag.cli import _acquire_persist_lock
+
+    new_dir = tmp_path / "fresh" / "persist"
+    assert not new_dir.exists()
+    handle = _acquire_persist_lock(new_dir)
+    try:
+        assert new_dir.is_dir()
+        assert (new_dir / ".ingest.lock").exists()
+    finally:
+        handle.close()
+
+
 def test_main_real_repo_smoke():
     """Run against the actual repo — must ingest ≥10 docs (4 governance + 6 GS)."""
     repo_root = Path(__file__).resolve().parent.parent
