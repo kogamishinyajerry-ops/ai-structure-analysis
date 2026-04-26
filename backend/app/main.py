@@ -3,8 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import settings
-from .api import result_router, nl_router
-from .api.routes import knowledge, visualization, frd, report, cases, solver, sensitivity, projects
+from .api import nl_router
+# RFC-001 §6.1 Bucket B: routes.knowledge moved to _frozen/sprint2/route_knowledge.py.
+# The /api/v1/knowledge/* surface is unregistered until post-MVP redesign.
+from .api.routes import visualization, frd, report, cases, solver, sensitivity, projects
 
 from .db.session import init_db, get_db
 from .models import persistence # Ensure models are loaded for create_all
@@ -44,9 +46,9 @@ app.add_middleware(
 )
 
 # 注册路由
-app.include_router(result_router, prefix="/api/v1")
+# RFC-001 §6.1 Bucket C: result_router removed (replaced by /projects/{id}/results in W4+)
 app.include_router(nl_router, prefix="/api/v1")
-app.include_router(knowledge.router, prefix="/api/v1")
+# knowledge.router unregistered — see import note above (RFC-001 §6.1 Bucket B)
 app.include_router(visualization.router, prefix="/api/v1")
 app.include_router(frd.router, prefix="/api/v1")
 app.include_router(report.router, prefix="/api/v1")

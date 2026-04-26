@@ -34,9 +34,15 @@ def test_rule_engine_eurocode():
     assert results[0].status == "PASS"
     assert results[0].limit == 213.64
 
+@pytest.mark.legacy
 def test_knowledge_base_linkage():
-    """测试知识库联动逻辑 (逻辑层)"""
-    from app.services.knowledge_base import get_fea_knowledge_base
+    """测试知识库联动逻辑 (逻辑层).
+
+    RFC-001 §6.1 Bucket B: services.knowledge_base frozen under
+    app._frozen.sprint2.knowledge_base — kept live for compatibility but
+    test marked legacy (not part of MVP coverage).
+    """
+    from app._frozen.sprint2.knowledge_base import get_fea_knowledge_base
     from app.services.report_generator import ReportGenerator
     from app.parsers.frd_parser import FRDParseResult
     

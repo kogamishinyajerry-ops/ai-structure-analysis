@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 
 from ..parsers.frd_parser import FRDParseResult
 from .rule_engine import get_rule_engine
-from .knowledge_base import get_fea_knowledge_base
+# RFC-001 §6.1 Bucket B: services.knowledge_base frozen — Sprint 2 RAG is not in
+# the MVP wedge. Standards-citation linkage stays wired through the frozen
+# module until M5/M6 rebuild (see backend/app/_frozen/sprint2/README.md).
+from .._frozen.sprint2.knowledge_base import get_fea_knowledge_base
 
 logger = logging.getLogger(__name__)
 

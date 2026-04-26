@@ -62,7 +62,7 @@ def get_kb():
     """获取知识库实例"""
     global _kb, _fea_kb
     if _kb is None:
-        from app.services.knowledge_base import get_knowledge_base, get_fea_knowledge_base
+        from app._frozen.sprint2.knowledge_base import get_knowledge_base, get_fea_knowledge_base
         _kb = get_knowledge_base()
         _fea_kb = get_fea_knowledge_base()
     return _kb, _fea_kb

@@ -8,7 +8,9 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ...services.visualization import get_visualization_service
+# RFC-001 §6.1 Bucket B: services.visualization frozen → _frozen.sprint2.visualization.
+# HTML-scene endpoints stay live until rebuilt on Layer-2 ReaderHandle (W2-W3).
+from ..._frozen.sprint2.visualization import get_visualization_service
 from ._viz_helpers import (
     _allowed_fs_roots,
     _apply_increment,
@@ -77,7 +79,7 @@ def get_viz_service():
     """获取可视化服务"""
     global _viz_service
     if _viz_service is None:
-        from app.services.visualization import get_visualization_service
+        from app._frozen.sprint2.visualization import get_visualization_service
         _viz_service = get_visualization_service()
     return _viz_service
 
@@ -247,6 +249,10 @@ async def create_visualization(request: VisualizeRequest):
                 file_path=file_path,
             )
 
+    except HTTPException:
+        # Preserve intentional 4xx / 503 status codes raised above
+        # (Codex R1 finding MEDIUM-1: catch-all was collapsing them to 500).
+        raise
     except Exception as e:
         logger.error(f"Visualization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -295,6 +301,9 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
         else:
             raise HTTPException(status_code=500, detail="Delta HTML生成失败")
 
+    except HTTPException:
+        # Preserve intentional 4xx codes raised above (Codex R1 MEDIUM-1).
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

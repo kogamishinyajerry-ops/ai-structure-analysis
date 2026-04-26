@@ -1,7 +1,11 @@
-"""Parsers module - results and NL parsing exports.
+"""Parsers module — NL parsing exports.
 
-Use lazy exports so result-only workflows do not import optional LLM clients
-unless the NL parser is explicitly requested.
+Lazy export so the optional LLM client only loads when NLParser is touched.
+
+RFC-001 §6.1 Bucket C: ResultParser / ParseResult removed (the .frd path
+was a perpetual-empty stub and the .dat regex never matched real CalculiX
+output). The replacement is the Layer-1 CalculiX adapter built in
+W2 (RFC §4.5).
 """
 
 from __future__ import annotations
@@ -9,15 +13,11 @@ from __future__ import annotations
 from importlib import import_module
 
 __all__ = [
-    "ResultParser",
-    "ParseResult",
     "NLParser",
     "NLPResult",
 ]
 
 _EXPORTS = {
-    "ResultParser": (".result_parser", "ResultParser"),
-    "ParseResult": (".result_parser", "ParseResult"),
     "NLParser": (".nl_parser", "NLParser"),
     "NLPResult": (".nl_parser", "NLPResult"),
 }
