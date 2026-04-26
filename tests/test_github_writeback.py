@@ -415,3 +415,317 @@ def test_post_201_with_non_dict_json_handles_gracefully():
     r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
     assert r.posted is True
     assert r.comment_url is None
+
+
+# ---------------------------------------------------------------------------
+# list_pr_comments — GET /repos/{repo}/issues/{n}/comments
+# ---------------------------------------------------------------------------
+
+
+def _mock_get_response(status_code: int, json_data, text: str = ""):
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.json.return_value = json_data
+    mock_resp.text = text or str(json_data)
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+    return mock_client, mock_resp
+
+
+def test_list_pr_comments_200_returns_data():
+    payload = [
+        {"id": 1, "body": "hi"},
+        {"id": 2, "body": "<!-- ai-fea-preflight -->\nold"},
+    ]
+    mock_client, _ = _mock_get_response(200, payload)
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == payload
+    # Verify the request shape
+    args, kwargs = mock_client.get.call_args
+    assert args[0] == "https://api.github.com/repos/o/r/issues/1/comments"
+    assert kwargs["headers"]["Authorization"] == "Bearer t"
+    # R2 (post Codex R1 MEDIUM-2 on PR #65): pagination enabled, so
+    # `page` is included alongside `per_page`. A 2-comment payload is
+    # shorter than per_page=100, so we short-circuit after page 1.
+    assert kwargs["params"] == {"per_page": 100, "page": 1}
+
+
+def test_list_pr_comments_404_returns_empty():
+    """Never-raises contract: any non-200 returns []."""
+    mock_client, _ = _mock_get_response(404, {"message": "Not Found"}, "Not Found")
+    out = gw.list_pr_comments(repo="o/r", pr_number=99999, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_transport_error_returns_empty():
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = httpx.ConnectError("network down")
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_non_list_json_returns_empty():
+    """If the API returns JSON that isn't a list (proxy mangle, etc.),
+    return [] rather than confusing the caller."""
+    mock_client, _ = _mock_get_response(200, {"unexpected": "object"})
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_malformed_json_returns_empty():
+    """Bad JSON in the body must not raise."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.side_effect = ValueError("bad json")
+    mock_resp.text = "<html>"
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert out == []
+
+
+def test_list_pr_comments_invalid_repo_returns_empty():
+    """Path-traversal repos rejected by _REPO_RE must NOT reach the
+    HTTP layer — return [] without making a request."""
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="../etc/passwd", pr_number=1, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_invalid_pr_number_returns_empty():
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=0, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_no_token_returns_empty(monkeypatch):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: None)
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+# R2 (post Codex R1 MEDIUM-1 on PR #65): non-int IDs must NOT raise
+# TypeError from `pr_number <= 0` — the never-raises contract requires
+# returning [] for str / None / float / bool (bool is an int subclass
+# but semantically wrong here).
+@pytest.mark.parametrize("bad_pr", ["1", None, 1.5, True, False, [], {}, b"1"])
+def test_list_pr_comments_non_int_pr_returns_empty(bad_pr):
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=bad_pr, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_paginates_until_short_page():
+    """R2 (post Codex R1 MEDIUM-2 on PR #65): when page 1 fills (100
+    items), we request page 2. A short page 2 (<100) terminates the
+    walk."""
+    page1 = [{"id": i, "body": f"c{i}"} for i in range(1, 101)]
+    page2 = [{"id": 101, "body": "<!-- ai-fea-preflight -->\nold"}]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_resp_p2 = MagicMock()
+    mock_resp_p2.status_code = 200
+    mock_resp_p2.json.return_value = page2
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, mock_resp_p2]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 101
+    assert out[-1]["id"] == 101
+    assert mock_client.get.call_count == 2
+
+    # Verify both calls had the right page param
+    page_params = [c.kwargs["params"]["page"] for c in mock_client.get.call_args_list]
+    assert page_params == [1, 2]
+
+
+def test_list_pr_comments_pagination_caps_at_max_pages():
+    """Safety: we never paginate past _LIST_COMMENTS_MAX_PAGES even if
+    every page returns a full per_page worth of data. Bounds API spend."""
+    full_page = [{"id": i, "body": f"c{i}"} for i in range(100)]
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = full_page
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100 * gw._LIST_COMMENTS_MAX_PAGES
+    assert mock_client.get.call_count == gw._LIST_COMMENTS_MAX_PAGES
+
+
+def test_list_pr_comments_partial_page_returns_collected_data():
+    """If page 2 returns 404 after page 1 succeeded, we keep the
+    page-1 data instead of dropping everything."""
+    page1 = [{"id": 1, "body": "c"} for _ in range(100)]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_resp_p2 = MagicMock()
+    mock_resp_p2.status_code = 502
+    mock_resp_p2.json.return_value = {"message": "bad gateway"}
+    mock_resp_p2.text = "bad gateway"
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, mock_resp_p2]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100  # page-1 preserved
+    assert mock_client.get.call_count == 2
+
+
+def test_list_pr_comments_partial_page_transport_error_returns_collected():
+    """Same as above for httpx.HTTPError on the second page."""
+    page1 = [{"id": 1, "body": "c"} for _ in range(100)]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, httpx.ConnectError("network down")]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100
+    assert mock_client.get.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# patch_pr_comment — PATCH /repos/{repo}/issues/comments/{id}
+# ---------------------------------------------------------------------------
+
+
+def _mock_patch_response(status_code: int, json_data, text: str = ""):
+    mock_resp = MagicMock()
+    mock_resp.status_code = status_code
+    mock_resp.json.return_value = json_data
+    mock_resp.text = text or str(json_data)
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.return_value = mock_resp
+    return mock_client, mock_resp
+
+
+def test_patch_pr_comment_200_returns_updated_url():
+    mock_client, _ = _mock_patch_response(
+        200, {"html_url": "https://github.com/o/r/issues/1#comment-99"}
+    )
+    r = gw.patch_pr_comment(
+        repo="o/r", comment_id=99, body="updated body", token="t", client=mock_client
+    )
+    assert r.posted is True
+    assert r.comment_url == "https://github.com/o/r/issues/1#comment-99"
+    assert r.status_code == 200
+    args, kwargs = mock_client.patch.call_args
+    assert args[0] == "https://api.github.com/repos/o/r/issues/comments/99"
+    assert kwargs["json"] == {"body": "updated body"}
+    assert kwargs["headers"]["Authorization"] == "Bearer t"
+
+
+def test_patch_pr_comment_404_returns_error():
+    mock_client, _ = _mock_patch_response(404, {"message": "Not Found"}, "Not Found")
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is False
+    assert r.status_code == 404
+    assert "404" in r.error
+
+
+def test_patch_pr_comment_rejects_invalid_repo():
+    r = gw.patch_pr_comment(repo="../etc/passwd", comment_id=99, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid repo" in r.error
+
+
+def test_patch_pr_comment_rejects_zero_comment_id():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=0, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+def test_patch_pr_comment_rejects_negative_comment_id():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=-5, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+# R2 (post Codex R1 MEDIUM-1 on PR #65): non-int comment_id must NOT
+# raise TypeError from `comment_id <= 0`. Reject str / None / float /
+# bool with a clear error.
+@pytest.mark.parametrize("bad_id", ["99", None, 99.0, True, False, [], b"99"])
+def test_patch_pr_comment_rejects_non_int_comment_id(bad_id):
+    r = gw.patch_pr_comment(repo="o/r", comment_id=bad_id, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+# Symmetric guard on post_pr_comment for the same TypeError class.
+@pytest.mark.parametrize("bad_pr", ["1", None, 1.5, True, False, [], b"1"])
+def test_post_pr_comment_rejects_non_int_pr_number(bad_pr):
+    r = gw.post_pr_comment(repo="o/r", pr_number=bad_pr, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid pr_number" in r.error
+
+
+def test_patch_pr_comment_rejects_empty_body():
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="", token="t")
+    assert r.posted is False
+    assert "empty body" in r.error
+
+
+def test_patch_pr_comment_no_token_no_op(monkeypatch):
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: None)
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi")
+    assert r.posted is False
+    assert "no GitHub token" in r.error
+
+
+def test_patch_pr_comment_truncates_body_over_64kb():
+    """Same body cap as post_pr_comment."""
+    mock_client, _ = _mock_patch_response(
+        200, {"html_url": "https://github.com/o/r/issues/1#comment-99"}
+    )
+    huge = "x" * (gw.GITHUB_COMMENT_BODY_LIMIT + 5000)
+    gw.patch_pr_comment(repo="o/r", comment_id=99, body=huge, token="t", client=mock_client)
+    args, kwargs = mock_client.patch.call_args
+    sent_body = kwargs["json"]["body"]
+    assert len(sent_body) <= gw.GITHUB_COMMENT_BODY_LIMIT
+    assert "truncated by github_writeback" in sent_body
+
+
+def test_patch_pr_comment_transport_error():
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.side_effect = httpx.ConnectError("network down")
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is False
+    assert "transport error" in r.error
+    assert "network down" in r.error
+
+
+def test_patch_pr_comment_200_with_malformed_json_does_not_raise():
+    """Same never-raises contract on the success path as post_pr_comment."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.side_effect = ValueError("bad json")
+    mock_resp.text = "<html>"
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.patch.return_value = mock_resp
+    r = gw.patch_pr_comment(repo="o/r", comment_id=99, body="hi", token="t", client=mock_client)
+    assert r.posted is True
+    assert r.comment_url is None
+    assert r.status_code == 200
