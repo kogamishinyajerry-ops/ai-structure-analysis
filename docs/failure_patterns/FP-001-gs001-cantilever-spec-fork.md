@@ -16,6 +16,8 @@ gs_artifact_pin:
 
 # FP-001: Cantilever GS theory↔FEA gap is unresolvable as configured; spec carries three versions of the case
 
+> **Resolution evidence:** PR #32 (golden_samples/GS-001 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
+
 ## Observed deviation
 
 UY ratio FEA/theory = **648×** (`golden_samples/GS-001/expected_results.json:117`); SXX ratio = 0.79 (`expected_results.json:122-126`). The README declares FEA the baseline ("以FEA结果作为本案例的验证基准", `golden_samples/GS-001/README.md:96-97`, repeated `:208-211`), while the same directory's `expected_results.json:108-141` declares the case **`FAILED - SIGNIFICANT ERROR DETECTED`**. Both verdicts cannot be simultaneously correct; the case is in conflict with itself.

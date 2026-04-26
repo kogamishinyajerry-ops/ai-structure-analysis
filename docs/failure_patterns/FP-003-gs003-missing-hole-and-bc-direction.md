@@ -16,6 +16,8 @@ gs_artifact_pin:
 
 # FP-003: GS-003 has no hole in the mesh and the prescribed displacement direction contradicts the case description
 
+> **Resolution evidence:** PR #32 (golden_samples/GS-003 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
+
 ## Observed deviation
 
 README (`golden_samples/GS-003/README.md:7-21, 96-99`) and `expected_results.json:7-22, 73-79` describe a 100×200 mm plate with a 20 mm central hole, expecting Peterson stress-concentration factor `K_t ≈ 2.506` and `σ_max ≈ 1315.73 MPa` (`expected_results.json:48-53`).

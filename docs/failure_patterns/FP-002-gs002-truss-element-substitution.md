@@ -16,6 +16,8 @@ gs_artifact_pin:
 
 # FP-002: GS-002 advertises a truss but ships beam elements; theoretical and FEA quantities are comparing different physics
 
+> **Resolution evidence:** PR #32 (golden_samples/GS-002 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
+
 ## Observed deviation
 
 README and `expected_results.json` consistently describe a 3-bar truss with T3D2 elements (`golden_samples/GS-002/README.md:142-146`; `golden_samples/GS-002/expected_results.json:88-89` says `"element_type": "T3D2"`). The actual `.inp` declares `*ELEMENT, TYPE=B31` (`golden_samples/GS-002/gs002.inp:12`) — Euler-Bernoulli beam-in-3D. `gs002.inp:1-3` even admits this in a comment: *"Static Analysis - Using Beam Elements to Simulate Truss"*.
