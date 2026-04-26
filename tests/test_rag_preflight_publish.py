@@ -281,7 +281,12 @@ def test_no_callback_no_default_returns_error(monkeypatch):
         post_callback=None,
     )
     assert not result.posted
-    assert "github_writeback unavailable" in (result.error or "")
+    # R2 (post Codex R1 LOW on PR #64): the prior message pointed at a
+    # `[notion]` extra that doesn't exist in this repo's pyproject.toml.
+    # Updated to refer to the actual cause (module unimportable) and the
+    # actual remediation (check the file + httpx, or pass post_callback=).
+    assert "github_writeback module is unimportable" in (result.error or "")
+    assert "post_callback" in (result.error or "")
 
 
 def test_is_github_writeback_available_returns_bool():

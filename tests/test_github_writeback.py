@@ -334,3 +334,84 @@ def test_resolve_token_subprocess_timeout_returns_none(monkeypatch):
     monkeypatch.setattr(gw.subprocess, "check_output", _hang)
     tok = gw._resolve_token()
     assert tok is None
+
+
+def test_resolve_token_subprocess_filenotfound_returns_none(monkeypatch):
+    """R2 (post Codex R1 MEDIUM on PR #64): if `which()` says gh exists
+    but the binary disappeared between the check and the call (concurrent
+    uninstall, broken symlink), FileNotFoundError must NOT escape — must
+    fall back to no-token-no-op."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def _missing(*args, **kwargs):
+        raise FileNotFoundError("gh binary disappeared")
+
+    monkeypatch.setattr(gw.subprocess, "check_output", _missing)
+    tok = gw._resolve_token()
+    assert tok is None
+
+
+def test_resolve_token_subprocess_permission_error_returns_none(monkeypatch):
+    """R2 sibling: PermissionError (gh found but not executable) must
+    also fall back, not break writeback_enabled()."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def _denied(*args, **kwargs):
+        raise PermissionError("gh not executable")
+
+    monkeypatch.setattr(gw.subprocess, "check_output", _denied)
+    tok = gw._resolve_token()
+    assert tok is None
+
+
+def test_writeback_enabled_returns_false_on_subprocess_oserror(monkeypatch):
+    """R2 follow-up: writeback_enabled() must NEVER raise. Pre-fix it
+    propagated FileNotFoundError from _resolve_token; now it returns False."""
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def _missing(*args, **kwargs):
+        raise FileNotFoundError("gh binary disappeared")
+
+    monkeypatch.setattr(gw.subprocess, "check_output", _missing)
+    # Must not raise
+    assert gw.writeback_enabled() is False
+
+
+def test_post_201_with_malformed_json_does_not_raise():
+    """R2 (post Codex R1 LOW on PR #64): the contract is "never raises
+    on transport/response errors". A 201 with a non-JSON body used to
+    leak ValueError/JSONDecodeError; now it returns a posted=True
+    result with comment_url=None."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.side_effect = ValueError("Expecting value: line 1 column 1")
+    mock_resp.text = "<html>bad gateway content</html>"
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.post.return_value = mock_resp
+
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
+    # Posted (the API returned 201); comment_url unknown but no exception
+    assert r.posted is True
+    assert r.comment_url is None
+    assert r.status_code == 201
+
+
+def test_post_201_with_non_dict_json_handles_gracefully():
+    """R2 sibling: a 201 with valid JSON that is NOT a dict (e.g. a
+    list, or a bare string) must not crash on `data.get(...)`."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 201
+    mock_resp.json.return_value = ["unexpected", "list", "response"]
+    mock_resp.text = "..."
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.post.return_value = mock_resp
+
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
+    assert r.posted is True
+    assert r.comment_url is None

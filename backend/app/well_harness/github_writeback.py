@@ -86,7 +86,12 @@ def _resolve_token() -> str | None:
                 ).strip()
                 or None
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            # R2 (post Codex R1 MEDIUM on PR #64): widen catch to OSError so
+            # FileNotFoundError (gh removed between which() and the call) and
+            # PermissionError (gh found but not executable) both fall back
+            # to "no token available" instead of leaking up through
+            # writeback_enabled() and breaking the no-token no-op contract.
             return None
     return None
 
@@ -147,10 +152,18 @@ def post_pr_comment(
     try:
         resp = c.post(url, headers=headers, json=payload)
         if resp.status_code == 201:
-            data = resp.json()
+            # R2 (post Codex R1 LOW on PR #64): a 201 with a malformed
+            # body (proxy mangled, content-type drift) used to escape
+            # via JSONDecodeError. The module contract is "never raises
+            # on transport / response errors", so wrap json() too.
+            try:
+                data = resp.json()
+                comment_url = data.get("html_url") if isinstance(data, dict) else None
+            except (ValueError, TypeError):
+                comment_url = None
             return WritebackResult(
                 posted=True,
-                comment_url=data.get("html_url"),
+                comment_url=comment_url,
                 status_code=201,
             )
         return WritebackResult(

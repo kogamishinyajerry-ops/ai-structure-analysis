@@ -100,9 +100,12 @@ def publish_preflight(
         skip_when_empty: if True (default) and the summary has no quantities
             and no advice, return a no-op PublishResult instead of posting an
             empty comment. Set False to always post.
-        header_marker: HTML comment prepended to the body so subsequent
-            calls can find/update prior preflight comments. Default
-            "<!-- ai-fea-preflight -->". Set to "" to disable.
+        header_marker: HTML comment prepended to the body. This module
+            ALWAYS posts a new comment; the marker is just a stable token
+            that a future upsert path (PR #44) will use to find prior
+            preflight comments and PATCH them instead of creating
+            duplicates. Default "<!-- ai-fea-preflight -->". Set to "" to
+            disable.
 
     Returns:
         PublishResult. Never raises.
@@ -120,10 +123,19 @@ def publish_preflight(
 
     callback = post_callback or _default_post_pr_comment
     if callback is None:
+        # R2 (post Codex R1 LOW on PR #64): the prior message pointed at
+        # `pip install -e ".[notion]"` which doesn't exist as an extra in
+        # this repo's pyproject.toml. httpx is a base dependency; the
+        # only realistic way to trip this branch is for the github_writeback
+        # module itself to be unimportable (e.g. removed or renamed).
         return PublishResult(
             posted=False,
-            error="github_writeback unavailable (httpx not installed). "
-            'Install with: pip install -e ".[notion]" or pass post_callback=',
+            error=(
+                "github_writeback module is unimportable from this environment "
+                "(check that backend/app/well_harness/github_writeback.py exists "
+                "and that httpx is installed). Pass post_callback=<your-fn> to "
+                "supply an alternative."
+            ),
         )
 
     body = summary.markdown
