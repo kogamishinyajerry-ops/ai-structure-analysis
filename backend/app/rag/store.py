@@ -115,11 +115,23 @@ class ChromaVectorStore(VectorStore):
         for c in chunks:
             if c.embedding is None:
                 raise ValueError(f"chunk {c.chunk_id} has no embedding")
-        # R2 (post Codex R1 MEDIUM): persist title + flattened
-        # metadata so retrieval can cite the parent doc/section.
-        # Chroma metadata values must be primitives — flatten dict
-        # values to JSON-encoded strings if they aren't already
-        # str/int/float/bool.
+        # R2-nit (post Codex R2 MEDIUM): persist title + namespaced
+        # metadata so retrieval can cite the parent doc/section, and
+        # round-trip through query() without information loss.
+        #
+        # Two namespaces:
+        #   meta_<k>       — primitive values, stored verbatim
+        #   meta_json_<k>  — non-primitive values, json.dumps'd; query
+        #                    decodes via json.loads on the same prefix
+        #
+        # Codex R2 caught two regressions in the first attempt:
+        #   (a) nested/list values were stringified on write but never
+        #       decoded on read → lossy round-trip.
+        #   (b) `json.dumps(v)` raised TypeError on non-JSON values
+        #       (e.g. datetime). Use `default=str` as a safe fallback.
+        #
+        # Document.metadata is `dict[str, Any]` (schemas.py:43), so we
+        # must accept arbitrary values without crashing ingest.
         import json
 
         def _flatten_meta(c: Chunk) -> dict[str, str | int | float | bool]:
@@ -130,13 +142,16 @@ class ChromaVectorStore(VectorStore):
                 "title": c.title,
             }
             for k, v in c.metadata.items():
-                # Chroma rejects None and complex types in metadata.
+                # Chroma rejects None and complex types — drop None
+                # and namespace JSON-serialized non-primitives.
+                if v is None:
+                    continue
                 if isinstance(v, (str, int, float, bool)):
                     base[f"meta_{k}"] = v
-                elif v is None:
-                    continue
                 else:
-                    base[f"meta_{k}"] = json.dumps(v, ensure_ascii=False)
+                    base[f"meta_json_{k}"] = json.dumps(
+                        v, ensure_ascii=False, default=str
+                    )
             return base
 
         self._collection.upsert(
@@ -163,13 +178,21 @@ class ChromaVectorStore(VectorStore):
         docs = result.get("documents", [[]])[0]
         metas = result.get("metadatas", [[]])[0]
         dists = result.get("distances", [[]])[0]
+        import json as _json
+
         for i, (cid, doc, meta, dist) in enumerate(zip(ids, docs, metas, dists)):
-            # R2 (post Codex R1 MEDIUM): rehydrate title + meta_* keys
-            # back into the Chunk so retrieved results carry
-            # citation-quality provenance.
+            # R2-nit (post Codex R2 MEDIUM): rehydrate title +
+            # meta_<k> (verbatim) and meta_json_<k> (json.loads)
+            # so the round-trip is lossless for both primitive and
+            # nested metadata values.
             restored_meta: dict[str, object] = {}
             for k, v in (meta or {}).items():
-                if k.startswith("meta_"):
+                if k.startswith("meta_json_"):
+                    try:
+                        restored_meta[k[len("meta_json_") :]] = _json.loads(v)
+                    except (TypeError, ValueError):
+                        restored_meta[k[len("meta_json_") :]] = v
+                elif k.startswith("meta_"):
                     restored_meta[k[len("meta_") :]] = v
             chunk = Chunk(
                 chunk_id=cid,

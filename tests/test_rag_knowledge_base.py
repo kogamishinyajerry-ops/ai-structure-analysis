@@ -386,6 +386,46 @@ def test_chroma_store_persists_title_and_metadata():
     assert "meta_" in src, "upsert must namespace flattened metadata under meta_*"
 
 
+def test_chroma_metadata_namespaced_for_lossless_round_trip():
+    """R2-nit (post Codex R2 MEDIUM): the first R2 attempt JSON-stringified
+    nested values on write but rehydrated them as strings on read,
+    losing structure. The fix uses two namespaces:
+      meta_<k>      — primitive verbatim
+      meta_json_<k> — non-primitive json.dumps'd, query json.loads's it
+    Verify both write and read paths reference the namespaces.
+    """
+    import inspect
+
+    from backend.app.rag.store import ChromaVectorStore
+
+    upsert_src = inspect.getsource(ChromaVectorStore.upsert)
+    query_src = inspect.getsource(ChromaVectorStore.query)
+    assert "meta_json_" in upsert_src, (
+        "upsert must use `meta_json_` namespace for non-primitive values"
+    )
+    assert "meta_json_" in query_src, "query must rehydrate `meta_json_` keys via json.loads"
+    assert "json.loads" in query_src or "_json.loads" in query_src, (
+        "query must json.loads the json-namespaced values"
+    )
+
+
+def test_chroma_metadata_dumps_uses_default_str_for_non_json_types():
+    """R2-nit (post Codex R2 MEDIUM): json.dumps raises TypeError on
+    common non-JSON-serializable values like `datetime`. Document.metadata
+    is `dict[str, Any]`, so ingest must not crash. Fix uses
+    `default=str` as a safe fallback.
+    """
+    import inspect
+
+    from backend.app.rag.store import ChromaVectorStore
+
+    src = inspect.getsource(ChromaVectorStore.upsert)
+    assert "default=str" in src, (
+        "upsert json.dumps must pass `default=str` so non-JSON values "
+        "(datetime, pathlib.Path, etc.) don't crash ingest"
+    )
+
+
 # ---------------------------------------------------------------------------
 # BgeM3Embedder import gating
 # ---------------------------------------------------------------------------
