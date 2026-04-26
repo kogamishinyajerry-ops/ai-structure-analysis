@@ -364,9 +364,9 @@ def test_chroma_store_score_passes_negative_cosine_through():
     src = inspect.getsource(ChromaVectorStore.query)
     # Old formula was `max(0.0, 1.0 - float(dist))`. New must be the
     # naked subtraction.
-    assert (
-        "max(0.0, 1.0 - float(dist))" not in src
-    ), "Chroma adapter still clamps — should be `1 - distance` without floor"
+    assert "max(0.0, 1.0 - float(dist))" not in src, (
+        "Chroma adapter still clamps — should be `1 - distance` without floor"
+    )
     assert "1.0 - float(dist)" in src, "expected new formula `1 - distance`"
 
 
