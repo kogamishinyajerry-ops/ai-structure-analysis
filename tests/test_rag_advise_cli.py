@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -620,3 +621,105 @@ def test_mock_corpus_os_error_rc_2(tmp_path, monkeypatch, capsys):
     assert rc == 2
     assert "corpus ingest failed" in err
     assert "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# --json output mode (P1-04b symmetry with publish_cli)
+# ---------------------------------------------------------------------------
+
+
+def test_json_output_emits_single_record(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    payload = json.loads(out.strip())
+    assert isinstance(payload, dict)
+    assert payload["verdict"] == "Reject"
+    assert payload["fault"] == "solver_convergence"
+    assert "embedder" in payload
+    assert "query" in payload
+    assert "hit_count" in payload
+    assert "by_source" in payload
+    assert "summary" in payload
+    assert "results" in payload
+    assert payload["hit_count"] == len(payload["results"])
+    # No human banner mixed into stdout
+    assert "[advise-rag]" not in out
+
+
+def test_json_output_no_hits_returns_rc_1(tmp_path, capsys):
+    """--json + advice.is_empty() → rc=1."""
+    repo = tmp_path / "empty_repo"
+    repo.mkdir()
+    # No corpus content under --root → mock embedder returns nothing.
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    if payload["hit_count"] == 0:
+        assert rc == 1
+
+
+def test_json_record_per_result_shape(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    payload = json.loads(out.strip())
+    if payload["results"]:
+        first = payload["results"][0]
+        for required in ("rank", "score", "source", "chunk_id", "text"):
+            assert required in first
+
+
+def test_json_output_stderr_clean_on_success(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc in (0, 1)
+    assert captured.err == ""
+    json.loads(captured.out.strip())

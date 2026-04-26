@@ -27,6 +27,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -166,6 +167,11 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Mock backend only: skip in-memory ingest of the live repo",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit one JSON record on stdout instead of human-readable lines",
+    )
     args = parser.parse_args(argv[1:])
 
     if args.k <= 0:
@@ -194,6 +200,29 @@ def main(argv: list[str]) -> int:
         print(f"[query-rag] {e.message}", file=sys.stderr)
         return 2
 
+    results = kb.query(args.query, k=args.k, source_filter=args.source_filter)
+
+    if args.json:
+        payload = {
+            "embedder": kb.embedder_id,
+            "query": args.query,
+            "k": args.k,
+            "source_filter": args.source_filter,
+            "result_count": len(results),
+            "results": [
+                {
+                    "rank": r.rank,
+                    "score": r.score,
+                    "source": r.chunk.source,
+                    "chunk_id": r.chunk.chunk_id,
+                    "text": r.chunk.text,
+                }
+                for r in results
+            ],
+        }
+        print(json.dumps(payload))
+        return 0 if results else 1
+
     print(f"[query-rag] embedder: {kb.embedder_id}")
     print(f"[query-rag] query:    {args.query!r}")
     print(f"[query-rag] k:        {args.k}")
@@ -201,7 +230,6 @@ def main(argv: list[str]) -> int:
         print(f"[query-rag] source:   {args.source_filter}")
     print()
 
-    results = kb.query(args.query, k=args.k, source_filter=args.source_filter)
     if not results:
         print("[query-rag] no results.")
         return 1

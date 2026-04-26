@@ -881,3 +881,243 @@ def test_post_upsert_with_empty_header_marker_returns_rc_2(tmp_path, capsys, mon
     err = capsys.readouterr().err
     assert rc == 2
     assert "header-marker" in err
+
+
+# ---------------------------------------------------------------------------
+# --json output mode (P1-04b symmetry)
+# ---------------------------------------------------------------------------
+
+
+def test_json_dry_run_emits_valid_json(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["mode"] == "dry-run"
+    assert payload["dry_run_reason"] == "--post not set"
+    assert payload["verdict"] == "Reject"
+    assert payload["fault"] == "solver_convergence"
+    assert "case_id" in payload
+    assert "confidence_indicator" in payload
+    assert "quantity_count" in payload
+    assert "advice_hit_count" in payload
+    assert "markdown" in payload
+    assert "[publish-rag]" not in out
+
+
+def test_json_dry_run_explicit_flag_reason(tmp_path, capsys):
+    """--dry-run flag flips dry_run_reason from "--post not set" → "forced"."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+            "--dry-run",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["dry_run_reason"] == "forced"
+
+
+def test_json_post_success_emits_post_record(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=True,
+            action="posted",
+            comment_url="https://x/c/1",
+            status_code=201,
+            error=None,
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "42",
+            "--post",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["mode"] == "post"
+    assert payload["target"] == "owner/repo#42"
+    assert payload["publish_mode"] == "post"
+    assert payload["posted"] is True
+    assert payload["action"] == "posted"
+    assert payload["status_code"] == 201
+    assert payload["error"] is None
+
+
+def test_json_post_failure_emits_record_with_rc_1(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=False, action=None, comment_url=None, status_code=403, error="Forbidden"
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "42",
+            "--post",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc == 1
+    payload = json.loads(captured.out.strip())
+    assert payload["posted"] is False
+    assert payload["action"] is None
+    assert payload["status_code"] == 403
+    assert payload["error"] == "Forbidden"
+    # JSON path keeps stderr clean (no banner crossover)
+    assert captured.err == ""
+
+
+def test_json_upsert_mode_round_trips(tmp_path, capsys, monkeypatch):
+    """--mode upsert + successful patch → publish_mode=upsert, action=updated."""
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, mode, **kw):
+        return _FakePublishResult(
+            posted=True,
+            action="updated",
+            comment_url="https://x/c/9",
+            status_code=200,
+            error=None,
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "42",
+            "--post",
+            "--mode",
+            "upsert",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["publish_mode"] == "upsert"
+    assert payload["action"] == "updated"
+    assert payload["status_code"] == 200
+
+
+def test_json_canonical_verdict_strips_whitespace(tmp_path, capsys):
+    """R2 (post Codex R1 LOW on PR #67): JSON payload's "verdict" field
+    must be the canonical (stripped) form from advice.verdict, not the
+    raw args.verdict. Otherwise machine-readers see " Reject " in JSON
+    while markdown shows "Reject"."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            " Reject ",  # surrounding whitespace
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["verdict"] == "Reject"  # canonicalized
+    # Markdown also has the canonical form (would have been already correct)
+    assert "**Verdict:** Reject" in payload["markdown"]
+
+
+def test_json_post_empty_summary_returns_rc_0(tmp_path, capsys, monkeypatch):
+    repo = _make_synth_repo(tmp_path)
+
+    def _fake_publish(summary, repo, pr_number, **kw):
+        return _FakePublishResult(
+            posted=False,
+            action=None,
+            comment_url=None,
+            status_code=None,
+            error="summary is empty",
+            summary_was_empty=True,
+        )
+
+    monkeypatch.setattr(preflight_publish_cli, "publish_preflight", _fake_publish)
+    rc = main(
+        [
+            "publish_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+            "--repo",
+            "owner/repo",
+            "--pr",
+            "42",
+            "--post",
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out.strip())
+    assert payload["summary_was_empty"] is True
+    assert payload["posted"] is False
