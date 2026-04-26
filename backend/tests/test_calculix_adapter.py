@@ -43,7 +43,25 @@ def reader() -> CalculiXReader:
 
 
 def test_reader_implements_reader_handle_protocol(reader: CalculiXReader) -> None:
+    # Codex R1 MEDIUM: ``isinstance`` on a runtime_checkable Protocol
+    # only checks attribute presence, not signatures or return types.
+    # Verify the *shape* of the surface explicitly.
+    import inspect
+
     assert isinstance(reader, ReaderHandle)
+    # mesh / materials / boundary_conditions / solution_states are
+    # @property — accessing them must not require args.
+    _ = reader.mesh
+    _ = reader.materials
+    _ = reader.boundary_conditions
+    _ = reader.solution_states
+    # get_field signature: (name: CanonicalField, step_id: int) -> FieldData | None
+    sig = inspect.signature(reader.get_field)
+    params = list(sig.parameters.keys())
+    assert params == ["name", "step_id"], f"unexpected get_field params: {params}"
+    # close() takes no args and returns None
+    sig_close = inspect.signature(reader.close)
+    assert list(sig_close.parameters.keys()) == []
 
 
 def test_mesh_implements_mesh_protocol(reader: CalculiXReader) -> None:
@@ -51,14 +69,22 @@ def test_mesh_implements_mesh_protocol(reader: CalculiXReader) -> None:
 
 
 def test_close_blocks_subsequent_access(tmp_path: Path) -> None:
+    """Codex R1 advisory: close() must guard ALL Layer-2 access points."""
     if not GS001_FRD.exists():
         pytest.skip("GS-001 missing")
     r = CalculiXReader(GS001_FRD, unit_system=UnitSystem.SI_MM)
+    step_id = r.solution_states[0].step_id
     r.close()
     with pytest.raises(RuntimeError):
         _ = r.mesh
     with pytest.raises(RuntimeError):
         _ = r.solution_states
+    with pytest.raises(RuntimeError):
+        _ = r.materials
+    with pytest.raises(RuntimeError):
+        _ = r.boundary_conditions
+    with pytest.raises(RuntimeError):
+        r.get_field(CanonicalField.DISPLACEMENT, step_id)
 
 
 def test_failed_parse_raises_value_error(tmp_path: Path) -> None:
@@ -119,6 +145,63 @@ def test_solution_states_merge_disp_and_stress_into_one_step(
     assert s.step_name == "static"
     assert CanonicalField.DISPLACEMENT in s.available_fields
     assert CanonicalField.STRESS_TENSOR in s.available_fields
+    # Codex R1 MEDIUM: SolutionState.time MUST be None for static
+    # analyses (CalculiX 'value' is a load-step counter, not physical
+    # time). load_factor is also None for static (it is non-None only
+    # for buckling / vibration runs).
+    assert s.time is None, "static analysis must report time=None"
+    assert s.load_factor is None, "static analysis must report load_factor=None"
+
+
+def test_solution_states_keep_distinct_steps_with_field_collision() -> None:
+    """Codex R1 HIGH regression guard: two real CalculiX steps at the
+    same load factor must NOT alias when both carry overlapping fields.
+    """
+    from backend.app.adapters.calculix.reader import CalculiXReader as _Reader
+    from backend.app.parsers.frd_parser import FRDIncrement, FRDStress
+
+    # Synthetic shape: two static steps, each carrying its own
+    # displacement field. Bare-(type, value) collapse would alias these
+    # into one slot; the disjoint-field guard must keep them separate.
+    inc1 = FRDIncrement(
+        index=1, step=1, type="static", value=1.0,
+        displacements={1: (0.1, 0.0, 0.0)},
+        stresses={},
+    )
+    inc2 = FRDIncrement(
+        index=2, step=2, type="static", value=1.0,
+        displacements={1: (0.2, 0.0, 0.0)},
+        stresses={},
+    )
+    # Smuggle the synthetic increments into a real reader — easier than
+    # forging a full FRDParseResult.
+    r = _Reader(GS001_FRD, unit_system=UnitSystem.SI_MM)
+    r._parsed.increments[:] = [inc1, inc2]  # type: ignore[attr-defined]
+    states = r.solution_states
+    assert len(states) == 2, (
+        f"two real DISP-only static steps at value=1.0 must not alias; got "
+        f"{len(states)} state(s)"
+    )
+    assert all(s.step_name == "static" for s in states)
+    assert all(s.time is None and s.load_factor is None for s in states)
+
+
+def test_solution_states_buckling_load_factor_populated() -> None:
+    """Layer-2 contract: buckling step → load_factor non-None, time None."""
+    from backend.app.adapters.calculix.reader import CalculiXReader as _Reader
+    from backend.app.parsers.frd_parser import FRDIncrement
+
+    inc = FRDIncrement(
+        index=1, step=1, type="buckling", value=2.5,
+        displacements={1: (0.1, 0.0, 0.0)}, stresses={},
+    )
+    r = _Reader(GS001_FRD, unit_system=UnitSystem.SI_MM)
+    r._parsed.increments[:] = [inc]  # type: ignore[attr-defined]
+    states = r.solution_states
+    assert len(states) == 1
+    assert states[0].step_name == "buckling"
+    assert states[0].load_factor == 2.5
+    assert states[0].time is None
 
 
 def test_get_field_displacement(reader: CalculiXReader) -> None:

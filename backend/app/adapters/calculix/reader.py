@@ -113,7 +113,10 @@ class _CalculiXFieldData:
         return self._materialise()
 
     def _materialise(self) -> npt.NDArray[np.float64]:
-        out = np.zeros((self._n_nodes, max(self._cols, 1)), dtype=np.float64)
+        # Honour the docstring contract: empty raw → (N, 0). Codex R1
+        # observed that ``max(_cols, 1)`` produced (N, 1) instead, an
+        # inconsistency with the comment. Fixed here.
+        out = np.zeros((self._n_nodes, self._cols), dtype=np.float64)
         if self._cols == 0:
             return out
         for nid, row in self._raw.items():
@@ -212,11 +215,15 @@ class CalculiXReader:
         increments = self._parsed.increments
         # Sprint-2 parser splits DISP and STRESS blocks of a single
         # CalculiX step into separate ``FRDIncrement`` slots when each
-        # block is announced with its own header. Layer-2 ``step_id``
-        # is the CalculiX *step* number (``inc.step``), not the parser's
-        # sequential ``index`` — so we collapse increments sharing the
-        # same step into a single ``SolutionState`` whose
-        # ``available_fields`` is the union of theirs.
+        # block is announced with its own header. We collapse adjacent
+        # increments that share ``(type, value)`` AND contribute
+        # *disjoint* field types — two increments at ('static', 1.0)
+        # where one carries only DISP and the other only STRESS are
+        # the same logical step. Two increments at ('static', 1.0)
+        # where BOTH carry DISP would be real distinct steps (multi-
+        # step / restart with the same load factor) and stay separate.
+        # This addresses Codex R1 HIGH: bare-(type, value) collapse
+        # was lossy on multi-step or restarted analyses.
         if not increments:
             available = self._available_fields_for_dicts(
                 self._parsed.displacements, self._parsed.stresses
@@ -231,46 +238,77 @@ class CalculiXReader:
                 )
             ]
 
-        # Collapse on (type, value) — Sprint-2 parser may emit one
-        # increment per .frd block (DISP / STRESS / TOSTRAIN) and stamp
-        # them with sequential ``step`` values even when they belong to
-        # the same logical CalculiX step. Two increments with identical
-        # (type, value) — e.g. ('static', 1.0) — are the same step.
         merged: list[dict[str, Any]] = []
-        seen: dict[tuple[str, float], int] = {}
         for inc in increments:
-            key = (inc.type or "static", float(inc.value))
-            if key in seen:
-                slot = merged[seen[key]]
-            else:
-                seen[key] = len(merged)
-                merged.append(
-                    {
-                        "step_id": inc.step,
-                        "type": inc.type or "static",
-                        "value": inc.value,
-                        "disp": {},
-                        "stress": {},
-                    }
-                )
-                slot = merged[-1]
+            inc_fields = self._fields_in_increment(inc)
+            slot = self._find_disjoint_slot(merged, inc, inc_fields)
+            if slot is None:
+                slot = {
+                    "step_id": inc.step,
+                    "type": inc.type or "static",
+                    "value": float(inc.value),
+                    "disp": {},
+                    "stress": {},
+                    "fields": set(),
+                }
+                merged.append(slot)
             if inc.displacements:
                 slot["disp"] = inc.displacements
             if inc.stresses:
                 slot["stress"] = inc.stresses
+            slot["fields"] |= inc_fields
 
-        return [
-            SolutionState(
-                step_id=slot["step_id"],
-                step_name=slot["type"] or "static",
-                time=slot["value"] if (slot["type"] or "") == "static" else None,
-                load_factor=slot["value"] if (slot["type"] or "") == "buckling" else None,
-                available_fields=self._available_fields_for_dicts(
-                    slot["disp"], slot["stress"]
-                ),
-            )
-            for slot in merged
-        ]
+        return [self._slot_to_state(slot) for slot in merged]
+
+    @staticmethod
+    def _fields_in_increment(inc: Any) -> set[CanonicalField]:
+        present: set[CanonicalField] = set()
+        if inc.displacements:
+            present.add(CanonicalField.DISPLACEMENT)
+        if inc.stresses:
+            present.add(CanonicalField.STRESS_TENSOR)
+        return present
+
+    @staticmethod
+    def _find_disjoint_slot(
+        merged: list[dict[str, Any]],
+        inc: Any,
+        inc_fields: set[CanonicalField],
+    ) -> Optional[dict[str, Any]]:
+        # Match the most recent slot with same (type, value) and disjoint
+        # field set. ``reversed`` so multi-step loops at the same load
+        # factor don't all coalesce into the first slot.
+        for slot in reversed(merged):
+            if slot["type"] != (inc.type or "static"):
+                continue
+            if slot["value"] != float(inc.value):
+                continue
+            if slot["fields"] & inc_fields:
+                return None  # field collision → real distinct step
+            return slot
+        return None
+
+    @staticmethod
+    def _slot_to_state(slot: dict[str, Any]) -> SolutionState:
+        # Per Layer-2 contract:
+        #   * ``time`` is wall-clock simulation time (transient/dynamic).
+        #     CalculiX static `value` is a load-step counter (1.0 = end
+        #     of step), NOT physical time → time=None.
+        #   * ``load_factor`` is the buckling eigenvalue or modal-frequency
+        #     value; for static and unknown types, leave None.
+        # This addresses Codex R1 MEDIUM (time leak from value).
+        kind = (slot["type"] or "static").lower()
+        time_val = slot["value"] if kind in {"transient", "dynamic"} else None
+        lf = slot["value"] if kind in {"buckling", "vibration", "modal", "frequency"} else None
+        return SolutionState(
+            step_id=slot["step_id"],
+            step_name=slot["type"] or "static",
+            time=time_val,
+            load_factor=lf,
+            available_fields=CalculiXReader._available_fields_for_dicts(
+                slot["disp"], slot["stress"]
+            ),
+        )
 
     def get_field(
         self, name: CanonicalField, step_id: int
@@ -320,31 +358,39 @@ class CalculiXReader:
     def _dicts_for_step(
         self, step_id: int
     ) -> tuple[dict[int, Any], dict[int, Any]]:
-        # Resolve ``step_id`` against the merged ``solution_states``
-        # representation (NOT the raw ``inc.step``) — see the merge
-        # rationale in ``solution_states``.
-        states = self.solution_states
-        target = next((s for s in states if s.step_id == step_id), None)
-        if target is None:
+        # Re-run the same disjoint-slot merge walk used by
+        # ``solution_states`` and pick the slot whose ``step_id`` matches.
+        # ADR-004: no caching — paying the O(N) walk on every call is
+        # the cost of forbidding hidden state. N is "number of FRD blocks
+        # in the file", typically <10.
+        if not self._parsed.increments:
+            if step_id == 1:
+                return self._parsed.displacements, self._parsed.stresses
             return {}, {}
-        # Walk increments accepting all that match the target's identity.
-        target_key = (target.step_name, target.time if target.time is not None else target.load_factor)
-        disp: dict[int, Any] = {}
-        stress: dict[int, Any] = {}
+
+        merged: list[dict[str, Any]] = []
         for inc in self._parsed.increments:
-            inc_key = (inc.type or "static", float(inc.value))
-            target_value = target_key[1] if target_key[1] is not None else float("nan")
-            if inc_key != (target_key[0], float(target_value) if target_value == target_value else inc.value):
-                continue
+            inc_fields = self._fields_in_increment(inc)
+            slot = self._find_disjoint_slot(merged, inc, inc_fields)
+            if slot is None:
+                slot = {
+                    "step_id": inc.step,
+                    "type": inc.type or "static",
+                    "value": float(inc.value),
+                    "disp": {},
+                    "stress": {},
+                    "fields": set(),
+                }
+                merged.append(slot)
             if inc.displacements:
-                disp = inc.displacements
+                slot["disp"] = inc.displacements
             if inc.stresses:
-                stress = inc.stresses
-        if disp or stress:
-            return disp, stress
-        # Final fallback: top-level (single-static-step .frd, no increments)
-        if not self._parsed.increments and step_id == 1:
-            return self._parsed.displacements, self._parsed.stresses
+                slot["stress"] = inc.stresses
+            slot["fields"] |= inc_fields
+
+        for slot in merged:
+            if slot["step_id"] == step_id:
+                return slot["disp"], slot["stress"]
         return {}, {}
 
     @staticmethod
