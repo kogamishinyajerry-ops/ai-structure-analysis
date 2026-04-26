@@ -71,11 +71,19 @@ def _resolve_frd_path(case_id: str, db_frd_path: str | None) -> Path | None:
     for candidate in raw_candidates:
         if not candidate:
             continue
-        if not candidate.is_file():
-            continue
+        # R2-nit (post Codex R2 LOW): anchor the candidate under an
+        # allowed root BEFORE any is_file() probe, so a poisoned
+        # `..`-bearing db_frd_path can't reach a stat() on an
+        # out-of-root path. _is_under_allowed_root resolves the path
+        # (which is itself a filesystem call), but only ever for the
+        # purpose of the anchor check; if the anchor fails, no further
+        # filesystem access happens for this candidate.
         if not _is_under_allowed_root(candidate, roots):
             continue
-        return candidate.resolve()
+        resolved = candidate.resolve()
+        if not resolved.is_file():
+            continue
+        return resolved
     return None
 
 
