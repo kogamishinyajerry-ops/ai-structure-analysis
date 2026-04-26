@@ -1,6 +1,6 @@
 ---
 id: FP-003
-status: proposed
+status: resolved
 created: 2026-04-25
 related_gs: [GS-003]
 related_adr: [ADR-011]
@@ -15,6 +15,8 @@ gs_artifact_pin:
 ---
 
 # FP-003: GS-003 has no hole in the mesh and the prescribed displacement direction contradicts the case description
+
+> **Resolution evidence:** PR #32 (golden_samples/GS-003 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
 
 ## Observed deviation
 

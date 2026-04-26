@@ -1,6 +1,6 @@
 ---
 id: FP-001
-status: proposed
+status: resolved
 created: 2026-04-25
 related_gs: [GS-001]
 related_adr: [ADR-011]
@@ -15,6 +15,8 @@ gs_artifact_pin:
 ---
 
 # FP-001: Cantilever GS theory↔FEA gap is unresolvable as configured; spec carries three versions of the case
+
+> **Resolution evidence:** PR #32 (golden_samples/GS-001 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
 
 ## Observed deviation
 

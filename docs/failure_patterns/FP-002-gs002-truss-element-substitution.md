@@ -1,6 +1,6 @@
 ---
 id: FP-002
-status: proposed
+status: resolved
 created: 2026-04-25
 related_gs: [GS-002]
 related_adr: [ADR-011]
@@ -15,6 +15,8 @@ gs_artifact_pin:
 ---
 
 # FP-002: GS-002 advertises a truss but ships beam elements; theoretical and FEA quantities are comparing different physics
+
+> **Resolution evidence:** PR #32 (golden_samples/GS-002 marked `insufficient_evidence` with this FP cross-referenced in `expected_results.json` and the README banner).
 
 ## Observed deviation
 
