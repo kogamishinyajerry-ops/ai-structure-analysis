@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "established_by": "ADR-012 / AR-2026-04-25-001 / DEC-T0-2026-04-25-001",
+  "doc": "Append-only state for T1 calibration cap. Entries are ordered by `merged_at` (ISO 8601) at read time — PR-number is NOT a reliable proxy for merge order (PR #20 merged before #18 and #19 on 2026-04-25). Last 5 entries determine the ceiling per AR-2026-04-25-001 §1 formula. Pre-ADR-011-baseline PRs excluded; PR #17 (the ADR-011 establishment) is also excluded as bootstrap baseline per T0 verdict. R2 contract (post Codex R1, 2026-04-26): the load path FAILS CLOSED on missing file, schema_version mismatch, duplicate `pr`, missing `merged_at`, or unknown `r1_outcome`.",
+  "outcome_canon": "APPROVE | APPROVE_WITH_NITS | CHANGES_REQUIRED | BLOCKER (NITS counts as APPROVE; CR/BLOCKER count as CHANGES_REQUIRED)",
+  "entries": [
+    {
+      "pr": 18,
+      "sha": "77e6813",
+      "title": "[FF-02] FailurePattern attribution for GS-001/002/003",
+      "merged_at": "2026-04-25T08:53:09Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "1 HIGH + 3 MEDIUM",
+      "r1_review_report": "reports/codex_tool_reports/ff02_r1_review.md",
+      "notes": "Over-claim/prescription, gs_artifact_pin placeholder, HF3 cite inconsistency, README severity scope"
+    },
+    {
+      "pr": 19,
+      "sha": "4a64cfd",
+      "title": "[FF-05] Seed .planning/STATE.md as repo-side execution snapshot",
+      "merged_at": "2026-04-25T08:56:46Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "1 HIGH + 1 MEDIUM",
+      "r1_review_report": "reports/codex_tool_reports/ff05_r1_review.md",
+      "notes": "STATE.md still pre-push state (FF-01/FF-02 listed as pending); invented ADR-012/013 references"
+    },
+    {
+      "pr": 20,
+      "sha": "9362f6d",
+      "title": "Revert direct-push 815945c, preserve portable-path fixes",
+      "merged_at": "2026-04-25T08:33:51Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "1 BLOCKER + 2 SHOULD_FIX",
+      "r1_review_report": "reports/codex_tool_reports/revert_815945c_r1_review.md",
+      "notes": "Revert direction inversion (re-introduced /Users/Zhuanz/ paths); commit message factual error; CI claim overstated"
+    },
+    {
+      "pr": 21,
+      "sha": "2bbf0f1",
+      "title": "chore: post-merge cleanup — STATE.md + Codex review archive",
+      "merged_at": "2026-04-25T10:30:14Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "1 HIGH",
+      "r1_review_report": null,
+      "r1_review_report_pending_archive": true,
+      "notes": "STATE.md Active branches/Open PRs sections underreported (P1-* PRs #11-#16 missing); R1 review still in /tmp/, awaits next housekeeping cycle"
+    },
+    {
+      "pr": 22,
+      "sha": "ac98fc3",
+      "title": "[FF-06] pre-commit path-guard for HF1 forbidden zone",
+      "merged_at": "2026-04-25T10:43:55Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "1 BLOCKER + 2 SHOULD_FIX",
+      "r1_review_report": null,
+      "r1_review_report_pending_archive": true,
+      "notes": "pre-commit pass_filenames misses rename old-paths and deletes (silent HF1 bypass); HF1.6 over-blocks Makefile other targets; override audit trail unenforceable"
+    },
+    {
+      "pr": 23,
+      "sha": "e53b0f7",
+      "title": "[ADR-011] T0 amendments AR-2026-04-25-001 (T2 + HF1 + HF2 + numbering)",
+      "merged_at": "2026-04-25T12:06:52Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "3 BLOCKER + 1 SHOULD_FIX",
+      "r1_review_report": null,
+      "r1_review_report_pending_archive": true,
+      "notes": "ADR-011 amendments PR — Codex R1 returned 3 BLOCKER + 1 SHOULD_FIX, fixed in commit e96904d, then merged after CI green. R1 review report still pending archive into reports/codex_tool_reports/."
+    }
+  ],
+  "computed_at_bootstrap": {
+    "last_5_cr_count": 5,
+    "trailing_approve_count": 0,
+    "base_ceiling": 30,
+    "final_ceiling": 30,
+    "mandatory_codex": true,
+    "blocking": true,
+    "basis": "5 of last 5 = CHANGES_REQUIRED → ceiling 30%"
+  }
+}
