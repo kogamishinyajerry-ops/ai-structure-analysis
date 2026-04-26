@@ -29,33 +29,58 @@ from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
 from backend.app.rag.sources import ALL_SOURCES
 
 
+class _UsageError(SystemExit):
+    """Raised for usage / fatal CLI errors. Exits with code 2 to match
+    the docstring's exit-code contract.
+
+    R2 (post Codex R1 MEDIUM-3): plain `SystemExit("msg")` exits with
+    status 1, conflicting with the documented `2 = usage / fatal`.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(2)
+        self.message = message
+
+
 def _build_kb(embedder_choice: str, persist_dir: Path | None, collection: str) -> KnowledgeBase:
-    """Wire embedder + vector store; lazy-import the heavy deps."""
+    """Wire embedder + vector store; lazy-import the heavy deps.
+
+    R2 (post Codex R1 MEDIUM-3): validate `--persist-dir` BEFORE
+    constructing `BgeM3Embedder()`, so a missing-arg error doesn't
+    require a model download first.
+    """
     if embedder_choice == "mock":
         embedder = MockEmbedder(dim=32)
         store = MemoryVectorStore()
     elif embedder_choice == "bge-m3":
+        # Validate cheap argument before any heavy work.
+        if persist_dir is None:
+            print(
+                "[ingest-rag] --persist-dir is required with --embedder bge-m3",
+                file=sys.stderr,
+            )
+            raise _UsageError("--persist-dir is required with --embedder bge-m3")
+
         # Lazy import — heavy deps. Both the module import AND the
         # `BgeM3Embedder()` constructor lazy-import sentence_transformers,
-        # so wrap both in the same translator: the CLI seam should
-        # always raise SystemExit (clean, user-facing) when the [rag]
-        # extra is missing, never a raw ImportError.
+        # so wrap both in the same translator.
         try:
             from backend.app.rag.embedder import BgeM3Embedder
             from backend.app.rag.store import ChromaVectorStore
 
             embedder = BgeM3Embedder()
         except ImportError as e:
-            raise SystemExit(
+            print(
                 f"[ingest-rag] bge-m3 backend unavailable: {e}. "
-                'Install with: pip install -e ".[rag]"'
-            ) from e
+                'Install with: pip install -e ".[rag]"',
+                file=sys.stderr,
+            )
+            raise _UsageError(f"bge-m3 backend unavailable: {e}") from e
 
-        if persist_dir is None:
-            raise SystemExit("[ingest-rag] --persist-dir is required with --embedder bge-m3")
         store = ChromaVectorStore(persist_dir=persist_dir, collection_name=collection)
     else:
-        raise SystemExit(f"[ingest-rag] unknown --embedder: {embedder_choice}")
+        print(f"[ingest-rag] unknown --embedder: {embedder_choice}", file=sys.stderr)
+        raise _UsageError(f"unknown --embedder: {embedder_choice}")
 
     return KnowledgeBase(embedder, store)
 
@@ -92,29 +117,58 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv[1:])
 
+    available = {lbl for (lbl, _) in ALL_SOURCES}
     selected = ALL_SOURCES
     if args.sources:
-        selected = [(label, fn) for (label, fn) in ALL_SOURCES if label in set(args.sources)]
-        if not selected:
+        # R2 (post Codex R1 MEDIUM-2): reject ANY unknown label, not
+        # just "all unknown". Operator typos used to be silently
+        # ignored, returning success after ingesting only the matched
+        # subset. Now a single typo aborts.
+        unknown = [s for s in args.sources if s not in available]
+        if unknown:
             print(
-                f"[ingest-rag] no registered sources match {args.sources}. "
-                f"Available: {[lbl for (lbl, _) in ALL_SOURCES]}",
+                f"[ingest-rag] unknown --sources labels: {unknown}. "
+                f"Available: {sorted(available)}",
                 file=sys.stderr,
             )
             return 2
+        selected = [(label, fn) for (label, fn) in ALL_SOURCES if label in set(args.sources)]
 
-    kb = _build_kb(args.embedder, args.persist_dir, args.collection)
+    try:
+        kb = _build_kb(args.embedder, args.persist_dir, args.collection)
+    except _UsageError as e:
+        print(f"[ingest-rag] {e.message}", file=sys.stderr)
+        return 2
+
     print(f"[ingest-rag] embedder: {kb.embedder_id}")
     print(f"[ingest-rag] root: {args.root}")
     print(f"[ingest-rag] sources: {[lbl for (lbl, _) in selected]}")
     print()
 
+    # R2 (post Codex R1 MEDIUM-1): collect ALL Documents across ALL
+    # selected sources BEFORE any ingest, so a duplicate-doc_id /
+    # symlink-escape failure in source N aborts the run before
+    # source N-1's chunks are written. Fail-closed at the whole-CLI
+    # level — the alternative (ingest each source then rollback) is
+    # more complex than the corpus integrity warrants.
+    pending: list[tuple[str, list]] = []
+    for label, iter_fn in selected:
+        try:
+            docs = list(iter_fn(args.root))
+        except (ValueError, OSError) as e:
+            print(
+                f"[ingest-rag] source {label!r} failed: {e}. Aborting "
+                "ingest before any source is written to the KB store.",
+                file=sys.stderr,
+            )
+            return 2
+        pending.append((label, docs))
+
     total_docs = 0
     total_chunks = 0
     per_source: list[tuple[str, int, int]] = []
 
-    for label, iter_fn in selected:
-        docs = list(iter_fn(args.root))
+    for label, docs in pending:
         if not docs:
             print(f"  [{label:16s}] 0 documents (skipping)")
             per_source.append((label, 0, 0))
@@ -129,7 +183,10 @@ def main(argv: list[str]) -> int:
         )
 
     print()
-    print(f"[ingest-rag] TOTAL: {total_docs} docs → {total_chunks} chunks across {len(per_source)} sources")
+    print(
+        f"[ingest-rag] TOTAL: {total_docs} docs → {total_chunks} chunks "
+        f"across {len(per_source)} sources"
+    )
     return 0 if total_chunks > 0 else 1
 
 

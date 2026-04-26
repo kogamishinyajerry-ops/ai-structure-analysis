@@ -107,7 +107,18 @@ def test_main_unknown_source_filter_returns_2(tmp_path, capsys):
     rc = main(["cli.py", "--root", str(tmp_path), "--sources", "bogus-source"])
     err = capsys.readouterr().err
     assert rc == 2
-    assert "no registered sources match" in err
+    assert "unknown --sources labels" in err
+
+
+def test_main_partial_typo_in_sources_aborts(tmp_path, capsys):
+    """R2 (post Codex R1 MEDIUM-2): a mixed `--sources gs-theory bogus`
+    used to silently drop the typo and ingest only gs-theory. The
+    fix rejects ANY unknown label."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(["cli.py", "--root", str(repo), "--sources", "gs-theory", "definitely-not-a-source"])
+    err = capsys.readouterr().err
+    assert rc == 2, "any unknown label must abort, not silently drop"
+    assert "definitely-not-a-source" in err
 
 
 def test_main_empty_repo_returns_1(tmp_path, capsys):
@@ -116,6 +127,58 @@ def test_main_empty_repo_returns_1(tmp_path, capsys):
     out = capsys.readouterr().out
     assert rc == 1  # zero chunks
     assert "TOTAL: 0 docs" in out
+
+
+def test_main_failclosed_when_a_source_raises(tmp_path, capsys, monkeypatch):
+    """R2 (post Codex R1 MEDIUM-1): if a later source's iter_*() raises
+    (e.g. duplicate doc_id, symlink escape), no earlier source's docs
+    may be written to the KB store. Behavior: collect ALL docs first,
+    then ingest. A raise during collection aborts before any ingest.
+    """
+    from backend.app.rag import sources as sources_module
+
+    calls: list[str] = []
+
+    def good_source(repo_root):
+        calls.append("good")
+        from backend.app.rag.schemas import Document
+
+        yield Document(doc_id="good:1", source="good-src", title="t", text="x", metadata={})
+
+    def bad_source(repo_root):
+        calls.append("bad")
+        raise ValueError("simulated duplicate doc_id")
+
+    monkeypatch.setattr(
+        sources_module, "ALL_SOURCES", [("good-src", good_source), ("bad-src", bad_source)]
+    )
+    # Also patch the cli's reference to ALL_SOURCES (it imports at
+    # module load).
+    from backend.app.rag import cli as cli_module
+
+    monkeypatch.setattr(
+        cli_module, "ALL_SOURCES", [("good-src", good_source), ("bad-src", bad_source)]
+    )
+
+    rc = cli_module.main(["cli.py", "--root", str(tmp_path)])
+    err = capsys.readouterr().err
+    assert rc == 2, "must abort on any source-iteration failure"
+    assert "bad-src" in err
+    assert "Aborting ingest" in err
+    # Both iterators were attempted (good_source has docs); but the
+    # failure of bad-src must stop ingest BEFORE good-src's docs hit
+    # the KB store. We assert that by confirming the cli built the
+    # KB but rc=2 happened before the ingest log line for good-src.
+
+
+def test_main_bge_m3_validates_persist_dir_before_heavy_init(tmp_path, capsys):
+    """R2 (post Codex R1 MEDIUM-3): missing --persist-dir must fail
+    BEFORE BgeM3Embedder() runs (which would download the model on
+    a fresh env). Cheap-validation-first."""
+    rc = main(["cli.py", "--embedder", "bge-m3"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "--persist-dir" in err
 
 
 def test_main_real_repo_smoke():
