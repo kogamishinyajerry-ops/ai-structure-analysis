@@ -19,8 +19,10 @@ Usage:
 
 from __future__ import annotations
 
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 from backend.app.rag.preflight_summary import PreflightSummary
 
@@ -51,9 +53,9 @@ class PublishResult:
     """
 
     posted: bool
-    comment_url: Optional[str] = None
-    status_code: Optional[int] = None
-    error: Optional[str] = None
+    comment_url: str | None = None
+    status_code: int | None = None
+    error: str | None = None
     summary_was_empty: bool = False
 
 
@@ -62,9 +64,14 @@ class PublishResult:
 PostCallback = Callable[..., Any]
 
 
-def _validate_inputs(repo: str, pr_number: int) -> Optional[str]:
-    if not repo or "/" not in repo:
-        return f"invalid repo: {repo!r}"
+# Mirror github_writeback's _REPO_RE so preflight_publish rejects the
+# same set of malformed repo identifiers (no path traversal etc.).
+_REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})/[A-Za-z0-9._-]{1,100}$")
+
+
+def _validate_inputs(repo: str, pr_number: int) -> str | None:
+    if not repo or not _REPO_RE.match(repo):
+        return f"invalid repo: {repo!r} (expected owner/name)"
     if pr_number <= 0:
         return f"invalid pr_number: {pr_number}"
     return None
@@ -75,7 +82,7 @@ def publish_preflight(
     repo: str,
     pr_number: int,
     *,
-    post_callback: Optional[PostCallback] = None,
+    post_callback: PostCallback | None = None,
     skip_when_empty: bool = True,
     header_marker: str = "<!-- ai-fea-preflight -->",
 ) -> PublishResult:

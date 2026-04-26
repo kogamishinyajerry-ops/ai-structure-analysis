@@ -9,7 +9,6 @@ import pytest
 
 from backend.app.well_harness import github_writeback as gw
 
-
 # ---------------------------------------------------------------------------
 # build_run_summary_comment
 # ---------------------------------------------------------------------------
@@ -178,9 +177,7 @@ def test_post_201_returns_comment_url():
     mock_client, mock_resp = _mock_client_response(
         201, {"html_url": "https://github.com/o/r/issues/1#comment-42"}
     )
-    r = gw.post_pr_comment(
-        repo="o/r", pr_number=1, body="hi there", token="t", client=mock_client
-    )
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi there", token="t", client=mock_client)
     assert r.posted is True
     assert r.comment_url == "https://github.com/o/r/issues/1#comment-42"
     assert r.status_code == 201
@@ -196,21 +193,15 @@ def test_post_201_returns_comment_url():
 
 def test_post_404_returns_error():
     mock_client, _ = _mock_client_response(404, {"message": "Not Found"}, "Not Found")
-    r = gw.post_pr_comment(
-        repo="o/r", pr_number=99999, body="hi", token="t", client=mock_client
-    )
+    r = gw.post_pr_comment(repo="o/r", pr_number=99999, body="hi", token="t", client=mock_client)
     assert r.posted is False
     assert r.status_code == 404
     assert "404" in r.error
 
 
 def test_post_403_rate_limit_returns_error():
-    mock_client, _ = _mock_client_response(
-        403, {"message": "rate limited"}, "rate limited"
-    )
-    r = gw.post_pr_comment(
-        repo="o/r", pr_number=1, body="hi", token="t", client=mock_client
-    )
+    mock_client, _ = _mock_client_response(403, {"message": "rate limited"}, "rate limited")
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
     assert r.posted is False
     assert r.status_code == 403
 
@@ -218,9 +209,7 @@ def test_post_403_rate_limit_returns_error():
 def test_post_handles_transport_error():
     mock_client = MagicMock(spec=httpx.Client)
     mock_client.post.side_effect = httpx.ConnectError("network down")
-    r = gw.post_pr_comment(
-        repo="o/r", pr_number=1, body="hi", token="t", client=mock_client
-    )
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
     assert r.posted is False
     assert "transport error" in r.error
     assert "network down" in r.error
@@ -228,9 +217,7 @@ def test_post_handles_transport_error():
 
 def test_post_uses_resolved_token_when_none_passed(monkeypatch):
     monkeypatch.setenv("GH_TOKEN", "from-env")
-    mock_client, _ = _mock_client_response(
-        201, {"html_url": "https://github.com/o/r/issues/1"}
-    )
+    mock_client, _ = _mock_client_response(201, {"html_url": "https://github.com/o/r/issues/1"})
     gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", client=mock_client)
     args, kwargs = mock_client.post.call_args
     assert kwargs["headers"]["Authorization"] == "Bearer from-env"
@@ -238,12 +225,112 @@ def test_post_uses_resolved_token_when_none_passed(monkeypatch):
 
 def test_post_long_body_truncates_error_message():
     """A very long error response shouldn't bloat the error string."""
-    mock_client, _ = _mock_client_response(
-        500, {"message": "boom"}, "x" * 10000
-    )
-    r = gw.post_pr_comment(
-        repo="o/r", pr_number=1, body="hi", token="t", client=mock_client
-    )
+    mock_client, _ = _mock_client_response(500, {"message": "boom"}, "x" * 10000)
+    r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi", token="t", client=mock_client)
     assert r.posted is False
     # error message truncated to 200 chars of response body
     assert len(r.error) < 350
+
+
+# ---------------------------------------------------------------------------
+# Pre-emptive R2 hardening tests — repo regex, body cap, token strip,
+# subprocess timeout. Lifted from the same review patterns as PR #59/#60/#61.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_repo",
+    [
+        "../etc/passwd",  # path traversal
+        "owner/repo/extra",  # too many parts
+        "owner/",  # empty name
+        "/repo",  # empty owner
+        "-bad/repo",  # owner can't lead with hyphen
+        "owner with space/repo",  # space
+        "owner/repo with space",  # space in name
+        "owner//repo",  # double slash
+    ],
+)
+def test_post_rejects_malformed_repo(bad_repo):
+    """R2: pre-fix accepted any string with a slash, including
+    `../etc/passwd`. The new _REPO_RE rejects path-traversing
+    patterns and other GitHub-impossible identifiers."""
+    r = gw.post_pr_comment(repo=bad_repo, pr_number=1, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid repo" in r.error
+
+
+@pytest.mark.parametrize(
+    "good_repo",
+    [
+        "o/r",  # boundary 1-char owner/name
+        "owner/repo",  # plain
+        "Owner-Name/repo.with.dots",  # dots, hyphens
+        "user_name/_under_score",  # underscores
+        "kogamishinyajerry-ops/ai-structure-analysis",  # this repo
+    ],
+)
+def test_post_accepts_valid_repo(good_repo):
+    """Sanity-check: real-shape repos still pass through to the HTTP layer."""
+    mock_client, _ = _mock_client_response(201, {"html_url": "https://github.com/x/y/issues/1#1"})
+    r = gw.post_pr_comment(repo=good_repo, pr_number=1, body="hi", token="t", client=mock_client)
+    assert r.posted is True
+
+
+def test_post_truncates_body_over_64kb():
+    """R2: GitHub caps issue/PR comment bodies at ~65,536 chars. Pre-fix
+    a longer body got a 422 from the API. Now the writeback truncates
+    with a clear suffix so the operator gets a useful summary instead."""
+    mock_client, _ = _mock_client_response(201, {"html_url": "https://github.com/o/r/issues/1#1"})
+    huge_body = "x" * (gw.GITHUB_COMMENT_BODY_LIMIT + 5000)
+    gw.post_pr_comment(repo="o/r", pr_number=1, body=huge_body, token="t", client=mock_client)
+    args, kwargs = mock_client.post.call_args
+    sent_body = kwargs["json"]["body"]
+    assert len(sent_body) <= gw.GITHUB_COMMENT_BODY_LIMIT
+    assert "truncated by github_writeback" in sent_body
+
+
+def test_post_does_not_truncate_body_under_limit():
+    """Sanity: bodies within the limit are sent verbatim."""
+    mock_client, _ = _mock_client_response(201, {"html_url": "https://github.com/o/r/issues/1#1"})
+    body = "x" * 100
+    gw.post_pr_comment(repo="o/r", pr_number=1, body=body, token="t", client=mock_client)
+    args, kwargs = mock_client.post.call_args
+    assert kwargs["json"]["body"] == body
+    assert "truncated" not in kwargs["json"]["body"]
+
+
+def test_resolve_token_strips_env_whitespace(monkeypatch):
+    """R2: a `.env` file with `GH_TOKEN=ghp_xxx\\n` used to leak the
+    newline into `Bearer ghp_xxx\\n`, which GitHub rejects. Now stripped."""
+    monkeypatch.setenv("GH_TOKEN", "  ghp_padded_token  \n")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    tok = gw._resolve_token()
+    assert tok == "ghp_padded_token"
+
+
+def test_resolve_token_empty_env_var_falls_through(monkeypatch):
+    """R2: GH_TOKEN='   ' (whitespace only) must be treated as missing,
+    not returned as a literal whitespace token."""
+    monkeypatch.setenv("GH_TOKEN", "   ")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: None)
+    tok = gw._resolve_token()
+    assert tok is None
+
+
+def test_resolve_token_subprocess_timeout_returns_none(monkeypatch):
+    """R2: a hung `gh auth token` must not hang the publisher chain.
+    The subprocess.timeout=5.0 raises TimeoutExpired which is caught."""
+    import subprocess as sp
+
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setattr(gw.shutil, "which", lambda _: "/usr/bin/gh")
+
+    def _hang(*args, **kwargs):
+        raise sp.TimeoutExpired(cmd=args[0], timeout=kwargs.get("timeout", 5.0))
+
+    monkeypatch.setattr(gw.subprocess, "check_output", _hang)
+    tok = gw._resolve_token()
+    assert tok is None

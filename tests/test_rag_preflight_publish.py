@@ -337,3 +337,59 @@ def test_callback_returning_bare_object_does_not_crash():
     assert result.comment_url is None
     assert result.status_code is None
     assert result.error is None
+
+
+# ---------------------------------------------------------------------------
+# Pre-emptive R2: stricter repo validation (mirrors github_writeback._REPO_RE)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "bad_repo",
+    [
+        "../etc/passwd",  # path traversal
+        "owner/repo/extra",  # too many parts
+        "owner/",  # empty name
+        "/repo",  # empty owner
+        "-bad/repo",  # owner can't lead with hyphen
+        "owner with space/repo",  # space
+    ],
+)
+def test_publish_rejects_path_traversal_repo(bad_repo):
+    """R2 (lifted from github_writeback): pre-fix accepted any string
+    with a slash. Now path-traversing identifiers are rejected with
+    a clear error so a malformed `repo` input cannot reach the
+    GitHub API URL builder."""
+    record = _CallRecord()
+
+    def _cb(repo, pr_number, body, **kwargs):
+        record.n_calls += 1
+        return None  # would crash downstream if reached
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo=bad_repo,
+        pr_number=1,
+        post_callback=_cb,
+    )
+    assert result.posted is False
+    assert "invalid repo" in (result.error or "")
+    assert record.n_calls == 0, "callback must not be invoked on invalid repo"
+
+
+def test_publish_accepts_real_shape_repo():
+    """Sanity: real-shape repos still pass through and reach the callback."""
+    record = _CallRecord()
+
+    def _cb(repo, pr_number, body, **kwargs):
+        record.n_calls += 1
+        return _StubResult()
+
+    result = publish_preflight(
+        _populated_summary(),
+        repo="kogamishinyajerry-ops/ai-structure-analysis",
+        pr_number=42,
+        post_callback=_cb,
+    )
+    assert result.posted is True
+    assert record.n_calls == 1
