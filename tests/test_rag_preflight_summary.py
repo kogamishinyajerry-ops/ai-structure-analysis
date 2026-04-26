@@ -330,3 +330,180 @@ def test_combine_with_real_repo_corpus():
     assert summary.has_advice()
     # markdown should be non-trivial
     assert len(summary.markdown) > 200
+
+
+# ---------------------------------------------------------------------------
+# R2 (post Codex R1 on PR #63) — confidence enums, markdown escaping,
+# quantities container validation, plus coverage gaps Codex flagged.
+# ---------------------------------------------------------------------------
+
+
+def test_confidence_int_enum_value_does_not_crash():
+    """R2 MED-1: a normal `Enum(auto())` produces int .value. Pre-fix
+    `_format_quantity_line` called `.lower()` on the int and crashed
+    with AttributeError. After fix: coerce via str() before lower."""
+    import enum
+
+    class IntConf(enum.Enum):
+        LOW = enum.auto()
+        HIGH = enum.auto()
+
+    @dataclass(frozen=True)
+    class _Q:
+        name: str
+        value: float
+        unit: str
+        confidence: IntConf
+        location: str | None = None
+
+    q = _Q(name="x", value=1.0, unit="mm", confidence=IntConf.HIGH)
+    line = _format_quantity_line(q)
+    assert "x = 1" in line
+    # The int value of the enum should be coerced to a string and lowercased
+    assert "(2)" in line or "2)" in line  # IntConf.HIGH = 2 by auto()
+
+
+def test_aggregate_confidence_int_enum_does_not_crash():
+    """R2 MED-1 sibling: _aggregate_confidence must also handle int enums."""
+    import enum
+
+    class IntConf(enum.Enum):
+        LOW = enum.auto()
+        HIGH = enum.auto()
+
+    @dataclass(frozen=True)
+    class _Q:
+        confidence: IntConf
+
+    # Should not raise; treats int values as unknown → rolls down to "low"
+    result = _aggregate_confidence([_Q(confidence=IntConf.HIGH), _Q(confidence=IntConf.LOW)])
+    assert result == "low"
+
+
+def test_markdown_injection_in_notes_does_not_break_block():
+    """R2 MED-2: a notes field containing markdown directives must not
+    create new headings or list items in the rendered block."""
+    hint = _StubHint(
+        case_id="GS-INJ",
+        provider="evil@v0",
+        notes="## hi\n- boom\n* injected\n# heading",
+        quantities=[],
+    )
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(hint, advice)
+    md = summary.markdown
+    # Only the original `## Preflight ...` heading at offset 0 must
+    # appear. Pre-fix, a notes value with `\n## hi` injected a second
+    # `\n## ` line. After md_escape, newlines are collapsed so the
+    # `## hi` text becomes inline within the notes line.
+    assert md.count("\n## ") == 0, (
+        f"injection created a new heading line: {md!r}"
+    )
+    # The injected text remains visible (escaped) inline within the notes
+    assert "## hi" in md
+    # `### ` headings present are only the structural ones (Surrogate /
+    # Corpus advice). Injected text shouldn't add any.
+    assert md.count("\n### ") == 2
+
+
+def test_markdown_injection_in_quantity_name_neutralized():
+    """R2 MED-2: a quantity name containing newline + heading marker
+    must not reshape the rendered block."""
+    q = _StubQuantity(
+        name="evil\n## broken_heading",
+        value=1.0,
+        unit="mm",
+        confidence="high",
+    )
+    hint = _StubHint(quantities=[q])
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(hint, advice)
+    md = summary.markdown
+    # No injected `\n## ` line; the `##` text is escaped/inline within
+    # the quantity bullet line.
+    assert md.count("\n## ") == 0
+    # The escaped text is still visible inline (just not as a heading)
+    assert "## broken_heading" in md
+
+
+def test_quantities_string_rejected(tmp_path):
+    """R2 LOW: hint.quantities = 'abc' is iterable but produces 3 bogus
+    lines. Must raise ValueError with a clear message instead."""
+    hint = _StubHint(quantities="abc")  # type: ignore[arg-type]
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    with pytest.raises(ValueError, match="quantities must be"):
+        combine(hint, advice)
+
+
+def test_quantities_int_rejected():
+    """R2 LOW: a non-iterable like 123 must raise a clear ValueError."""
+
+    @dataclass(frozen=True)
+    class _BadHint:
+        case_id: str = "GS-X"
+        provider: str = "p"
+        quantities: int = 123  # type: ignore[assignment]
+        notes: str = ""
+
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    with pytest.raises(ValueError, match="quantities must be"):
+        combine(_BadHint(), advice)
+
+
+def test_quantities_none_treated_as_empty():
+    """A None quantities (missing-field-via-getattr-default) must be
+    treated as empty, not raise."""
+
+    @dataclass(frozen=True)
+    class _MissingHint:
+        case_id: str = "GS-X"
+        provider: str = "p"
+        notes: str = ""
+        # No quantities attribute at all
+
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(_MissingHint(), advice)
+    assert not summary.has_quantities()
+
+
+def test_combine_both_inputs_empty():
+    """R2 coverage gap: empty hint + empty advice must produce a
+    well-formed (if minimal) summary, not crash or empty output."""
+    hint = _StubHint(case_id="GS-EMPTY", provider="none", quantities=[], notes="")
+    advice = ReviewerAdvice(query="q", verdict="Accept", fault_class="none")
+    summary = combine(hint, advice)
+    assert summary.is_empty()
+    # markdown still renders the headings + placeholders
+    assert "## Preflight — GS-EMPTY" in summary.markdown
+    assert "_(no predictions)_" in summary.markdown
+    assert "_(no corpus hits)_" in summary.markdown
+
+
+def test_combine_handles_nan_value():
+    """R2 coverage gap: a NaN value in a quantity must render without
+    crashing. `:.4g` formats NaN as 'nan'."""
+    q = _StubQuantity(name="x", value=float("nan"), unit="mm", confidence="low")
+    hint = _StubHint(quantities=[q])
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(hint, advice)
+    assert "nan" in summary.markdown.lower()
+
+
+def test_combine_handles_inf_value():
+    q = _StubQuantity(name="x", value=float("inf"), unit="mm", confidence="low")
+    hint = _StubHint(quantities=[q])
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(hint, advice)
+    assert "inf" in summary.markdown.lower()
+
+
+def test_summary_is_pickle_round_trip():
+    """R2: PreflightSummary must survive pickle for log/event surfaces."""
+    import pickle
+
+    hint = _StubHint(quantities=[_StubQuantity(name="x", value=1.0, unit="mm")])
+    advice = ReviewerAdvice(query="q", verdict="Reject", fault_class="unknown")
+    summary = combine(hint, advice)
+    restored = pickle.loads(pickle.dumps(summary))
+    assert restored.case_id == summary.case_id
+    assert restored.markdown == summary.markdown

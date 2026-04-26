@@ -61,22 +61,51 @@ class PreflightSummary:
         return not self.has_quantities() and not self.has_advice()
 
 
-def _format_quantity_line(q: Any) -> str:
-    """One line per quantity. Robust to missing fields."""
-    name = getattr(q, "name", "?")
-    value = getattr(q, "value", float("nan"))
-    unit = getattr(q, "unit", "")
-    location = getattr(q, "location", None) or ""
-    confidence = getattr(q, "confidence", "low")
-    # confidence may be an enum (HintConfidence.LOW) or a plain str
-    confidence_str = (
-        confidence.value if hasattr(confidence, "value") else str(confidence)
-    ).lower()
+def _confidence_to_str(c: Any) -> str:
+    """Coerce a confidence value to a lowercase string.
 
-    if isinstance(value, float):
-        value_str = f"{value:.4g}"
-    else:
-        value_str = str(value)
+    R2 (post Codex R1 MEDIUM-1 on PR #63): the prior code did
+    `c.value.lower()` which crashes when `.value` is an int (e.g.
+    `Enum("...", auto)` produces int values). Wrapping in `str()`
+    handles both string-backed and int-backed enums plus plain strings.
+    """
+    raw = c.value if hasattr(c, "value") else c
+    return str(raw).lower()
+
+
+def _md_escape(s: Any) -> str:
+    """Best-effort markdown escape for free-text fields rendered into
+    the preflight block.
+
+    R2 (post Codex R1 MEDIUM-2 on PR #63): the rendered preflight goes
+    into PR comments and agent prompts. A `notes` field like
+    `## hi\\n- boom` used to inject a real heading and a real list
+    item into the block. Strip newlines + escape the most damaging
+    leading-line markers (#, -, *, >, |, `, [, ]). This is not a
+    full sanitiser — it is a pragmatic guard against accidental
+    markdown reshape, which is what we actually saw.
+    """
+    if s is None:
+        return ""
+    text = str(s)
+    # Collapse newlines so a single field cannot start a new
+    # markdown block.
+    text = text.replace("\r", " ").replace("\n", " ")
+    # Escape backticks (would close/open code spans inside lines).
+    text = text.replace("`", "\\`")
+    return text
+
+
+def _format_quantity_line(q: Any) -> str:
+    """One line per quantity. Robust to missing fields and adversarial
+    free-text inputs (R2: markdown-escapes name / unit / location)."""
+    name = _md_escape(getattr(q, "name", "?"))
+    value = getattr(q, "value", float("nan"))
+    unit = _md_escape(getattr(q, "unit", ""))
+    location = _md_escape(getattr(q, "location", None) or "")
+    confidence_str = _confidence_to_str(getattr(q, "confidence", "low"))
+
+    value_str = f"{value:.4g}" if isinstance(value, float) else _md_escape(value)
 
     base = f"  - {name} = {value_str} {unit}".rstrip()
     if location:
@@ -89,11 +118,7 @@ def _aggregate_confidence(quantities: list[Any]) -> str:
     """Roll up per-quantity confidence into a single indicator."""
     if not quantities:
         return "n/a"
-    levels = []
-    for q in quantities:
-        c = getattr(q, "confidence", "low")
-        c_str = (c.value if hasattr(c, "value") else str(c)).lower()
-        levels.append(c_str)
+    levels = [_confidence_to_str(getattr(q, "confidence", "low")) for q in quantities]
     if all(level == "high" for level in levels):
         return "high"
     if all(level in ("high", "medium") for level in levels):
@@ -118,20 +143,35 @@ def _render_markdown(
     confidence_indicator: str,
     notes: str,
 ) -> str:
+    """Render the combined preflight block.
+
+    R2 (post Codex R1 MEDIUM-2): case_id / verdict / fault_class /
+    provider / notes are escaped before substitution to prevent free-
+    text from reshaping the markdown structure when this block is
+    surfaced in PR comments / agent prompts.
+    """
+    case_id_e = _md_escape(case_id)
+    verdict_e = _md_escape(verdict)
+    fault_e = _md_escape(fault_class)
+    provider_e = _md_escape(provider)
+    notes_e = _md_escape(notes)
+
     parts: list[str] = []
-    parts.append(f"## Preflight — {case_id}")
+    parts.append(f"## Preflight — {case_id_e}")
     parts.append("")
-    parts.append(f"**Verdict:** {verdict}    **Fault:** {fault_class}    "
-                 f"**Surrogate confidence:** {confidence_indicator}")
+    parts.append(
+        f"**Verdict:** {verdict_e}    **Fault:** {fault_e}    "
+        f"**Surrogate confidence:** {confidence_indicator}"
+    )
     parts.append("")
-    parts.append(f"### Surrogate predictions ({provider})")
+    parts.append(f"### Surrogate predictions ({provider_e})")
     if quantity_lines:
         parts.extend(quantity_lines)
     else:
         parts.append("  _(no predictions)_")
-    if notes:
+    if notes_e:
         parts.append("")
-        parts.append(f"  _notes:_ {notes}")
+        parts.append(f"  _notes:_ {notes_e}")
     parts.append("")
     parts.append("### Corpus advice")
     if advice_lines:
@@ -170,7 +210,27 @@ def combine(
     case_id = getattr(hint, "case_id", "<unknown-case>")
     provider = getattr(hint, "provider", "<unknown-provider>")
     notes = getattr(hint, "notes", "") or ""
-    quantities = list(getattr(hint, "quantities", []) or [])
+
+    # R2 (post Codex R1 LOW on PR #63): validate the duck-typed
+    # `quantities` container. Pre-fix, `hint.quantities = "abc"` (a
+    # string) was iterable and produced 3 bogus quantity lines —
+    # silently nonsensical output. Explicitly reject strings/bytes,
+    # accept None / list / tuple / generator / any other true iterable.
+    raw_quantities = getattr(hint, "quantities", None)
+    if raw_quantities is None:
+        quantities: list[Any] = []
+    elif isinstance(raw_quantities, (str, bytes)):
+        raise ValueError(
+            f"hint.quantities must be an iterable of quantity objects, "
+            f"got a {type(raw_quantities).__name__} ({raw_quantities!r:.40})"
+        )
+    else:
+        try:
+            quantities = list(raw_quantities)
+        except TypeError as e:
+            raise ValueError(
+                f"hint.quantities must be iterable, got {type(raw_quantities).__name__}: {e}"
+            ) from e
 
     quantity_lines = tuple(_format_quantity_line(q) for q in quantities)
     confidence_indicator = _aggregate_confidence(quantities)
