@@ -1,0 +1,16 @@
+case_id: AI-FEA-P1-02
+run_id: run-p1-02-hotsmoke-gs001
+generated_at: '2026-04-18T09:02:13.360484+00:00'
+git:
+  branch: feature/AI-FEA-P1-02-hot-smoke
+  sha: 02eed66b9f5569375997035f599e072214637f81
+tool_versions:
+  calculix: '2.20'
+  python: 3.11.15
+  frd_parser: ascii-v2
+  reporter: markdown-v2
+  vtp_exporter: point-cloud-v1
+execution_mode:
+  replay: false
+  geometry_source: real
+seed: null
