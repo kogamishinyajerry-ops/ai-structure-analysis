@@ -8,6 +8,7 @@ import pytest
 
 try:
     from backend.app.rag.advise_cli import _format_hit, _UsageError, main
+    from backend.app.rag.reviewer_advisor import KNOWN_VERDICTS
     from backend.app.rag.sources import ALL_SOURCES
 except ImportError as e:
     pytest.skip(f"advise_cli imports failed: {e}", allow_module_level=True)
@@ -358,9 +359,10 @@ def test_usage_error_exits_with_code_2_not_1():
 
 
 def test_unknown_verdict_translates_to_rc_2(tmp_path, capsys):
-    """R2: advise() raises ValueError on unknown verdict (per PR #61).
-    The CLI must catch and translate to rc=2 + single stderr line, not
-    let a traceback escape."""
+    """R2 (post Codex R1 MEDIUM on PR #62): unknown --verdict must
+    fail BEFORE the KB is built (cheap-validation-first), not after.
+    The CLI catches the rejection and translates to rc=2 + single
+    stderr line, no traceback."""
     repo = _make_synth_repo(tmp_path)
     rc = main(
         [
@@ -375,13 +377,13 @@ def test_unknown_verdict_translates_to_rc_2(tmp_path, capsys):
     )
     err = capsys.readouterr().err
     assert rc == 2
-    assert "unknown verdict" in err
+    assert "unknown --verdict" in err
     assert err.count("[advise-rag]") == 1
     assert "Traceback" not in err
 
 
 def test_lowercase_verdict_translates_to_rc_2(tmp_path, capsys):
-    """'reject' is not canonical; advise() rejects it; CLI returns rc=2."""
+    """'reject' is not canonical; pre-KB validation rejects with rc=2."""
     repo = _make_synth_repo(tmp_path)
     rc = main(
         [
@@ -396,7 +398,59 @@ def test_lowercase_verdict_translates_to_rc_2(tmp_path, capsys):
     )
     err = capsys.readouterr().err
     assert rc == 2
-    assert "unknown verdict" in err
+    assert "unknown --verdict" in err
+
+
+def test_invalid_verdict_does_not_build_kb(tmp_path, monkeypatch, capsys):
+    """R2 MED: invalid --verdict must short-circuit BEFORE _build_kb()
+    runs. Without this, an operator typo would trigger a ~2GB
+    BgeM3Embedder model download even though the run would fail anyway."""
+    import backend.app.rag.advise_cli as amod
+
+    build_kb_called: list[bool] = []
+    orig = amod._build_kb
+
+    def _spy(*args, **kwargs):
+        build_kb_called.append(True)
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(amod, "_build_kb", _spy)
+
+    rc = amod.main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "BogusVerdict",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(tmp_path),
+        ]
+    )
+    capsys.readouterr()  # drain
+    assert rc == 2
+    assert build_kb_called == [], (
+        "_build_kb was called despite invalid verdict — cheap-validation-first violated"
+    )
+
+
+def test_invalid_verdict_unknown_listed_in_error(tmp_path, capsys):
+    """The pre-KB error message must list the canonical KNOWN_VERDICTS
+    so the operator can recover from a typo without grepping source."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "RejectButTypo",
+            "--root",
+            str(repo),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert rc == 2
+    for v in KNOWN_VERDICTS:
+        assert v in err, f"{v!r} not listed in pre-KB error message"
 
 
 def test_whitespace_verdict_normalized_then_runs(tmp_path, capsys):
@@ -419,6 +473,55 @@ def test_whitespace_verdict_normalized_then_runs(tmp_path, capsys):
     assert rc in (0, 1)
     assert "unknown verdict" not in err
     assert "Traceback" not in err
+
+
+def test_header_echoes_normalized_verdict_not_padded(tmp_path, capsys):
+    """R2 (post Codex R1 LOW on PR #62): the `[advise-rag] verdict:`
+    header line must echo the canonical (stripped) form, matching the
+    query / summary which use the normalized verdict. Pre-fix the
+    header showed the raw padded value while query showed canonical."""
+    repo = _make_synth_repo(tmp_path)
+    main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "  Reject  ",
+            "--fault",
+            "solver_convergence",
+            "--root",
+            str(repo),
+        ]
+    )
+    out = capsys.readouterr().out
+    # Find the header verdict line
+    header_lines = [ln for ln in out.splitlines() if ln.startswith("[advise-rag] verdict:")]
+    assert header_lines, "no [advise-rag] verdict: header line found"
+    # Must NOT contain the padded form; must contain the canonical form
+    assert "  Reject  " not in header_lines[0]
+    assert "'Reject'" in header_lines[0]
+
+
+def test_unknown_fault_warning_text_describes_real_behavior(tmp_path, capsys):
+    """R2 (post Codex R1 LOW on PR #62): the unknown-fault warning
+    used to claim 'falling back to generic query', but `_build_query`
+    actually uses the raw fault token verbatim. The fixed message
+    must say 'using the raw fault token verbatim'."""
+    repo = _make_synth_repo(tmp_path)
+    main(
+        [
+            "advise_cli.py",
+            "--verdict",
+            "Reject",
+            "--fault",
+            "totally_made_up_fault",
+            "--root",
+            str(repo),
+        ]
+    )
+    err = capsys.readouterr().err
+    assert "raw fault token verbatim" in err
+    # Also confirm the misleading old wording is gone:
+    assert "falling back to generic query" not in err
 
 
 def test_bge_m3_chromadb_constructor_failure_rc_2(monkeypatch, capsys):

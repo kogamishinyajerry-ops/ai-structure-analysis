@@ -27,6 +27,7 @@ from pathlib import Path
 from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
 from backend.app.rag.reviewer_advisor import (
     FAULT_QUERY_SEEDS,
+    KNOWN_VERDICTS,
     advise,
 )
 from backend.app.rag.sources import ALL_SOURCES
@@ -171,12 +172,29 @@ def main(argv: list[str]) -> int:
             )
             return 2
 
+    # R2 (post Codex R1 MEDIUM on PR #62): validate --verdict BEFORE
+    # building the KB so a typo doesn't trigger a ~2GB BgeM3Embedder
+    # download. The verdict check inside advise() is the source of
+    # truth; we mirror the same normalization here (strip + canonical-set).
+    verdict_norm = args.verdict.strip() if isinstance(args.verdict, str) else args.verdict
+    if not isinstance(verdict_norm, str) or not verdict_norm:
+        print("[advise-rag] --verdict must be a non-empty string", file=sys.stderr)
+        return 2
+    if verdict_norm not in KNOWN_VERDICTS:
+        print(
+            f"[advise-rag] unknown --verdict: {verdict_norm!r}. Known: {sorted(KNOWN_VERDICTS)}",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.fault not in FAULT_QUERY_SEEDS:
-        # Don't reject — _build_query has a fallback. But warn to stderr
-        # so operators notice typos.
+        # R2 (post Codex R1 LOW on PR #62): the warning used to say
+        # "falling back to generic query" but `_build_query` actually
+        # composes the raw fault token verbatim (just spaces-for-
+        # underscores). Reflect that accurately.
         print(
             f"[advise-rag] note: fault '{args.fault}' not in FAULT_QUERY_SEEDS; "
-            f"falling back to generic query.",
+            f"using the raw fault token verbatim in the query string.",
             file=sys.stderr,
         )
 
@@ -192,14 +210,15 @@ def main(argv: list[str]) -> int:
         print(f"[advise-rag] {e.message}", file=sys.stderr)
         return 2
 
-    # `advise()` validates verdict / k / source_filter and raises ValueError.
-    # Translate to rc=2 for the operator-facing surface (mirrors the
-    # _UsageError contract above). Without this, a typo on --verdict would
-    # leak a traceback and exit 1.
+    # `advise()` re-validates verdict / k / source_filter and raises
+    # ValueError on any mismatch. We pre-validated `--verdict` above so
+    # the only ValueErrors at this point should come from `--k` (already
+    # gated above) or registry drift. Defensive `try/except` keeps the
+    # rc=2 contract even on race conditions.
     try:
         advice = advise(
             kb,
-            verdict=args.verdict,
+            verdict=verdict_norm,
             fault_class=args.fault,
             k=args.k,
             source_filter=args.source_filter,
@@ -208,8 +227,12 @@ def main(argv: list[str]) -> int:
         print(f"[advise-rag] {e}", file=sys.stderr)
         return 2
 
+    # R2 (post Codex R1 LOW on PR #62): echo `advice.verdict` (canonical)
+    # instead of `args.verdict` (potentially padded), so the header is
+    # consistent with the query / summary which always use the
+    # normalized form.
     print(f"[advise-rag] embedder: {kb.embedder_id}")
-    print(f"[advise-rag] verdict:  {args.verdict!r}")
+    print(f"[advise-rag] verdict:  {advice.verdict!r}")
     print(f"[advise-rag] fault:    {args.fault!r}")
     print(f"[advise-rag] query:    {advice.query!r}")
     if args.source_filter:
