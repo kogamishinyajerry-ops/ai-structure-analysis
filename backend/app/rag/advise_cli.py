@@ -21,6 +21,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -156,6 +157,11 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="Mock backend only: skip in-memory ingest of the live repo",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit one JSON record on stdout instead of human-readable lines",
+    )
     args = parser.parse_args(argv[1:])
 
     if args.k <= 0:
@@ -226,6 +232,30 @@ def main(argv: list[str]) -> int:
     except ValueError as e:
         print(f"[advise-rag] {e}", file=sys.stderr)
         return 2
+
+    if args.json:
+        payload = {
+            "embedder": kb.embedder_id,
+            "verdict": advice.verdict,
+            "fault": args.fault,
+            "query": advice.query,
+            "source_filter": args.source_filter,
+            "hit_count": len(advice.results),
+            "by_source": {src: len(rs) for src, rs in sorted(advice.grouped_by_source.items())},
+            "summary": advice.summary,
+            "results": [
+                {
+                    "rank": r.rank,
+                    "score": r.score,
+                    "source": r.chunk.source,
+                    "chunk_id": r.chunk.chunk_id,
+                    "text": r.chunk.text,
+                }
+                for r in advice.results
+            ],
+        }
+        print(json.dumps(payload))
+        return 0 if not advice.is_empty() else 1
 
     # R2 (post Codex R1 LOW on PR #62): echo `advice.verdict` (canonical)
     # instead of `args.verdict` (potentially padded), so the header is

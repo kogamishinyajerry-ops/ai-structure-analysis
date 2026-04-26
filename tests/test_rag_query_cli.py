@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -489,3 +490,107 @@ def test_every_registered_source_can_be_filter(tmp_path, capsys):
         )
         capsys.readouterr()  # drain
         assert rc in (0, 1)  # 1 = no hits is fine; we only assert no crash
+
+
+# ---------------------------------------------------------------------------
+# --json output mode (P1-04b symmetry with publish_cli)
+# ---------------------------------------------------------------------------
+
+
+def test_json_output_emits_single_record(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "ADR",
+            "--k",
+            "5",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    # Single JSON record per spec: stdout parses as one JSON, no extra lines.
+    payload = json.loads(out.strip())
+    assert isinstance(payload, dict)
+    assert payload["query"] == "ADR"
+    assert payload["k"] == 5
+    assert "embedder" in payload
+    assert "result_count" in payload
+    assert "results" in payload
+    assert payload["result_count"] == len(payload["results"])
+    # No human banner mixed into stdout
+    assert "[query-rag]" not in out
+
+
+def test_json_output_no_results_returns_rc_1(tmp_path, capsys):
+    """--json + zero results → rc=1, single JSON record with empty results."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "absolutely-nonexistent-querystring-xyzzy",
+            "--root",
+            str(repo),
+            "--json",
+            "--source-filter",
+            "gs-theory",  # narrow to one source
+        ]
+    )
+    out = capsys.readouterr().out
+    payload = json.loads(out.strip())
+    # Could be rc=0 or rc=1 depending on whether mock embedder finds noise
+    # matches; the contract is "results==[] → rc=1".
+    if not payload["results"]:
+        assert rc == 1
+    else:
+        assert rc == 0
+
+
+def test_json_record_has_per_result_shape(tmp_path, capsys):
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "ADR",
+            "--k",
+            "5",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc in (0, 1)
+    payload = json.loads(out.strip())
+    if payload["results"]:
+        first = payload["results"][0]
+        for required in ("rank", "score", "source", "chunk_id", "text"):
+            assert required in first, f"missing {required} in result row"
+        assert isinstance(first["rank"], int)
+        assert isinstance(first["score"], int | float)
+        assert isinstance(first["text"], str)
+
+
+def test_json_output_stderr_clean_on_success(tmp_path, capsys):
+    """JSON path: success leaves stderr empty (no banner crossover)."""
+    repo = _make_synth_repo(tmp_path)
+    rc = main(
+        [
+            "query_cli.py",
+            "--query",
+            "ADR",
+            "--root",
+            str(repo),
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert rc in (0, 1)
+    assert captured.err == ""
+    json.loads(captured.out.strip())  # parses clean
