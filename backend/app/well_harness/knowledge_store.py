@@ -1,13 +1,21 @@
-"""Golden-sample backed knowledge store for well-harness runs."""
+"""Golden-sample backed knowledge store for well-harness runs.
+
+RFC-001 §6.2 update: ``TaskSpec`` was slimmed to (task_id, name,
+result_file, unit_system, citations). The Sprint-2 builder used to pass
+description / task_type / priority / material_properties /
+acceptance_criteria / tags — those fields no longer exist on TaskSpec
+and are dropped here. The well-harness consumer of TaskSpec is itself
+Sprint-2 infrastructure; cross-checking will be reworked in W2 once
+the CalculiX adapter lands on the Layer-2 ReaderHandle contract.
+"""
 
 from __future__ import annotations
 
 import json
-from json import dumps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..models.task_spec import Priority, TaskSpec, TaskType
+from ..models.task_spec import TaskSpec
 
 
 class GoldenSampleKnowledgeStore:
@@ -46,39 +54,24 @@ class GoldenSampleKnowledgeStore:
 
     def build_task_spec(self, case_id: str) -> TaskSpec:
         expected = self.load_expected_results(case_id)
-        geometry_file = self.find_input_file(case_id)
-        analysis_type = str(expected.get("analysis_type", "")).lower()
-        description = expected.get("case_description")
-        if not isinstance(description, str):
-            description = dumps(description, ensure_ascii=False)
+        try:
+            result_file = self.find_result_file(case_id)
+        except FileNotFoundError:
+            result_file = self.case_dir(case_id)
 
-        material_properties = (
-            expected.get("material_params")
-            or expected.get("structure_params")
-            or expected.get("metadata")
-            or {}
-        )
-        acceptance = expected.get("acceptance_criteria", [])
-        if isinstance(acceptance, dict):
-            acceptance = [
-                f"{key}: {value.get('criteria', value)}"
-                if isinstance(value, dict)
-                else f"{key}: {value}"
-                for key, value in acceptance.items()
-            ]
-        elif not isinstance(acceptance, list):
-            acceptance = [str(acceptance)]
+        citations_raw = expected.get("citations") or expected.get("standards") or []
+        if isinstance(citations_raw, dict):
+            citations = [str(v) for v in citations_raw.values()]
+        elif isinstance(citations_raw, list):
+            citations = [str(c) for c in citations_raw]
+        else:
+            citations = [str(citations_raw)]
 
         return TaskSpec(
             task_id=case_id,
             name=expected.get("case_name", case_id),
-            description=description,
-            task_type=self._map_task_type(analysis_type),
-            priority=Priority.HIGH,
-            geometry_file=str(geometry_file) if geometry_file else str(self.case_dir(case_id)),
-            material_properties=material_properties,
-            acceptance_criteria=acceptance,
-            tags=[case_id, "well-harness", "golden-sample"],
+            result_file=str(result_file),
+            citations=citations,
         )
 
     def resolve_reference_stress(self, case_id: str) -> Tuple[Optional[float], Optional[str]]:
@@ -111,15 +104,3 @@ class GoldenSampleKnowledgeStore:
             if isinstance(value, (int, float)):
                 return abs(float(value)), source
         return None, None
-
-    @staticmethod
-    def _map_task_type(analysis_type: str) -> TaskType:
-        if "modal" in analysis_type or "frequency" in analysis_type:
-            return TaskType.MODAL_ANALYSIS
-        if "thermal" in analysis_type:
-            return TaskType.THERMAL_ANALYSIS
-        if "buckling" in analysis_type:
-            return TaskType.BUCKLING_ANALYSIS
-        if "dynamic" in analysis_type:
-            return TaskType.DYNAMIC_ANALYSIS
-        return TaskType.STATIC_ANALYSIS
