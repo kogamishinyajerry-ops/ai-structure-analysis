@@ -444,7 +444,10 @@ def test_list_pr_comments_200_returns_data():
     args, kwargs = mock_client.get.call_args
     assert args[0] == "https://api.github.com/repos/o/r/issues/1/comments"
     assert kwargs["headers"]["Authorization"] == "Bearer t"
-    assert kwargs["params"] == {"per_page": 100}
+    # R2 (post Codex R1 MEDIUM-2 on PR #65): pagination enabled, so
+    # `page` is included alongside `per_page`. A 2-comment payload is
+    # shorter than per_page=100, so we short-circuit after page 1.
+    assert kwargs["params"] == {"per_page": 100, "page": 1}
 
 
 def test_list_pr_comments_404_returns_empty():
@@ -507,6 +510,101 @@ def test_list_pr_comments_no_token_returns_empty(monkeypatch):
     mock_client.get.assert_not_called()
 
 
+# R2 (post Codex R1 MEDIUM-1 on PR #65): non-int IDs must NOT raise
+# TypeError from `pr_number <= 0` — the never-raises contract requires
+# returning [] for str / None / float / bool (bool is an int subclass
+# but semantically wrong here).
+@pytest.mark.parametrize("bad_pr", ["1", None, 1.5, True, False, [], {}, b"1"])
+def test_list_pr_comments_non_int_pr_returns_empty(bad_pr):
+    mock_client = MagicMock(spec=httpx.Client)
+    out = gw.list_pr_comments(repo="o/r", pr_number=bad_pr, token="t", client=mock_client)
+    assert out == []
+    mock_client.get.assert_not_called()
+
+
+def test_list_pr_comments_paginates_until_short_page():
+    """R2 (post Codex R1 MEDIUM-2 on PR #65): when page 1 fills (100
+    items), we request page 2. A short page 2 (<100) terminates the
+    walk."""
+    page1 = [{"id": i, "body": f"c{i}"} for i in range(1, 101)]
+    page2 = [{"id": 101, "body": "<!-- ai-fea-preflight -->\nold"}]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_resp_p2 = MagicMock()
+    mock_resp_p2.status_code = 200
+    mock_resp_p2.json.return_value = page2
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, mock_resp_p2]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 101
+    assert out[-1]["id"] == 101
+    assert mock_client.get.call_count == 2
+
+    # Verify both calls had the right page param
+    page_params = [c.kwargs["params"]["page"] for c in mock_client.get.call_args_list]
+    assert page_params == [1, 2]
+
+
+def test_list_pr_comments_pagination_caps_at_max_pages():
+    """Safety: we never paginate past _LIST_COMMENTS_MAX_PAGES even if
+    every page returns a full per_page worth of data. Bounds API spend."""
+    full_page = [{"id": i, "body": f"c{i}"} for i in range(100)]
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = full_page
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.return_value = mock_resp
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100 * gw._LIST_COMMENTS_MAX_PAGES
+    assert mock_client.get.call_count == gw._LIST_COMMENTS_MAX_PAGES
+
+
+def test_list_pr_comments_partial_page_returns_collected_data():
+    """If page 2 returns 404 after page 1 succeeded, we keep the
+    page-1 data instead of dropping everything."""
+    page1 = [{"id": 1, "body": "c"} for _ in range(100)]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_resp_p2 = MagicMock()
+    mock_resp_p2.status_code = 502
+    mock_resp_p2.json.return_value = {"message": "bad gateway"}
+    mock_resp_p2.text = "bad gateway"
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, mock_resp_p2]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100  # page-1 preserved
+    assert mock_client.get.call_count == 2
+
+
+def test_list_pr_comments_partial_page_transport_error_returns_collected():
+    """Same as above for httpx.HTTPError on the second page."""
+    page1 = [{"id": 1, "body": "c"} for _ in range(100)]
+
+    mock_resp_p1 = MagicMock()
+    mock_resp_p1.status_code = 200
+    mock_resp_p1.json.return_value = page1
+
+    mock_client = MagicMock(spec=httpx.Client)
+    mock_client.get.side_effect = [mock_resp_p1, httpx.ConnectError("network down")]
+
+    out = gw.list_pr_comments(repo="o/r", pr_number=1, token="t", client=mock_client)
+    assert len(out) == 100
+    assert mock_client.get.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # patch_pr_comment — PATCH /repos/{repo}/issues/comments/{id}
 # ---------------------------------------------------------------------------
@@ -562,6 +660,24 @@ def test_patch_pr_comment_rejects_negative_comment_id():
     r = gw.patch_pr_comment(repo="o/r", comment_id=-5, body="hi", token="t")
     assert r.posted is False
     assert "invalid comment_id" in r.error
+
+
+# R2 (post Codex R1 MEDIUM-1 on PR #65): non-int comment_id must NOT
+# raise TypeError from `comment_id <= 0`. Reject str / None / float /
+# bool with a clear error.
+@pytest.mark.parametrize("bad_id", ["99", None, 99.0, True, False, [], b"99"])
+def test_patch_pr_comment_rejects_non_int_comment_id(bad_id):
+    r = gw.patch_pr_comment(repo="o/r", comment_id=bad_id, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid comment_id" in r.error
+
+
+# Symmetric guard on post_pr_comment for the same TypeError class.
+@pytest.mark.parametrize("bad_pr", ["1", None, 1.5, True, False, [], b"1"])
+def test_post_pr_comment_rejects_non_int_pr_number(bad_pr):
+    r = gw.post_pr_comment(repo="o/r", pr_number=bad_pr, body="hi", token="t")
+    assert r.posted is False
+    assert "invalid pr_number" in r.error
 
 
 def test_patch_pr_comment_rejects_empty_body():

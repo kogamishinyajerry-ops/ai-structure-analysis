@@ -92,8 +92,11 @@ _REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})/[A-Za-z0-9._-]{1,10
 def _validate_inputs(repo: str, pr_number: int) -> str | None:
     if not repo or not _REPO_RE.match(repo):
         return f"invalid repo: {repo!r} (expected owner/name)"
-    if pr_number <= 0:
-        return f"invalid pr_number: {pr_number}"
+    # R2 (post Codex R1 MEDIUM-1 on PR #65): strict positive-int check
+    # so a stray str/None/float/bool produces a clear error instead of
+    # a TypeError leaking from `pr_number <= 0`.
+    if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number <= 0:
+        return f"invalid pr_number: {pr_number!r}"
     return None
 
 
@@ -101,23 +104,39 @@ def find_existing_preflight_comment(
     comments: list[dict],
     header_marker: str,
 ) -> dict | None:
-    """Return the first comment whose body starts with `header_marker`,
-    or None if no match.
+    """Return the *last* (newest) comment whose body starts with
+    `header_marker`, or None if no match.
 
     Why startswith(): `publish_preflight` prepends the marker as the very
     first line. If a caller adds their own pre-text before the marker,
     the marker won't be at the start — that is intentional, only
     'owned' preflight comments get upserted.
+
+    Why "last" not "first" (R2, post Codex R1 LOW on PR #65): GitHub
+    returns issue comments in creation order (oldest first). When
+    multiple legacy preflight comments coexist on a PR — e.g. an older
+    comment from a previous run that we lost track of, plus a newer one
+    we successfully upserted on the last run — we want PATCH to keep
+    targeting the *newest* one, so the conversation thread stays
+    coherent (newest comment = current state, older ones become
+    historical artifacts the operator can clean up manually).
+
+    This also reduces (but does not eliminate) the risk that a human
+    comment which happens to start with the marker — e.g. someone
+    pasted a marker in a reply — gets accidentally clobbered: as long
+    as the bot has posted *any* preflight after the human comment, the
+    bot's own comment will be selected for PATCH instead.
     """
     if not header_marker:
         return None
+    match: dict | None = None
     for c in comments:
         if not isinstance(c, dict):
             continue
         body = c.get("body", "")
         if isinstance(body, str) and body.startswith(header_marker):
-            return c
-    return None
+            match = c
+    return match
 
 
 _GITHUB_WRITEBACK_UNAVAILABLE_ERROR = (
@@ -207,7 +226,10 @@ def publish_preflight(
         existing = find_existing_preflight_comment(comments, header_marker)
         if existing is not None:
             comment_id = existing.get("id")
-            if not isinstance(comment_id, int) or comment_id <= 0:
+            # R2 (post Codex R1 MEDIUM-1 on PR #65): exclude bool from the
+            # int check (`bool` is a subclass of `int`, so `True`/`False`
+            # would otherwise sneak through).
+            if not isinstance(comment_id, int) or isinstance(comment_id, bool) or comment_id <= 0:
                 return PublishResult(
                     posted=False,
                     error=f"prior preflight comment has invalid id: {comment_id!r}",

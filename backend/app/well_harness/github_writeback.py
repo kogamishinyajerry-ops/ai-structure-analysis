@@ -51,6 +51,24 @@ _REPO_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,38})/[A-Za-z0-9._-]{1,10
 GITHUB_COMMENT_BODY_LIMIT = 65_536
 _BODY_TRUNCATION_SUFFIX = "\n\n_…truncated by github_writeback (body exceeded 64KB)_"
 
+# Pagination safety cap for list_pr_comments. GitHub allows per_page=100,
+# so 10 pages = up to 1000 comments per PR — well above any realistic
+# preflight workload. Beyond this we stop paginating to bound API spend
+# and degrade gracefully (find_existing_preflight_comment will return
+# None and the publisher falls through to POST).
+_LIST_COMMENTS_MAX_PAGES = 10
+
+
+def _is_positive_int(n: object) -> bool:
+    """Strict positive-int check.
+
+    R2 (post Codex R1 MEDIUM-1 on PR #65): the prior code did `n <= 0`
+    which raises TypeError for str/None, and accepts `True`/`False`
+    (bool subclasses int) silently. The module contract is "never
+    raises on invalid input" — we must reject non-ints up front.
+    """
+    return isinstance(n, int) and not isinstance(n, bool) and n > 0
+
 
 @dataclass
 class WritebackResult:
@@ -119,8 +137,10 @@ def post_pr_comment(
     if not repo or not _REPO_RE.match(repo):
         return WritebackResult(posted=False, error=f"invalid repo: {repo!r} (expected owner/name)")
 
-    if pr_number <= 0:
-        return WritebackResult(posted=False, error=f"invalid pr_number: {pr_number}")
+    # R2 (post Codex R1 MEDIUM-1 on PR #65): strict positive-int check
+    # so a stray str/None/float/bool can't break the never-raise contract.
+    if not _is_positive_int(pr_number):
+        return WritebackResult(posted=False, error=f"invalid pr_number: {pr_number!r}")
 
     if not body or not body.strip():
         return WritebackResult(posted=False, error="empty body")
@@ -197,15 +217,22 @@ def list_pr_comments(
     locate a prior preflight comment by `header_marker`.
 
     Pagination: GitHub paginates issue comments at 30/page by default;
-    we request `per_page=100` (the API max) and fetch a single page.
-    For typical preflight use cases (≤100 comments per PR) one page is
-    sufficient. We deliberately do not paginate further — the marker
-    search degrades gracefully to a fresh POST if a prior preflight
-    comment lives on a later page.
+    we request `per_page=100` (the API max) and walk pages until either
+    the API exhausts (a short page is the last page) or
+    `_LIST_COMMENTS_MAX_PAGES` is reached. The cap bounds API spend
+    while still covering up to ~1000 comments per PR — far beyond any
+    realistic preflight workload. If a prior preflight lives past the
+    cap, the publisher degrades gracefully to a fresh POST.
+
+    R2 (post Codex R1 MEDIUM-2 on PR #65): single-page lookup let the
+    upsert mode reintroduce duplicates on busy PRs once the prior
+    preflight scrolled past 100 comments — defeating the no-spam goal.
     """
     if not repo or not _REPO_RE.match(repo):
         return []
-    if pr_number <= 0:
+    # R2 (post Codex R1 MEDIUM-1 on PR #65): strict int check so a
+    # stray str/None/float/bool returns [] instead of TypeError.
+    if not _is_positive_int(pr_number):
         return []
     tok = token if token is not None else _resolve_token()
     if not tok:
@@ -221,16 +248,32 @@ def list_pr_comments(
     owns_client = client is None
     c = client or httpx.Client(timeout=timeout)
     try:
-        resp = c.get(url, headers=headers, params={"per_page": per_page})
-        if resp.status_code != 200:
-            return []
-        try:
-            data = resp.json()
-        except (ValueError, TypeError):
-            return []
-        return data if isinstance(data, list) else []
-    except httpx.HTTPError:
-        return []
+        all_comments: list[dict] = []
+        for page in range(1, _LIST_COMMENTS_MAX_PAGES + 1):
+            try:
+                resp = c.get(
+                    url,
+                    headers=headers,
+                    params={"per_page": per_page, "page": page},
+                )
+            except httpx.HTTPError:
+                # Return what we have so far rather than dropping all
+                # already-fetched pages on a late transport blip.
+                return all_comments
+            if resp.status_code != 200:
+                return all_comments
+            try:
+                data = resp.json()
+            except (ValueError, TypeError):
+                return all_comments
+            if not isinstance(data, list):
+                return all_comments
+            all_comments.extend(data)
+            # A short page (less than per_page) is the last page —
+            # short-circuit to avoid an extra GET that we know returns [].
+            if len(data) < per_page:
+                return all_comments
+        return all_comments
     finally:
         if owns_client:
             c.close()
@@ -260,8 +303,10 @@ def patch_pr_comment(
     """
     if not repo or not _REPO_RE.match(repo):
         return WritebackResult(posted=False, error=f"invalid repo: {repo!r} (expected owner/name)")
-    if comment_id <= 0:
-        return WritebackResult(posted=False, error=f"invalid comment_id: {comment_id}")
+    # R2 (post Codex R1 MEDIUM-1 on PR #65): strict positive-int check
+    # so a stray str/None/float/bool can't break the never-raise contract.
+    if not _is_positive_int(comment_id):
+        return WritebackResult(posted=False, error=f"invalid comment_id: {comment_id!r}")
     if not body or not body.strip():
         return WritebackResult(posted=False, error="empty body")
 

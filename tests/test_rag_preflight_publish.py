@@ -449,11 +449,28 @@ def test_publish_validation_error_action_is_none():
 # ---------------------------------------------------------------------------
 
 
-def test_find_existing_returns_first_match():
+def test_find_existing_returns_last_match_newest_wins():
+    """R2 (post Codex R1 LOW on PR #65): GitHub returns issue comments
+    oldest→newest. When multiple preflight comments coexist (e.g. an
+    older orphan + a newer upserted one), we want PATCH to target the
+    *newest* so the conversation stays coherent and the older one
+    becomes a historical artifact."""
+    comments = [
+        {"id": 1, "body": "unrelated comment"},
+        {"id": 42, "body": "<!-- ai-fea-preflight -->\n\n## Preflight — GS-001 (older)"},
+        {"id": 99, "body": "<!-- ai-fea-preflight -->\n\n## Preflight — GS-001 (newest)"},
+    ]
+    found = find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->")
+    assert found is not None
+    assert found["id"] == 99
+
+
+def test_find_existing_returns_single_match():
+    """When only one comment matches, return it (regression for the
+    common case)."""
     comments = [
         {"id": 1, "body": "unrelated comment"},
         {"id": 42, "body": "<!-- ai-fea-preflight -->\n\n## Preflight — GS-001"},
-        {"id": 99, "body": "<!-- ai-fea-preflight -->\n\nshould not match (later)"},
     ]
     found = find_existing_preflight_comment(comments, "<!-- ai-fea-preflight -->")
     assert found is not None
