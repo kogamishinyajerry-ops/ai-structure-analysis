@@ -152,17 +152,17 @@ def test_doctor_reports_broken_hard_dep_not_just_missing(
 
 def test_cli_module_loads_when_inhouse_submodule_is_broken(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Codex R1 HIGH: ``import app.services.report.cli`` must NOT fail
-    at module load when an in-tree submodule it used to import at the
-    top is broken. Otherwise --doctor never gets a chance to diagnose
-    the broken submodule.
+    """Codex R1 HIGH + R2 NIT: ``import app.services.report.cli`` must
+    NOT fail at module load when an in-tree submodule it used to import
+    at the top is broken — otherwise --doctor never gets a chance to
+    diagnose the broken submodule. AND, the doctor invoked against
+    that broken state must produce the contracted IMPORT FAILED line
+    and exit 3 (not silently succeed, not crash).
 
     Probe by deleting cached cli + adapter, poisoning the adapter's
-    sys.modules entry, and re-importing cli. The fact that this test
-    can call ``main(['--doctor'])`` afterwards is the assertion: with
-    eager top-level imports the re-import would have raised
-    ImportError before we reached any code path.
+    sys.modules entry, re-importing cli, then calling main(['--doctor']).
     """
     import importlib
 
@@ -181,3 +181,10 @@ def test_cli_module_loads_when_inhouse_submodule_is_broken(
     # before the doctor branch.
     cli_module = importlib.import_module("app.services.report.cli")
     assert hasattr(cli_module, "main")
+
+    # Codex R2 NIT: re-importability is necessary but not sufficient.
+    # Assert the user-visible contract too.
+    rc = cli_module.main(["--doctor"])
+    assert rc == 3
+    captured = capsys.readouterr()
+    assert "app.adapters.calculix: IMPORT FAILED" in captured.out
