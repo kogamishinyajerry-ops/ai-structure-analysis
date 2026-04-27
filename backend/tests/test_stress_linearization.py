@@ -17,6 +17,7 @@ import pytest
 from app.domain.stress_linearization import (
     LinearizedStress,
     linearize_through_thickness,
+    resample_to_uniform,
 )
 
 
@@ -337,3 +338,166 @@ def test_membrane_and_bending_compose_with_von_mises() -> None:
     sigma_outer = (result.membrane + result.bending_outer).reshape(1, 6)
     p_m_plus_p_b_vm = von_mises(sigma_outer)[0]
     assert p_m_plus_p_b_vm == pytest.approx(100.0)
+
+
+# --- resample_to_uniform (RFC-002-prep) ----------------------------------
+
+
+def test_resample_emits_uniform_grid_spanning_input_range() -> None:
+    """Output distances must be ``np.linspace(s[0], s[-1], n_points)``
+    so downstream :func:`linearize_through_thickness` accepts them."""
+    s_in = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0], dtype=np.float64)
+    sigma_in = np.zeros((6, 6), dtype=np.float64)
+    sigma_in[:, 0] = 1.0  # constant membrane
+    sigma_out, s_out = resample_to_uniform(sigma_in, s_in, n_points=21)
+
+    assert s_out.shape == (21,)
+    assert sigma_out.shape == (21, 6)
+    # Endpoints preserved exactly.
+    assert s_out[0] == pytest.approx(0.0)
+    assert s_out[-1] == pytest.approx(2.0)
+    # Uniform Δs.
+    diffs = np.diff(s_out)
+    assert np.allclose(diffs, diffs[0], rtol=1e-12)
+
+
+def test_resample_round_trips_endpoint_values_exactly() -> None:
+    """``np.interp`` returns the exact input value at any output point
+    that coincides with an input point. Endpoints always coincide."""
+    s_in = np.array([0.0, 0.7, 1.5, 2.0], dtype=np.float64)
+    sigma_in = np.array(
+        [
+            [10.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [30.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [40.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    sigma_out, s_out = resample_to_uniform(sigma_in, s_in, n_points=11)
+    # First and last samples coincide with first and last input points.
+    assert sigma_out[0, 0] == pytest.approx(10.0)
+    assert sigma_out[-1, 0] == pytest.approx(40.0)
+
+
+def test_resample_preserves_linear_field_to_float_precision() -> None:
+    """Linear-in-s tensor field is recovered to float64 precision on
+    any monotone input grid (Codex R1 nit: ``np.interp`` is not
+    bit-exact for arbitrary slopes, only those representable in
+    binary; we get machine-epsilon-scale residual instead). This is
+    the contract that lets :func:`linearize_through_thickness`
+    produce ``bending_outer`` faithful to the source field.
+    """
+    s_in = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0], dtype=np.float64)
+    s_mid = 1.0
+
+    # Probe slopes that are exactly representable (50, 30) and
+    # slopes that are NOT (1/3, π) — both should recover to
+    # machine-epsilon relative tolerance, not bit-exact.
+    sigma_in = np.zeros((6, 6), dtype=np.float64)
+    sigma_in[:, 0] = 50.0 + 30.0 * (s_in - s_mid)
+    sigma_in[:, 1] = 7.0 + (1.0 / 3.0) * (s_in - s_mid)
+    sigma_in[:, 2] = -2.0 + np.pi * (s_in - s_mid)
+
+    sigma_out, s_out = resample_to_uniform(sigma_in, s_in, n_points=21)
+
+    np.testing.assert_allclose(
+        sigma_out[:, 0], 50.0 + 30.0 * (s_out - s_mid), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        sigma_out[:, 1], 7.0 + (1.0 / 3.0) * (s_out - s_mid), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        sigma_out[:, 2], -2.0 + np.pi * (s_out - s_mid), rtol=1e-12
+    )
+
+
+def test_resample_then_linearize_pipeline_recovers_pure_bending() -> None:
+    """End-to-end: a non-uniform input that today's linearizer would
+    REJECT can be resampled and then run through ``linearize_through_thickness``
+    cleanly. Pure-linear bending input must yield ``membrane=0``,
+    ``bending_outer = (t/2) * slope`` (clean recovery)."""
+    s_raw = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0], dtype=np.float64)
+    s_mid = 1.0
+    slope = 30.0
+    sigma_raw = np.zeros((6, 6), dtype=np.float64)
+    sigma_raw[:, 0] = slope * (s_raw - s_mid)
+
+    sigma, s = resample_to_uniform(sigma_raw, s_raw, n_points=21)
+    result = linearize_through_thickness(sigma, s)
+
+    # Pure linear bending → membrane is the through-thickness mean of
+    # an antisymmetric (around s_mid) field = 0 to numerical noise.
+    assert result.membrane[0] == pytest.approx(0.0, abs=1e-10)
+    # bending_outer should equal slope * (t/2) = slope * 1.0.
+    assert result.bending_outer[0] == pytest.approx(slope * 1.0, rel=1e-10)
+
+
+def test_resample_rejects_non_monotonic() -> None:
+    s_in = np.array([0.0, 0.5, 0.5, 1.0], dtype=np.float64)  # duplicate
+    sigma_in = np.zeros((4, 6), dtype=np.float64)
+    with pytest.raises(ValueError, match="monotonically increasing"):
+        resample_to_uniform(sigma_in, s_in, n_points=11)
+
+
+def test_resample_rejects_decreasing_input() -> None:
+    s_in = np.array([1.0, 0.5, 0.0], dtype=np.float64)
+    sigma_in = np.zeros((3, 6), dtype=np.float64)
+    with pytest.raises(ValueError, match="monotonically increasing"):
+        resample_to_uniform(sigma_in, s_in, n_points=11)
+
+
+def test_resample_rejects_too_few_points() -> None:
+    s_in = np.array([0.0, 1.0], dtype=np.float64)
+    sigma_in = np.zeros((2, 6), dtype=np.float64)
+    with pytest.raises(ValueError, match="n_points must be >= 2"):
+        resample_to_uniform(sigma_in, s_in, n_points=1)
+
+
+def test_resample_rejects_shape_mismatch() -> None:
+    s_in = np.array([0.0, 0.5, 1.0], dtype=np.float64)
+    sigma_in = np.zeros((4, 6), dtype=np.float64)  # mismatched N
+    with pytest.raises(ValueError, match="shape \\(N,\\)"):
+        resample_to_uniform(sigma_in, s_in, n_points=11)
+
+
+def test_resample_rejects_wrong_component_count() -> None:
+    s_in = np.array([0.0, 0.5, 1.0], dtype=np.float64)
+    sigma_in = np.zeros((3, 5), dtype=np.float64)  # 5 components, not 6
+    with pytest.raises(ValueError, match="shape \\(N, 6\\)"):
+        resample_to_uniform(sigma_in, s_in, n_points=11)
+
+
+def test_resample_minimum_two_points_works() -> None:
+    """Two input points + n_points=2 is the trivial degenerate case
+    — output should equal input."""
+    s_in = np.array([0.0, 1.0], dtype=np.float64)
+    sigma_in = np.array(
+        [
+            [10.0, 20.0, 30.0, 0.0, 0.0, 0.0],
+            [50.0, 60.0, 70.0, 0.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    sigma_out, s_out = resample_to_uniform(sigma_in, s_in, n_points=2)
+    np.testing.assert_allclose(s_out, s_in)
+    np.testing.assert_allclose(sigma_out, sigma_in)
+
+
+def test_resample_default_n_points_is_21_odd_centre_at_s_mid() -> None:
+    """Lock the default at odd 21 (Codex R1 nit: even-vs-odd does NOT
+    actually affect linearizer parity invariants — the linearizer
+    handles even and odd grids identically. The reason the project
+    pins 21 is just (a) plenty of through-thickness resolution for
+    ASME §5.5.3 reads, (b) odd so an engineer reading the resampled
+    array sees the exact centre sample at ``s_mid``, which is useful
+    when manually inspecting the field). Future changes to this
+    default should be intentional, hence the lock."""
+    s_in = np.array([0.0, 0.5, 1.0, 1.5, 2.0], dtype=np.float64)
+    sigma_in = np.zeros((5, 6), dtype=np.float64)
+    sigma_out, s_out = resample_to_uniform(sigma_in, s_in)  # default
+    assert len(s_out) == 21
+    assert len(s_out) % 2 == 1
+    s_mid = (s_in[0] + s_in[-1]) / 2.0
+    centre_index = len(s_out) // 2
+    assert s_out[centre_index] == pytest.approx(s_mid)
