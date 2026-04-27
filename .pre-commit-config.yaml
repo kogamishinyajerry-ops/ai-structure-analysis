@@ -1,6 +1,11 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+    # Pinned to match what CI's ``pip install -e ".[dev]"`` resolves
+    # for ``ruff>=0.8`` (currently 0.15.x). Older 0.8.6 pin formatted
+    # differently from 0.15.x and the ``ruff format --check .`` step
+    # in CI would catch the divergence on every PR until both sides
+    # agreed.
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

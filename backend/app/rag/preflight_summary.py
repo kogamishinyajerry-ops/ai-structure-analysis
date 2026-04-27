@@ -5,7 +5,7 @@ Sits at the integration seam between two recently-built primitives:
 
   * `agents.surrogate_adapter.predict_for_simplan` → SurrogateHint
     (empirical prediction, e.g. "max_displacement = 1.234 mm @ free_end")
-  * `backend.app.rag.reviewer_advisor.advise`      → ReviewerAdvice
+  * `app.rag.reviewer_advisor.advise`      → ReviewerAdvice
     (corpus context, e.g. top FailurePatterns + theory snippets)
 
 The Reviewer (Phase 1.5) will eventually call both — and want a single
@@ -36,7 +36,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.app.rag.reviewer_advisor import ReviewerAdvice
+from app.rag.reviewer_advisor import ReviewerAdvice
 
 
 @dataclass(frozen=True)

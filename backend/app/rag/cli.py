@@ -1,6 +1,6 @@
 """RAG ingest CLI — runs all registered sources through KnowledgeBase (P1-04b).
 
-Walks the `ALL_SOURCES` registry (`backend.app.rag.sources.__init__`),
+Walks the `ALL_SOURCES` registry (`app.rag.sources.__init__`),
 runs each source's `iter_*_documents(repo_root)` generator, ingests
 the resulting Document stream into a KnowledgeBase backed by either:
 
@@ -8,9 +8,9 @@ the resulting Document stream into a KnowledgeBase backed by either:
   * ChromaVectorStore  + BgeM3Embedder    — `--embedder bge-m3` (requires `[rag]`)
 
 Usage:
-    python3 -m backend.app.rag.cli
-    python3 -m backend.app.rag.cli --embedder mock --root /path/to/repo
-    python3 -m backend.app.rag.cli --embedder bge-m3 --persist-dir runs/rag/kb
+    python3 -m app.rag.cli
+    python3 -m app.rag.cli --embedder mock --root /path/to/repo
+    python3 -m app.rag.cli --embedder bge-m3 --persist-dir runs/rag/kb
     make ingest-rag
 
 Exit codes:
@@ -25,8 +25,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+from app.rag.sources import ALL_SOURCES
 
 
 class _UsageError(SystemExit):
@@ -65,8 +65,8 @@ def _build_kb(embedder_choice: str, persist_dir: Path | None, collection: str) -
         # `BgeM3Embedder()` constructor lazy-import sentence_transformers,
         # so wrap both in the same translator.
         try:
-            from backend.app.rag.embedder import BgeM3Embedder
-            from backend.app.rag.store import ChromaVectorStore
+            from app.rag.embedder import BgeM3Embedder
+            from app.rag.store import ChromaVectorStore
 
             embedder = BgeM3Embedder()
         except ImportError as e:

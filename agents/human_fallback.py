@@ -3,9 +3,9 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+from app.well_harness.notion_sync import NotionRunRegistrar
 from langgraph.types import interrupt
 
-from backend.app.well_harness.notion_sync import NotionRunRegistrar
 from schemas.sim_state import SimState
 
 

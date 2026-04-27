@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.coverage_audit."""
+"""Tests for app.rag.coverage_audit."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag.coverage_audit import (
+    from app.rag.coverage_audit import (
         CoverageBucket,
         CoverageReport,
         _discover_adr_files,
@@ -175,7 +175,7 @@ def test_audit_coverage_missing_when_iter_fn_skips_a_file(tmp_path, monkeypatch)
     """Force a coverage gap: monkeypatch the project_governance iter to skip one ADR.
     Disk discovery still finds it; cross-ref produces a missing entry."""
     repo = _make_synth_repo(tmp_path)
-    import backend.app.rag.coverage_audit as mod
+    import app.rag.coverage_audit as mod
 
     # Find the original tuple, build a replacement that filters out ADR-100.
     # Note: doc_id is namespaced as `project-adr-fp:ADR-100` after PR #57's
@@ -328,7 +328,7 @@ def test_cli_json_output(tmp_path, capsys):
 def test_cli_returns_1_on_missing(tmp_path, capsys, monkeypatch):
     """Force missing coverage via monkeypatched ALL_SOURCES."""
     repo = _make_synth_repo(tmp_path)
-    import backend.app.rag.coverage_audit as mod
+    import app.rag.coverage_audit as mod
 
     def _empty_iter(_root):
         return iter([])  # zero docs from project-adr-fp
@@ -347,8 +347,8 @@ def test_cli_returns_1_on_missing(tmp_path, capsys, monkeypatch):
 
 def test_cli_strict_treats_extras_as_failure(tmp_path, capsys, monkeypatch):
     """In --strict mode, an unexpected extra file from the iter fn → exit 1."""
-    import backend.app.rag.coverage_audit as mod
-    from backend.app.rag.schemas import Document
+    import app.rag.coverage_audit as mod
+    from app.rag.schemas import Document
 
     def _extras_iter(_root):
         # Yield a doc whose path isn't in any expected bucket
@@ -394,7 +394,7 @@ def test_cli_strict_treats_extras_as_failure(tmp_path, capsys, monkeypatch):
 
 def test_usage_error_exits_with_code_2_not_1():
     """Verifies the _UsageError contract: rc=2, .message attribute."""
-    from backend.app.rag.coverage_audit import _UsageError
+    from app.rag.coverage_audit import _UsageError
 
     err = _UsageError("test")
     assert err.code == 2
@@ -405,7 +405,7 @@ def test_main_corpus_value_error_translates_to_rc_2(tmp_path, monkeypatch, capsy
     """If a registered iter_fn raises ValueError (e.g. duplicate doc_id,
     malformed frontmatter), the audit must surface rc=2 + single stderr
     line, not let a traceback escape through main()."""
-    import backend.app.rag.coverage_audit as cmod
+    import app.rag.coverage_audit as cmod
 
     def bad_iter(repo_root):
         raise ValueError("simulated duplicate doc_id")
@@ -424,7 +424,7 @@ def test_main_corpus_value_error_translates_to_rc_2(tmp_path, monkeypatch, capsy
 
 def test_main_corpus_os_error_translates_to_rc_2(tmp_path, monkeypatch, capsys):
     """OSError (e.g. symlink escape rejection) on iter_fn must also map to rc=2."""
-    import backend.app.rag.coverage_audit as cmod
+    import app.rag.coverage_audit as cmod
 
     def bad_iter(repo_root):
         raise OSError("simulated symlink escape")
@@ -498,8 +498,8 @@ def test_audit_other_bucket_captures_unrecognized_extras(tmp_path, monkeypatch):
     heuristics used to disappear silently. The new "other" bucket
     captures them so `total_extra()` reflects reality and `--strict`
     fails when it should."""
-    import backend.app.rag.coverage_audit as cmod
-    from backend.app.rag.schemas import Document
+    import app.rag.coverage_audit as cmod
+    from app.rag.schemas import Document
 
     def fake_project_iter(repo_root):
         # Emit a path that doesn't match any hardcoded prefix
@@ -530,8 +530,8 @@ def test_audit_other_bucket_captures_unrecognized_extras(tmp_path, monkeypatch):
 def test_main_strict_fails_on_other_bucket_extras(tmp_path, monkeypatch, capsys):
     """MED-3 follow-up: --strict must fail when the "other" bucket has
     extras (pre-fix `--strict` could incorrectly return success)."""
-    import backend.app.rag.coverage_audit as cmod
-    from backend.app.rag.schemas import Document
+    import app.rag.coverage_audit as cmod
+    from app.rag.schemas import Document
 
     def fake_project_iter(repo_root):
         yield Document(

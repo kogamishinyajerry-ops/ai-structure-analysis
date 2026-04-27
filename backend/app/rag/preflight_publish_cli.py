@@ -2,10 +2,10 @@
 
 Fourth sibling of the RAG operator CLIs:
 
-    1. backend.app.rag.cli              — ingest
-    2. backend.app.rag.query_cli        — query
-    3. backend.app.rag.advise_cli       — advise
-    4. backend.app.rag.preflight_publish_cli   — publish (this module)
+    1. app.rag.cli              — ingest
+    2. app.rag.query_cli        — query
+    3. app.rag.advise_cli       — advise
+    4. app.rag.preflight_publish_cli   — publish (this module)
 
 Wraps:
     advise(...) → ReviewerAdvice
@@ -14,16 +14,16 @@ Wraps:
 
 Usage:
     # Dry-run (default; prints markdown, never touches GitHub)
-    python3 -m backend.app.rag.preflight_publish_cli \\
+    python3 -m app.rag.preflight_publish_cli \\
         --verdict Reject --fault solver_convergence
 
     # Actually post a comment (requires GH_TOKEN / gh auth)
-    python3 -m backend.app.rag.preflight_publish_cli \\
+    python3 -m app.rag.preflight_publish_cli \\
         --verdict Reject --fault solver_convergence \\
         --repo owner/name --pr 42 --post
 
     # Upsert (PATCH prior preflight comment if found)
-    python3 -m backend.app.rag.preflight_publish_cli \\
+    python3 -m app.rag.preflight_publish_cli \\
         --verdict Reject --fault solver_convergence \\
         --repo owner/name --pr 42 --post --mode upsert
 
@@ -57,11 +57,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-from backend.app.rag.preflight_publish import _REPO_RE, publish_preflight
-from backend.app.rag.preflight_summary import combine
-from backend.app.rag.reviewer_advisor import FAULT_QUERY_SEEDS, advise
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+from app.rag.preflight_publish import _REPO_RE, publish_preflight
+from app.rag.preflight_summary import combine
+from app.rag.reviewer_advisor import FAULT_QUERY_SEEDS, advise
+from app.rag.sources import ALL_SOURCES
 
 
 class _UsageError(SystemExit):

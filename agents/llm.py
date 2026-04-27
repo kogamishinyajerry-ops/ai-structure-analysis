@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TypeVar
 
+from app.core.config import settings
 from openai import OpenAI
 from pydantic import BaseModel
-
-from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
 

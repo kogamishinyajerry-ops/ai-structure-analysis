@@ -43,7 +43,7 @@ Additionally, ADR-006's autonomous-merge regime relies on the agent layer being 
 | `backend/app/workbench/agent_facade.py` | **new** | the only file that imports `agents.*` from workbench code |
 | `backend/app/workbench/run_orchestrator.py` | **new** | builds and invokes the LangGraph compiled graph; wires the ADR-014 callback |
 | `backend/app/workbench/task_spec_builder.py` | **new** | calls `agents.architect` to translate NL → SimPlan; returns the SimPlan + a "confirmation token" the user signs off on |
-| `backend/app/workbench/rag_facade.py` | covered by ADR-017 | imports `backend.app.rag.*` for `advise()` / `combine()`; sibling to `agent_facade` |
+| `backend/app/workbench/rag_facade.py` | covered by ADR-017 | imports `app.rag.*` for `advise()` / `combine()`; sibling to `agent_facade` |
 | `backend/app/runtime/event_bus.py` | covered by ADR-014 | `asyncio.Queue` + ring buffer |
 | `backend/app/runtime/langgraph_callbacks.py` | covered by ADR-014 | translates LangGraph signals → WS events |
 

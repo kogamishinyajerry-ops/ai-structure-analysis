@@ -1,4 +1,4 @@
-"""Tests for backend.app.well_harness.github_writeback (P2)."""
+"""Tests for app.well_harness.github_writeback (P2)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
-from backend.app.well_harness import github_writeback as gw
+from app.well_harness import github_writeback as gw
 
 # ---------------------------------------------------------------------------
 # build_run_summary_comment
@@ -74,11 +73,9 @@ def test_resolve_token_from_github_token(monkeypatch):
 def test_resolve_token_falls_back_to_gh_cli(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    with patch("backend.app.well_harness.github_writeback.shutil.which") as which:
+    with patch("app.well_harness.github_writeback.shutil.which") as which:
         which.return_value = "/usr/bin/gh"
-        with patch(
-            "backend.app.well_harness.github_writeback.subprocess.check_output"
-        ) as check_out:
+        with patch("app.well_harness.github_writeback.subprocess.check_output") as check_out:
             check_out.return_value = "gho_zzz\n"
             assert gw._resolve_token() == "gho_zzz"
 
@@ -86,7 +83,7 @@ def test_resolve_token_falls_back_to_gh_cli(monkeypatch):
 def test_resolve_token_returns_none_when_unavailable(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    with patch("backend.app.well_harness.github_writeback.shutil.which") as which:
+    with patch("app.well_harness.github_writeback.shutil.which") as which:
         which.return_value = None
         assert gw._resolve_token() is None
 
@@ -104,7 +101,7 @@ def test_writeback_enabled_true_when_token_set(monkeypatch):
 def test_writeback_enabled_false_when_no_token(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    with patch("backend.app.well_harness.github_writeback.shutil.which") as which:
+    with patch("app.well_harness.github_writeback.shutil.which") as which:
         which.return_value = None
         assert gw.writeback_enabled() is False
 
@@ -151,7 +148,7 @@ def test_post_rejects_whitespace_body():
 def test_post_no_token_no_op(monkeypatch):
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    with patch("backend.app.well_harness.github_writeback.shutil.which") as which:
+    with patch("app.well_harness.github_writeback.shutil.which") as which:
         which.return_value = None
         r = gw.post_pr_comment(repo="o/r", pr_number=1, body="hi")
     assert r.posted is False

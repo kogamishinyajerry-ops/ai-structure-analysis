@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.cli — the ingest CLI runner."""
+"""Tests for app.rag.cli — the ingest CLI runner."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.cli import _build_kb, main
-    from backend.app.rag.sources import ALL_SOURCES
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.cli import _build_kb, main
+    from app.rag.sources import ALL_SOURCES
 except ImportError as e:
     pytest.skip(f"rag.cli imports failed: {e}", allow_module_level=True)
 
@@ -135,13 +135,13 @@ def test_main_failclosed_when_a_source_raises(tmp_path, capsys, monkeypatch):
     may be written to the KB store. Behavior: collect ALL docs first,
     then ingest. A raise during collection aborts before any ingest.
     """
-    from backend.app.rag import sources as sources_module
+    from app.rag import sources as sources_module
 
     calls: list[str] = []
 
     def good_source(repo_root):
         calls.append("good")
-        from backend.app.rag.schemas import Document
+        from app.rag.schemas import Document
 
         yield Document(doc_id="good:1", source="good-src", title="t", text="x", metadata={})
 
@@ -154,7 +154,7 @@ def test_main_failclosed_when_a_source_raises(tmp_path, capsys, monkeypatch):
     )
     # Also patch the cli's reference to ALL_SOURCES (it imports at
     # module load).
-    from backend.app.rag import cli as cli_module
+    from app.rag import cli as cli_module
 
     monkeypatch.setattr(
         cli_module, "ALL_SOURCES", [("good-src", good_source), ("bad-src", bad_source)]
@@ -186,7 +186,7 @@ def test_persist_lock_blocks_concurrent_writers(tmp_path):
     persist-dir lock must not both succeed. Chroma's local
     PersistentClient is not process-safe for concurrent writers,
     so the CLI's _acquire_persist_lock must serialize them."""
-    from backend.app.rag.cli import _acquire_persist_lock, _UsageError
+    from app.rag.cli import _acquire_persist_lock, _UsageError
 
     # First acquisition succeeds.
     handle1 = _acquire_persist_lock(tmp_path)
@@ -205,7 +205,7 @@ def test_persist_lock_blocks_concurrent_writers(tmp_path):
 
 def test_persist_lock_creates_persist_dir_if_missing(tmp_path):
     """The lock must work even if --persist-dir doesn't exist yet."""
-    from backend.app.rag.cli import _acquire_persist_lock
+    from app.rag.cli import _acquire_persist_lock
 
     new_dir = tmp_path / "fresh" / "persist"
     assert not new_dir.exists()

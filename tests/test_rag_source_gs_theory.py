@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.sources.gs_theory (Source 5)."""
+"""Tests for app.rag.sources.gs_theory (Source 5)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.sources.gs_theory import (
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.sources.gs_theory import (
         SOURCE_LABEL,
         _is_theory_script,
         iter_gs_theory_documents,
@@ -260,7 +260,7 @@ def test_is_theory_script_uses_suffix_not_substring():
     `*_theoretical.py`, `*_analytical.py`. The previous substring check
     accepted false positives like `__test_theory__.py`, `theory.txt.py`,
     `analytical_data.py`, and `data_theory_notes.py`."""
-    from backend.app.rag.sources.gs_theory import _is_theory_script
+    from app.rag.sources.gs_theory import _is_theory_script
 
     # True positives (documented suffix forms):
     assert _is_theory_script(Path("cantilever_theory.py"))

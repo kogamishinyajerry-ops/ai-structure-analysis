@@ -5,12 +5,12 @@ Reads `golden_samples/GS-*/README.md` and any `*_theory.py` /
 `Document` objects, returns them for the KnowledgeBase to ingest.
 
 Usage:
-    from backend.app.rag.sources.gs_theory import iter_gs_theory_documents
+    from app.rag.sources.gs_theory import iter_gs_theory_documents
     docs = list(iter_gs_theory_documents(repo_root))
     kb.ingest(docs)
 
 CLI:
-    python3 -m backend.app.rag.sources.gs_theory [--root <path>]
+    python3 -m app.rag.sources.gs_theory [--root <path>]
 
 The CLI prints a summary (doc_id, title, char count) without running
 embedding; use `KnowledgeBase.ingest()` from your own script to actually
@@ -24,7 +24,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from backend.app.rag.schemas import Document
+from app.rag.schemas import Document
 
 SOURCE_LABEL = "gs-theory"
 

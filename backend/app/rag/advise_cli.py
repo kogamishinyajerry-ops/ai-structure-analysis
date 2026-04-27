@@ -1,15 +1,15 @@
 """RAG advise CLI — verdict-driven corpus lookup as a shell tool (P1-05b).
 
-Sibling to backend.app.rag.cli (ingest) and backend.app.rag.query_cli (query).
+Sibling to app.rag.cli (ingest) and app.rag.query_cli (query).
 Wraps reviewer_advisor.advise so operators / debug sessions can ask:
 
     "Given a Reviewer verdict + fault classification, what does the
      corpus tell us about this failure mode?"
 
 Usage:
-    python3 -m backend.app.rag.advise_cli --verdict Reject --fault solver_convergence
-    python3 -m backend.app.rag.advise_cli --verdict Reject --fault mesh_jacobian --k 3
-    python3 -m backend.app.rag.advise_cli --verdict 'Re-run' --fault solver_timestep \\
+    python3 -m app.rag.advise_cli --verdict Reject --fault solver_convergence
+    python3 -m app.rag.advise_cli --verdict Reject --fault mesh_jacobian --k 3
+    python3 -m app.rag.advise_cli --verdict 'Re-run' --fault solver_timestep \\
         --source-filter project-adr-fp
 
 Exit codes:
@@ -25,18 +25,18 @@ import json
 import sys
 from pathlib import Path
 
-from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-from backend.app.rag.reviewer_advisor import (
+from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+from app.rag.reviewer_advisor import (
     FAULT_QUERY_SEEDS,
     KNOWN_VERDICTS,
     advise,
 )
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag.sources import ALL_SOURCES
 
 
 class _UsageError(SystemExit):
-    """Mirrors the pattern in `backend.app.rag.cli` and
-    `backend.app.rag.query_cli`: exit code 2 for usage / fatal errors
+    """Mirrors the pattern in `app.rag.cli` and
+    `app.rag.query_cli`: exit code 2 for usage / fatal errors
     with a user-facing message attribute. Plain `SystemExit("msg")`
     exits with code 1, conflicting with the docstring's
     `2 = usage error` contract.
@@ -87,8 +87,8 @@ def _build_kb(
         # Wrap both imports AND both constructor calls so chromadb-
         # missing-at-construct-time also maps to a clean rc=2.
         try:
-            from backend.app.rag.embedder import BgeM3Embedder
-            from backend.app.rag.store import ChromaVectorStore
+            from app.rag.embedder import BgeM3Embedder
+            from app.rag.store import ChromaVectorStore
 
             embedder = BgeM3Embedder()
             store = ChromaVectorStore(persist_dir=persist_dir, collection_name=collection)

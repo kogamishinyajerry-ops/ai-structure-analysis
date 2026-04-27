@@ -3,10 +3,10 @@
 Asserts the contract from `docs/adr/ADR-017-rag-facade-cli-lib-parity.md`:
 
 1. Only `rag_facade.py` (R2 fix: SOLE choke point) under
-   `backend/app/workbench/` may import `backend.app.rag.*`. agent_facade.py
+   `backend/app/workbench/` may import `app.rag.*`. agent_facade.py
    does NOT — agents that internally call RAG do so via the agent-internal
    call site, not via the workbench facade.
-2. `rag_facade.py` does NOT import `backend.app.rag.*_cli` / `coverage_audit`
+2. `rag_facade.py` does NOT import `app.rag.*_cli` / `coverage_audit`
    (the facade goes through the library, not the CLI shell).
 3. Each CLI module that exists imports its sibling library module (parity:
    CLI is a thin shell over the library, never re-implements logic).
@@ -37,7 +37,7 @@ _WORKBENCH_DIR = _REPO_ROOT / "backend" / "app" / "workbench"
 _RAG_DIR = _REPO_ROOT / "backend" / "app" / "rag"
 # R2 (post Codex R1 HIGH): the choke point is ONLY rag_facade.py.
 # agent_facade.py imports agents.*, but if an agent internally calls
-# backend.app.rag.* that's the agent's concern — agent_facade itself
+# app.rag.* that's the agent's concern — agent_facade itself
 # does NOT need RAG access. Forcing rag_facade as the single workbench
 # RAG entry-point matches docs/adr/ADR-017 §41-42,49.
 _RAG_FACADE_NAME = "rag_facade.py"
@@ -54,11 +54,11 @@ _CLI_LIB_PAIRS = [
 
 # CLI modules that must NEVER appear in rag_facade.py imports.
 _FORBIDDEN_FACADE_IMPORTS = {
-    "backend.app.rag.cli",
-    "backend.app.rag.query_cli",
-    "backend.app.rag.advise_cli",
-    "backend.app.rag.preflight_publish_cli",
-    "backend.app.rag.coverage_audit",  # CLI-shaped audit tool
+    "app.rag.cli",
+    "app.rag.query_cli",
+    "app.rag.advise_cli",
+    "app.rag.preflight_publish_cli",
+    "app.rag.coverage_audit",  # CLI-shaped audit tool
 }
 
 
@@ -70,7 +70,7 @@ _FORBIDDEN_FACADE_IMPORTS = {
 def _module_predicate_from_rag(module: str | None) -> bool:
     if module is None:
         return False
-    return module == "backend.app.rag" or module.startswith("backend.app.rag.")
+    return module == "app.rag" or module.startswith("app.rag.")
 
 
 def _imports_modules(tree: ast.AST) -> set[str]:
@@ -117,7 +117,7 @@ def _workbench_py_files() -> list[Path]:
 
 
 # ---------------------------------------------------------------------------
-# Rule #1 — only facade modules import backend.app.rag.* from workbench
+# Rule #1 — only facade modules import app.rag.* from workbench
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +150,7 @@ def test_only_rag_facade_imports_rag_from_workbench():
                             f"{path.relative_to(_REPO_ROOT)}:{node.lineno}: imports `{alias.name}`"
                         )
     assert not violations, (
-        "ADR-017 violation — ONLY rag_facade.py may import backend.app.rag.* "
+        "ADR-017 violation — ONLY rag_facade.py may import app.rag.* "
         "from the workbench package:\n  " + "\n  ".join(violations)
     )
 
@@ -196,13 +196,13 @@ def test_each_cli_shell_imports_its_library_sibling():
         if tree is None:
             continue
         imported = _imports_modules(tree)
-        # The CLI may import via `from backend.app.rag.<lib> import …` or
+        # The CLI may import via `from app.rag.<lib> import …` or
         # `from .<lib> import …` (relative). Accept either.
         lib_stem = lib_name[: -len(".py")]
-        absolute = f"backend.app.rag.{lib_stem}"
+        absolute = f"app.rag.{lib_stem}"
         relative_targets = {lib_stem}  # `from .<lib_stem> import …`
         ok = absolute in imported or any(t in imported for t in relative_targets)
-        # Also accept any module starting with `backend.app.rag.<lib_stem>`
+        # Also accept any module starting with `app.rag.<lib_stem>`
         if not ok:
             ok = any(m == absolute or m.startswith(absolute + ".") for m in imported)
         if not ok:
@@ -229,7 +229,7 @@ def test_no_cli_imports_another_cli():
     if not _RAG_DIR.is_dir():
         pytest.skip(f"{_RAG_DIR} does not exist yet — RAG track (PR #38-#47)")
     cli_filenames = {p[0] for p in _CLI_LIB_PAIRS}
-    cli_module_names = {f"backend.app.rag.{name[: -len('.py')]}" for name in cli_filenames}
+    cli_module_names = {f"app.rag.{name[: -len('.py')]}" for name in cli_filenames}
     cli_relative_names = {name[: -len(".py")] for name in cli_filenames}
     violations: list[str] = []
     for cli_name in cli_filenames:
@@ -240,7 +240,7 @@ def test_no_cli_imports_another_cli():
         if tree is None:
             continue
         imported = _imports_modules(tree)
-        own_module = f"backend.app.rag.{cli_name[: -len('.py')]}"
+        own_module = f"app.rag.{cli_name[: -len('.py')]}"
         own_relative = cli_name[: -len(".py")]
         for mod in imported:
             if mod in cli_module_names and mod != own_module:
@@ -268,18 +268,18 @@ def _parse(src: str) -> ast.AST:
 
 class TestPredicates:
     def test_from_rag_lib_is_caught(self):
-        tree = _parse("from backend.app.rag.reviewer_advisor import advise\n")
+        tree = _parse("from app.rag.reviewer_advisor import advise\n")
         assert any(_module_predicate_from_rag(m) for m in _imports_modules(tree))
 
     def test_bare_import_rag_subpackage_is_caught(self):
-        tree = _parse("import backend.app.rag.kb\n")
+        tree = _parse("import app.rag.kb\n")
         # `_imports_modules` records the bare-import target as the full name
         names = _imports_modules(tree)
         assert any(_module_predicate_from_rag(n) for n in names)
 
     def test_unrelated_rag_lookalike_is_ignored(self):
-        # `backend.app.ragout` must NOT match `backend.app.rag.*`
-        tree = _parse("from backend.app.ragout import helper\n")
+        # `app.ragout` must NOT match `app.rag.*`
+        tree = _parse("from app.ragout import helper\n")
         names = _imports_modules(tree)
         assert not any(_module_predicate_from_rag(n) for n in names)
 
@@ -290,7 +290,7 @@ class TestPredicates:
 
     def test_forbidden_facade_set_recognizes_cli_modules(self):
         for name in _FORBIDDEN_FACADE_IMPORTS:
-            assert name.startswith("backend.app.rag.")
+            assert name.startswith("app.rag.")
             tail = name.rsplit(".", 1)[1]
             # Each forbidden module is either a CLI shell or the coverage_audit
             # CLI-shaped tool. "cli" alone (PR #38 ingest CLI) counts.
@@ -339,7 +339,7 @@ class TestR2RagFacadeIsSoleChokePoint:
 
     def test_agent_facade_is_not_a_legal_rag_import_site(self):
         """Synthetic check: a hypothetical agent_facade.py importing
-        backend.app.rag.* must be a violation under the R2 contract."""
+        app.rag.* must be a violation under the R2 contract."""
         # The actual file-walk happens in the integration test
         # `test_only_rag_facade_imports_rag_from_workbench`. This
         # synthetic test pins the constant so a future PR can't
@@ -362,7 +362,7 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
 
     Catches:
       - `kb: KnowledgeBase`
-      - `kb: backend.app.rag.kb.KnowledgeBase`
+      - `kb: app.rag.kb.KnowledgeBase`
       - `kb: "KnowledgeBase"` (string-form forward ref)
       - `kb: Optional[KnowledgeBase]` / `kb: KnowledgeBase | None`
       - `kb: typing.Annotated[KnowledgeBase, ...]`
@@ -431,7 +431,7 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
 
       from .kb import KnowledgeBase as KB    →  KB() is a ctor call
       cls = KnowledgeBase                    →  cls() is a ctor call
-      from backend.app.rag.kb import (KnowledgeBase as KB)
+      from app.rag.kb import (KnowledgeBase as KB)
 
     This function collects the bound local names so the caller can flag
     `Name(id=...)` calls whose id is in the alias set.
@@ -448,7 +448,7 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
     #    rare in a 100-line facade and the facade has private helpers
     #    excluded from public-API checks anyway.)
     # R5 (post Codex R4 R5 MEDIUM): always seed `KnowledgeBase` itself.
-    # Codex repro: `from backend.app.rag.kb import *; KB = KnowledgeBase`
+    # Codex repro: `from app.rag.kb import *; KB = KnowledgeBase`
     # — star-import binds `KnowledgeBase` without an explicit `import as`,
     # so the import-walk doesn't seed it. Without seeding, `KB =
     # KnowledgeBase` doesn't propagate. Always seeding ensures the
@@ -543,10 +543,10 @@ def _calls_get_kb_singleton(tree: ast.AST) -> bool:
     fresh KB per call. The fix:
 
       - Reject the singleton check if there is a local `def get_kb` AND
-        no `get_kb` import from `backend.app.rag(.kb)?`.
+        no `get_kb` import from `app.rag(.kb)?`.
       - Accept `get_kb()` only when its provenance traces to the rag
-        package: either imported as `from backend.app.rag.kb import
-        get_kb` / `from .kb import get_kb` / `from backend.app.rag
+        package: either imported as `from app.rag.kb import
+        get_kb` / `from .kb import get_kb` / `from app.rag
         import kb` (then `kb.get_kb()`).
 
     Matches both `get_kb()` and `kb.get_kb()` invocation forms once
@@ -561,11 +561,11 @@ def _calls_get_kb_singleton(tree: ast.AST) -> bool:
         if isinstance(node, ast.ImportFrom):
             mod = node.module or ""
             level = node.level or 0
-            # Absolute: `from backend.app.rag.kb import get_kb`
-            #           `from backend.app.rag import kb`
+            # Absolute: `from app.rag.kb import get_kb`
+            #           `from app.rag import kb`
             # Relative: `from .kb import get_kb`, `from . import kb`
-            from_rag_kb_module = mod == "backend.app.rag.kb" or (level >= 1 and mod == "kb")
-            from_rag_pkg = mod == "backend.app.rag" or (level >= 1 and mod == "")
+            from_rag_kb_module = mod == "app.rag.kb" or (level >= 1 and mod == "kb")
+            from_rag_pkg = mod == "app.rag" or (level >= 1 and mod == "")
             for alias in node.names:
                 if from_rag_kb_module and alias.name == "get_kb":
                     get_kb_imported_from_rag = True
@@ -677,17 +677,14 @@ class TestR3SingletonPolicyPredicates:
 
     def test_param_annotation_bare_name_is_caught(self):
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def advise(query: str, kb: KnowledgeBase) -> dict: ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert _function_takes_knowledgebase_param(fn)
 
     def test_param_annotation_dotted_path_is_caught(self):
-        tree = _parse(
-            "import backend.app.rag.kb\n"
-            "def advise(query, kb: backend.app.rag.kb.KnowledgeBase): ...\n"
-        )
+        tree = _parse("import app.rag.kb\ndef advise(query, kb: app.rag.kb.KnowledgeBase): ...\n")
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert _function_takes_knowledgebase_param(fn)
 
@@ -699,7 +696,7 @@ class TestR3SingletonPolicyPredicates:
     def test_param_annotation_optional_wrapped_is_caught(self):
         tree = _parse(
             "from typing import Optional\n"
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def advise(query, kb: Optional[KnowledgeBase] = None): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
@@ -707,8 +704,7 @@ class TestR3SingletonPolicyPredicates:
 
     def test_kwonly_kb_parameter_is_caught(self):
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
-            "def advise(query, *, kb: KnowledgeBase): ...\n"
+            "from app.rag.kb import KnowledgeBase\ndef advise(query, *, kb: KnowledgeBase): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert _function_takes_knowledgebase_param(fn)
@@ -728,23 +724,21 @@ class TestR3SingletonPolicyPredicates:
         assert not _function_takes_knowledgebase_param(fn)
 
     def test_constructor_call_bare_name_is_caught(self):
-        tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\ndef f(): return KnowledgeBase()\n"
-        )
+        tree = _parse("from app.rag.kb import KnowledgeBase\ndef f(): return KnowledgeBase()\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_constructor_call_attribute_form_is_caught(self):
-        tree = _parse("from backend.app.rag import kb\ndef f(): return kb.KnowledgeBase(arg=1)\n")
+        tree = _parse("from app.rag import kb\ndef f(): return kb.KnowledgeBase(arg=1)\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_get_kb_call_is_not_a_constructor(self):
         """`get_kb()` is the accessor, NOT a constructor — must not match."""
-        tree = _parse("from backend.app.rag.kb import get_kb\ndef f(): return get_kb()\n")
+        tree = _parse("from app.rag.kb import get_kb\ndef f(): return get_kb()\n")
         assert not _calls_knowledgebase_constructor(tree)
         assert _calls_get_kb_singleton(tree)
 
     def test_get_kb_attribute_form_is_recognized(self):
-        tree = _parse("from backend.app.rag import kb\ndef f(): return kb.get_kb()\n")
+        tree = _parse("from app.rag import kb\ndef f(): return kb.get_kb()\n")
         assert _calls_get_kb_singleton(tree)
         assert not _calls_knowledgebase_constructor(tree)
 
@@ -755,7 +749,7 @@ class TestR3SingletonPolicyPredicates:
     def test_async_function_param_is_caught(self):
         """FastAPI handlers are async; the predicate must walk async defs."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "async def advise(query, kb: KnowledgeBase): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef))
@@ -778,7 +772,7 @@ class TestR3SingletonPolicyPredicates:
 # - _knowledgebase_local_aliases() resolves imports + simple assignments.
 # - _calls_knowledgebase_constructor() flags any aliased ctor.
 # - _calls_get_kb_singleton() is provenance-aware (rejects local-shadow,
-#   requires get_kb to come from backend.app.rag.kb / .kb / rag pkg).
+#   requires get_kb to come from app.rag.kb / .kb / rag pkg).
 # - _annotation_mentions_knowledgebase() skips inside type[...] subscripts.
 # ---------------------------------------------------------------------------
 
@@ -795,7 +789,7 @@ class TestR4AliasShadowBypass:
         KB() as a constructor AND the singleton check fails closed because
         a local def get_kb shadows without a get_kb import."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase as KB\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
             "def get_kb(): return KB()\n"
             "def advise(q): return get_kb()\n"
         )
@@ -804,22 +798,20 @@ class TestR4AliasShadowBypass:
 
     def test_alias_imported_constructor_is_caught(self):
         """`from x import KnowledgeBase as KB; KB()` — must catch alias."""
-        tree = _parse("from backend.app.rag.kb import KnowledgeBase as KB\nKB()\n")
+        tree = _parse("from app.rag.kb import KnowledgeBase as KB\nKB()\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_assigned_alias_constructor_is_caught(self):
         """`cls = KnowledgeBase; cls()` — chain via assignment."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
-            "cls = KnowledgeBase\n"
-            "def f(): return cls()\n"
+            "from app.rag.kb import KnowledgeBase\ncls = KnowledgeBase\ndef f(): return cls()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
     def test_multi_hop_alias_chain_is_caught(self):
         """`a = KnowledgeBase; b = a; b()` — multi-step chain."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "a = KnowledgeBase\n"
             "b = a\n"
             "c = b\n"
@@ -834,12 +826,12 @@ class TestR4AliasShadowBypass:
 
     def test_get_kb_imported_from_rag_kb_is_accepted(self):
         """Bare get_kb() with proper import is accepted."""
-        tree = _parse("from backend.app.rag.kb import get_kb\ndef f(): return get_kb()\n")
+        tree = _parse("from app.rag.kb import get_kb\ndef f(): return get_kb()\n")
         assert _calls_get_kb_singleton(tree)
 
     def test_get_kb_via_kb_module_attribute_is_accepted(self):
-        """`from backend.app.rag import kb; kb.get_kb()` is accepted."""
-        tree = _parse("from backend.app.rag import kb\ndef f(): return kb.get_kb()\n")
+        """`from app.rag import kb; kb.get_kb()` is accepted."""
+        tree = _parse("from app.rag import kb\ndef f(): return kb.get_kb()\n")
         assert _calls_get_kb_singleton(tree)
 
     def test_get_kb_via_relative_import_is_accepted(self):
@@ -858,7 +850,7 @@ class TestR4AliasShadowBypass:
     def test_getattr_pattern_is_not_accepted(self):
         """Documented as a known LOW: `getattr(kb, 'get_kb')()` is too
         opaque to verify statically. The predicate stays syntax-pinned."""
-        tree = _parse("from backend.app.rag import kb\ndef f(): return getattr(kb, 'get_kb')()\n")
+        tree = _parse("from app.rag import kb\ndef f(): return getattr(kb, 'get_kb')()\n")
         assert not _calls_get_kb_singleton(tree)
 
 
@@ -869,7 +861,7 @@ class TestR4TypeSubscriptNarrowing:
 
     def test_type_lower_bracket_knowledgebase_is_allowed(self):
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\ndef f(cls: type[KnowledgeBase]): ...\n"
+            "from app.rag.kb import KnowledgeBase\ndef f(cls: type[KnowledgeBase]): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert not _function_takes_knowledgebase_param(fn)
@@ -877,7 +869,7 @@ class TestR4TypeSubscriptNarrowing:
     def test_typing_Type_capital_knowledgebase_is_allowed(self):
         tree = _parse(
             "from typing import Type\n"
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def f(cls: Type[KnowledgeBase]): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
@@ -887,7 +879,7 @@ class TestR4TypeSubscriptNarrowing:
         """Defensive: a function with BOTH `type[KB]` and a bare KB param
         must still be flagged for the bare param."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def f(cls: type[KnowledgeBase], kb: KnowledgeBase): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
@@ -898,7 +890,7 @@ class TestR4TypeSubscriptNarrowing:
         still be caught (not narrowed by R4)."""
         tree = _parse(
             "from typing import Annotated\n"
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def f(kb: Annotated[KnowledgeBase, 'fast']): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
@@ -909,7 +901,7 @@ class TestR4TypeSubscriptNarrowing:
         caught (not narrowed by R4)."""
         tree = _parse(
             "from typing import List\n"
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def f(pool: List[KnowledgeBase]): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
@@ -942,7 +934,7 @@ class TestR4DocstringConsistency:
 # R5 hardening — star-import + class-method false negative (post Codex R4 R5)
 #
 # Codex R4 R5 found:
-# - MEDIUM: `from backend.app.rag.kb import *; KB = KnowledgeBase; KB()`
+# - MEDIUM: `from app.rag.kb import *; KB = KnowledgeBase; KB()`
 #   bypassed _calls_knowledgebase_constructor because the alias-walk
 #   only seeded names from explicit `import KnowledgeBase` constructs.
 # - LOW: a class method `def get_kb(self)` (e.g., `class Helper:
@@ -966,21 +958,19 @@ class TestR5StarImportAndClassMethod:
 
     def test_codex_r5_star_import_with_assigned_alias_is_caught(self):
         """The exact Codex R4 R5 MEDIUM repro:
-            from backend.app.rag.kb import *
+            from app.rag.kb import *
             KB = KnowledgeBase
             def advise(q): return KB()
         Pre-R5: alias-walk seed missed `KnowledgeBase` (no `import as`),
         so `KB` chain didn't propagate, ctor=False. Post-R5: always-seed
         catches the assignment chain and `KB()` is flagged."""
-        tree = _parse(
-            "from backend.app.rag.kb import *\nKB = KnowledgeBase\ndef advise(q): return KB()\n"
-        )
+        tree = _parse("from app.rag.kb import *\nKB = KnowledgeBase\ndef advise(q): return KB()\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_codex_r5_star_import_full_repro_yields_violation(self):
         """The full Codex repro (also has kb.get_kb() before KB()):
-            from backend.app.rag import kb
-            from backend.app.rag.kb import *
+            from app.rag import kb
+            from app.rag.kb import *
             KB = KnowledgeBase
             def advise(q):
                 kb.get_kb()
@@ -988,8 +978,8 @@ class TestR5StarImportAndClassMethod:
         Singleton check passes (real kb.get_kb call), but the ctor
         check now FLAGS this — exactly the right outcome."""
         tree = _parse(
-            "from backend.app.rag import kb\n"
-            "from backend.app.rag.kb import *\n"
+            "from app.rag import kb\n"
+            "from app.rag.kb import *\n"
             "KB = KnowledgeBase\n"
             "def advise(q):\n"
             "    kb.get_kb()\n"
@@ -1000,12 +990,12 @@ class TestR5StarImportAndClassMethod:
 
     def test_r5_star_import_direct_constructor_is_caught(self):
         """`from .kb import *; KnowledgeBase()` — direct call, no alias."""
-        tree = _parse("from backend.app.rag.kb import *\nKnowledgeBase()\n")
+        tree = _parse("from app.rag.kb import *\nKnowledgeBase()\n")
         assert _calls_knowledgebase_constructor(tree)
 
     def test_codex_r5_class_method_get_kb_does_not_shadow(self):
         """The exact Codex R4 R5 LOW repro:
-            from backend.app.rag import kb
+            from app.rag import kb
             class Helper:
                 def get_kb(self): return 1
             def advise(q): return kb.get_kb()
@@ -1013,7 +1003,7 @@ class TestR5StarImportAndClassMethod:
         locally_defined_get_kb=True → singleton check rejected.
         Post-R5: only module-level defs scanned, so kb.get_kb() passes."""
         tree = _parse(
-            "from backend.app.rag import kb\n"
+            "from app.rag import kb\n"
             "class Helper:\n"
             "    def get_kb(self): return 1\n"
             "def advise(q): return kb.get_kb()\n"
@@ -1024,7 +1014,7 @@ class TestR5StarImportAndClassMethod:
         """A nested `def get_kb` inside another function does not shadow
         the module-level singleton import either."""
         tree = _parse(
-            "from backend.app.rag import kb\n"
+            "from app.rag import kb\n"
             "def outer():\n"
             "    def get_kb(): return 1\n"
             "    return get_kb()\n"
@@ -1048,7 +1038,7 @@ class TestR5StarImportAndClassMethod:
         of get_kb exists, the singleton check should pass (the real
         import takes precedence; the method is in a different scope)."""
         tree = _parse(
-            "from backend.app.rag.kb import get_kb\n"
+            "from app.rag.kb import get_kb\n"
             "class Helper:\n"
             "    def get_kb(self): return 1\n"
             "def advise(q): return get_kb()\n"
@@ -1058,11 +1048,7 @@ class TestR5StarImportAndClassMethod:
     def test_r5_assignment_chain_after_star_import(self):
         """Multi-hop chain post star-import: `import *; a=KB; b=a; b()`."""
         tree = _parse(
-            "from backend.app.rag.kb import *\n"
-            "a = KnowledgeBase\n"
-            "b = a\n"
-            "c = b\n"
-            "def f(): return c()\n"
+            "from app.rag.kb import *\na = KnowledgeBase\nb = a\nc = b\ndef f(): return c()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
@@ -1094,14 +1080,14 @@ class TestR6IfExpAndWalrusAliases:
 
     def test_codex_r6_ifexp_alias_either_branch_is_caught(self):
         """The exact Codex R5 R6 MEDIUM repro:
-            from backend.app.rag.kb import KnowledgeBase
+            from app.rag.kb import KnowledgeBase
             KB = KnowledgeBase if cond else AltClass
             def advise(q): return KB()
         Pre-R6: KB binding from IfExp not propagated. Post-R6:
         IfExp.body/orelse walked; if EITHER resolves to a KB alias,
         target is bound."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "KB = KnowledgeBase if cond else AltClass\n"
             "def advise(q): return KB()\n"
         )
@@ -1110,7 +1096,7 @@ class TestR6IfExpAndWalrusAliases:
     def test_r6_ifexp_with_kb_in_orelse_is_caught(self):
         """KB on the orelse branch only (still must flag — conservative)."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "KB = AltClass if cond else KnowledgeBase\n"
             "def f(): return KB()\n"
         )
@@ -1124,7 +1110,7 @@ class TestR6IfExpAndWalrusAliases:
     def test_r6_nested_ifexp_chain_is_caught(self):
         """`a = X if c1 else (Y if c2 else KnowledgeBase); a()`."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "a = X if c1 else (Y if c2 else KnowledgeBase)\n"
             "def f(): return a()\n"
         )
@@ -1135,15 +1121,14 @@ class TestR6IfExpAndWalrusAliases:
         The walrus binds AND immediately calls; the call's func is
         NamedExpr whose value is the KB alias."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
-            "def f(): return (KB := KnowledgeBase)()\n"
+            "from app.rag.kb import KnowledgeBase\ndef f(): return (KB := KnowledgeBase)()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
     def test_r6_walrus_call_via_aliased_name_is_caught(self):
         """`(KB := AnotherAlias)()` after `AnotherAlias = KnowledgeBase`."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "AnotherAlias = KnowledgeBase\n"
             "def f(): return (KB := AnotherAlias)()\n"
         )
@@ -1153,7 +1138,7 @@ class TestR6IfExpAndWalrusAliases:
         """`(KB := KnowledgeBase); KB()` — walrus binds KB, later
         bare-name call is also flagged via the aliases set."""
         tree = _parse(
-            "from backend.app.rag.kb import KnowledgeBase\n"
+            "from app.rag.kb import KnowledgeBase\n"
             "def f():\n"
             "    (KB := KnowledgeBase)\n"
             "    return KB()\n"
@@ -1168,5 +1153,5 @@ class TestR6IfExpAndWalrusAliases:
 
     def test_r6_walrus_attribute_form_is_caught(self):
         """`(K := kb.KnowledgeBase)()` — attribute-form via walrus."""
-        tree = _parse("from backend.app.rag import kb\ndef f(): return (K := kb.KnowledgeBase)()\n")
+        tree = _parse("from app.rag import kb\ndef f(): return (K := kb.KnowledgeBase)()\n")
         assert _calls_knowledgebase_constructor(tree)

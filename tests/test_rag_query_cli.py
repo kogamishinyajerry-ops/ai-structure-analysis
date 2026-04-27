@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.query_cli — the operator-facing query CLI."""
+"""Tests for app.rag.query_cli — the operator-facing query CLI."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag.query_cli import (
+    from app.rag.query_cli import (
         _build_kb_for_query,
         _format_result_line,
         _UsageError,
         main,
     )
-    from backend.app.rag.sources import ALL_SOURCES
+    from app.rag.sources import ALL_SOURCES
 except ImportError as e:
     pytest.skip(f"rag.query_cli imports failed: {e}", allow_module_level=True)
 
@@ -355,7 +355,7 @@ def test_bge_m3_chromadb_constructor_failure_routes_to_usage_error(monkeypatch):
     (e.g. chromadb missing inside the constructor's lazy import).
     The fix folds the constructor into the same try/except as the module
     imports, so this maps to _UsageError(rc=2), not a raw traceback."""
-    import backend.app.rag.query_cli as qmod
+    import app.rag.query_cli as qmod
 
     # Stub out heavy imports so we test the wrapping logic, not deps.
     class _FakeEmbedder:
@@ -371,8 +371,8 @@ def test_bge_m3_chromadb_constructor_failure_routes_to_usage_error(monkeypatch):
 
     fake_store_mod = type("M", (), {"ChromaVectorStore": _bad_chroma})
 
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.embedder", fake_embedder_mod)
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.store", fake_store_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.embedder", fake_embedder_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.store", fake_store_mod)
 
     with pytest.raises(qmod._UsageError) as exc_info:
         qmod._build_kb_for_query(
@@ -390,7 +390,7 @@ def test_bge_m3_chromadb_constructor_failure_routes_to_usage_error(monkeypatch):
 def test_main_bge_m3_chromadb_missing_prints_single_line(monkeypatch, capsys):
     """End-to-end: main() must print exactly one [query-rag] stderr line
     for the chromadb-missing path, not a Python traceback."""
-    import backend.app.rag.query_cli as qmod
+    import app.rag.query_cli as qmod
 
     class _FakeEmbedder:
         embedder_id = "fake"
@@ -405,8 +405,8 @@ def test_main_bge_m3_chromadb_missing_prints_single_line(monkeypatch, capsys):
 
     fake_store_mod = type("M", (), {"ChromaVectorStore": _bad_chroma})
 
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.embedder", fake_embedder_mod)
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.store", fake_store_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.embedder", fake_embedder_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.store", fake_store_mod)
 
     rc = qmod.main(
         [
@@ -431,7 +431,7 @@ def test_mock_corpus_value_error_routes_to_usage_error(tmp_path, monkeypatch, ca
     doc_id, malformed frontmatter) must produce rc=2 + single stderr
     line, not a traceback. Mirrors cli.py's two-phase guard but inline
     in the mock-path ingest loop."""
-    import backend.app.rag.query_cli as qmod
+    import app.rag.query_cli as qmod
 
     def bad_iter(repo_root):
         raise ValueError("simulated duplicate doc_id")
@@ -459,7 +459,7 @@ def test_mock_corpus_value_error_routes_to_usage_error(tmp_path, monkeypatch, ca
 def test_mock_corpus_os_error_routes_to_usage_error(tmp_path, monkeypatch, capsys):
     """R2 MED-2 sibling: OSError (e.g. symlink escape rejection) on the
     mock path must also map to rc=2."""
-    import backend.app.rag.query_cli as qmod
+    import app.rag.query_cli as qmod
 
     def bad_iter(repo_root):
         raise OSError("simulated path escape")

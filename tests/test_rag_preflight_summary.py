@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.preflight_summary."""
+"""Tests for app.rag.preflight_summary."""
 
 from __future__ import annotations
 
@@ -8,16 +8,16 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.preflight_summary import (
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.preflight_summary import (
         PreflightSummary,
         _aggregate_confidence,
         _format_advice_line,
         _format_quantity_line,
         combine,
     )
-    from backend.app.rag.reviewer_advisor import ReviewerAdvice, advise
-    from backend.app.rag.schemas import Document
+    from app.rag.reviewer_advisor import ReviewerAdvice, advise
+    from app.rag.schemas import Document
 except ImportError as e:
     pytest.skip(f"preflight_summary imports failed: {e}", allow_module_level=True)
 
@@ -317,7 +317,7 @@ def test_combine_with_real_repo_corpus():
     kb = KnowledgeBase(MockEmbedder(dim=32), MemoryVectorStore())
 
     # Ingest live corpus via the registry
-    from backend.app.rag.sources import ALL_SOURCES
+    from app.rag.sources import ALL_SOURCES
 
     for _label, iter_fn in ALL_SOURCES:
         docs = list(iter_fn(repo_root))

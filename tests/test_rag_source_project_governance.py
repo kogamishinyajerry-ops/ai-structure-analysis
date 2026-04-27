@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.sources.project_governance (Source 4)."""
+"""Tests for app.rag.sources.project_governance (Source 4)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.sources.project_governance import (
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.sources.project_governance import (
         SOURCE_LABEL,
         _extract_doc_id,
         _extract_title,
@@ -403,7 +403,7 @@ def test_inline_comment_stripper_preserves_hash_inside_quotes(tmp_path):
     `#` from comment-stripping. The first attempt only short-circuited
     on fully-quoted values and corrupted this form.
     """
-    from backend.app.rag.sources.project_governance import _strip_inline_comment
+    from app.rag.sources.project_governance import _strip_inline_comment
 
     # Quoted body containing `#`, plus a real trailing inline comment.
     out = _strip_inline_comment('"value # not-a-comment" # trailing comment')
@@ -465,7 +465,7 @@ def test_iter_raises_on_duplicate_doc_id(tmp_path):
 
 def _parse_frontmatter_call(md_path):
     """Helper: reproduce read+parse path for direct frontmatter inspection."""
-    from backend.app.rag.sources.project_governance import _parse_frontmatter
+    from app.rag.sources.project_governance import _parse_frontmatter
 
     text = md_path.read_text(encoding="utf-8")
     return _parse_frontmatter(text)

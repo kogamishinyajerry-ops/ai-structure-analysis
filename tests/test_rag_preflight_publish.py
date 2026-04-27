@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.preflight_publish."""
+"""Tests for app.rag.preflight_publish."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from dataclasses import dataclass
 import pytest
 
 try:
-    from backend.app.rag.preflight_publish import (
+    from app.rag.preflight_publish import (
         PublishResult,
         find_existing_preflight_comment,
         is_github_writeback_available,
         publish_preflight,
     )
-    from backend.app.rag.preflight_summary import PreflightSummary
+    from app.rag.preflight_summary import PreflightSummary
 except ImportError as e:
     pytest.skip(f"preflight_publish imports failed: {e}", allow_module_level=True)
 
@@ -271,7 +271,7 @@ def test_callback_failure_propagates_to_result():
 
 def test_no_callback_no_default_returns_error(monkeypatch):
     """Simulate environment where github_writeback is missing."""
-    import backend.app.rag.preflight_publish as mod
+    import app.rag.preflight_publish as mod
 
     monkeypatch.setattr(mod, "_default_post_pr_comment", None)
 
@@ -784,7 +784,7 @@ def test_upsert_skip_when_empty_short_circuits_before_list():
 def test_upsert_default_callbacks_unavailable_returns_error(monkeypatch):
     """If github_writeback is unimportable AND no list_callback is
     passed, upsert must fail with a clear message."""
-    import backend.app.rag.preflight_publish as mod
+    import app.rag.preflight_publish as mod
 
     monkeypatch.setattr(mod, "_default_list_pr_comments", None)
     monkeypatch.setattr(mod, "_default_patch_pr_comment", None)
