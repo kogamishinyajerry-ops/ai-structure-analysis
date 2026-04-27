@@ -199,9 +199,11 @@ def test_report_run_emits_progress_stages_to_stderr(
         )
         pos = idx + len(prefix)
 
-    # Detail lines must follow stages 1 and 2.
-    assert "      → opened (unit_system=si-mm)" in captured.err
-    assert "      → 2 evidence items, template=equipment_foundation_static" in captured.err
+    # Detail lines must follow stages 1 and 2. ASCII '->' instead of
+    # unicode arrow — the Chinese-locale Windows (CP936) wedge target
+    # would otherwise see mojibake; see cli._detail().
+    assert "      -> opened (unit_system=si-mm)" in captured.err
+    assert "      -> 2 evidence items, template=equipment_foundation_static" in captured.err
 
     # stdout still single-line summary — engineers script around this.
     stdout_lines = [ln for ln in captured.out.splitlines() if ln.strip()]

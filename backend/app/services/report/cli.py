@@ -476,7 +476,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{n}/{total_stages}] {msg}", file=sys.stderr, flush=True)
 
     def _detail(msg: str) -> None:
-        print(f"      → {msg}", file=sys.stderr, flush=True)
+        # ASCII '->' instead of U+2192. On Chinese-locale Windows (CP936)
+        # Python's sys.stderr default-encodes the unicode arrow as
+        # 0xA1FA, which the Electron shell then decodes as UTF-8 → the
+        # log pane renders mojibake (��) for exactly the new audit-trail
+        # lines. RFC-001 wedge audience is Chinese design institutes —
+        # CP936 is the default environment, not an edge case.
+        # (Codex R1 MEDIUM, 2026-04-28; verbatim fix.)
+        print(f"      -> {msg}", file=sys.stderr, flush=True)
 
     _stage(1, f"reading CalculiX .frd: {args.frd}")
     try:
