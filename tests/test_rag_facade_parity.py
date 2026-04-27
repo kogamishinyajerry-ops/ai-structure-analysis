@@ -684,9 +684,7 @@ class TestR3SingletonPolicyPredicates:
         assert _function_takes_knowledgebase_param(fn)
 
     def test_param_annotation_dotted_path_is_caught(self):
-        tree = _parse(
-            "import app.rag.kb\n" "def advise(query, kb: app.rag.kb.KnowledgeBase): ...\n"
-        )
+        tree = _parse("import app.rag.kb\ndef advise(query, kb: app.rag.kb.KnowledgeBase): ...\n")
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert _function_takes_knowledgebase_param(fn)
 
@@ -706,8 +704,7 @@ class TestR3SingletonPolicyPredicates:
 
     def test_kwonly_kb_parameter_is_caught(self):
         tree = _parse(
-            "from app.rag.kb import KnowledgeBase\n"
-            "def advise(query, *, kb: KnowledgeBase): ...\n"
+            "from app.rag.kb import KnowledgeBase\ndef advise(query, *, kb: KnowledgeBase): ...\n"
         )
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
         assert _function_takes_knowledgebase_param(fn)
@@ -807,9 +804,7 @@ class TestR4AliasShadowBypass:
     def test_assigned_alias_constructor_is_caught(self):
         """`cls = KnowledgeBase; cls()` — chain via assignment."""
         tree = _parse(
-            "from app.rag.kb import KnowledgeBase\n"
-            "cls = KnowledgeBase\n"
-            "def f(): return cls()\n"
+            "from app.rag.kb import KnowledgeBase\ncls = KnowledgeBase\ndef f(): return cls()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
@@ -1053,11 +1048,7 @@ class TestR5StarImportAndClassMethod:
     def test_r5_assignment_chain_after_star_import(self):
         """Multi-hop chain post star-import: `import *; a=KB; b=a; b()`."""
         tree = _parse(
-            "from app.rag.kb import *\n"
-            "a = KnowledgeBase\n"
-            "b = a\n"
-            "c = b\n"
-            "def f(): return c()\n"
+            "from app.rag.kb import *\na = KnowledgeBase\nb = a\nc = b\ndef f(): return c()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 
@@ -1130,7 +1121,7 @@ class TestR6IfExpAndWalrusAliases:
         The walrus binds AND immediately calls; the call's func is
         NamedExpr whose value is the KB alias."""
         tree = _parse(
-            "from app.rag.kb import KnowledgeBase\n" "def f(): return (KB := KnowledgeBase)()\n"
+            "from app.rag.kb import KnowledgeBase\ndef f(): return (KB := KnowledgeBase)()\n"
         )
         assert _calls_knowledgebase_constructor(tree)
 

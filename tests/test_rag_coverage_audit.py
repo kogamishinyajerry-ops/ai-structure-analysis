@@ -124,9 +124,9 @@ def test_discover_gs_dirs_handles_no_golden_samples(tmp_path):
 def test_audit_coverage_clean_synth_repo(tmp_path):
     repo = _make_synth_repo(tmp_path)
     report = audit_coverage(repo)
-    assert (
-        report.all_clean()
-    ), f"buckets: {[(b.name, b.missing_files, b.extra_files) for b in report.buckets]}"
+    assert report.all_clean(), (
+        f"buckets: {[(b.name, b.missing_files, b.extra_files) for b in report.buckets]}"
+    )
     assert not report.any_missing()
     assert report.total_expected() == 9  # 2 ADR + 2 FP + 2 README + 3 theory
     assert report.total_covered() == 9

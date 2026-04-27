@@ -330,9 +330,9 @@ def test_iter_rejects_symlinks_pointing_outside_repo(tmp_path):
     except OSError:
         pytest.skip("symlink not supported on this filesystem")
     docs = list(iter_governance_documents(repo))
-    assert all(
-        "ADR-999" not in d.doc_id for d in docs
-    ), "symlink ADR-999-link.md must not be ingested"
+    assert all("ADR-999" not in d.doc_id for d in docs), (
+        "symlink ADR-999-link.md must not be ingested"
+    )
     assert all("secret" not in d.text for d in docs)
 
 
@@ -367,9 +367,9 @@ def test_inline_yaml_comment_stripped_from_scalar_value(tmp_path):
     )
     docs = list(iter_governance_documents(tmp_path))
     fp_doc = next(d for d in docs if "FP-501" in d.doc_id)
-    assert (
-        fp_doc.metadata["classification"] == "geometry_invalid"
-    ), "inline `# ...` comment must be stripped from scalar value"
+    assert fp_doc.metadata["classification"] == "geometry_invalid", (
+        "inline `# ...` comment must be stripped from scalar value"
+    )
 
 
 def test_inline_yaml_comment_on_nested_block_start(tmp_path):
@@ -389,9 +389,9 @@ def test_inline_yaml_comment_on_nested_block_start(tmp_path):
     )
     fm, _ = _parse_frontmatter_call(tmp_path / "docs" / "failure_patterns" / "FP-502-x.md")
     # gs_artifact_pin must be recognized as a nested dict, not a scalar.
-    assert isinstance(
-        fm.get("gs_artifact_pin"), dict
-    ), "nested-block start with inline comment must produce a dict"
+    assert isinstance(fm.get("gs_artifact_pin"), dict), (
+        "nested-block start with inline comment must produce a dict"
+    )
     assert fm["gs_artifact_pin"].get("hash") == "abc123"
     assert fm["gs_artifact_pin"].get("case") == "GS-001"
 

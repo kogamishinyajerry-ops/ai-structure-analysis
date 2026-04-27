@@ -244,9 +244,9 @@ def test_iter_raises_on_duplicate_doc_id(tmp_path):
     import inspect
 
     src = inspect.getsource(iter_gs_theory_documents)
-    assert (
-        "duplicate doc_id" in src
-    ), "iter_gs_theory_documents must guard against duplicate doc_ids"
+    assert "duplicate doc_id" in src, (
+        "iter_gs_theory_documents must guard against duplicate doc_ids"
+    )
     assert "ValueError" in src
 
 
@@ -268,15 +268,15 @@ def test_is_theory_script_uses_suffix_not_substring():
     assert _is_theory_script(Path("beam_analytical.py"))
 
     # False positives that the OLD impl accepted but contract doesn't:
-    assert not _is_theory_script(
-        Path("__test_theory__.py")
-    ), "double-underscore wrapper is not the documented form"
-    assert not _is_theory_script(
-        Path("theory.txt.py")
-    ), "theory must be at the END of the stem, not anywhere"
-    assert not _is_theory_script(
-        Path("analytical_data.py")
-    ), "analytical must be at the END (suffix), not prefix"
+    assert not _is_theory_script(Path("__test_theory__.py")), (
+        "double-underscore wrapper is not the documented form"
+    )
+    assert not _is_theory_script(Path("theory.txt.py")), (
+        "theory must be at the END of the stem, not anywhere"
+    )
+    assert not _is_theory_script(Path("analytical_data.py")), (
+        "analytical must be at the END (suffix), not prefix"
+    )
     assert not _is_theory_script(Path("data_theory_notes.py")), "theory must be the trailing suffix"
 
     # Wrong extension:

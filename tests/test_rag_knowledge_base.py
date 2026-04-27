@@ -364,9 +364,9 @@ def test_chroma_store_score_passes_negative_cosine_through():
     src = inspect.getsource(ChromaVectorStore.query)
     # Old formula was `max(0.0, 1.0 - float(dist))`. New must be the
     # naked subtraction.
-    assert (
-        "max(0.0, 1.0 - float(dist))" not in src
-    ), "Chroma adapter still clamps — should be `1 - distance` without floor"
+    assert "max(0.0, 1.0 - float(dist))" not in src, (
+        "Chroma adapter still clamps — should be `1 - distance` without floor"
+    )
     assert "1.0 - float(dist)" in src, "expected new formula `1 - distance`"
 
 
@@ -398,15 +398,15 @@ def test_chroma_metadata_namespaced_for_lossless_round_trip():
 
     upsert_src = inspect.getsource(ChromaVectorStore.upsert)
     query_src = inspect.getsource(ChromaVectorStore.query)
-    assert (
-        "meta_p_" in upsert_src and "meta_j_" in upsert_src
-    ), "upsert must use disjoint `meta_p_` and `meta_j_` namespaces"
-    assert (
-        "meta_p_" in query_src and "meta_j_" in query_src
-    ), "query must check both `meta_p_` and `meta_j_` namespaces"
-    assert (
-        "json.loads" in query_src or "_json.loads" in query_src
-    ), "query must json.loads the json-namespaced values"
+    assert "meta_p_" in upsert_src and "meta_j_" in upsert_src, (
+        "upsert must use disjoint `meta_p_` and `meta_j_` namespaces"
+    )
+    assert "meta_p_" in query_src and "meta_j_" in query_src, (
+        "query must check both `meta_p_` and `meta_j_` namespaces"
+    )
+    assert "json.loads" in query_src or "_json.loads" in query_src, (
+        "query must json.loads the json-namespaced values"
+    )
 
 
 def test_chroma_metadata_dumps_uses_default_str_for_non_json_types():

@@ -280,9 +280,9 @@ def test_each_registered_source_iter_returns_iterable_of_documents(tmp_path):
         docs = list(iter_fn(repo))
         # Every doc has the registry's source label
         for d in docs:
-            assert (
-                d.source == label
-            ), f"{label}: expected source={label}, got {d.source} on {d.doc_id}"
+            assert d.source == label, (
+                f"{label}: expected source={label}, got {d.source} on {d.doc_id}"
+            )
 
 
 def test_real_repo_produces_at_least_10_docs():
