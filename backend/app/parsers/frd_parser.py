@@ -367,9 +367,17 @@ class FRDParser:
                     except (ValueError, IndexError):
                         pass
             elif line.startswith('-2') and current_element_id is not None:
+                # FRD `-2` lines are: ['-2', n0, n1, ..., nK]. The
+                # historical code used parts[2:], which silently dropped
+                # the first node. Existing L4 templates only consume
+                # point-data (DISP / STRESS) and so never noticed; the
+                # bug surfaced when W5f (viz) tried to render element
+                # connectivity and HEX8 cells came back with 7 nodes
+                # instead of 8. Fix: parts[1:] takes everything after
+                # the `-2` sentinel itself.
                 parts = line.split()
                 try:
-                    current_nodes.extend(int(float(p)) for p in parts[2:] if p)
+                    current_nodes.extend(int(float(p)) for p in parts[1:] if p)
                 except (ValueError, IndexError):
                     pass
 

@@ -209,6 +209,72 @@ fieldset legend {
   word-break: break-word;
 }
 
+.figures {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-muted);
+}
+
+.figures[hidden] { display: none; }
+
+.figures-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.figures-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.figures-grid figure {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.figures-grid figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: white; /* PNG transparent bg looks bad on dark mode */
+}
+
+.figures-grid figure figcaption {
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* Click-to-enlarge overlay */
+.figure-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: zoom-out;
+}
+
+.figure-lightbox img {
+  max-width: 95vw;
+  max-height: 95vh;
+  background: white;
+  border-radius: 4px;
+}
+
 pre#log {
   flex: 1;
   margin: 0;

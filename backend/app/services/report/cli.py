@@ -176,6 +176,27 @@ def build_parser() -> argparse.ArgumentParser:
             "ADR-012 cited-evidence checks in the exporter."
         ),
     )
+    p.add_argument(
+        "--figures",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Render result-figure PNGs (mesh outline, displacement, "
+            "von Mises) alongside the DOCX and embed them as a Figures "
+            "appendix. Default: on. Disable with --no-figures for "
+            "headless / minimal-deps runs (e.g. CI without OS-Mesa)."
+        ),
+    )
+    p.add_argument(
+        "--figures-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory for the rendered PNGs. Defaults to <output>.figs/ "
+            "(sibling to the output .docx). Has no effect when "
+            "--no-figures is set."
+        ),
+    )
     return p
 
 
@@ -467,10 +488,20 @@ def main(argv: list[str] | None = None) -> int:
     #
     # The Electron renderer routes both stdout and stderr into the
     # same log pane, so the engineer sees a flowing audit-trail.
-    # Stage count is 3 base (read / produce / export), 4 if template
-    # validation is on. The final stdout "wrote ..." line is not
-    # numbered — it's the result, not a stage.
-    total_stages = 3 + (1 if args.validate_template else 0)
+    # Stage count is dynamic:
+    #   1 read .frd
+    #   2 produce report
+    #   (optional) render figures — between 2 and validate
+    #   (optional) validate template
+    #   N export DOCX
+    # The final stdout "wrote ..." line is not numbered — it's the
+    # result, not a stage.
+    total_stages = (
+        2
+        + (1 if args.figures else 0)
+        + (1 if args.validate_template else 0)
+        + 1  # export
+    )
 
     def _stage(n: int, msg: str) -> None:
         print(f"[{n}/{total_stages}] {msg}", file=sys.stderr, flush=True)
@@ -511,12 +542,51 @@ def main(argv: list[str] | None = None) -> int:
         return 4
     _detail(f"{len(bundle.evidence_items)} evidence items, template={template.template_id}")
 
+    next_stage = 3
+    figures: dict[str, Path] = {}
+    if args.figures:
+        figs_dir = (
+            args.figures_dir
+            if args.figures_dir is not None
+            else args.output.parent / f"{args.output.stem}.figs"
+        )
+        _stage(next_stage, f"rendering figures: {figs_dir}")
+        next_stage += 1
+        try:
+            # Lazy-import viz so a missing pyvista/vtk surfaces here
+            # (--doctor-friendly) instead of at module load. Re-parse
+            # the .frd directly because the renderer needs raw element
+            # connectivity, which the Layer-2 ReaderHandle Protocol
+            # does NOT expose (and shouldn't — Mesh Protocol is
+            # consumer-driven, viz consumers are rare).
+            from app.parsers.frd_parser import FRDParser
+            from app.viz.render import render_all
+
+            parsed = FRDParser().parse(args.frd)
+            figures = render_all(parsed, figs_dir)
+            for name, path in figures.items():
+                # Surface each figure path on stderr so the Electron
+                # main process can pick it up and route to the renderer
+                # gallery. The "figure:" prefix is the contract.
+                print(f"figure: {path}", file=sys.stderr, flush=True)
+            _detail(f"{len(figures)} figures: {', '.join(figures.keys())}")
+        except Exception as exc:
+            # Don't abort the report on a viz failure — the engineer
+            # may not have a working OS-Mesa stack and still wants the
+            # text report. Surface the failure on stderr (audit trail)
+            # and continue without figures.
+            print(
+                f"warning: figure rendering failed ({type(exc).__name__}: {exc}); "
+                f"continuing without figures. Pass --no-figures to suppress.",
+                file=sys.stderr,
+                flush=True,
+            )
+            figures = {}
+
     # Lazy-import the exporter + its refusal classes for the same
     # broken-submodule-survives-doctor reason as in _produce.
     from app.services.report.exporter import ExportError, export_docx
     from app.services.report.templates import TemplateValidationError
-
-    next_stage = 3
     if args.validate_template:
         _stage(next_stage, f"validating template: {template.template_id}")
         next_stage += 1
@@ -528,6 +598,7 @@ def main(argv: list[str] | None = None) -> int:
             bundle,
             output_path=args.output,
             template=template if args.validate_template else None,
+            figures=figures or None,
         )
     except (ExportError, TemplateValidationError) as exc:
         print(f"error: export refused: {exc}", file=sys.stderr)

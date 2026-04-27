@@ -194,8 +194,24 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   child.stdout.on("data", (chunk: Buffer) => {
     evt.sender.send("report:stdout", chunk.toString("utf-8"));
   });
+  // Buffer stderr by line so a "figure: <path>" announcement isn't
+  // split across two chunks. The CLI flushes after each line so the
+  // boundary is reliable; we just need to reassemble across TCP-style
+  // chunk arbitrariness.
+  let stderrBuf = "";
   child.stderr.on("data", (chunk: Buffer) => {
-    evt.sender.send("report:stderr", chunk.toString("utf-8"));
+    const text = chunk.toString("utf-8");
+    evt.sender.send("report:stderr", text);
+    stderrBuf += text;
+    let nl: number;
+    while ((nl = stderrBuf.indexOf("\n")) >= 0) {
+      const line = stderrBuf.slice(0, nl);
+      stderrBuf = stderrBuf.slice(nl + 1);
+      const m = /^figure:\s+(.+)$/.exec(line.trim());
+      if (m && m[1]) {
+        evt.sender.send("report:figure", m[1]);
+      }
+    }
   });
 
   return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {

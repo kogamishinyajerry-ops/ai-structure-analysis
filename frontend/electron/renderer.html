@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy"
-          content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+          content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file: data:;" />
     <title>AI-FEA Structural Report</title>
     <link rel="stylesheet" href="renderer.css" />
   </head>
@@ -77,6 +77,10 @@
         <div id="violations" class="violations" hidden role="status" aria-live="polite">
           <div class="violations-title">Input violations — fix and run again</div>
           <ul id="violations-list"></ul>
+        </div>
+        <div id="figures" class="figures" hidden>
+          <div class="figures-title">结果云图 / Figures</div>
+          <div id="figures-grid" class="figures-grid"></div>
         </div>
         <pre id="log" aria-label="report-cli output"></pre>
       </section>

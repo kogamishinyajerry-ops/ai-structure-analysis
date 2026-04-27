@@ -76,4 +76,11 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("report:exit", handler);
     return () => ipcRenderer.removeListener("report:exit", handler);
   },
+  // Each "figure: <path>" line on report-cli stderr triggers one
+  // event; the renderer loads the PNG at <path> in its gallery.
+  onFigure: (cb: (path: string) => void): (() => void) => {
+    const handler = (_e: unknown, path: string) => cb(path);
+    ipcRenderer.on("report:figure", handler);
+    return () => ipcRenderer.removeListener("report:figure", handler);
+  },
 });
