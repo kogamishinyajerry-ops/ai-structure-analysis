@@ -89,6 +89,27 @@ def test_summary_evidence_unit_pin_matches_reader_unit_system(
     assert by_id["EV-VM-MAX"].data.unit == "MPa"
 
 
+def test_summary_evidence_carries_field_metadata(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Codex R1 MEDIUM: per-field provenance (FieldMetadata) must reach
+    the evidence item — not be reconstructed from reader-level facts."""
+    _, bundle = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    disp_meta = by_id["EV-DISP-MAX"].field_metadata
+    stress_meta = by_id["EV-VM-MAX"].field_metadata
+    assert disp_meta is not None
+    assert stress_meta is not None
+    assert disp_meta.name is CanonicalField.DISPLACEMENT
+    assert stress_meta.name is CanonicalField.STRESS_TENSOR
+    # source label is now solver name from FieldMetadata, not class name.
+    assert by_id["EV-DISP-MAX"].source == disp_meta.source_solver == "calculix"
+    assert by_id["EV-VM-MAX"].source == stress_meta.source_solver == "calculix"
+
+
 def test_summary_section_references_evidence_ids(
     gs001_reader: CalculiXReader,
 ) -> None:
@@ -204,19 +225,198 @@ class _SyntheticEmptyReader:
         pass
 
 
-def test_summary_empty_reader_yields_placeholder_section() -> None:
-    """ADR-003: when neither displacement nor stress is available, we
-    don't fabricate values — we say so plainly in the section content
-    and leave the bundle empty.
+def test_summary_empty_reader_raises() -> None:
+    """ADR-012: a section with no cited evidence_ids cannot ship. When
+    neither DISPLACEMENT nor STRESS_TENSOR is available we refuse the
+    draft rather than emit an uncited placeholder bullet.
     """
     rdr = _SyntheticEmptyReader()
-    report, bundle = generate_static_strength_summary(
+    with pytest.raises(ValueError, match="zero evidence"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+        )
+
+
+# --- step_id selection ----------------------------------------------------
+
+
+class _SyntheticFieldData:
+    """Minimal in-memory FieldData (protocol-conformant)."""
+
+    def __init__(
+        self, metadata: FieldMetadata, arr: "np.ndarray"  # type: ignore[type-arg]
+    ) -> None:
+        self.metadata = metadata
+        self._arr = arr
+
+    def values(self) -> "np.ndarray":  # type: ignore[type-arg]
+        return self._arr
+
+    def at_nodes(self) -> "np.ndarray":  # type: ignore[type-arg]
+        return self._arr
+
+
+class _MultiStateReader:
+    """A ReaderHandle with two distinct steps, only one of which has fields.
+
+    Locks down the API: ``step_id=None`` summarises the FINAL state
+    (``solution_states[-1]``), and an explicit ``step_id`` selects.
+    """
+
+    SOLVER_NAME = "synthetic"
+
+    def __init__(self) -> None:
+        from app.core.types import SolutionState
+
+        class _M:
+            @property
+            def node_id_array(self) -> np.ndarray:  # type: ignore[type-arg]
+                return np.asarray([1, 2], dtype=np.int64)
+
+            @property
+            def node_index(self) -> dict[int, int]:
+                return {1: 0, 2: 1}
+
+            @property
+            def coordinates(self) -> np.ndarray:  # type: ignore[type-arg]
+                return np.zeros((2, 3))
+
+            @property
+            def unit_system(self) -> UnitSystem:
+                return UnitSystem.SI_MM
+
+        self._mesh = _M()
+        self._states = [
+            SolutionState(
+                step_id=1, step_name="early",
+                time=None, load_factor=None,
+                available_fields=(),
+            ),
+            SolutionState(
+                step_id=2, step_name="late",
+                time=None, load_factor=None,
+                available_fields=(CanonicalField.DISPLACEMENT,),
+            ),
+        ]
+
+    @property
+    def mesh(self) -> object:
+        return self._mesh
+
+    @property
+    def materials(self) -> dict:  # type: ignore[type-arg]
+        return {}
+
+    @property
+    def boundary_conditions(self) -> list:  # type: ignore[type-arg]
+        return []
+
+    @property
+    def solution_states(self) -> list:  # type: ignore[type-arg]
+        return self._states
+
+    def get_field(
+        self, name: CanonicalField, step_id: int
+    ) -> Optional[FieldData]:
+        if step_id == 2 and name is CanonicalField.DISPLACEMENT:
+            arr = np.array([[0.1, 0.0, 0.0], [0.5, 0.0, 0.0]], dtype=np.float64)
+            meta = FieldMetadata(
+                name=CanonicalField.DISPLACEMENT,
+                location=FieldLocation.NODE,
+                component_type=ComponentType.VECTOR_3D,
+                unit_system=UnitSystem.SI_MM,
+                source_solver="synthetic",
+                source_field_name="DISP",
+                source_file=Path("/dev/null"),
+                coordinate_system=CoordinateSystemKind.GLOBAL.value,
+                was_averaged="unknown",
+            )
+            return _SyntheticFieldData(meta, arr)
+        return None
+
+    def close(self) -> None:
+        pass
+
+
+def test_summary_default_step_is_final_state() -> None:
+    """API contract: step_id=None summarises solution_states[-1].
+    The early step has no fields; the late step has DISPLACEMENT.
+    Default-call must succeed (using the late step), not fail.
+    """
+    rdr = _MultiStateReader()
+    _, bundle = generate_static_strength_summary(
         rdr,  # type: ignore[arg-type]
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
-    assert len(bundle.evidence_items) == 0
-    assert len(report.sections) == 1
-    assert "nothing to summarise" in (report.sections[0].content or "")
+    assert {item.evidence_id for item in bundle.evidence_items} == {"EV-DISP-MAX"}
+
+
+def test_summary_explicit_step_id_selects_state() -> None:
+    """Passing step_id=1 (early, empty) must raise; step_id=2 must succeed."""
+    rdr = _MultiStateReader()
+    with pytest.raises(ValueError, match="zero evidence"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            step_id=1,
+        )
+    _, bundle = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        step_id=2,
+    )
+    assert len(bundle.evidence_items) == 1
+
+
+def test_summary_unknown_step_id_raises() -> None:
+    rdr = _MultiStateReader()
+    with pytest.raises(ValueError, match="not present in reader"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            step_id=999,
+        )
+
+
+# --- NODE-location guard --------------------------------------------------
+
+
+class _IPLocationReader(_MultiStateReader):
+    """Reader that returns a STRESS_TENSOR field at integration points
+    rather than nodes — exercises the Codex R1 MEDIUM guard."""
+
+    def get_field(
+        self, name: CanonicalField, step_id: int
+    ) -> Optional[FieldData]:
+        if step_id == 2 and name is CanonicalField.STRESS_TENSOR:
+            arr = np.zeros((4, 6), dtype=np.float64)
+            arr[0, 0] = 100.0
+            meta = FieldMetadata(
+                name=CanonicalField.STRESS_TENSOR,
+                location=FieldLocation.INTEGRATION_POINT,
+                component_type=ComponentType.TENSOR_SYM_3D,
+                unit_system=UnitSystem.SI_MM,
+                source_solver="synthetic",
+                source_field_name="S_IP",
+                source_file=Path("/dev/null"),
+                coordinate_system=CoordinateSystemKind.GLOBAL.value,
+                was_averaged=False,
+            )
+            return _SyntheticFieldData(meta, arr)
+        return None
+
+
+def test_summary_refuses_non_node_field() -> None:
+    """Layer-2 contract permits IP/centroid fields; the W4-prep draft
+    must refuse to mislabel them as node values."""
+    rdr = _IPLocationReader()
+    with pytest.raises(ValueError, match="NODE-located"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            step_id=2,
+        )
 
 
 def test_summary_no_solution_states_raises() -> None:
