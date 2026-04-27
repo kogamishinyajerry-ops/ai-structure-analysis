@@ -41,7 +41,7 @@ def test_pure_membrane_yields_zero_bending_and_peak() -> None:
 
     assert isinstance(result, LinearizedStress)
     assert np.allclose(result.membrane, sigma_const, atol=1e-12)
-    assert np.allclose(result.bending, ZERO_TENSOR, atol=1e-12)
+    assert np.allclose(result.bending_outer, ZERO_TENSOR, atol=1e-12)
     assert np.allclose(result.peak, 0.0, atol=1e-12)
 
 
@@ -61,7 +61,7 @@ def test_pure_bending_linear_field_has_zero_membrane_and_peak() -> None:
     assert np.allclose(result.membrane, ZERO_TENSOR, atol=1e-12)
     # Bending at outer surface: σ_xx component = (s_outer - s_mid) = 1.0.
     expected_bending = np.array([1.0, 0, 0, 0, 0, 0], dtype=np.float64)
-    assert np.allclose(result.bending, expected_bending, atol=1e-12)
+    assert np.allclose(result.bending_outer, expected_bending, atol=1e-12)
     assert np.allclose(result.peak, 0.0, atol=1e-12)
 
 
@@ -78,10 +78,10 @@ def test_pure_bending_recovers_at_inner_surface_with_negated_sign() -> None:
 
     # At inner surface (s = 0): σ = membrane + bending * (2(0 - 0.5)/1)
     #                             = 0 + bending * (-1) = -bending
-    sigma_inner_reconstructed = result.membrane - result.bending
+    sigma_inner_reconstructed = result.membrane - result.bending_outer
     assert np.allclose(sigma_inner_reconstructed, tensors[0], atol=1e-12)
     # At outer surface (s = 1): σ = membrane + bending
-    sigma_outer_reconstructed = result.membrane + result.bending
+    sigma_outer_reconstructed = result.membrane + result.bending_outer
     assert np.allclose(sigma_outer_reconstructed, tensors[-1], atol=1e-12)
 
 
@@ -108,7 +108,7 @@ def test_combined_membrane_plus_bending_is_separable() -> None:
         [20.0, 0.0, 0.0, 10.0, 0.0, 0.0], dtype=np.float64
     )
     assert np.allclose(result.membrane, expected_membrane, atol=1e-12)
-    assert np.allclose(result.bending, expected_bending, atol=1e-12)
+    assert np.allclose(result.bending_outer, expected_bending, atol=1e-12)
     assert np.allclose(result.peak, 0.0, atol=1e-12)
 
 
@@ -130,7 +130,7 @@ def test_distances_need_not_start_at_zero() -> None:
     b = linearize_through_thickness(tensors_b, s_b)
 
     assert np.allclose(a.membrane, b.membrane, atol=1e-12)
-    assert np.allclose(a.bending, b.bending, atol=1e-12)
+    assert np.allclose(a.bending_outer, b.bending_outer, atol=1e-12)
     assert np.allclose(a.peak, b.peak, atol=1e-12)
 
 
@@ -158,7 +158,7 @@ def test_quadratic_peak_recovers_linear_residual() -> None:
     # mean is t²/12 ≈ 0.333.
     assert result.membrane[0] == pytest.approx(t**2 / 12.0, rel=0.05)
     # Bending must be zero by parity (integrand is odd about midplane).
-    assert np.allclose(result.bending, ZERO_TENSOR, atol=1e-12)
+    assert np.allclose(result.bending_outer, ZERO_TENSOR, atol=1e-12)
     # Peak at midplane is -membrane (parabola is zero there); peak
     # at extremes is t²/4 - membrane.
     mid_idx = n // 2
@@ -208,6 +208,52 @@ def test_rejects_decreasing_distances() -> None:
         linearize_through_thickness(tensors, s)
 
 
+def test_rejects_non_uniform_spacing_codex_repro() -> None:
+    """Codex R1 HIGH regression: non-uniform spacing biases the
+    bending coefficient on even-symmetric fields. This is the exact
+    grid Codex used to demonstrate the leak.
+    """
+    s = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0], dtype=np.float64)
+    s_mid = (s[0] + s[-1]) / 2.0
+    tensors = np.zeros((s.size, 6), dtype=np.float64)
+    tensors[:, 0] = (s - s_mid) ** 2  # pure peak (symmetric about midplane)
+    with pytest.raises(ValueError, match="uniformly-spaced"):
+        linearize_through_thickness(tensors, s)
+
+
+def test_rejects_subtle_non_uniform_spacing() -> None:
+    """A grid where one interval is even slightly larger than the
+    others must still trip the uniform-spacing guard."""
+    s = np.array([0.0, 0.5, 1.0, 1.51, 2.0], dtype=np.float64)
+    tensors = np.zeros((s.size, 6), dtype=np.float64)
+    with pytest.raises(ValueError, match="uniformly-spaced"):
+        linearize_through_thickness(tensors, s)
+
+
+def test_accepts_uniform_spacing_with_floating_point_jitter() -> None:
+    """Float-precision wobble from np.linspace round-trips must NOT
+    trip the uniform check (rtol=1e-9)."""
+    s = np.linspace(0.0, 1.0, 17)
+    tensors = np.zeros((17, 6), dtype=np.float64)
+    tensors[:, 0] = 5.0  # constant — easy positive case
+    result = linearize_through_thickness(tensors, s)
+    assert result.membrane[0] == pytest.approx(5.0)
+
+
+def test_two_point_scl_is_always_uniform() -> None:
+    """A 2-point SCL has only one Δs, so the uniform check is
+    vacuous (n > 2 guard skipped). Make sure 2-point still works."""
+    s = np.array([0.0, 1.0])
+    tensors = np.array(
+        [[10.0, 0, 0, 0, 0, 0], [30.0, 0, 0, 0, 0, 0]], dtype=np.float64
+    )
+    result = linearize_through_thickness(tensors, s)
+    # Membrane = (10 + 30)/2 = 20, bending_outer = 10 (linear from 10 to 30).
+    assert result.membrane[0] == pytest.approx(20.0)
+    assert result.bending_outer[0] == pytest.approx(10.0)
+    assert np.allclose(result.peak, 0.0, atol=1e-12)
+
+
 # --- output type contracts ------------------------------------------------
 
 
@@ -217,10 +263,10 @@ def test_output_is_frozen_dataclass_with_float64_arrays() -> None:
     tensors[:, 0] = 42.0
     result = linearize_through_thickness(tensors, s)
     assert result.membrane.dtype == np.float64
-    assert result.bending.dtype == np.float64
+    assert result.bending_outer.dtype == np.float64
     assert result.peak.dtype == np.float64
     assert result.membrane.shape == (6,)
-    assert result.bending.shape == (6,)
+    assert result.bending_outer.shape == (6,)
     assert result.peak.shape == (5, 6)
     # Frozen — assignment should fail.
     with pytest.raises((AttributeError, TypeError)):
@@ -260,6 +306,6 @@ def test_membrane_and_bending_compose_with_von_mises() -> None:
     # Uniaxial σ_xx = 100, all others 0 → von Mises = 100.
     assert p_m_vm == pytest.approx(100.0)
     # Bending is zero so P_m + P_b at outer = von_mises(membrane) too.
-    sigma_outer = (result.membrane + result.bending).reshape(1, 6)
+    sigma_outer = (result.membrane + result.bending_outer).reshape(1, 6)
     p_m_plus_p_b_vm = von_mises(sigma_outer)[0]
     assert p_m_plus_p_b_vm == pytest.approx(100.0)

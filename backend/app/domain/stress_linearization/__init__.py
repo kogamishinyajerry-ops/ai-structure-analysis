@@ -63,19 +63,23 @@ class LinearizedStress:
     ``membrane`` (shape ``(6,)``) is the through-thickness-averaged
     stress tensor.
 
-    ``bending`` (shape ``(6,)``) is the bending tensor evaluated at
-    the *outer* surface (s = t). Reconstruct the bending tensor at
-    any other point: ``σ_b(s) = bending * (2*(s - s_mid) / t)`` where
+    ``bending_outer`` (shape ``(6,)``) is the bending tensor at the
+    *outer* surface (``s = s[-1]``). The bending tensor at any other
+    point is ``bending_outer * (2*(s - s_mid) / t)`` where
     ``s_mid = (s_inner + s_outer) / 2``. At the inner surface this is
-    ``-bending``.
+    ``-bending_outer`` — i.e. ``σ_inner = membrane - bending_outer``,
+    ``σ_outer = membrane + bending_outer``. The explicit ``_outer``
+    suffix is intentional: callers writing ``membrane + bending`` for
+    the inner face is the foot-gun that motivated the rename
+    (Codex R1 MEDIUM).
 
     ``peak`` (shape ``(N, 6)``) is the per-SCL-point residual after
-    subtracting membrane and bending. For a pure linear-in-s field,
-    ``peak`` is identically zero.
+    subtracting membrane and the linear bending term. For a pure
+    linear-in-s field, ``peak`` is identically zero.
     """
 
     membrane: npt.NDArray[np.float64]
-    bending: npt.NDArray[np.float64]
+    bending_outer: npt.NDArray[np.float64]
     peak: npt.NDArray[np.float64]
 
 
@@ -111,16 +115,25 @@ def linearize_through_thickness(
     The decomposition is a discrete weighted least-squares projection
     of the input tensor field onto the basis ``{1, (s - s_mid)}``,
     using trapezoidal weights consistent with the SCL parametrisation
-    ``s``. This makes recovery *exact* for any linear-in-s input
-    regardless of sampling — pure-membrane inputs yield
-    ``bending == 0`` and ``peak == 0``, pure-linear-bending inputs
-    yield ``membrane == 0`` and ``peak == 0``. Quadratic and higher-
-    order fields incur the standard O(h²) discretisation error in
-    the membrane average; the linear-fit recovery for the bending
-    coefficient remains exact under the discrete inner product the
-    weights define (so a pure-quadratic input still yields
-    ``bending == 0`` by parity, with the parabola-vs-mean residual
-    showing up cleanly in ``peak``).
+    ``s``. Linear-in-s recovery is exact for any monotone spacing.
+
+    Spacing must be **uniform** (equal Δs between consecutive points).
+    On non-uniform grids the weighted antisymmetric integrand
+    ``Σ w_i (s_i - s_mid)³`` no longer vanishes, and an even-symmetric
+    field (e.g. pure peak ``σ ∝ (s - s_mid)²``) leaks a non-zero
+    bending coefficient — Codex R1 HIGH demonstrated this with
+    ``s = [0, 0.1, 0.4, 1.0, 1.6, 2.0]`` and σ = (s - s_mid)² yielding
+    ``bending_outer ≈ 0.02`` instead of zero, which would silently
+    inflate the reported P_b. Engineers extracting SCL data from
+    irregular meshes must resample onto a uniform grid before calling
+    this function (RFC-002 candidate: a Layer-3 resampler helper).
+
+    For uniform spacing, pure-membrane inputs yield
+    ``bending_outer == 0`` and ``peak == 0`` exactly; pure-linear
+    bending yields ``membrane == 0`` and ``peak == 0`` exactly;
+    pure-quadratic peak yields ``bending_outer == 0`` exactly by
+    parity, with the parabola-vs-mean residual cleanly in ``peak``
+    (and an O(h²) error in the membrane average).
     """
     if tensors.ndim != 2 or tensors.shape[1] != 6:
         raise ValueError(
@@ -138,10 +151,27 @@ def linearize_through_thickness(
             f"linearization requires at least 2 SCL points; got {n}"
         )
 
-    if np.any(np.diff(distances) <= 0):
+    diffs = np.diff(distances.astype(np.float64, copy=False))
+    if np.any(diffs <= 0):
         raise ValueError(
             "distances must be strictly monotonically increasing"
         )
+    if n > 2:
+        # Reject non-uniform spacing. Use a relative tolerance against
+        # the median spacing so float-precision wobble (e.g. from
+        # np.linspace round-trips) doesn't trip a strict-equality
+        # check. Rejecting is the conservative choice — see the Notes
+        # section's discussion of even-symmetric leakage.
+        ref = float(np.median(diffs))
+        if not np.allclose(diffs, ref, rtol=1e-9, atol=0.0):
+            raise ValueError(
+                "linearize_through_thickness requires uniformly-spaced "
+                f"SCL points; got diffs min/max = "
+                f"{float(diffs.min())!r} / {float(diffs.max())!r}. "
+                "Resample onto a uniform grid (e.g. via numpy.interp) "
+                "before calling — non-uniform spacing biases the "
+                "bending coefficient on even-symmetric fields."
+            )
 
     # Use float64 throughout to keep numerical error well below the
     # engineering-tolerance ladder.
@@ -180,21 +210,21 @@ def linearize_through_thickness(
         weights[:, None] * s_offset[:, None] * sigma_centered
     ).sum(axis=0)
     b_coeff = weighted_moment / weighted_s_sq  # shape (6,)
-    bending: npt.NDArray[np.float64] = (
+    bending_outer: npt.NDArray[np.float64] = (
         b_coeff * (t / 2.0)
     ).astype(np.float64, copy=False)
 
     # Peak = σ(s_i) - membrane - σ_b(s_i)
-    # σ_b(s) = bending * (2 * (s - s_mid) / t) — linear from -bending
-    # at s_inner to +bending at s_outer.
+    # σ_b(s) = bending_outer * (2 * (s - s_mid) / t) — linear from
+    # -bending_outer at s_inner to +bending_outer at s_outer.
     s_normalised = (s_offset / (t / 2.0))[:, None]
-    bending_pointwise = s_normalised * bending  # shape (N, 6)
+    bending_pointwise = s_normalised * bending_outer  # shape (N, 6)
     peak: npt.NDArray[np.float64] = (
         sigma - membrane - bending_pointwise
     ).astype(np.float64, copy=False)
 
     return LinearizedStress(
         membrane=membrane,
-        bending=bending,
+        bending_outer=bending_outer,
         peak=peak,
     )
