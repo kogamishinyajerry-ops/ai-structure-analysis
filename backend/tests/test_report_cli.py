@@ -10,26 +10,24 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from app.services.report.cli import build_parser, main
 from docx import Document as _ReadDocument
 
-from app.services.report.cli import build_parser, main
-
-
-GS001_FRD = (
-    Path(__file__).resolve().parents[2]
-    / "golden_samples"
-    / "GS-001"
-    / "gs001_result.frd"
-)
+GS001_FRD = Path(__file__).resolve().parents[2] / "golden_samples" / "GS-001" / "gs001_result.frd"
 
 
 # --- argparse surface ----------------------------------------------------
 
 
 def test_parser_requires_frd_and_kind() -> None:
+    # --frd and --kind became argparse-optional in W5c so --doctor can
+    # run without them; the report-run requirement now lives in main(),
+    # exercised via tests/test_report_cli_doctor.py.
     parser = build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args([])
+    ns = parser.parse_args([])
+    assert ns.frd is None
+    assert ns.kind is None
+    assert ns.doctor is False
 
 
 def test_parser_rejects_unknown_kind() -> None:
@@ -46,9 +44,7 @@ def test_parser_defaults_validate_template_on() -> None:
 
 def test_parser_can_disable_template_validation() -> None:
     parser = build_parser()
-    ns = parser.parse_args(
-        ["--frd", "x.frd", "--kind", "static", "--no-validate-template"]
-    )
+    ns = parser.parse_args(["--frd", "x.frd", "--kind", "static", "--no-validate-template"])
     assert ns.validate_template is False
 
 
@@ -87,9 +83,7 @@ def test_static_run_writes_valid_docx_and_prints_summary(
     assert "EV-VM-MAX" in text
 
 
-def test_lifting_lug_run(
-    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_lifting_lug_run(gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     out = tmp_path / "lug.docx"
     rc = main(
         [
@@ -425,9 +419,7 @@ def test_parser_resample_default_is_none() -> None:
     opt-in default. Locked so the CLI default doesn't accidentally
     flip to a non-None value."""
     parser = build_parser()
-    ns = parser.parse_args(
-        ["--frd", "x.frd", "--kind", "pressure-vessel"]
-    )
+    ns = parser.parse_args(["--frd", "x.frd", "--kind", "pressure-vessel"])
     assert ns.resample is None
 
 
