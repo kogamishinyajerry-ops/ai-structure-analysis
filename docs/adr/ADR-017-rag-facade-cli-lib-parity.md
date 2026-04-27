@@ -27,8 +27,8 @@ GitHub PR comment
 
 These modules currently expose **two parallel call paths**:
 
-1. **CLI path:** `python3 -m backend.app.rag.advise_cli`, `…preflight_publish_cli`, etc. (operator-facing, rich `--json` output)
-2. **Library path:** `backend.app.rag.reviewer_advisor.advise(...)`, `backend.app.rag.preflight_summary.combine(...)` (Python-import-facing)
+1. **CLI path:** `python3 -m app.rag.advise_cli`, `…preflight_publish_cli`, etc. (operator-facing, rich `--json` output)
+2. **Library path:** `app.rag.reviewer_advisor.advise(...)`, `app.rag.preflight_summary.combine(...)` (Python-import-facing)
 
 The **workbench** (Phase 2.1, ADR-015) is a **third** consumer that needs the same surface. The risk is:
 
@@ -38,7 +38,7 @@ The **workbench** (Phase 2.1, ADR-015) is a **third** consumer that needs the sa
 
 This ADR pins the contract:
 
-- A single in-process **`backend.app.workbench.rag_facade`** module wraps the RAG library API (NOT the CLI)
+- A single in-process **`app.workbench.rag_facade`** module wraps the RAG library API (NOT the CLI)
 - The CLI continues to wrap the same library API — both surfaces are thin shells over the lib layer
 - A discipline test asserts CLI and lib hit identical core code paths on identical inputs (parity)
 
@@ -46,9 +46,9 @@ This ADR pins the contract:
 
 ## Decision
 
-**Pattern:** the workbench imports `backend.app.rag.{reviewer_advisor, preflight_summary, preflight_publish}` through a single facade module, **`backend/app/workbench/rag_facade.py`**, sibling to `agent_facade.py` (ADR-015).
+**Pattern:** the workbench imports `app.rag.{reviewer_advisor, preflight_summary, preflight_publish}` through a single facade module, **`backend/app/workbench/rag_facade.py`**, sibling to `agent_facade.py` (ADR-015).
 
-**The CLI is not a dependency.** The workbench does NOT shell out to `python3 -m backend.app.rag.advise_cli`. Three reasons:
+**The CLI is not a dependency.** The workbench does NOT shell out to `python3 -m app.rag.advise_cli`. Three reasons:
 
 1. **Process spawning cost.** BGE-M3 model load is ~6 s per CLI invocation; the workbench would wear that on every advisor request.
 2. **Type erasure.** CLI returns JSON-on-stdout; the facade would re-parse and re-validate something the library already returns as a typed object.
@@ -66,7 +66,7 @@ This ADR pins the contract:
 
 | Module | New / existing | Purpose |
 |--------|----------------|---------|
-| `backend/app/workbench/rag_facade.py` | **new (this PR)** | the only file in `backend/app/workbench/` that imports `backend.app.rag.*` |
+| `backend/app/workbench/rag_facade.py` | **new (this PR)** | the only file in `backend/app/workbench/` that imports `app.rag.*` |
 | `backend/app/workbench/__init__.py` | existing (ADR-015) | package marker |
 | `backend/app/rag/reviewer_advisor.py` | covered by PR #40 | `advise(verdict, fault) → ReviewerAdvice` |
 | `backend/app/rag/preflight_summary.py` | covered by PR #42 | `combine(hint, advice) → PreflightSummary` |
@@ -74,7 +74,7 @@ This ADR pins the contract:
 
 The split between `agent_facade.py` (ADR-015) and `rag_facade.py` (this ADR) is deliberate: agents are stateful (LangGraph state machine) and have HF1 zone protection; RAG is stateless query + advisory. They have different lifetimes, different failure modes, and different test surfaces.
 
-**`rag_facade.py` is the workbench's choke point for `backend.app.rag.*`.** A static check in `tests/test_workbench_facade_discipline.py` (this PR extends the ADR-015 test) enforces the rule.
+**`rag_facade.py` is the workbench's choke point for `app.rag.*`.** A static check in `tests/test_workbench_facade_discipline.py` (this PR extends the ADR-015 test) enforces the rule.
 
 ---
 
@@ -96,7 +96,7 @@ Operationally, this means:
 
 ## Singleton policy for BGE-M3
 
-The workbench backend loads BGE-M3 **once at startup** as a process-level singleton (`backend.app.rag.kb.get_kb()` cached). All facade calls reuse the same model object.
+The workbench backend loads BGE-M3 **once at startup** as a process-level singleton (`app.rag.kb.get_kb()` cached). All facade calls reuse the same model object.
 
 This decision was made independently in the architecture review (Notion 2026-04-26, Q3 startup-singleton). It avoids:
 
@@ -119,8 +119,8 @@ The discipline test asserts that the workbench does NOT take a per-request `Know
 
 This PR adds a new test file, **`tests/test_rag_facade_parity.py`**, asserting:
 
-1. **Only `rag_facade.py` imports from `backend.app.rag.*` inside `backend/app/workbench/`.** R2 fix (post Codex R1 HIGH): the previous wording allowed both `rag_facade.py` and `agent_facade.py`, but the ADR's stated intent is a single choke point. `agent_facade.py` does NOT import `backend.app.rag.*`; agents that internally call RAG do so via the agent-internal call site, not via the workbench facade.
-2. **`rag_facade.py` does not import `backend.app.rag.cli` / `query_cli` / `advise_cli` / `preflight_publish_cli` / `coverage_audit`.** The facade goes through the library, not the CLI shell.
+1. **Only `rag_facade.py` imports from `app.rag.*` inside `backend/app/workbench/`.** R2 fix (post Codex R1 HIGH): the previous wording allowed both `rag_facade.py` and `agent_facade.py`, but the ADR's stated intent is a single choke point. `agent_facade.py` does NOT import `app.rag.*`; agents that internally call RAG do so via the agent-internal call site, not via the workbench facade.
+2. **`rag_facade.py` does not import `app.rag.cli` / `query_cli` / `advise_cli` / `preflight_publish_cli` / `coverage_audit`.** The facade goes through the library, not the CLI shell.
 3. **CLI parity surface check.** For each CLI module that exists (skipped if not present yet — RAG track lands in PRs #38–#47), assert the CLI module imports the corresponding library module. Detects when someone adds a new CLI subcommand without backing it with a library function.
 4. **No CLI module imports another CLI module's `main`.** CLI modules compose through the library, never through each other's `main()`.
 5. **Singleton policy** (§97-108): three assertions on `rag_facade.py` —
@@ -135,12 +135,12 @@ R3 fix (post Codex R3 MEDIUM): rule #5 added — the §97-108 singleton-policy a
 
 R4 fix (post Codex R4 MEDIUM/LOW): the R3 predicates were syntax-pinned and let three live bypass classes through. R4 hardens them:
 - `_knowledgebase_local_aliases()` resolves `from x import KnowledgeBase as KB` and simple `cls = KnowledgeBase` chains (multi-hop fixpoint, bounded 8 iterations) so renamed/aliased constructor calls (`KB()`, `cls()`, `c()` after `a = KB; b = a; c = b`) are flagged.
-- `_calls_get_kb_singleton()` is now provenance-aware: rejects locally-defined `def get_kb` shadows when no `get_kb` is imported from `backend.app.rag.kb` / `.kb` / `backend.app.rag` (closes the Codex repro `def get_kb(): return KB(); def f(): return get_kb()`). Reflective `getattr(kb, "get_kb")()` is documented as a known LOW — pure-AST checks cannot resolve that.
+- `_calls_get_kb_singleton()` is now provenance-aware: rejects locally-defined `def get_kb` shadows when no `get_kb` is imported from `app.rag.kb` / `.kb` / `app.rag` (closes the Codex repro `def get_kb(): return KB(); def f(): return get_kb()`). Reflective `getattr(kb, "get_kb")()` is documented as a known LOW — pure-AST checks cannot resolve that.
 - `_annotation_mentions_knowledgebase()` skips inside `type[X]` / `Type[X]` subscripts — `cls: type[KnowledgeBase]` accepts a class object, not an instance, so it is not a singleton bypass. `Annotated[KB, ...]` and `List[KB]` carry instances and remain flagged.
 - Module docstring (line 5) updated: `rag_facade.py` is the SOLE choke point; `agent_facade.py` does NOT import RAG (matches R2 enforcement).
 
 R5 fix (post Codex R4 R5 MEDIUM/LOW): two residual gaps in the R4 alias resolution closed:
-- MEDIUM (star-import bypass): `from backend.app.rag.kb import *; KB = KnowledgeBase; KB()` defeated `_calls_knowledgebase_constructor` because the alias-walk only seeded names from explicit `import KnowledgeBase` constructs. Fix: always seed the assignment-walk fixpoint with `KnowledgeBase` itself, so subsequent `cls = KnowledgeBase` chains propagate regardless of how `KnowledgeBase` came into scope.
+- MEDIUM (star-import bypass): `from app.rag.kb import *; KB = KnowledgeBase; KB()` defeated `_calls_knowledgebase_constructor` because the alias-walk only seeded names from explicit `import KnowledgeBase` constructs. Fix: always seed the assignment-walk fixpoint with `KnowledgeBase` itself, so subsequent `cls = KnowledgeBase` chains propagate regardless of how `KnowledgeBase` came into scope.
 - LOW (class-method false negative): `class Helper: def get_kb(self): ...` caused `_calls_get_kb_singleton()` to falsely reject a legitimate `kb.get_kb()` usage at module scope. Fix: restrict the local-shadow check to module-level functions (`tree.body`), not all `FunctionDef` nodes — class methods and nested defs no longer trigger false rejection.
 
 R6 fix (post Codex R5 R6 MEDIUM/LOW): two more alias-RHS forms closed:
@@ -165,7 +165,7 @@ Cons: triple validation surface; redaction logic drifts; bug fixes need three pa
 Pros: thinnest possible facade.
 Cons: privacy redaction needs a place to live; without a facade, the redaction lives in the library (forces RAG to know about workbench-specific concerns) or in every caller (drifts). The facade is the right home for redaction. **Rejected.**
 
-### Single package `backend.app.rag.workbench_adapter` instead of `workbench.rag_facade`
+### Single package `app.rag.workbench_adapter` instead of `workbench.rag_facade`
 Pros: keeps RAG-related code in one tree.
 Cons: violates ADR-015's direction-of-coupling (RAG library would gain a workbench-aware module). **Rejected.**
 
@@ -179,7 +179,7 @@ This ADR alone produces no executable RAG code beyond the discipline test. The a
 |------|--------|-------|-------|
 | `docs/adr/ADR-017-rag-facade-cli-lib-parity.md` | this PR | Claude Code | M1 trigger |
 | `tests/test_rag_facade_parity.py` | this PR | Claude Code | static parity + discipline checks (M2) |
-| `backend/app/workbench/rag_facade.py` | Phase 2.1 follow-up | Claude Code | the only `backend.app.rag.*` import site from workbench |
+| `backend/app/workbench/rag_facade.py` | Phase 2.1 follow-up | Claude Code | the only `app.rag.*` import site from workbench |
 | `backend/app/api/rag.py` | Phase 2.1 follow-up | Claude Code | `POST /workbench/rag/advise`, `POST /workbench/rag/preflight` |
 | (CLI modules, RAG library) | already in flight | Claude Code | PR #38–#47 |
 

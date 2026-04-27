@@ -94,7 +94,7 @@ The "(NOT emitted)" rows are deliberate scope bounds. A Phase 3 ADR can add them
     }
   ],
   "writer": {
-    "tool": "backend.app.viz.frd_to_vtu",
+    "tool": "app.viz.frd_to_vtu",
     "version": "0.1.0",
     "frd_parser_version": "(from FRDParseResult)",
     "wrote_at": "2026-04-27T12:34:56Z"

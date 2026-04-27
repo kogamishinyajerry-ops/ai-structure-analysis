@@ -16,26 +16,37 @@ Canonical import path is ``app.X``. These tests guard against drift:
 
   1. ``app`` must be importable as a top-level package (otherwise the
      ``run-well-harness`` and ``report-cli`` console scripts break).
-  2. No source file under ``backend/`` may import via ``backend.app.X``
-     — that creates the dual-module-object footgun. The single
-     allowed exception is this test file itself, which intentionally
-     references the forbidden form to detect it.
+  2. No active source file (under ``backend/``, ``agents/``,
+     ``schemas/``, root ``tests/``, etc.) may import via
+     ``backend.app.X`` — that creates the dual-module-object
+     footgun. The single allowed exception is this test file itself,
+     which intentionally references the forbidden form to detect it.
 """
 
 from __future__ import annotations
 
 import importlib
 import re
-import subprocess
-import sys
 from pathlib import Path
 
-import pytest
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BACKEND_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 THIS_FILE = Path(__file__).resolve()
+
+# Active source trees that the editable install exposes. We scan all of
+# them: a ``backend.app.X`` import in any of these would create a
+# distinct module object alongside the canonical ``app.X``. Excluded:
+# ``_frozen`` (Sprint-N quarantine, RFC-001 §6.1 Bucket B), the test
+# file itself, and any ``__pycache__`` artifacts.
+_SCAN_ROOTS: tuple[Path, ...] = (
+    REPO_ROOT / "backend" / "app",
+    REPO_ROOT / "backend" / "tests",
+    REPO_ROOT / "tests",
+    REPO_ROOT / "agents",
+    REPO_ROOT / "schemas",
+    REPO_ROOT / "tools",
+    REPO_ROOT / "checkers",
+    REPO_ROOT / "reporters",
+)
 
 
 def test_app_is_importable_as_top_level() -> None:
@@ -72,6 +83,8 @@ _FORBIDDEN_IMPORT = re.compile(
 
 
 def _python_files_under(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
     return [
         p
         for p in root.rglob("*.py")
@@ -89,7 +102,8 @@ def _python_files_under(root: Path) -> list[Path]:
 
 
 def test_no_source_imports_via_backend_app_path() -> None:
-    """No active source file may import ``backend.app.X`` — only ``app.X``.
+    """No active source file in any installed-package tree may import
+    ``backend.app.X`` — only ``app.X``.
 
     Rationale: editable install puts both repo-root and ``backend/`` on
     sys.path, so ``from backend.app.X`` and ``from app.X`` both resolve
@@ -97,17 +111,22 @@ def test_no_source_imports_via_backend_app_path() -> None:
     Anything module-global (e.g. dataclass slot caches, sys.modules-
     based singletons, lru_cache state) would diverge silently. Keep the
     canonical path ``app.X``.
+
+    Scan covers every active source tree the editable install exposes
+    — not just ``backend/`` — so a regression in ``agents/``,
+    ``schemas/``, root ``tests/`` etc. trips this guard too.
     """
     offenders: list[tuple[Path, int, str]] = []
-    for py in _python_files_under(BACKEND_ROOT):
-        text = py.read_text(encoding="utf-8", errors="replace")
-        for match in _FORBIDDEN_IMPORT.finditer(text):
-            line_no = text.count("\n", 0, match.start()) + 1
-            line = text.splitlines()[line_no - 1]
-            offenders.append((py.relative_to(REPO_ROOT), line_no, line.strip()))
+    for root in _SCAN_ROOTS:
+        for py in _python_files_under(root):
+            text = py.read_text(encoding="utf-8", errors="replace")
+            for match in _FORBIDDEN_IMPORT.finditer(text):
+                line_no = text.count("\n", 0, match.start()) + 1
+                line = text.splitlines()[line_no - 1]
+                offenders.append((py.relative_to(REPO_ROOT), line_no, line.strip()))
     assert not offenders, (
         "Found imports via the ``backend.app.X`` path — use ``app.X`` "
-        "instead (see backend/tests/test_packaging.py docstring):\n"
+        "instead (see tests/test_packaging.py docstring):\n"
         + "\n".join(f"  {p}:{n}: {ln}" for p, n, ln in offenders)
     )
 
@@ -118,15 +137,12 @@ def test_pyproject_advertises_correct_package_layout() -> None:
     must be in ``where``. If either drifts, ``import app`` breaks
     after a fresh install and we won't notice until a console_script
     runs."""
-    if sys.version_info >= (3, 11):
-        import tomllib  # type: ignore[import-not-found,unused-ignore]
-    else:  # pragma: no cover — project requires-python is >=3.11
-        pytest.skip("tomllib needs Python 3.11+")
+    # ``tomllib`` is in stdlib from 3.11; project's ``requires-python``
+    # is >=3.11 so this is unconditional.
+    import tomllib
+
     pyproject = REPO_ROOT / "pyproject.toml"
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     find_cfg = data["tool"]["setuptools"]["packages"]["find"]
     assert "backend" in find_cfg["where"], find_cfg
-    assert any(
-        pat == "app*" or pat.startswith("app")
-        for pat in find_cfg["include"]
-    ), find_cfg
+    assert any(pat == "app*" or pat.startswith("app") for pat in find_cfg["include"]), find_cfg
