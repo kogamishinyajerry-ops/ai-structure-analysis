@@ -43,7 +43,7 @@ Key invariants enforced by :func:`validate_report`:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, Tuple
+from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
 
 from app.models import EvidenceBundle, ReportSection, ReportSpec
 from app.services.report.exporter import CITATION_RE
@@ -59,6 +59,7 @@ __all__ = [
     "get_template",
     "supported_template_ids",
     "validate_report",
+    "validate_report_collect",
 ]
 
 
@@ -94,7 +95,23 @@ class TemplateSpec:
 
 
 class TemplateValidationError(ValueError):
-    """Raised when a :class:`ReportSpec` violates a :class:`TemplateSpec`."""
+    """Raised when a :class:`ReportSpec` violates a :class:`TemplateSpec`.
+
+    Carries a structured ``violations`` tuple so engineering tooling
+    can introspect every violation without parsing the error message.
+    The exception's string form is the aggregated multi-line summary
+    that gets shown on stderr; ``violations`` is the same set of
+    messages in raw form.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        violations: Tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.violations: Tuple[str, ...] = tuple(violations) or (message,)
 
 
 # --- the 3 MVP templates --------------------------------------------------
@@ -211,36 +228,54 @@ def _distinct_citation_count(content: str) -> int:
     return len(set(CITATION_RE.findall(content)))
 
 
-def validate_report(
+def validate_report_collect(
     report: ReportSpec,
     bundle: EvidenceBundle,
     *,
     template: TemplateSpec,
-) -> None:
-    """Refuse if ``report`` does not honour the ``template`` contract.
+) -> List[str]:
+    """Return every violation of ``template`` by ``report`` as a list
+    of human-readable messages.
 
-    Raises :class:`TemplateValidationError` on the first violation
-    encountered (template_id mismatch → missing section → no candidate
-    section satisfies level+citation requirements). Single-error
-    semantics keep the failure message actionable.
+    Empty list ⇒ the report satisfies the template contract.
 
-    Duplicate section titles are tolerated: the report passes if *any*
-    same-titled section satisfies the requirement. The error message
-    on rejection is taken from the *last* candidate inspected so the
-    engineer sees the closest-to-correct mismatch.
+    This is the building block engineers reach for when they want to
+    surface *all* fixes the report needs in one pass — the reach-for-
+    a-DOCX-fix-rerun loop is dramatically slower if validation only
+    reports the first problem on each iteration.
 
-    The ``bundle`` parameter is currently consulted only via the
-    cited-evidence count derived from section content. A future
-    extension may also enforce template-specific evidence-type
-    requirements; the parameter is kept in the signature now to
-    avoid an API churn later.
+    Multi-error contract per requirement:
+      * The ``template_id`` mismatch is reported on its own; if the
+        IDs disagree, no per-section checks are performed (the
+        sections aren't comparable until the engineer fixes the
+        template alignment first). This is the only short-circuit.
+      * Each ``SectionRequirement`` is checked independently: missing
+        section → 1 violation; same-titled candidates that all fail
+        their level+citation contract → 1 violation derived from the
+        *last* same-titled candidate inspected (DFS pre-order order).
+        We do NOT emit one violation per bad candidate; that would
+        multiply the noise without adding signal. The "last one
+        inspected" wording is deliberate — earlier we considered
+        picking the "closest-to-correct" candidate, but the simpler
+        rule is what's implemented and what callers should rely on.
+
+    Duplicate section titles are still tolerated: the requirement
+    passes if *any* same-titled section satisfies level + citation.
+
+    The ``bundle`` parameter is reserved for future per-template
+    evidence-type checks; currently only section content is consulted.
     """
+    violations: List[str] = []
+
     if report.template_id != template.template_id:
-        raise TemplateValidationError(
+        violations.append(
             f"report.template_id={report.template_id!r} but template "
             f"contract is for {template.template_id!r}; pass the "
             "matching TemplateSpec or fix the report's template_id."
         )
+        # Stop here — comparing per-section requirements between
+        # mismatched templates produces meaningless noise.
+        return violations
 
     # Reserved for future per-template bundle requirements.
     _ = bundle
@@ -248,22 +283,23 @@ def validate_report(
     for req in template.required_sections:
         candidates = _find_sections_by_title(report.sections, req.title)
         if not candidates:
-            raise TemplateValidationError(
+            violations.append(
                 f"template {template.template_id!r} requires a section "
                 f"titled {req.title!r}; report has no such section. "
                 f"Sections present: "
                 f"{[s.title for s in _walk_sections(report.sections)]!r}"
             )
+            continue
         n_candidates = len(candidates)
         candidate_suffix = (
             f" ({n_candidates} same-titled section(s) checked, none satisfy)"
             if n_candidates > 1
             else ""
         )
-        last_error: TemplateValidationError | None = None
+        last_error: str | None = None
         for sec in candidates:
             if sec.level != req.level:
-                last_error = TemplateValidationError(
+                last_error = (
                     f"template {template.template_id!r} requires section "
                     f"{req.title!r} at level {req.level}; report has it "
                     f"at level {sec.level}.{candidate_suffix}"
@@ -271,7 +307,7 @@ def validate_report(
                 continue
             citations = _distinct_citation_count(sec.content or "")
             if citations < req.minimum_evidence_citations:
-                last_error = TemplateValidationError(
+                last_error = (
                     f"template {template.template_id!r} requires section "
                     f"{req.title!r} to cite at least "
                     f"{req.minimum_evidence_citations} distinct evidence "
@@ -283,4 +319,53 @@ def validate_report(
             last_error = None
             break
         if last_error is not None:
-            raise last_error
+            violations.append(last_error)
+
+    return violations
+
+
+def _format_aggregated_message(
+    template: TemplateSpec,
+    violations: Sequence[str],
+) -> str:
+    n = len(violations)
+    header = (
+        f"template {template.template_id!r} validation failed "
+        f"({n} violation{'s' if n != 1 else ''}):"
+    )
+    bullets = "\n".join(f"  - {v}" for v in violations)
+    return f"{header}\n{bullets}"
+
+
+def validate_report(
+    report: ReportSpec,
+    bundle: EvidenceBundle,
+    *,
+    template: TemplateSpec,
+) -> None:
+    """Refuse if ``report`` does not honour the ``template`` contract.
+
+    Collects every violation via :func:`validate_report_collect` and,
+    if any are present, raises a single :class:`TemplateValidationError`
+    whose message aggregates all of them. The exception's
+    ``violations`` attribute carries the same list in structured form
+    so engineering tooling can introspect without parsing strings.
+
+    Engineer ergonomics: reporting all violations at once turns the
+    fix-rerun loop from O(N) into O(1). Each violation's wording is
+    unchanged from the previous fail-fast implementation, so existing
+    ``pytest.raises(..., match=...)`` assertions keep matching the
+    aggregated message text.
+
+    Duplicate section titles are tolerated (a requirement passes if
+    *any* same-titled section satisfies level + citation). Templates
+    with mismatched ``template_id`` are reported as a single violation
+    and per-section checks are skipped (they would compare apples to
+    oranges).
+    """
+    violations = validate_report_collect(report, bundle, template=template)
+    if violations:
+        raise TemplateValidationError(
+            _format_aggregated_message(template, violations),
+            violations=tuple(violations),
+        )
