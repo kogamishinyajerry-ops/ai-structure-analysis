@@ -284,6 +284,102 @@ def test_pressure_vessel_non_uniform_distances_returns_3(
     assert "uniformly-spaced" in captured.err
 
 
+def test_pressure_vessel_resample_accepts_non_uniform_input(
+    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The headline engineer flow: same non-uniform --scl-distances
+    input that test_pressure_vessel_non_uniform_distances_returns_3
+    rejects, but with --resample 21 added, must succeed end-to-end."""
+    out = tmp_path / "pv.docx"
+    rc = main(
+        [
+            "--frd",
+            str(gs001),
+            "--kind",
+            "pressure-vessel",
+            "--output",
+            str(out),
+            "--scl-nodes",
+            "1,2,3,4,5",
+            "--scl-distances",
+            "0.0, 0.1, 0.4, 1.0, 2.0",  # non-uniform
+            "--resample",
+            "21",
+        ]
+    )
+    assert rc == 0
+    assert out.exists()
+    captured = capsys.readouterr()
+    assert "template=pressure_vessel_local_stress" in captured.out
+
+
+def test_pressure_vessel_resample_below_2_returns_2(
+    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--resample N must reject N<2 with exit code 2 (input-shape
+    error). The Layer-3 helper rejects same; the CLI surfaces it
+    early as an argparse-class issue."""
+    out = tmp_path / "pv.docx"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "--frd",
+                str(gs001),
+                "--kind",
+                "pressure-vessel",
+                "--output",
+                str(out),
+                "--scl-nodes",
+                "1,2,3,4,5",
+                "--scl-distances",
+                "0.0, 0.5, 1.0, 1.5, 2.0",
+                "--resample",
+                "1",
+            ]
+        )
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--resample must be >= 2" in captured.err
+    assert not out.exists()
+
+
+def test_pressure_vessel_resample_zero_returns_2(
+    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Zero is a special case worth a separate probe — argparse parses
+    it as a valid int but our domain check refuses."""
+    out = tmp_path / "pv.docx"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "--frd",
+                str(gs001),
+                "--kind",
+                "pressure-vessel",
+                "--output",
+                str(out),
+                "--scl-nodes",
+                "1,2,3,4,5",
+                "--scl-distances",
+                "0.0, 0.5, 1.0, 1.5, 2.0",
+                "--resample",
+                "0",
+            ]
+        )
+    assert excinfo.value.code == 2
+
+
+def test_parser_resample_default_is_none() -> None:
+    """Without --resample, args.resample is None — the producer's
+    opt-in default. Locked so the CLI default doesn't accidentally
+    flip to a non-None value."""
+    parser = build_parser()
+    ns = parser.parse_args(
+        ["--frd", "x.frd", "--kind", "pressure-vessel"]
+    )
+    assert ns.resample is None
+
+
 def test_no_validate_template_skips_pre_flight(
     gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

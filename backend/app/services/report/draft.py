@@ -58,7 +58,10 @@ from app.core.types import (
     UnitSystem,
 )
 from app.domain.stress_derivatives import von_mises
-from app.domain.stress_linearization import linearize_through_thickness
+from app.domain.stress_linearization import (
+    linearize_through_thickness,
+    resample_to_uniform,
+)
 from app.models import (
     EvidenceBundle,
     EvidenceItem,
@@ -462,6 +465,7 @@ def generate_pressure_vessel_local_stress_summary(
     step_id: Optional[int] = None,
     template_id: Optional[str] = None,
     title: Optional[str] = None,
+    resample_n_points: Optional[int] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate a pressure-vessel local-stress assessment report draft.
 
@@ -493,8 +497,25 @@ def generate_pressure_vessel_local_stress_summary(
         integer array (per the typed alias ``_IntArrayLike``).
     scl_distances:
         Per-node distances along the SCL (typically from the inner
-        surface). Must be uniformly spaced (the Layer-3 linearizer
-        rejects non-uniform).
+        surface). When ``resample_n_points`` is left as ``None``
+        (default), distances must be uniformly spaced (the Layer-3
+        linearizer rejects non-uniform). When ``resample_n_points``
+        is set, the distances may be any strictly-monotonic series
+        — they will be resampled before linearization.
+    resample_n_points:
+        If set, run the raw SCL tensor field through
+        :func:`app.domain.stress_linearization.resample_to_uniform`
+        with this many output points before linearizing. Lets the
+        engineer hand the producer non-uniform CalculiX node spacing
+        without the manual pre-step. Must be ≥ 2; project default is
+        21 if you want a sensible value. ``None`` (default) preserves
+        the strict uniform-spacing contract.
+
+        Note: the EV-MAX-VM-SCL evidence (max von Mises along SCL)
+        is computed from the *raw* per-physical-node tensors even
+        when resampling is on, so the "max stress at node X" label
+        keeps pointing at a real mesh node. Resampling only feeds
+        the linearizer's M/B/Q decomposition.
 
     Caveats
     -------
@@ -560,10 +581,24 @@ def generate_pressure_vessel_local_stress_summary(
     scl_tensors = np.asarray(all_tensors[scl_indices], dtype=np.float64)
     distances_arr = np.asarray(scl_distances, dtype=np.float64)
 
+    # Optional pre-pass: resample non-uniform inputs onto a uniform
+    # grid before linearization. We feed only the linearizer the
+    # resampled field; max-VM along SCL keeps using the raw
+    # per-node tensors so the EV-MAX-VM-SCL evidence's "node X"
+    # label still points at a real mesh node.
+    if resample_n_points is not None:
+        tensors_for_lin, distances_for_lin = resample_to_uniform(
+            scl_tensors, distances_arr, n_points=resample_n_points
+        )
+    else:
+        tensors_for_lin, distances_for_lin = scl_tensors, distances_arr
+
     # Layer-3 linearization. Raises ValueError on non-uniform spacing
-    # or other shape problems — the producer surfaces those directly
-    # (engineer's job to resample).
-    decomposition = linearize_through_thickness(scl_tensors, distances_arr)
+    # or other shape problems — when resample_n_points is None the
+    # caller is responsible for uniform input.
+    decomposition = linearize_through_thickness(
+        tensors_for_lin, distances_for_lin
+    )
 
     # Categorised stresses.
     p_m = float(von_mises(decomposition.membrane.reshape(1, 6))[0])

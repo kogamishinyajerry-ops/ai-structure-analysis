@@ -137,8 +137,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--scl-distances",
         default=None,
         help=(
-            "Comma-separated per-node distances along the SCL "
-            "(uniformly spaced). Required for --kind=pressure-vessel."
+            "Comma-separated per-node distances along the SCL. "
+            "Required for --kind=pressure-vessel. Must be uniformly "
+            "spaced unless --resample is also given (in which case "
+            "any strictly-monotonic series is accepted)."
+        ),
+    )
+    p.add_argument(
+        "--resample",
+        type=int,
+        default=None,
+        metavar="N_POINTS",
+        help=(
+            "Linearly-resample the SCL tensor field onto N_POINTS "
+            "uniformly-spaced points before linearization. Lets the "
+            "engineer pass non-uniform CalculiX node spacing "
+            "directly. Typical: --resample 21. Without this flag, "
+            "non-uniform --scl-distances are rejected."
         ),
     )
     p.add_argument(
@@ -280,10 +295,15 @@ def _produce(
             f"--scl-nodes ({len(nodes)} values) and --scl-distances "
             f"({len(distances)} values) must have equal length"
         )
+    if args.resample is not None and args.resample < 2:
+        _input_error(
+            f"--resample must be >= 2; got {args.resample}"
+        )
     report, bundle = generate_pressure_vessel_local_stress_summary(
         reader,
         scl_node_ids=nodes,
         scl_distances=distances,
+        resample_n_points=args.resample,
         **common_kwargs,
     )
     return report, bundle, PRESSURE_VESSEL_LOCAL_STRESS

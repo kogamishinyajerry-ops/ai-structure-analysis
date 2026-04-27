@@ -463,3 +463,90 @@ def test_template_id_and_title_overrides() -> None:
     )
     assert report.template_id == "custom_pv_v2"
     assert report.title == "Custom PV title"
+
+
+# --- resample integration (RFC-002-prep) ---------------------------------
+
+
+def test_resample_n_points_accepts_non_uniform_input() -> None:
+    """The headline use case: an engineer with non-uniform CalculiX
+    nodes hands the producer a non-uniform --scl-distances series and
+    sets resample_n_points. The producer must NOT raise the
+    'uniformly-spaced' error from the linearizer; the report comes
+    out clean."""
+    node_ids = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    tensors = np.zeros((5, 6), dtype=np.float64)
+    tensors[:, 0] = 100.0  # pure membrane, value-invariant under resample
+    rdr = _SCLReader(node_ids=node_ids, tensors=tensors)
+    report, bundle = generate_pressure_vessel_local_stress_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        scl_node_ids=[10, 20, 30, 40, 50],
+        scl_distances=[0.0, 0.1, 0.4, 1.0, 2.0],  # non-uniform
+        resample_n_points=21,
+    )
+    assert isinstance(report, ReportSpec)
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert ids == {"EV-PM", "EV-PM-PB", "EV-MAX-VM-SCL"}
+
+
+def test_resample_pure_membrane_value_unchanged() -> None:
+    """Pure-membrane input has no through-thickness variation, so
+    resampling onto any uniform grid recovers the same membrane —
+    P_m must equal the input membrane stress."""
+    node_ids = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    tensors = np.zeros((5, 6), dtype=np.float64)
+    tensors[:, 0] = 80.0
+    rdr = _SCLReader(node_ids=node_ids, tensors=tensors)
+    _, bundle = generate_pressure_vessel_local_stress_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        scl_node_ids=[10, 20, 30, 40, 50],
+        scl_distances=[0.0, 0.1, 0.4, 1.0, 2.0],  # non-uniform
+        resample_n_points=21,
+    )
+    pm_item = next(it for it in bundle.evidence_items if it.evidence_id == "EV-PM")
+    assert pm_item.data.value == pytest.approx(80.0, rel=1e-9)
+
+
+def test_resample_max_vm_keeps_raw_node_label() -> None:
+    """Even with resampling on, EV-MAX-VM-SCL must report a real
+    physical node id (from scl_node_ids), not an interpolated grid
+    index — the location label is the engineer's audit anchor."""
+    # Construct a field where the maximum von Mises sits at a known
+    # raw node so we can assert the label points at it.
+    node_ids = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    tensors = np.zeros((5, 6), dtype=np.float64)
+    # σ_xx values: max at index 3 (node 40) — peak-near-outer.
+    tensors[:, 0] = np.array([10.0, 20.0, 50.0, 200.0, 30.0], dtype=np.float64)
+    rdr = _SCLReader(node_ids=node_ids, tensors=tensors)
+    _, bundle = generate_pressure_vessel_local_stress_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        scl_node_ids=[10, 20, 30, 40, 50],
+        scl_distances=[0.0, 0.1, 0.4, 1.0, 2.0],  # non-uniform
+        resample_n_points=21,
+    )
+    max_vm_item = next(
+        it for it in bundle.evidence_items if it.evidence_id == "EV-MAX-VM-SCL"
+    )
+    # The location label includes the physical node id — must be 40.
+    assert "node 40" in max_vm_item.data.location
+
+
+def test_resample_none_still_rejects_non_uniform() -> None:
+    """Default behavior (resample_n_points=None) must remain
+    fail-fast on non-uniform spacing — the contract change is
+    opt-in only."""
+    node_ids = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    tensors = np.zeros((5, 6), dtype=np.float64)
+    tensors[:, 0] = 50.0
+    rdr = _SCLReader(node_ids=node_ids, tensors=tensors)
+    with pytest.raises(ValueError, match="uniformly-spaced"):
+        generate_pressure_vessel_local_stress_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            scl_node_ids=[10, 20, 30, 40, 50],
+            scl_distances=[0.0, 0.1, 0.4, 1.0, 2.0],  # non-uniform
+            resample_n_points=None,  # explicit
+        )
