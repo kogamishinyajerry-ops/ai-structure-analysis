@@ -31,7 +31,7 @@ What this module does NOT do (deferred to W4+ per RFC §6.4):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Optional, Tuple
 
@@ -319,6 +319,30 @@ def _build_max_field_summary(
     return report, bundle
 
 
+def _override_labels(
+    base: _SummaryLabels,
+    template_id: Optional[str],
+    title: Optional[str],
+) -> _SummaryLabels:
+    """Return ``base`` with optional ``template_id`` / ``title`` fields
+    replaced. Either being ``None`` means "use the template default".
+
+    Note: overriding ``template_id`` here produces a report whose
+    section title and bullet labels are still keyed to ``base`` — i.e.
+    the override is structural-id only, not full re-skinning. Callers
+    using this for a custom template are responsible for confirming
+    the section structure still matches that template's contract.
+    """
+    if template_id is None and title is None:
+        return base
+    overrides: dict[str, str] = {}
+    if template_id is not None:
+        overrides["template_id"] = template_id
+    if title is not None:
+        overrides["title"] = title
+    return replace(base, **overrides)
+
+
 def generate_static_strength_summary(
     reader: ReaderHandle,
     *,
@@ -327,6 +351,8 @@ def generate_static_strength_summary(
     report_id: str,
     bundle_id: str,
     step_id: Optional[int] = None,
+    template_id: Optional[str] = None,
+    title: Optional[str] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate the minimum-viable static-strength report draft.
 
@@ -342,13 +368,22 @@ def generate_static_strength_summary(
     deliberate, never silent. Pass ``step_id`` explicitly for
     multi-step / transient cases.
 
+    ``template_id`` and ``title`` override the equipment-foundation
+    defaults for callers that need a custom template_id or report
+    title (e.g. a project-specific subclassing of the static-strength
+    report). The section structure and evidence labels still come from
+    the equipment-foundation template — overriding template_id alone
+    will fail :func:`templates.validate_report` against any registered
+    template_id other than ``equipment_foundation_static``.
+
     Raises ``ValueError`` when the chosen state exposes neither
     ``DISPLACEMENT`` nor ``STRESS_TENSOR`` — emitting a section with no
     cited evidence would violate ADR-012.
     """
+    labels = _override_labels(_EQUIPMENT_FOUNDATION_LABELS, template_id, title)
     return _build_max_field_summary(
         reader,
-        _EQUIPMENT_FOUNDATION_LABELS,
+        labels,
         project_id=project_id,
         task_id=task_id,
         report_id=report_id,
@@ -365,6 +400,8 @@ def generate_lifting_lug_summary(
     report_id: str,
     bundle_id: str,
     step_id: Optional[int] = None,
+    template_id: Optional[str] = None,
+    title: Optional[str] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate a lifting-lug strength-assessment report draft.
 
@@ -379,10 +416,15 @@ def generate_lifting_lug_summary(
     available at Layer 2/3; until it is, the engineer must verify the
     reported max-σ_vm node lies within the lug region. RFC-002
     candidate: a region-aware reader / domain helper in W5+.
+
+    ``template_id`` and ``title`` provide the same opt-in override as
+    :func:`generate_static_strength_summary`; see its docstring for
+    the structure-vs-id caveat.
     """
+    labels = _override_labels(_LIFTING_LUG_LABELS, template_id, title)
     return _build_max_field_summary(
         reader,
-        _LIFTING_LUG_LABELS,
+        labels,
         project_id=project_id,
         task_id=task_id,
         report_id=report_id,

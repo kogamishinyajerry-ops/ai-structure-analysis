@@ -493,8 +493,6 @@ def test_lifting_lug_summary_uses_lug_specific_evidence_ids(
 def test_lifting_lug_summary_section_title_is_bilingual_lug() -> None:
     """The section title must match what the LIFTING_LUG template
     requires verbatim (RFC §2.4 rule 2)."""
-    rdr = _SyntheticEmptyReader()  # no fields → expect refusal at end
-
     # Build a synthetic reader with at least one field so the function
     # produces a section we can inspect.
     class _OneFieldReader(_SyntheticEmptyReader):
@@ -598,3 +596,56 @@ def test_lifting_lug_summary_empty_reader_raises() -> None:
             rdr,  # type: ignore[arg-type]
             project_id="P", task_id="T", report_id="R", bundle_id="B",
         )
+
+
+# --- backwards-compat: template_id + title kwargs ------------------------
+
+
+def test_static_strength_summary_template_id_kwarg_overrides_default(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Codex R1 MEDIUM regression: the public template_id kwarg must
+    still flow through to ReportSpec (this kwarg existed pre-refactor)."""
+    report, _ = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        template_id="custom_static_v2",
+    )
+    assert report.template_id == "custom_static_v2"
+
+
+def test_static_strength_summary_title_kwarg_overrides_default(
+    gs001_reader: CalculiXReader,
+) -> None:
+    report, _ = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        title="Project-X equipment foundation report",
+    )
+    assert report.title == "Project-X equipment foundation report"
+
+
+def test_static_strength_summary_default_kwargs_unchanged(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Without overrides, the equipment-foundation defaults still apply."""
+    report, _ = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    assert report.template_id == "equipment_foundation_static"
+    assert report.title == "Static-strength summary"
+
+
+def test_lifting_lug_summary_template_id_kwarg_overrides_default(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Symmetry: the lug producer accepts the same overrides."""
+    report, _ = generate_lifting_lug_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        template_id="custom_lug_v2",
+        title="Custom lug title",
+    )
+    assert report.template_id == "custom_lug_v2"
+    assert report.title == "Custom lug title"
