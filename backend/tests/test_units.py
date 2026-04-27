@@ -131,14 +131,42 @@ def test_convert_array_returns_fresh_array() -> None:
     assert np.allclose(dst, [1000.0, 2000.0, 3000.0])
     # Source must NOT be mutated by the conversion.
     assert np.array_equal(src, np.array([1.0, 2.0, 3.0]))
-    # Result must be a fresh array (mutating it doesn't change src).
+    # Codex R1 NIT: tighten freshness check to non-aliasing.
+    assert not np.shares_memory(dst, src), "result must not share memory with input"
+    # Behavioural confirmation — mutating result must not touch source.
     dst[0] = -1.0
     assert src[0] == 1.0
+
+
+def test_convert_zero_d_array_returns_zero_d_array() -> None:
+    """Codex R1 NIT: 0-D array input must yield 0-D array output —
+    numpy collapses ``array(5.0) * factor`` into ``np.float64``, but
+    the declared contract is "NDArray in → NDArray out".
+    """
+    src = np.asarray(5.0)
+    assert src.ndim == 0
+    dst = convert(src, "m", "mm")
+    assert isinstance(dst, np.ndarray)
+    assert dst.ndim == 0
+    assert dst.item() == pytest.approx(5000.0)
 
 
 def test_convert_propagates_unknown_unit() -> None:
     with pytest.raises(UnitConversionError):
         convert(1.0, "furlong", "m")
+
+
+def test_quantity_to_propagates_unknown_target() -> None:
+    """Codex R1 advisory: Quantity.to error-propagation."""
+    q = Quantity(value=1.0, unit="m")
+    with pytest.raises(UnitConversionError, match="unknown target unit"):
+        q.to("furlong")
+
+
+def test_quantity_to_propagates_cross_dimension() -> None:
+    q = Quantity(value=1.0, unit="m")
+    with pytest.raises(UnitConversionError, match="incompatible dimensions"):
+        q.to("Pa")
 
 
 # --- Quantity.to integration ---------------------------------------------

@@ -75,7 +75,7 @@ _UNIT_TO_SI: dict[str, tuple[str, float]] = {
     # mass — SI base = kg
     "kg": ("mass", 1.0),
     "t": ("mass", 1e3),         # tonne (SI_mm convention)
-    "slug": ("mass", 14.59390294),
+    "slug": ("mass", 14.593902937206364),  # exact: 1 slug = 1 lbf·s²/ft
     # force — SI base = N
     "N": ("force", 1.0),
     "kN": ("force", 1e3),
@@ -147,11 +147,19 @@ def convert(
 
     Inputs are NOT mutated. Float in → float out; NDArray in → NDArray
     out (a fresh array, never a view, so the caller cannot break the
-    source).
+    source). For 0-D arrays the result is wrapped back into a 0-D
+    array — without that, ``np.asarray(5.0) * factor`` collapses to
+    ``np.float64``, breaking the declared shape contract.
     """
     factor = conversion_factor(from_unit, to_unit)
     if isinstance(value, np.ndarray):
-        return value * factor  # broadcasts; result is a fresh array
+        result = value * factor  # broadcasts; result is a fresh array
+        # 0-D promotion: numpy returns a scalar (np.float64) for
+        # array(5.0) * float; coerce back to ndarray so the type
+        # contract holds for any-rank input.
+        if value.ndim == 0 and not isinstance(result, np.ndarray):
+            result = np.asarray(result, dtype=np.float64)
+        return result
     return float(value) * factor
 
 
