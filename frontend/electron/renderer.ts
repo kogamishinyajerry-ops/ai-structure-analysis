@@ -73,6 +73,8 @@ const runBtn = $<HTMLButtonElement>("run");
 const revealBtn = $<HTMLButtonElement>("reveal");
 const demoBtn = $<HTMLButtonElement>("demo-gs001");
 const statusEl = $<HTMLDivElement>("statusEl");
+const violationsBox = $<HTMLDivElement>("violations");
+const violationsList = $<HTMLUListElement>("violations-list");
 const log = $<HTMLPreElement>("log");
 
 // --- helpers ---------------------------------------------------------------
@@ -90,6 +92,25 @@ const appendLog = (text: string) => {
 
 const clearLog = () => {
   log.textContent = "";
+};
+
+const showViolations = (violations: readonly string[]) => {
+  violationsList.replaceChildren(
+    ...violations.map((v) => {
+      const li = document.createElement("li");
+      // textContent (not innerHTML) — violation strings come from the
+      // CLI's stderr-equivalent and may contain user-supplied paths
+      // or values; treat as untrusted.
+      li.textContent = v;
+      return li;
+    })
+  );
+  violationsBox.hidden = violations.length === 0;
+};
+
+const clearViolations = () => {
+  violationsList.replaceChildren();
+  violationsBox.hidden = true;
 };
 
 const updateFormState = () => {
@@ -145,6 +166,7 @@ runBtn.addEventListener("click", async () => {
   runBtn.disabled = true;
   revealBtn.disabled = true;
   clearLog();
+  clearViolations();
   setStatus("running…", "running");
 
   const kind = kindSelect.value as RunReportRequest["kind"];
@@ -169,8 +191,7 @@ runBtn.addEventListener("click", async () => {
       })`,
       "error"
     );
-    appendLog("\n--- input violations ---\n");
-    for (const v of result.violations) appendLog(`  - ${v}\n`);
+    showViolations(result.violations);
   } else if (!result.ok) {
     setStatus(`exited ${result.exitCode}`, "error");
   } else {

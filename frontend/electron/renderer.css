@@ -182,6 +182,33 @@ fieldset legend {
 .status.success { color: var(--success); }
 .status.error   { color: var(--error); }
 
+.violations {
+  padding: 8px 10px;
+  border: 1px solid var(--error);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--error) 8%, var(--bg));
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.violations[hidden] { display: none; }
+
+.violations-title {
+  font-weight: 600;
+  color: var(--error);
+  margin-bottom: 4px;
+}
+
+.violations ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.violations li {
+  margin: 2px 0;
+  word-break: break-word;
+}
+
 pre#log {
   flex: 1;
   margin: 0;
