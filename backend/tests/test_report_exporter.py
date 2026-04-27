@@ -150,6 +150,91 @@ def test_export_refuses_missing_output_dir(tmp_path: Path) -> None:
         export_docx(report, bundle, output_path=target)
 
 
+def test_export_refuses_uncited_content_line(tmp_path: Path) -> None:
+    """Codex R1 HIGH: ADR-012 requires every claim to cite an EV-*.
+    A bare prose line without any citation is exactly the failure
+    mode the rule was created to prevent (RFC-001 §2.4 rule 1)."""
+    report, bundle = _make_minimal_pair(
+        bundle_evidence_ids=["EV-OK"],
+        section_content=(
+            "- 最大位移: **0.5 mm** *(EV-OK)*\n"
+            "Max displacement is 0.5 mm."  # uncited prose claim — must refuse
+        ),
+    )
+    with pytest.raises(ExportError, match="uncited content line"):
+        export_docx(report, bundle, output_path=tmp_path / "out.docx")
+
+
+def test_export_allows_blank_lines_inside_content(tmp_path: Path) -> None:
+    """Blank lines between citations are paragraph breaks, not claims —
+    they must NOT trip the uncited-content check."""
+    report, bundle = _make_minimal_pair(
+        bundle_evidence_ids=["EV-A", "EV-B"],
+        section_content="- *(EV-A)* line one\n\n- *(EV-B)* line two",
+    )
+    out = export_docx(report, bundle, output_path=tmp_path / "out.docx")
+    assert out.exists()
+
+
+def test_export_refuses_when_parent_is_a_file(tmp_path: Path) -> None:
+    """Codex R1 MEDIUM: a regular file at the parent slot would otherwise
+    leak NotADirectoryError from doc.save. Surface ExportError instead."""
+    parent_collision = tmp_path / "i_am_a_file"
+    parent_collision.write_bytes(b"this is a file, not a directory")
+    report, bundle = _make_minimal_pair(
+        bundle_evidence_ids=["EV-OK"],
+        section_content="cites EV-OK",
+    )
+    with pytest.raises(ExportError, match="not a directory"):
+        export_docx(report, bundle, output_path=parent_collision / "out.docx")
+
+
+def test_export_returns_resolved_absolute_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex R1 MEDIUM: relative paths must be resolved on the way out
+    so callers always receive an absolute path back."""
+    monkeypatch.chdir(tmp_path)
+    report, bundle = _make_minimal_pair(
+        bundle_evidence_ids=["EV-OK"],
+        section_content="cites EV-OK",
+    )
+    relative = Path("relative-out.docx")
+    assert not relative.is_absolute()
+    out = export_docx(report, bundle, output_path=relative)
+    assert out.is_absolute()
+    assert out.exists()
+    # Resolved against tmp_path cwd.
+    assert out.parent == tmp_path.resolve()
+
+
+def test_export_handles_deep_subsection_tree(tmp_path: Path) -> None:
+    """Codex R1 MEDIUM: schema doesn't cap subsection nesting depth.
+    1000 levels of subsection must not blow Python recursion limit."""
+    leaf = ReportSection(title="leaf", level=3, content="cites EV-DEEP")
+    cur = leaf
+    for i in range(999):
+        cur = ReportSection(
+            title=f"L{i}", level=3, content=None, subsections=[cur]
+        )
+    items = [
+        EvidenceItem(
+            evidence_id="EV-DEEP",
+            evidence_type=EvidenceType.SIMULATION,
+            title="t",
+            data=SimulationEvidence(value=1.0, unit="mm", location="node 1"),
+            source="synthetic",
+        )
+    ]
+    bundle = EvidenceBundle(bundle_id="B", task_id="T", title="b")
+    for it in items:
+        bundle.add_evidence(it)
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t", template_id="x",
+        sections=[cur], evidence_bundle_id="B",
+    )
+    out = export_docx(report, bundle, output_path=tmp_path / "deep.docx")
+    assert out.exists()
+
+
 # --- happy-path render -----------------------------------------------------
 
 
@@ -158,7 +243,7 @@ def test_export_writes_valid_docx_with_expected_text(tmp_path: Path) -> None:
         bundle_evidence_ids=["EV-DISP-MAX"],
         section_content=(
             "- 最大位移: **0.5 mm** @ node 1  *(EV-DISP-MAX)*\n"
-            "Plain trailing line."
+            "Plain trailing line referencing EV-DISP-MAX."
         ),
     )
     out = export_docx(report, bundle, output_path=tmp_path / "out.docx")

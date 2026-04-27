@@ -76,6 +76,34 @@ def find_cited_evidence_ids(sections: Iterable[ReportSection]) -> Set[str]:
     return cited
 
 
+def _check_every_content_line_cites_evidence(
+    sections: Iterable[ReportSection],
+) -> None:
+    """RFC-001 §2.4 rule 1: every non-blank content line must reference
+    an ``EV-*`` evidence_id. A bare prose paragraph that *describes* a
+    quantity without citing its provenance is exactly the failure mode
+    ADR-012 was created to prevent.
+
+    Section *titles* are exempt (they're navigational, not claims) and
+    sections with ``content=None`` are exempt (heading-only chapters).
+    """
+    stack: List[ReportSection] = list(sections)
+    while stack:
+        sec = stack.pop()
+        if sec.content:
+            for raw in sec.content.splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                if not _CITATION_RE.search(line):
+                    raise ExportError(
+                        f"section {sec.title!r} has uncited content line: "
+                        f"{line!r} — every claim must reference an EV-* "
+                        "evidence_id (RFC-001 §2.4 rule 1, ADR-012)."
+                    )
+        stack.extend(sec.subsections)
+
+
 def _format_evidence_value(item: EvidenceItem) -> str:
     """Human-readable one-liner for an evidence item, used in the
     appendix. Currently only ``SimulationEvidence`` is rendered with
@@ -130,19 +158,23 @@ def _render_section_content(doc: _DocxDocument, content: str) -> None:
 
 
 def _render_section_tree(
-    doc: _DocxDocument, sections: Iterable[ReportSection], depth_offset: int = 0
+    doc: _DocxDocument, sections: Iterable[ReportSection]
 ) -> None:
-    """Recursively render ReportSection tree.
+    """Iteratively render the ReportSection tree (pre-order DFS).
 
-    ``ReportSection.level`` is 1..3 (validated by the schema). DOCX
-    heading levels max at 9 in python-docx, so the offset is safe.
+    ``ReportSection.level`` is 1..3 (validated by the schema), but
+    subsection nesting depth is unbounded. An iterative walk avoids a
+    Python recursion-limit crash on deep trees (Codex R1 finding).
+    DOCX heading levels max at 9 in python-docx; we clamp.
     """
-    for sec in sections:
-        doc.add_heading(sec.title, level=min(9, sec.level + depth_offset))
+    stack: List[ReportSection] = list(reversed(list(sections)))
+    while stack:
+        sec = stack.pop()
+        doc.add_heading(sec.title, level=min(9, sec.level))
         if sec.content:
             _render_section_content(doc, sec.content)
-        if sec.subsections:
-            _render_section_tree(doc, sec.subsections, depth_offset)
+        for child in reversed(sec.subsections):
+            stack.append(child)
 
 
 def _render_evidence_appendix(
@@ -194,6 +226,10 @@ def export_docx(
             f"{bundle.bundle_id!r}"
         )
 
+    # ADR-012 enforcement #1: every non-blank content line must cite EV-*.
+    _check_every_content_line_cites_evidence(report.sections)
+
+    # ADR-012 enforcement #2: every cited EV-* must resolve in the bundle.
     cited = find_cited_evidence_ids(report.sections)
     bundle_ids = {item.evidence_id for item in bundle.evidence_items}
     unresolved = cited - bundle_ids
@@ -204,11 +240,16 @@ def export_docx(
             f"(ADR-012). Bundle ids present: {sorted(bundle_ids)!r}."
         )
 
-    if not output_path.parent.exists():
+    # Path contract: resolve once (handles relative + ~), then require
+    # the parent to exist *and be a directory*. A regular file at the
+    # parent slot would otherwise leak ``NotADirectoryError`` from
+    # ``doc.save``; we surface it as ``ExportError`` instead.
+    resolved_output = output_path.expanduser().resolve()
+    if not resolved_output.parent.is_dir():
         raise ExportError(
-            f"output_path parent {output_path.parent} does not exist; "
-            "create it before calling export_docx (the exporter does "
-            "not mkdir on the caller's behalf)."
+            f"output_path parent {resolved_output.parent} does not exist "
+            "or is not a directory; create it before calling export_docx "
+            "(the exporter does not mkdir on the caller's behalf)."
         )
 
     doc = Document()
@@ -226,5 +267,5 @@ def export_docx(
     _render_section_tree(doc, report.sections)
     _render_evidence_appendix(doc, bundle)
 
-    doc.save(str(output_path))
-    return output_path
+    doc.save(str(resolved_output))
+    return resolved_output
