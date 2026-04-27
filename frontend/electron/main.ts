@@ -58,13 +58,21 @@ function createWindow(): void {
     height: 720,
     title: "AI-FEA Structural Report",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      // The preload entry is sourced as ``preload.cts`` (CommonJS)
+      // because Electron's preload sandbox loader uses ``require()``,
+      // which throws ERR_REQUIRE_ESM on an ES-module preload — the
+      // surrounding ``frontend/package.json`` sets ``"type": "module"``
+      // (the Vite SPA needs that), so a vanilla ``preload.ts`` →
+      // ``preload.js`` would be picked up as ESM and fail at runtime.
+      // Using a ``.cts`` source produces a ``.cjs`` output which is
+      // CJS regardless of the package's ``type`` field.
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      // ``sandbox: true`` would force the preload to load as CJS even
-      // when the surrounding tsconfig targets ESM. We get the same
-      // attack-surface guarantees from contextIsolation +
-      // nodeIntegration:false, and avoid the dual-format build pipeline.
+      // ``sandbox: true`` would force the preload to load as CJS but
+      // also restricts what main can pass through; we keep
+      // sandbox:false and rely on contextIsolation + nodeIntegration:
+      // false for the attack-surface guarantees.
       sandbox: false,
     },
   });
