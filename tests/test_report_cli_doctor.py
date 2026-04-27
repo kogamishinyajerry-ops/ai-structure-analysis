@@ -150,6 +150,101 @@ def test_doctor_reports_broken_hard_dep_not_just_missing(
     assert "missing or broken" in captured.err
 
 
+def test_report_run_emits_progress_stages_to_stderr(
+    tmp_path: pytest.TempPathFactory,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """W5e: a successful report run must emit per-stage progress lines
+    on stderr so the Electron wedge can render an audit-trail. stdout
+    stays single-line ('wrote ...') so callers piping report-cli into
+    another tool keep their existing contract.
+
+    Uses GS-001 .frd. Skips if the fixture is missing — the project
+    should never ship without it but unit tests must not crash if a
+    contributor builds in a partial checkout.
+    """
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    frd = repo_root / "golden_samples" / "GS-001" / "gs001_result.frd"
+    if not frd.is_file():
+        pytest.skip(f"GS-001 fixture missing at {frd}")
+
+    out = tmp_path / "report.docx"  # type: ignore[attr-defined]
+    rc = main(
+        [
+            "--frd",
+            str(frd),
+            "--kind",
+            "static",
+            "--output",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+
+    # All 4 stage headers must appear, in order, on stderr.
+    expected_prefixes = [
+        "[1/4] reading CalculiX .frd:",
+        "[2/4] producing report:",
+        "[3/4] validating template:",
+        "[4/4] exporting DOCX:",
+    ]
+    pos = 0
+    for prefix in expected_prefixes:
+        idx = captured.err.find(prefix, pos)
+        assert idx >= 0, (
+            f"missing or out-of-order stderr line {prefix!r}; full stderr:\n{captured.err}"
+        )
+        pos = idx + len(prefix)
+
+    # Detail lines must follow stages 1 and 2.
+    assert "      → opened (unit_system=si-mm)" in captured.err
+    assert "      → 2 evidence items, template=equipment_foundation_static" in captured.err
+
+    # stdout still single-line summary — engineers script around this.
+    stdout_lines = [ln for ln in captured.out.splitlines() if ln.strip()]
+    assert len(stdout_lines) == 1
+    assert stdout_lines[0].startswith("wrote ")
+
+
+def test_no_validate_template_drops_validation_stage(
+    tmp_path: pytest.TempPathFactory,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With --no-validate-template, total_stages drops to 3 and the
+    validation stage line must not appear. The [N/T] denominator
+    must update accordingly."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    frd = repo_root / "golden_samples" / "GS-001" / "gs001_result.frd"
+    if not frd.is_file():
+        pytest.skip(f"GS-001 fixture missing at {frd}")
+
+    out = tmp_path / "report.docx"  # type: ignore[attr-defined]
+    rc = main(
+        [
+            "--frd",
+            str(frd),
+            "--kind",
+            "static",
+            "--output",
+            str(out),
+            "--no-validate-template",
+        ]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+
+    assert "[1/3]" in captured.err
+    assert "[2/3]" in captured.err
+    assert "[3/3] exporting DOCX:" in captured.err
+    assert "[4/" not in captured.err  # no fourth stage in this mode
+    assert "validating template:" not in captured.err
+
+
 def test_cli_module_loads_when_inhouse_submodule_is_broken(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

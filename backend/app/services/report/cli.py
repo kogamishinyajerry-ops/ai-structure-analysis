@@ -334,15 +334,13 @@ def _parse_float_csv(label: str, raw: str) -> list[float]:
 
 def _produce(
     args: argparse.Namespace,
-    reader: "CalculiXReader",
-) -> "tuple[ReportSpec, EvidenceBundle, TemplateSpec]":
-    # Annotations are forward-refs (strings) under
-    # ``from __future__ import annotations``; the actual names
-    # are bound by the lazy import below. Quoted explicitly so
-    # static checkers reading without the future-annotations
-    # context don't complain.
+    reader: CalculiXReader,
+) -> tuple[ReportSpec, EvidenceBundle, TemplateSpec]:
     """Dispatch to the matching producer + return the template that
-    the report should validate against."""
+    the report should validate against. Annotation names are bound
+    by the lazy import inside this function and resolve as forward
+    refs under ``from __future__ import annotations`` (the file-top
+    pragma)."""
     # Lazy imports — see the module-top comment. These names are bound
     # only here so a broken submodule surfaces in --doctor instead of
     # the import-time crash.
@@ -460,12 +458,35 @@ def main(argv: list[str] | None = None) -> int:
         "unknown": UnitSystem.UNKNOWN,
     }[args.unit_system]
 
+    # Per-stage progress lines go to stderr so the engineer running
+    # the Electron wedge sees what the report-cli is doing instead of
+    # a black-box "running…" → "done" jump. stdout stays reserved for
+    # the final "wrote ..." summary so callers piping report-cli into
+    # another tool still get exactly one stdout line per successful
+    # run (the contract engineers script around).
+    #
+    # The Electron renderer routes both stdout and stderr into the
+    # same log pane, so the engineer sees a flowing audit-trail.
+    # Stage count is 3 base (read / produce / export), 4 if template
+    # validation is on. The final stdout "wrote ..." line is not
+    # numbered — it's the result, not a stage.
+    total_stages = 3 + (1 if args.validate_template else 0)
+
+    def _stage(n: int, msg: str) -> None:
+        print(f"[{n}/{total_stages}] {msg}", file=sys.stderr, flush=True)
+
+    def _detail(msg: str) -> None:
+        print(f"      → {msg}", file=sys.stderr, flush=True)
+
+    _stage(1, f"reading CalculiX .frd: {args.frd}")
     try:
         reader = CalculiXReader(args.frd, unit_system=unit_system)
     except Exception as exc:
         print(f"error: failed to open {args.frd}: {exc}", file=sys.stderr)
         return 3
+    _detail(f"opened (unit_system={args.unit_system})")
 
+    _stage(2, f"producing report: kind={args.kind}")
     try:
         report, bundle, template = _produce(args, reader)
     except SystemExit:
@@ -481,12 +502,19 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 4
+    _detail(f"{len(bundle.evidence_items)} evidence items, template={template.template_id}")
 
     # Lazy-import the exporter + its refusal classes for the same
     # broken-submodule-survives-doctor reason as in _produce.
     from app.services.report.exporter import ExportError, export_docx
     from app.services.report.templates import TemplateValidationError
 
+    next_stage = 3
+    if args.validate_template:
+        _stage(next_stage, f"validating template: {template.template_id}")
+        next_stage += 1
+
+    _stage(next_stage, f"exporting DOCX: {args.output}")
     try:
         out = export_docx(
             report,
