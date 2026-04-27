@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <title>AI-FEA Structural Report</title>
+    <link rel="stylesheet" href="renderer.css" />
+  </head>
+  <body>
+    <header>
+      <h1>结构分析报告 / Structural-analysis report</h1>
+      <p class="subtitle">
+        engineer wedge — pick a CalculiX <code>.frd</code>, choose a
+        report kind, click <em>Run</em>.
+      </p>
+    </header>
+
+    <main>
+      <section class="form">
+        <div class="field">
+          <label for="frd">.frd file</label>
+          <div class="row">
+            <input id="frd" type="text" readonly placeholder="—" />
+            <button id="frd-pick" type="button">Choose…</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="kind">Report kind</label>
+          <select id="kind">
+            <option value="static">static — equipment foundation</option>
+            <option value="lifting-lug">lifting-lug</option>
+            <option value="pressure-vessel">pressure-vessel</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="output">Output .docx</label>
+          <div class="row">
+            <input id="output" type="text" readonly placeholder="—" />
+            <button id="output-pick" type="button">Choose…</button>
+          </div>
+        </div>
+
+        <fieldset class="pv-only" id="pv-fieldset">
+          <legend>Pressure-vessel SCL inputs</legend>
+          <div class="field">
+            <label for="scl-nodes">--scl-nodes (comma-separated, inner→outer)</label>
+            <input id="scl-nodes" type="text" placeholder="e.g. 1,2,3,4,5" />
+          </div>
+          <div class="field">
+            <label for="scl-distances">--scl-distances (comma-separated)</label>
+            <input id="scl-distances" type="text" placeholder="e.g. 0,0.5,1,1.5,2" />
+          </div>
+          <div class="field">
+            <label for="resample">--resample N (optional, ≥ 2)</label>
+            <input id="resample" type="number" min="2" placeholder="e.g. 21" />
+            <span class="hint">
+              set to enable on non-uniform spacing; leave empty to require
+              uniform input.
+            </span>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <button id="run" type="button" class="primary" disabled>Run</button>
+          <button id="reveal" type="button" disabled>Reveal output</button>
+        </div>
+      </section>
+
+      <section class="output">
+        <div class="status" id="status">idle</div>
+        <pre id="log" aria-label="report-cli output"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
