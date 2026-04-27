@@ -241,22 +241,31 @@ def test_accepts_uniform_spacing_with_floating_point_jitter() -> None:
 
 
 def test_accepts_uniform_float32_grid() -> None:
-    """Codex R2 MEDIUM regression: float32 grids carry larger
-    quantization wobble (~1e-7 relative) than float64 (~1e-15);
-    the uniform-check tolerance must accommodate either dtype.
-    Probes exactly the cases Codex used to demonstrate the
-    false-rejection bug."""
+    """Codex R2 MEDIUM regression + Codex R3 NIT (non-vacuous probe):
+    float32 grids carry larger quantization wobble (~1e-7 relative)
+    than float64 (~1e-15); the uniform-check tolerance must
+    accommodate either dtype. We probe with a non-constant linear
+    field so the bending_outer assertion is non-vacuous (would catch
+    a quantization-amplified bias in the LS solve)."""
     for s in (
         np.linspace(0.0, 1.0, 11, dtype=np.float32),
         (np.arange(11, dtype=np.float32) * np.float32(0.1)),
         np.linspace(0.0, 2.0, 9, dtype=np.float32),
     ):
+        s_mid = float((s[0] + s[-1]) / 2.0)
+        # Pure linear bending: σ_xx = (s - s_mid). Membrane = 0,
+        # bending_outer_xx = (s_outer - s_mid), peak = 0.
         tensors = np.zeros((s.size, 6), dtype=np.float64)
-        tensors[:, 0] = 7.0  # constant — pure membrane
+        tensors[:, 0] = (s.astype(np.float64) - s_mid)
+
         result = linearize_through_thickness(tensors, s)
-        assert result.membrane[0] == pytest.approx(7.0), s.tolist()
-        assert np.allclose(result.bending_outer, 0.0, atol=1e-6)
-        assert np.allclose(result.peak, 0.0, atol=1e-6)
+        expected_bending_xx = float(s[-1]) - s_mid
+
+        assert np.allclose(result.membrane, 0.0, atol=1e-6), s.tolist()
+        assert result.bending_outer[0] == pytest.approx(
+            expected_bending_xx, rel=1e-6
+        ), s.tolist()
+        assert np.allclose(result.peak, 0.0, atol=1e-6), s.tolist()
 
 
 def test_two_point_scl_is_always_uniform() -> None:

@@ -161,9 +161,12 @@ def linearize_through_thickness(
         # the median spacing so float-precision wobble doesn't trip a
         # strict-equality check. ``rtol=1e-6`` accommodates float32
         # quantization (~1e-7 relative error) while still catching
-        # real non-uniformity at the ≥0.01% level — well below the
+        # real non-uniformity at the ≥0.0001% level — well below the
         # threshold at which the antisymmetric-integrand leak
-        # (Codex R1 HIGH) becomes engineering-significant.
+        # (Codex R1 HIGH) becomes engineering-significant. Codex R3
+        # numeric probe: an at-edge-of-band grid produces
+        # bending_outer ≈ 4e-8 for a unit-magnitude quadratic field,
+        # which scales to ~4e-5 even at 1000-unit stress.
         ref = float(np.median(diffs))
         if not np.allclose(diffs, ref, rtol=1e-6, atol=0.0):
             raise ValueError(
