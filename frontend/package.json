@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:build": "tsc -p electron/tsconfig.json && node electron/postbuild.cjs",
+    "electron:build:watch": "tsc -p electron/tsconfig.json --watch",
+    "electron:dev": "electron dist-electron/main.js"
   },
   "dependencies": {
     "lucide-react": "^1.8.0",
@@ -20,6 +23,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^33.4.11",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
