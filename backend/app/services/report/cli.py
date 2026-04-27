@@ -265,6 +265,17 @@ def _produce(
 ) -> tuple[ReportSpec, EvidenceBundle, TemplateSpec]:
     """Dispatch to the matching producer + return the template that
     the report should validate against."""
+    # ``--resample`` is only meaningful for the pressure-vessel
+    # template (it controls the SCL linearization grid). Silently
+    # ignoring it for the other kinds would be a foot-gun: an
+    # engineer who types ``--resample 21 --kind static`` would not
+    # get any error and would never know their flag was discarded.
+    if args.resample is not None and args.kind != "pressure-vessel":
+        _input_error(
+            f"--resample is only meaningful with --kind=pressure-vessel "
+            f"(got --kind={args.kind!r}); remove --resample or change kind."
+        )
+
     common_kwargs = dict(
         project_id=args.project_id,
         task_id=args.task_id,

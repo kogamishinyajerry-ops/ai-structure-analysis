@@ -369,6 +369,57 @@ def test_pressure_vessel_resample_zero_returns_2(
     assert excinfo.value.code == 2
 
 
+def test_resample_with_static_kind_returns_2(
+    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--resample is only meaningful for --kind=pressure-vessel.
+    Silently dropping it for static / lifting-lug would be a
+    foot-gun (the engineer never learns their flag was ignored).
+    Reject with exit 2 + clear stderr."""
+    out = tmp_path / "static.docx"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "--frd",
+                str(gs001),
+                "--kind",
+                "static",
+                "--output",
+                str(out),
+                "--resample",
+                "21",
+            ]
+        )
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--resample is only meaningful with --kind=pressure-vessel" in captured.err
+    assert not out.exists()
+
+
+def test_resample_with_lifting_lug_kind_returns_2(
+    gs001: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Same foot-gun guard for --kind=lifting-lug."""
+    out = tmp_path / "lug.docx"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "--frd",
+                str(gs001),
+                "--kind",
+                "lifting-lug",
+                "--output",
+                str(out),
+                "--resample",
+                "21",
+            ]
+        )
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "--resample is only meaningful with --kind=pressure-vessel" in captured.err
+    assert not out.exists()
+
+
 def test_parser_resample_default_is_none() -> None:
     """Without --resample, args.resample is None — the producer's
     opt-in default. Locked so the CLI default doesn't accidentally
