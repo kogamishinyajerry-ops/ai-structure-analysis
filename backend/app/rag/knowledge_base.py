@@ -9,9 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from backend.app.rag.embedder import Embedder
-from backend.app.rag.schemas import Chunk, Document, RetrievalResult
-from backend.app.rag.store import VectorStore
+from app.rag.embedder import Embedder
+from app.rag.schemas import Chunk, Document, RetrievalResult
+from app.rag.store import VectorStore
 
 
 @dataclass(frozen=True)

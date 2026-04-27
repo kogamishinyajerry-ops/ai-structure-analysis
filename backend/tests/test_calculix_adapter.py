@@ -157,8 +157,8 @@ def test_solution_states_keep_distinct_steps_with_field_collision() -> None:
     """Codex R1 HIGH regression guard: two real CalculiX steps at the
     same load factor must NOT alias when both carry overlapping fields.
     """
-    from backend.app.adapters.calculix.reader import CalculiXReader as _Reader
-    from backend.app.parsers.frd_parser import FRDIncrement, FRDStress
+    from app.adapters.calculix.reader import CalculiXReader as _Reader
+    from app.parsers.frd_parser import FRDIncrement, FRDStress
 
     # Synthetic shape: two static steps, each carrying its own
     # displacement field. Bare-(type, value) collapse would alias these
@@ -188,8 +188,8 @@ def test_solution_states_keep_distinct_steps_with_field_collision() -> None:
 
 def test_solution_states_buckling_load_factor_populated() -> None:
     """Layer-2 contract: buckling step → load_factor non-None, time None."""
-    from backend.app.adapters.calculix.reader import CalculiXReader as _Reader
-    from backend.app.parsers.frd_parser import FRDIncrement
+    from app.adapters.calculix.reader import CalculiXReader as _Reader
+    from app.parsers.frd_parser import FRDIncrement
 
     inc = FRDIncrement(
         index=1, step=1, type="buckling", value=2.5,

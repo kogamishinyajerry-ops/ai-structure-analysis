@@ -133,7 +133,7 @@ class IncrementEntry(_Frozen):
 
 
 class WriterInfo(_Frozen):
-    tool: Literal["backend.app.viz.frd_to_vtu"] = "backend.app.viz.frd_to_vtu"
+    tool: Literal["app.viz.frd_to_vtu"] = "app.viz.frd_to_vtu"
     version: str
     frd_parser_version: str
     wrote_at: str = Field(..., description="ISO 8601 UTC")

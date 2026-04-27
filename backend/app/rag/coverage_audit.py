@@ -11,10 +11,10 @@ both as a CI gate (exit 1 on missing coverage) and as an interactive
 report (print summary).
 
 Usage:
-    python3 -m backend.app.rag.coverage_audit
-    python3 -m backend.app.rag.coverage_audit --root /path/to/repo
-    python3 -m backend.app.rag.coverage_audit --json     # machine-readable
-    python3 -m backend.app.rag.coverage_audit --strict   # missing → exit 1
+    python3 -m app.rag.coverage_audit
+    python3 -m app.rag.coverage_audit --root /path/to/repo
+    python3 -m app.rag.coverage_audit --json     # machine-readable
+    python3 -m app.rag.coverage_audit --strict   # missing → exit 1
 
 Exit codes:
     0 — every expected file is covered (and --strict satisfied if used)
@@ -30,11 +30,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag.sources import ALL_SOURCES
 
 
 class _UsageError(SystemExit):
-    """Mirrors the pattern in `backend.app.rag.cli`, `query_cli`,
+    """Mirrors the pattern in `app.rag.cli`, `query_cli`,
     `advise_cli`: exit code 2 for usage / fatal errors with a
     user-facing message attribute. Plain `SystemExit("msg")` exits
     with code 1, conflicting with the docstring's
@@ -400,7 +400,7 @@ def main(argv: list[str]) -> int:
 
     # Translate corpus-integrity failures (duplicate doc_id, symlink
     # escape, malformed frontmatter) from the registered iter functions
-    # into rc=2 + single stderr line. Mirrors backend.app.rag.cli and
+    # into rc=2 + single stderr line. Mirrors app.rag.cli and
     # advise_cli; without it, audit_coverage would leak a traceback and
     # exit 1, contradicting the documented exit-code contract.
     try:

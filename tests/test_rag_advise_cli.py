@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.advise_cli."""
+"""Tests for app.rag.advise_cli."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag.advise_cli import _format_hit, _UsageError, main
-    from backend.app.rag.reviewer_advisor import KNOWN_VERDICTS
-    from backend.app.rag.sources import ALL_SOURCES
+    from app.rag.advise_cli import _format_hit, _UsageError, main
+    from app.rag.reviewer_advisor import KNOWN_VERDICTS
+    from app.rag.sources import ALL_SOURCES
 except ImportError as e:
     pytest.skip(f"advise_cli imports failed: {e}", allow_module_level=True)
 
@@ -406,7 +406,7 @@ def test_invalid_verdict_does_not_build_kb(tmp_path, monkeypatch, capsys):
     """R2 MED: invalid --verdict must short-circuit BEFORE _build_kb()
     runs. Without this, an operator typo would trigger a ~2GB
     BgeM3Embedder model download even though the run would fail anyway."""
-    import backend.app.rag.advise_cli as amod
+    import app.rag.advise_cli as amod
 
     build_kb_called: list[bool] = []
     orig = amod._build_kb
@@ -430,9 +430,9 @@ def test_invalid_verdict_does_not_build_kb(tmp_path, monkeypatch, capsys):
     )
     capsys.readouterr()  # drain
     assert rc == 2
-    assert build_kb_called == [], (
-        "_build_kb was called despite invalid verdict — cheap-validation-first violated"
-    )
+    assert (
+        build_kb_called == []
+    ), "_build_kb was called despite invalid verdict — cheap-validation-first violated"
 
 
 def test_invalid_verdict_unknown_listed_in_error(tmp_path, capsys):
@@ -529,7 +529,7 @@ def test_bge_m3_chromadb_constructor_failure_rc_2(monkeypatch, capsys):
     """R2 (lifted from PR #60 MED-1): if `ChromaVectorStore.__init__`
     raises ImportError (chromadb missing inside the lazy-import body),
     main() must surface rc=2 + single line, not a traceback."""
-    import backend.app.rag.advise_cli as amod
+    import app.rag.advise_cli as amod
 
     class _FakeEmbedder:
         embedder_id = "fake"
@@ -544,8 +544,8 @@ def test_bge_m3_chromadb_constructor_failure_rc_2(monkeypatch, capsys):
 
     fake_store_mod = type("M", (), {"ChromaVectorStore": _bad_chroma})
 
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.embedder", fake_embedder_mod)
-    monkeypatch.setitem(__import__("sys").modules, "backend.app.rag.store", fake_store_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.embedder", fake_embedder_mod)
+    monkeypatch.setitem(__import__("sys").modules, "app.rag.store", fake_store_mod)
 
     rc = amod.main(
         [
@@ -570,7 +570,7 @@ def test_bge_m3_chromadb_constructor_failure_rc_2(monkeypatch, capsys):
 def test_mock_corpus_value_error_rc_2(tmp_path, monkeypatch, capsys):
     """R2 (lifted from PR #60 MED-2): a source iterator raising
     ValueError must produce rc=2 + single stderr line, not a traceback."""
-    import backend.app.rag.advise_cli as amod
+    import app.rag.advise_cli as amod
 
     def bad_iter(repo_root):
         raise ValueError("simulated duplicate doc_id")
@@ -598,7 +598,7 @@ def test_mock_corpus_value_error_rc_2(tmp_path, monkeypatch, capsys):
 
 def test_mock_corpus_os_error_rc_2(tmp_path, monkeypatch, capsys):
     """R2 sibling: OSError on the mock path also maps to rc=2."""
-    import backend.app.rag.advise_cli as amod
+    import app.rag.advise_cli as amod
 
     def bad_iter(repo_root):
         raise OSError("simulated symlink escape")

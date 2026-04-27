@@ -23,14 +23,13 @@ Exit codes (engineers script around these — treat as a contract):
      validation refusal, export refusal, etc.)
   4  unexpected internal error
 
-Invocation (run from the ``backend/`` directory until the project's
-top-level packaging is reorganized — tracked separately from this
-PR; the existing ``run-well-harness`` script entry has the same
-limitation)::
+Invocation::
 
-    cd backend
-    python -m app.services.report.cli --frd path/to/result.frd \\
-        --kind static --output report.docx
+    # As a console_script (after ``pip install -e .``):
+    report-cli --frd path/to/result.frd --kind static --output report.docx
+
+    # Or as a module (works from anywhere the package is importable):
+    python -m app.services.report.cli --frd ... --kind static
 
 The CLI is intentionally thin — every substantive piece of work lives
 in the L1-L4 modules. This module's job is *plumbing*: turn argv
@@ -79,11 +78,7 @@ _UNIT_SYSTEMS = {
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        # No console_script entry is registered (see pyproject.toml);
-        # the engineer-facing invocation is the module form, so the
-        # usage banner reflects that rather than advertising a
-        # non-existent ``report-cli`` shell command.
-        prog="python -m app.services.report.cli",
+        prog="report-cli",
         description=(
             "Generate a structural-analysis report (.docx) from a "
             "CalculiX .frd result file."

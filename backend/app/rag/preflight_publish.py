@@ -15,8 +15,8 @@ Designed to be opt-in (no token → no-op result) and side-effect-isolated
 the discipline of github_writeback.py.
 
 Usage:
-    from backend.app.rag.preflight_summary import combine
-    from backend.app.rag.preflight_publish import publish_preflight
+    from app.rag.preflight_summary import combine
+    from app.rag.preflight_publish import publish_preflight
 
     summary = combine(hint, advice)
     result = publish_preflight(summary, repo="owner/repo", pr_number=42)
@@ -31,22 +31,22 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from backend.app.rag.preflight_summary import PreflightSummary
+from app.rag.preflight_summary import PreflightSummary
 
 # Wrap-then-import: github_writeback may not be importable in environments
 # that do not depend on httpx. We expose the publisher API regardless and
 # fall back to a clear error result if the dep is missing.
 try:
-    from backend.app.well_harness.github_writeback import (
+    from app.well_harness.github_writeback import (
         WritebackResult as _WritebackResult,
     )
-    from backend.app.well_harness.github_writeback import (
+    from app.well_harness.github_writeback import (
         list_pr_comments as _default_list_pr_comments,
     )
-    from backend.app.well_harness.github_writeback import (
+    from app.well_harness.github_writeback import (
         patch_pr_comment as _default_patch_pr_comment,
     )
-    from backend.app.well_harness.github_writeback import (
+    from app.well_harness.github_writeback import (
         post_pr_comment as _default_post_pr_comment,
     )
 
@@ -170,7 +170,7 @@ def publish_preflight(
               by header_marker; PATCHes if found, POSTs otherwise. Requires
               header_marker to be non-empty.
         post_callback: testing seam for the POST path. Defaults to
-            backend.app.well_harness.github_writeback.post_pr_comment.
+            app.well_harness.github_writeback.post_pr_comment.
             Callback signature: (repo, pr_number, body) → result-like with
             .posted, .comment_url, .status_code, .error attributes.
         list_callback: testing seam for upsert's list step. Defaults to

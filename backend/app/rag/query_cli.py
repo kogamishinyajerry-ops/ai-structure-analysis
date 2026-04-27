@@ -1,6 +1,6 @@
 """RAG query CLI — operator-facing retrieval against the live corpus (P1-04b).
 
-Pairs with `backend.app.rag.cli` (the ingest CLI). Where ingest *writes*
+Pairs with `app.rag.cli` (the ingest CLI). Where ingest *writes*
 chunks to a vector store, this CLI *reads* them back.
 
 For the default mock backend the embedder is sha256-based — there is no
@@ -11,10 +11,10 @@ retrieval, install the [rag] extra and pass `--embedder bge-m3`.
 
 Usage:
     # Mock (no deps) — exercises the pipeline; retrieval quality is N/A
-    python3 -m backend.app.rag.query_cli --query "ADR-011"
+    python3 -m app.rag.query_cli --query "ADR-011"
 
     # Real retrieval (requires sentence-transformers + a populated chroma store)
-    python3 -m backend.app.rag.query_cli \\
+    python3 -m app.rag.query_cli \\
         --embedder bge-m3 --persist-dir runs/rag/kb \\
         --query "static analysis convergence guidance" --k 5
 
@@ -31,12 +31,12 @@ import json
 import sys
 from pathlib import Path
 
-from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+from app.rag.sources import ALL_SOURCES
 
 
 class _UsageError(SystemExit):
-    """Mirrors the pattern in `backend.app.rag.cli`: exit code 2 for
+    """Mirrors the pattern in `app.rag.cli`: exit code 2 for
     usage / fatal errors with a user-facing message attribute. Plain
     `SystemExit("msg")` would exit with code 1, conflicting with the
     docstring's `2 = usage error` contract.
@@ -99,8 +99,8 @@ def _build_kb_for_query(
         # same translator so any of (sentence_transformers missing, chromadb
         # missing-at-construct-time) maps to a clean rc=2 / single-stderr-line.
         try:
-            from backend.app.rag.embedder import BgeM3Embedder
-            from backend.app.rag.store import ChromaVectorStore
+            from app.rag.embedder import BgeM3Embedder
+            from app.rag.store import ChromaVectorStore
 
             embedder = BgeM3Embedder()
             store = ChromaVectorStore(persist_dir=persist_dir, collection_name=collection)

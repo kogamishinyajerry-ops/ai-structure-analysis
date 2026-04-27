@@ -159,7 +159,7 @@ def test_draft_module_does_not_import_layer1_adapter_directly() -> None:
     """ADR-001: Layer-4 must not depend on a concrete adapter — only
     on the ReaderHandle Protocol (Layer 2). The CalculiXReader import
     in this test is fine; the production module must NOT import any
-    backend.app.adapters.* package.
+    app.adapters.* package.
     """
     import app.services.report.draft as draft_mod
     src = (Path(draft_mod.__file__)).read_text(encoding="utf-8")

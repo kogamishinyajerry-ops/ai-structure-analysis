@@ -1,7 +1,7 @@
 """Schema-shape assertions for `schemas.viz_manifest` (ADR-016).
 
 This guards the contract every Phase 2.2 viewer-track PR will be measured
-against. The actual `.frd → .vtu` writer (`backend.app.viz.frd_to_vtu`)
+against. The actual `.frd → .vtu` writer (`app.viz.frd_to_vtu`)
 lands in a follow-up; round-trip tests live in `test_frd_to_vtu_writer.py`.
 """
 
@@ -381,7 +381,7 @@ def test_writer_tool_pinned():
 
 def test_writer_default_tool():
     w = WriterInfo(version="0.1.0", frd_parser_version="2.1.0", wrote_at="2026-04-27T00:00:00Z")
-    assert w.tool == "backend.app.viz.frd_to_vtu"
+    assert w.tool == "app.viz.frd_to_vtu"
 
 
 # ---------------------------------------------------------------------------

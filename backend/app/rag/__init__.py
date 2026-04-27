@@ -15,10 +15,10 @@ Public API:
     KnowledgeBase  — orchestrator (ingest, query, persist).
 """
 
-from backend.app.rag.schemas import Chunk, Document, RetrievalResult
-from backend.app.rag.embedder import Embedder, MockEmbedder
-from backend.app.rag.store import MemoryVectorStore, VectorStore
-from backend.app.rag.knowledge_base import KnowledgeBase
+from app.rag.schemas import Chunk, Document, RetrievalResult
+from app.rag.embedder import Embedder, MockEmbedder
+from app.rag.store import MemoryVectorStore, VectorStore
+from app.rag.knowledge_base import KnowledgeBase
 
 __all__ = [
     "Chunk",

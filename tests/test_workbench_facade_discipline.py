@@ -248,7 +248,7 @@ class TestPredicates:
         assert len(hits) == 1
 
     def test_unrelated_import_is_ignored(self):
-        tree = _parse("from backend.app.api import runs\nimport json\n")
+        tree = _parse("from app.api import runs\nimport json\n")
         assert _imports_from(tree, _is_agents_module) == []
 
     def test_relative_import_is_ignored(self):

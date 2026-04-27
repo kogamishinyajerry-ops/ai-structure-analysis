@@ -25,9 +25,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from backend.app.rag.knowledge_base import KnowledgeBase
-from backend.app.rag.schemas import RetrievalResult
-from backend.app.rag.sources import ALL_SOURCES
+from app.rag.knowledge_base import KnowledgeBase
+from app.rag.schemas import RetrievalResult
+from app.rag.sources import ALL_SOURCES
 
 # We import FaultClass lazily by string to avoid a hard top-level dep
 # on schemas/sim_state.py for callers who only have a verdict string.
@@ -144,8 +144,8 @@ def advise(
     if k <= 0:
         raise ValueError("k must be a positive integer")
 
-    # Pre-emptive R2 hardening (mirrors backend.app.rag.cli +
-    # backend.app.rag.query_cli): validate `source_filter` against the
+    # Pre-emptive R2 hardening (mirrors app.rag.cli +
+    # app.rag.query_cli): validate `source_filter` against the
     # registered ALL_SOURCES labels. Without this, a typo
     # ("project-adr-fp-typo") silently returns 0 hits and the caller
     # cannot distinguish "no relevant docs" from "wrong filter".

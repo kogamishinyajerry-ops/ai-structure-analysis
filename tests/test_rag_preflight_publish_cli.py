@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.preflight_publish_cli."""
+"""Tests for app.rag.preflight_publish_cli."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import preflight_publish_cli
-    from backend.app.rag.preflight_publish_cli import (
+    from app.rag import preflight_publish_cli
+    from app.rag.preflight_publish_cli import (
         _CliHint,
         _CliQuantity,
         _load_hint_from_json,

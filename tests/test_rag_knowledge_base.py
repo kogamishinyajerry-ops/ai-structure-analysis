@@ -1,19 +1,19 @@
-"""Tests for backend.app.rag (P1-04b) — pipeline behavior with mock embedder."""
+"""Tests for app.rag (P1-04b) — pipeline behavior with mock embedder."""
 
 from __future__ import annotations
 
 import pytest
 
 try:
-    from backend.app.rag import (
+    from app.rag import (
         Chunk,
         Document,
         KnowledgeBase,
         MemoryVectorStore,
         MockEmbedder,
     )
-    from backend.app.rag.knowledge_base import chunk_text
-    from backend.app.rag.store import _cosine
+    from app.rag.knowledge_base import chunk_text
+    from app.rag.store import _cosine
 except ImportError as e:
     pytest.skip(f"rag module imports failed: {e}", allow_module_level=True)
 
@@ -359,14 +359,14 @@ def test_chroma_store_score_passes_negative_cosine_through():
     """
     import inspect
 
-    from backend.app.rag.store import ChromaVectorStore
+    from app.rag.store import ChromaVectorStore
 
     src = inspect.getsource(ChromaVectorStore.query)
     # Old formula was `max(0.0, 1.0 - float(dist))`. New must be the
     # naked subtraction.
-    assert "max(0.0, 1.0 - float(dist))" not in src, (
-        "Chroma adapter still clamps — should be `1 - distance` without floor"
-    )
+    assert (
+        "max(0.0, 1.0 - float(dist))" not in src
+    ), "Chroma adapter still clamps — should be `1 - distance` without floor"
     assert "1.0 - float(dist)" in src, "expected new formula `1 - distance`"
 
 
@@ -379,7 +379,7 @@ def test_chroma_store_persists_title_and_metadata():
     """
     import inspect
 
-    from backend.app.rag.store import ChromaVectorStore
+    from app.rag.store import ChromaVectorStore
 
     src = inspect.getsource(ChromaVectorStore.upsert)
     assert '"title"' in src, "upsert must persist Chunk.title"
@@ -394,19 +394,19 @@ def test_chroma_metadata_namespaced_for_lossless_round_trip():
     """
     import inspect
 
-    from backend.app.rag.store import ChromaVectorStore
+    from app.rag.store import ChromaVectorStore
 
     upsert_src = inspect.getsource(ChromaVectorStore.upsert)
     query_src = inspect.getsource(ChromaVectorStore.query)
-    assert "meta_p_" in upsert_src and "meta_j_" in upsert_src, (
-        "upsert must use disjoint `meta_p_` and `meta_j_` namespaces"
-    )
-    assert "meta_p_" in query_src and "meta_j_" in query_src, (
-        "query must check both `meta_p_` and `meta_j_` namespaces"
-    )
-    assert "json.loads" in query_src or "_json.loads" in query_src, (
-        "query must json.loads the json-namespaced values"
-    )
+    assert (
+        "meta_p_" in upsert_src and "meta_j_" in upsert_src
+    ), "upsert must use disjoint `meta_p_` and `meta_j_` namespaces"
+    assert (
+        "meta_p_" in query_src and "meta_j_" in query_src
+    ), "query must check both `meta_p_` and `meta_j_` namespaces"
+    assert (
+        "json.loads" in query_src or "_json.loads" in query_src
+    ), "query must json.loads the json-namespaced values"
 
 
 def test_chroma_metadata_dumps_uses_default_str_for_non_json_types():
@@ -417,7 +417,7 @@ def test_chroma_metadata_dumps_uses_default_str_for_non_json_types():
     """
     import inspect
 
-    from backend.app.rag.store import ChromaVectorStore
+    from app.rag.store import ChromaVectorStore
 
     src = inspect.getsource(ChromaVectorStore.upsert)
     assert "default=str" in src, (
@@ -443,7 +443,7 @@ def test_chroma_metadata_prefixes_disjoint_no_collision_for_user_j_keys():
     import inspect
     import re
 
-    from backend.app.rag.store import ChromaVectorStore
+    from app.rag.store import ChromaVectorStore
 
     src = inspect.getsource(ChromaVectorStore.query)
     assert "meta_p_" in src, "query must use the disjoint `meta_p_` prefix"
@@ -462,7 +462,7 @@ def test_chroma_metadata_prefixes_disjoint_no_collision_for_user_j_keys():
 def test_bge_m3_embedder_lazy_imports_on_construct():
     """Without sentence-transformers installed, construction should raise
     a clear ImportError pointing at the [rag] extra."""
-    from backend.app.rag.embedder import BgeM3Embedder
+    from app.rag.embedder import BgeM3Embedder
 
     # If sentence-transformers is installed in the test env, this test
     # would attempt to download the model (network). Skip in that case.
@@ -488,7 +488,7 @@ def test_chunk_index_must_be_non_negative():
 
 
 def test_retrieval_result_rank_non_negative():
-    from backend.app.rag.schemas import RetrievalResult
+    from app.rag.schemas import RetrievalResult
 
     chunk = Chunk(chunk_id="x", doc_id="d", source="s", text="t", chunk_index=0, embedding=[1.0])
     with pytest.raises(ValueError):

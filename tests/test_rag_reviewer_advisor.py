@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.reviewer_advisor."""
+"""Tests for app.rag.reviewer_advisor."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.reviewer_advisor import (
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.reviewer_advisor import (
         FAULT_QUERY_SEEDS,
         GOVERNANCE_BIASING_VERDICTS,
         KNOWN_VERDICTS,
@@ -17,8 +17,8 @@ try:
         _summarise,
         advise,
     )
-    from backend.app.rag.schemas import Document
-    from backend.app.rag.sources import ALL_SOURCES
+    from app.rag.schemas import Document
+    from app.rag.sources import ALL_SOURCES
 except ImportError as e:
     pytest.skip(f"reviewer_advisor imports failed: {e}", allow_module_level=True)
 
@@ -272,7 +272,7 @@ def test_advise_is_deterministic_for_same_query():
 
 # ---------------------------------------------------------------------------
 # Pre-emptive R2 hardening — mirrors the rejection-on-typo + immutability
-# patterns enforced in backend.app.rag.cli (PR #59) and backend.app.rag.
+# patterns enforced in app.rag.cli (PR #59) and app.rag.
 # query_cli (PR #60). Locked in here BEFORE Codex R1 to anticipate the
 # same class of findings and shorten the review cycle.
 # ---------------------------------------------------------------------------

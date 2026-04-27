@@ -9,12 +9,12 @@ Markdown files outside these two directories are not ingested by
 this source.
 
 Usage:
-    from backend.app.rag.sources.project_governance import iter_governance_documents
+    from app.rag.sources.project_governance import iter_governance_documents
     docs = list(iter_governance_documents(repo_root))
     kb.ingest(docs)
 
 CLI:
-    python3 -m backend.app.rag.sources.project_governance [--root <path>]
+    python3 -m app.rag.sources.project_governance [--root <path>]
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from backend.app.rag.schemas import Document
+from app.rag.schemas import Document
 
 SOURCE_LABEL = "project-adr-fp"
 

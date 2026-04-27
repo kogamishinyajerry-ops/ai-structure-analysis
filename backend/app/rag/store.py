@@ -12,7 +12,7 @@ import math
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from backend.app.rag.schemas import Chunk, RetrievalResult
+from app.rag.schemas import Chunk, RetrievalResult
 
 
 def _cosine(a: list[float], b: list[float]) -> float:

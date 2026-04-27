@@ -1,4 +1,4 @@
-"""Tests for backend.app.rag.sources.gs_theory (Source 5)."""
+"""Tests for app.rag.sources.gs_theory (Source 5)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from backend.app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
-    from backend.app.rag.sources.gs_theory import (
+    from app.rag import KnowledgeBase, MemoryVectorStore, MockEmbedder
+    from app.rag.sources.gs_theory import (
         SOURCE_LABEL,
         _is_theory_script,
         iter_gs_theory_documents,
@@ -244,9 +244,9 @@ def test_iter_raises_on_duplicate_doc_id(tmp_path):
     import inspect
 
     src = inspect.getsource(iter_gs_theory_documents)
-    assert "duplicate doc_id" in src, (
-        "iter_gs_theory_documents must guard against duplicate doc_ids"
-    )
+    assert (
+        "duplicate doc_id" in src
+    ), "iter_gs_theory_documents must guard against duplicate doc_ids"
     assert "ValueError" in src
 
 
@@ -260,7 +260,7 @@ def test_is_theory_script_uses_suffix_not_substring():
     `*_theoretical.py`, `*_analytical.py`. The previous substring check
     accepted false positives like `__test_theory__.py`, `theory.txt.py`,
     `analytical_data.py`, and `data_theory_notes.py`."""
-    from backend.app.rag.sources.gs_theory import _is_theory_script
+    from app.rag.sources.gs_theory import _is_theory_script
 
     # True positives (documented suffix forms):
     assert _is_theory_script(Path("cantilever_theory.py"))
@@ -268,15 +268,15 @@ def test_is_theory_script_uses_suffix_not_substring():
     assert _is_theory_script(Path("beam_analytical.py"))
 
     # False positives that the OLD impl accepted but contract doesn't:
-    assert not _is_theory_script(Path("__test_theory__.py")), (
-        "double-underscore wrapper is not the documented form"
-    )
-    assert not _is_theory_script(Path("theory.txt.py")), (
-        "theory must be at the END of the stem, not anywhere"
-    )
-    assert not _is_theory_script(Path("analytical_data.py")), (
-        "analytical must be at the END (suffix), not prefix"
-    )
+    assert not _is_theory_script(
+        Path("__test_theory__.py")
+    ), "double-underscore wrapper is not the documented form"
+    assert not _is_theory_script(
+        Path("theory.txt.py")
+    ), "theory must be at the END of the stem, not anywhere"
+    assert not _is_theory_script(
+        Path("analytical_data.py")
+    ), "analytical must be at the END (suffix), not prefix"
     assert not _is_theory_script(Path("data_theory_notes.py")), "theory must be the trailing suffix"
 
     # Wrong extension:
