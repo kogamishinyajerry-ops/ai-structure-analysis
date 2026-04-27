@@ -69,10 +69,11 @@ function createWindow(): void {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      // ``sandbox: true`` would force the preload to load as CJS but
-      // also restricts what main can pass through; we keep
-      // sandbox:false and rely on contextIsolation + nodeIntegration:
-      // false for the attack-surface guarantees.
+      // The ``.cts`` source above is what guarantees the preload
+      // emits as CJS — this preserves the existing runtime model
+      // (sandbox:false + contextIsolation:true + nodeIntegration:
+      // false) without depending on Electron's sandbox loader to
+      // re-shape the module format.
       sandbox: false,
     },
   });
