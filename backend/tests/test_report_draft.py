@@ -24,7 +24,10 @@ from app.core.types import (
     UnitSystem,
 )
 from app.models import EvidenceType
-from app.services.report.draft import generate_static_strength_summary
+from app.services.report.draft import (
+    generate_lifting_lug_summary,
+    generate_static_strength_summary,
+)
 
 
 GS001_FRD = (
@@ -453,3 +456,145 @@ def test_unit_label_known_systems() -> None:
     assert _unit_label_for_system(UnitSystem.SI_MM, "stress") == "MPa"
     assert _unit_label_for_system(UnitSystem.ENGLISH, "length") == "in"
     assert _unit_label_for_system(UnitSystem.ENGLISH, "stress") == "psi"
+
+
+# --- generate_lifting_lug_summary -----------------------------------------
+
+
+def test_lifting_lug_summary_returns_lifting_lug_template(
+    gs001_reader: CalculiXReader,
+) -> None:
+    report, bundle = generate_lifting_lug_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    assert report.template_id == "lifting_lug"
+    assert bundle.bundle_id == "B"
+    assert report.evidence_bundle_id == "B"
+
+
+def test_lifting_lug_summary_uses_lug_specific_evidence_ids(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Lifting-lug evidence IDs must NOT collide with the
+    equipment-foundation IDs; both reports may live in the same
+    bundle workspace, and ID collision would corrupt provenance."""
+    _, bundle = generate_lifting_lug_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert ids == {"EV-LUG-DISP-MAX", "EV-LUG-VM-MAX"}
+    # Equipment-foundation IDs must not appear.
+    assert "EV-DISP-MAX" not in ids
+    assert "EV-VM-MAX" not in ids
+
+
+def test_lifting_lug_summary_section_title_is_bilingual_lug() -> None:
+    """The section title must match what the LIFTING_LUG template
+    requires verbatim (RFC §2.4 rule 2)."""
+    rdr = _SyntheticEmptyReader()  # no fields → expect refusal at end
+
+    # Build a synthetic reader with at least one field so the function
+    # produces a section we can inspect.
+    class _OneFieldReader(_SyntheticEmptyReader):
+        def __init__(self) -> None:
+            super().__init__()
+            from app.core.types import SolutionState
+
+            self._states = [
+                SolutionState(
+                    step_id=1, step_name="static",
+                    time=None, load_factor=None,
+                    available_fields=(CanonicalField.DISPLACEMENT,),
+                ),
+            ]
+
+        @property
+        def mesh(self) -> object:
+            class _M:
+                @property
+                def node_id_array(self) -> np.ndarray:  # type: ignore[type-arg]
+                    return np.asarray([1, 2], dtype=np.int64)
+
+                @property
+                def node_index(self) -> dict[int, int]:
+                    return {1: 0, 2: 1}
+
+                @property
+                def coordinates(self) -> np.ndarray:  # type: ignore[type-arg]
+                    return np.zeros((2, 3))
+
+                @property
+                def unit_system(self) -> UnitSystem:
+                    return UnitSystem.SI_MM
+
+            return _M()
+
+        def get_field(
+            self, name: CanonicalField, step_id: int
+        ) -> Optional[FieldData]:
+            if name is CanonicalField.DISPLACEMENT:
+                arr = np.array(
+                    [[0.1, 0.0, 0.0], [0.5, 0.0, 0.0]], dtype=np.float64
+                )
+                meta = FieldMetadata(
+                    name=CanonicalField.DISPLACEMENT,
+                    location=FieldLocation.NODE,
+                    component_type=ComponentType.VECTOR_3D,
+                    unit_system=UnitSystem.SI_MM,
+                    source_solver="synthetic",
+                    source_field_name="DISP",
+                    source_file=Path("/dev/null"),
+                    coordinate_system=CoordinateSystemKind.GLOBAL.value,
+                    was_averaged="unknown",
+                )
+
+                class _FD:
+                    metadata = meta
+
+                    def values(self) -> np.ndarray:  # type: ignore[type-arg]
+                        return arr
+
+                    def at_nodes(self) -> np.ndarray:  # type: ignore[type-arg]
+                        return arr
+
+                return _FD()
+            return None
+
+    report, _ = generate_lifting_lug_summary(
+        _OneFieldReader(),  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    assert len(report.sections) == 1
+    assert (
+        report.sections[0].title
+        == "吊耳强度评估 (Lifting-lug strength assessment)"
+    )
+    # The bullet label uses the lug-specific phrasing.
+    content = report.sections[0].content or ""
+    assert "吊装工况下最大位移" in content
+
+
+def test_lifting_lug_summary_validates_against_lifting_lug_template(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """The lug generator's output must satisfy LIFTING_LUG by
+    construction — same producer/template-validator contract that
+    generate_static_strength_summary has with EQUIPMENT_FOUNDATION_STATIC."""
+    from app.services.report.templates import LIFTING_LUG, validate_report
+
+    report, bundle = generate_lifting_lug_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    validate_report(report, bundle, template=LIFTING_LUG)
+
+
+def test_lifting_lug_summary_empty_reader_raises() -> None:
+    rdr = _SyntheticEmptyReader()
+    with pytest.raises(ValueError, match="zero evidence"):
+        generate_lifting_lug_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+        )

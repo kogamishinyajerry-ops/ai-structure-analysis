@@ -31,6 +31,7 @@ What this module does NOT do (deferred to W4+ per RFC §6.4):
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, Tuple
 
@@ -55,7 +56,31 @@ from app.models import (
 )
 
 
-__all__ = ["generate_static_strength_summary"]
+__all__ = [
+    "generate_static_strength_summary",
+    "generate_lifting_lug_summary",
+]
+
+
+@dataclass(frozen=True)
+class _SummaryLabels:
+    """Per-template label set for the max-field summary engine.
+
+    Centralising labels in one frozen dataclass keeps the public
+    generators tiny and makes it impossible to forget a string when
+    adding a new template-specific producer.
+    """
+
+    template_id: str
+    title: str
+    section_title: str
+    bundle_title_prefix: str
+    disp_evidence_id: str
+    disp_evidence_title: str
+    disp_bullet_label: str
+    vm_evidence_id: str
+    vm_evidence_title: str
+    vm_bullet_label: str
 
 
 def _unit_label_for_system(system: UnitSystem, dim: str) -> str:
@@ -126,34 +151,59 @@ def _max_von_mises(
     return float(vm[idx]), int(node_id_array[idx])
 
 
-def generate_static_strength_summary(
+_EQUIPMENT_FOUNDATION_LABELS = _SummaryLabels(
+    template_id="equipment_foundation_static",
+    title="Static-strength summary",
+    section_title="结构强度摘要 (Static-strength summary)",
+    bundle_title_prefix="Evidence backing",
+    disp_evidence_id="EV-DISP-MAX",
+    disp_evidence_title="Maximum displacement magnitude",
+    disp_bullet_label="最大位移",
+    vm_evidence_id="EV-VM-MAX",
+    vm_evidence_title="Maximum von Mises stress",
+    vm_bullet_label="最大 von Mises 应力",
+)
+
+
+_LIFTING_LUG_LABELS = _SummaryLabels(
+    template_id="lifting_lug",
+    title="Lifting-lug strength assessment",
+    section_title="吊耳强度评估 (Lifting-lug strength assessment)",
+    bundle_title_prefix="Evidence backing",
+    # Lug-specific evidence IDs so the bundle can carry both an
+    # equipment-foundation report and a lug report without ID collision.
+    disp_evidence_id="EV-LUG-DISP-MAX",
+    disp_evidence_title="Maximum displacement at lifting lug under hoist load",
+    disp_bullet_label="吊装工况下最大位移",
+    vm_evidence_id="EV-LUG-VM-MAX",
+    vm_evidence_title="Maximum von Mises stress at lifting lug under hoist load",
+    vm_bullet_label="吊装工况下最大 von Mises 应力",
+)
+
+
+def _build_max_field_summary(
     reader: ReaderHandle,
+    labels: _SummaryLabels,
     *,
     project_id: str,
     task_id: str,
     report_id: str,
     bundle_id: str,
-    step_id: Optional[int] = None,
-    template_id: str = "equipment_foundation_static",
-    title: str = "Static-strength summary",
+    step_id: Optional[int],
 ) -> Tuple[ReportSpec, EvidenceBundle]:
-    """Generate the minimum-viable static-strength report draft.
+    """Shared engine for max-field summary reports.
 
-    Returns ``(report, bundle)`` such that every section in ``report``
-    references at least one ``evidence_id`` that resolves inside
-    ``bundle`` (ADR-012 invariant). The caller persists / exports
-    these together; the exporter (lands W4+) refuses to emit DOCX
-    for any draft whose evidence references don't resolve.
+    Common to both ``equipment_foundation_static`` and ``lifting_lug``
+    templates: extract DISPLACEMENT + STRESS_TENSOR from the chosen
+    solution state, mint two SimulationEvidence items, and emit a
+    single bilingual section that cites both. The caller distinguishes
+    by passing different :class:`_SummaryLabels`.
 
-    ``step_id`` selects which solution state to summarise. When
-    ``None`` the *final* state is used (``solution_states[-1]``) — for
-    static analyses this matches the converged result; the choice is
-    deliberate, never silent. Pass ``step_id`` explicitly for
-    multi-step / transient cases.
-
-    Raises ``ValueError`` when the chosen state exposes neither
-    ``DISPLACEMENT`` nor ``STRESS_TENSOR`` — emitting a section with no
-    cited evidence would violate ADR-012.
+    A real lifting-lug check ideally restricts the search to the
+    lug-shell weld region. The MVP wedge does not yet expose region
+    selection at Layer 2/3, so the engineer is responsible for ensuring
+    the FE model's max σ_vm location IS the lug region (or for sharing
+    a region-selecting reader once that landed in W5+).
     """
     states = reader.solution_states
     if not states:
@@ -180,7 +230,7 @@ def generate_static_strength_summary(
     bundle = EvidenceBundle(
         bundle_id=bundle_id,
         task_id=task_id,
-        title=f"Evidence backing {title}",
+        title=f"{labels.bundle_title_prefix} {labels.title}",
     )
 
     section_lines: list[str] = []
@@ -196,9 +246,9 @@ def generate_static_strength_summary(
         # still pins each value to its own field's UnitSystem.
         unit_u = _unit_label_for_system(disp_fd.metadata.unit_system, "length")
         ev_u = EvidenceItem(
-            evidence_id="EV-DISP-MAX",
+            evidence_id=labels.disp_evidence_id,
             evidence_type=EvidenceType.SIMULATION,
-            title="Maximum displacement magnitude",
+            title=labels.disp_evidence_title,
             description=None,
             data=SimulationEvidence(
                 value=max_u,
@@ -212,8 +262,8 @@ def generate_static_strength_summary(
         )
         bundle.add_evidence(ev_u)
         section_lines.append(
-            f"- 最大位移: **{max_u:.6g} {unit_u}** "
-            f"@ node {node_u}  *(EV-DISP-MAX)*"
+            f"- {labels.disp_bullet_label}: **{max_u:.6g} {unit_u}** "
+            f"@ node {node_u}  *({labels.disp_evidence_id})*"
         )
 
     stress_pair = _max_von_mises(stress_fd, node_ids)
@@ -222,9 +272,9 @@ def generate_static_strength_summary(
         max_vm, node_vm = stress_pair
         unit_s = _unit_label_for_system(stress_fd.metadata.unit_system, "stress")
         ev_s = EvidenceItem(
-            evidence_id="EV-VM-MAX",
+            evidence_id=labels.vm_evidence_id,
             evidence_type=EvidenceType.SIMULATION,
-            title="Maximum von Mises stress",
+            title=labels.vm_evidence_title,
             description=None,
             data=SimulationEvidence(
                 value=max_vm,
@@ -238,8 +288,8 @@ def generate_static_strength_summary(
         )
         bundle.add_evidence(ev_s)
         section_lines.append(
-            f"- 最大 von Mises 应力: **{max_vm:.6g} {unit_s}** "
-            f"@ node {node_vm}  *(EV-VM-MAX)*"
+            f"- {labels.vm_bullet_label}: **{max_vm:.6g} {unit_s}** "
+            f"@ node {node_vm}  *({labels.vm_evidence_id})*"
         )
 
     if not section_lines:
@@ -248,11 +298,11 @@ def generate_static_strength_summary(
         raise ValueError(
             f"solution state {step.step_id!r} of task {task_id!r} exposes "
             "neither DISPLACEMENT nor STRESS_TENSOR; cannot generate a "
-            "static-strength draft with zero evidence (ADR-012)."
+            f"{labels.template_id} draft with zero evidence (ADR-012)."
         )
 
     summary = ReportSection(
-        title="结构强度摘要 (Static-strength summary)",
+        title=labels.section_title,
         level=1,
         content="\n".join(section_lines),
     )
@@ -260,10 +310,82 @@ def generate_static_strength_summary(
     report = ReportSpec(
         report_id=report_id,
         project_id=project_id,
-        title=title,
-        template_id=template_id,
+        title=labels.title,
+        template_id=labels.template_id,
         sections=[summary],
         generated_at=datetime.utcnow(),
         evidence_bundle_id=bundle.bundle_id,
     )
     return report, bundle
+
+
+def generate_static_strength_summary(
+    reader: ReaderHandle,
+    *,
+    project_id: str,
+    task_id: str,
+    report_id: str,
+    bundle_id: str,
+    step_id: Optional[int] = None,
+) -> Tuple[ReportSpec, EvidenceBundle]:
+    """Generate the minimum-viable static-strength report draft.
+
+    Returns ``(report, bundle)`` such that every section in ``report``
+    references at least one ``evidence_id`` that resolves inside
+    ``bundle`` (ADR-012 invariant). The caller persists / exports
+    these together; the exporter refuses to emit DOCX for any draft
+    whose evidence references don't resolve.
+
+    ``step_id`` selects which solution state to summarise. When
+    ``None`` the *final* state is used (``solution_states[-1]``) — for
+    static analyses this matches the converged result; the choice is
+    deliberate, never silent. Pass ``step_id`` explicitly for
+    multi-step / transient cases.
+
+    Raises ``ValueError`` when the chosen state exposes neither
+    ``DISPLACEMENT`` nor ``STRESS_TENSOR`` — emitting a section with no
+    cited evidence would violate ADR-012.
+    """
+    return _build_max_field_summary(
+        reader,
+        _EQUIPMENT_FOUNDATION_LABELS,
+        project_id=project_id,
+        task_id=task_id,
+        report_id=report_id,
+        bundle_id=bundle_id,
+        step_id=step_id,
+    )
+
+
+def generate_lifting_lug_summary(
+    reader: ReaderHandle,
+    *,
+    project_id: str,
+    task_id: str,
+    report_id: str,
+    bundle_id: str,
+    step_id: Optional[int] = None,
+) -> Tuple[ReportSpec, EvidenceBundle]:
+    """Generate a lifting-lug strength-assessment report draft.
+
+    Same Layer-1→Layer-3 numerical work as
+    :func:`generate_static_strength_summary` (max ||u||, max σ_vm) but
+    branded for the ``lifting_lug`` template. The engineer is expected
+    to have run the FE model under the hoisting load case (typically
+    2× service per GB 50017 §11) — the generator does NOT scale loads;
+    it reports what's in the result file.
+
+    Region selection (lug-shell weld vs. whole model) is not yet
+    available at Layer 2/3; until it is, the engineer must verify the
+    reported max-σ_vm node lies within the lug region. RFC-002
+    candidate: a region-aware reader / domain helper in W5+.
+    """
+    return _build_max_field_summary(
+        reader,
+        _LIFTING_LUG_LABELS,
+        project_id=project_id,
+        task_id=task_id,
+        report_id=report_id,
+        bundle_id=bundle_id,
+        step_id=step_id,
+    )
