@@ -27,6 +27,7 @@ from app.services.report.templates import (
     get_template,
     supported_template_ids,
     validate_report,
+    validate_report_collect,
 )
 
 
@@ -363,3 +364,164 @@ def test_export_docx_with_wrong_template_refuses(
             template=LIFTING_LUG,  # wrong template for this draft
         )
     assert not target.exists()
+
+
+# --- multi-error aggregation (RFC-002-prep) ------------------------------
+
+
+def _multi_required_template() -> TemplateSpec:
+    """Synthetic template with two independent required sections so
+    we can prove validate_report aggregates violations across them."""
+    return TemplateSpec(
+        template_id="synthetic_multi",
+        name="Multi-section synthetic",
+        description="test fixture for multi-error aggregation",
+        required_sections=(
+            SectionRequirement(
+                title="Section A",
+                level=1,
+                minimum_evidence_citations=2,
+            ),
+            SectionRequirement(
+                title="Section B",
+                level=1,
+                minimum_evidence_citations=2,
+            ),
+        ),
+    )
+
+
+def _empty_bundle() -> EvidenceBundle:
+    return EvidenceBundle(bundle_id="B", task_id="T", title="b")
+
+
+def test_validate_report_collect_returns_empty_on_clean_report() -> None:
+    """No violations ⇒ empty list. Engineers use this to early-exit
+    a "do I need to refactor?" check without try/except boilerplate."""
+    items = [
+        EvidenceItem(
+            evidence_id=eid,
+            evidence_type=EvidenceType.SIMULATION,
+            title=f"t-{eid}",
+            data=SimulationEvidence(value=1.0, unit="mm", location="node 1"),
+            source="synthetic",
+        )
+        for eid in ("EV-A", "EV-B")
+    ]
+    bundle = _empty_bundle()
+    for it in items:
+        bundle.add_evidence(it)
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="equipment_foundation_static",
+        sections=[
+            ReportSection(
+                title="结构强度摘要 (Static-strength summary)",
+                level=1,
+                content="- two distinct *(EV-A)* *(EV-B)*",
+            )
+        ],
+        evidence_bundle_id="B",
+    )
+    assert validate_report_collect(
+        report, bundle, template=EQUIPMENT_FOUNDATION_STATIC
+    ) == []
+
+
+def test_validate_report_aggregates_multiple_section_violations() -> None:
+    """Section A is missing entirely AND Section B under-cites — the
+    engineer should see BOTH violations in one pass, not have to fix
+    A, re-run, then learn about B.
+    """
+    template = _multi_required_template()
+    bundle = _empty_bundle()
+    # Only Section B exists, and it under-cites (0 < 2 required).
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="synthetic_multi",
+        sections=[
+            ReportSection(
+                title="Section B", level=1,
+                content="- claim with no citation",
+            )
+        ],
+        evidence_bundle_id="B",
+    )
+    violations = validate_report_collect(report, bundle, template=template)
+    assert len(violations) == 2
+    # Order is template-order: A's missing-section comes before B's
+    # under-cite (they're checked in template.required_sections order).
+    assert "Section A" in violations[0]
+    assert "no such section" in violations[0]
+    assert "Section B" in violations[1]
+    assert "at least 2 distinct" in violations[1]
+
+
+def test_validate_report_raises_aggregated_message_with_violations_attr() -> None:
+    """The wrapping ``validate_report`` raises ONE TemplateValidationError
+    whose message lists every violation and whose ``.violations`` attr
+    carries the structured list for tooling."""
+    template = _multi_required_template()
+    bundle = _empty_bundle()
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="synthetic_multi",
+        sections=[
+            ReportSection(
+                title="Section B", level=1,
+                content="- claim with no citation",
+            )
+        ],
+        evidence_bundle_id="B",
+    )
+    with pytest.raises(TemplateValidationError) as excinfo:
+        validate_report(report, bundle, template=template)
+
+    msg = str(excinfo.value)
+    # Aggregated header surfaces the violation count.
+    assert "synthetic_multi" in msg
+    assert "2 violations" in msg
+    # Both violations appear in the message body.
+    assert "Section A" in msg
+    assert "Section B" in msg
+    assert "no such section" in msg
+    assert "at least 2 distinct" in msg
+
+    # Structured attribute mirrors the message in introspectable form.
+    violations = excinfo.value.violations
+    assert isinstance(violations, tuple)
+    assert len(violations) == 2
+    assert any("Section A" in v and "no such section" in v for v in violations)
+    assert any("Section B" in v and "at least 2 distinct" in v for v in violations)
+
+
+def test_template_id_mismatch_short_circuits_per_section_checks() -> None:
+    """When ``report.template_id`` doesn't match the contract, per-section
+    checks would compare apples to oranges. The validator emits one
+    template_id violation and stops there — protects the engineer from
+    a noisy "fix N section violations that don't actually apply" message.
+    """
+    template = _multi_required_template()
+    bundle = _empty_bundle()
+    # Wrong template_id; sections also wouldn't match if we got past
+    # the gate. We must see exactly the one template_id violation.
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="some_other_template",
+        sections=[],  # no sections at all — would normally produce 2 violations
+        evidence_bundle_id="B",
+    )
+    violations = validate_report_collect(report, bundle, template=template)
+    assert len(violations) == 1
+    assert "template_id" in violations[0]
+    assert "synthetic_multi" in violations[0]
+
+
+def test_template_validation_error_violations_defaults_to_message() -> None:
+    """Backward-compat: constructing the exception without a violations
+    kwarg (e.g. external callers raising it directly) still produces a
+    1-tuple ``violations`` mirroring the message, so tooling doesn't
+    crash on missing attribute access."""
+    err = TemplateValidationError("plain message")
+    assert err.violations == ("plain message",)
+    assert str(err) == "plain message"
