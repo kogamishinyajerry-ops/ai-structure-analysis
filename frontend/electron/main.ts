@@ -29,6 +29,7 @@
 
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 
@@ -110,6 +111,33 @@ ipcMain.handle("reveal-in-folder", (_evt: unknown, filepath: string) => {
   if (!filepath) return false;
   shell.showItemInFolder(filepath);
   return true;
+});
+
+/**
+ * Resolve the bundled GS-001 sample's .frd path if it's discoverable.
+ *
+ * In dev mode, the Electron main entry sits at
+ * ``frontend/dist-electron/main.js``, so the repo root is two
+ * levels up. We probe a few candidate paths (compiled, source-tree,
+ * cwd) to be robust to different launch contexts. Returns ``null``
+ * when nothing is found — the renderer hides the demo button in
+ * that case so packaged builds without the bundled samples don't
+ * advertise a broken shortcut.
+ */
+ipcMain.handle("get-demo-frd", () => {
+  const rel = path.join("golden_samples", "GS-001", "gs001_result.frd");
+  const candidates = [
+    // dev mode: __dirname is .../frontend/dist-electron
+    path.resolve(__dirname, "..", "..", rel),
+    // launched from repo root with `electron frontend/dist-electron/main.js`
+    path.resolve(process.cwd(), rel),
+    // launched from frontend/
+    path.resolve(process.cwd(), "..", rel),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 });
 
 // --- IPC: report-cli subprocess --------------------------------------------
