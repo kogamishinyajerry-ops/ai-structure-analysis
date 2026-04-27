@@ -114,3 +114,70 @@ def test_doctor_exit_path_uses_sys_executable(
     assert rc == 0
     captured = capsys.readouterr()
     assert sys.executable in captured.out
+
+
+def test_doctor_reports_broken_hard_dep_not_just_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Codex R1 MEDIUM: a half-installed numpy / python-docx that
+    raises a non-ImportError on import (RuntimeError, AttributeError,
+    transitive ABI mismatch, etc.) must not crash the doctor — the
+    contract says 'missing or unimportable'. Verify the BROKEN branch
+    surfaces and exits 3.
+    """
+    import importlib
+
+    real_import_module = importlib.import_module
+
+    def fake_import_module(name: str, *args: object, **kwargs: object) -> object:
+        if name == "docx":
+            raise RuntimeError("simulated: shared C ext aborted on load")
+        return real_import_module(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+
+    rc = main(["--doctor"])
+    assert rc == 3
+
+    captured = capsys.readouterr()
+    assert "python-docx: BROKEN" in captured.out
+    assert "RuntimeError" in captured.out
+    # numpy still ran (probe order: numpy first, then docx) and
+    # downstream in-tree probes still ran — broken deps don't short-
+    # circuit the diagnostic.
+    assert "numpy:" in captured.out
+    assert "missing or broken" in captured.err
+
+
+def test_cli_module_loads_when_inhouse_submodule_is_broken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex R1 HIGH: ``import app.services.report.cli`` must NOT fail
+    at module load when an in-tree submodule it used to import at the
+    top is broken. Otherwise --doctor never gets a chance to diagnose
+    the broken submodule.
+
+    Probe by deleting cached cli + adapter, poisoning the adapter's
+    sys.modules entry, and re-importing cli. The fact that this test
+    can call ``main(['--doctor'])`` afterwards is the assertion: with
+    eager top-level imports the re-import would have raised
+    ImportError before we reached any code path.
+    """
+    import importlib
+
+    # Wipe any cached state so the re-import goes through the real
+    # import machinery (which will hit our poisoned cache entry).
+    monkeypatch.delitem(sys.modules, "app.services.report.cli", raising=False)
+    monkeypatch.delitem(sys.modules, "app.adapters.calculix", raising=False)
+    # ``None`` in sys.modules is the documented sentinel for "module
+    # known not to exist" — any import of this name now raises
+    # ImportError without disk access.
+    monkeypatch.setitem(sys.modules, "app.adapters.calculix", None)
+
+    # The whole point: this re-import must NOT raise. Under the old
+    # eager-import scheme (W5c initial), it raised ImportError because
+    # cli.py's top-of-file `from app.adapters.calculix import ...` ran
+    # before the doctor branch.
+    cli_module = importlib.import_module("app.services.report.cli")
+    assert hasattr(cli_module, "main")

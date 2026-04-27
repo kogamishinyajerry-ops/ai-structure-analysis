@@ -46,33 +46,30 @@ import traceback
 from pathlib import Path
 from typing import NoReturn
 
-from app.adapters.calculix import CalculiXReader
-from app.core.types import UnitSystem
-from app.models import EvidenceBundle, ReportSpec
-from app.services.report.draft import (
-    generate_lifting_lug_summary,
-    generate_pressure_vessel_local_stress_summary,
-    generate_static_strength_summary,
-)
-from app.services.report.exporter import ExportError, export_docx
-from app.services.report.templates import (
-    EQUIPMENT_FOUNDATION_STATIC,
-    LIFTING_LUG,
-    PRESSURE_VESSEL_LOCAL_STRESS,
-    TemplateSpec,
-    TemplateValidationError,
-)
+# IMPORTANT — no top-level ``from app.X import Y`` imports.
+#
+# The Electron shell points engineers at ``report-cli --doctor`` when it
+# can't spawn the report. If a broken in-tree submodule (e.g. a half-
+# upgraded numpy that breaks ``app.adapters.calculix`` import, a circular
+# import introduced by a refactor) makes ``import app.services.report.cli``
+# itself fail at module load, ``--doctor`` never gets a chance to print
+# the per-module diagnostic — the engineer sees a confusing
+# ``ModuleNotFoundError`` from the launcher and has nothing actionable.
+#
+# Lazy-import the report-runtime stack inside ``main()`` and ``_produce()``
+# so a broken submodule surfaces as a focused ``IMPORT FAILED`` line in
+# the doctor output (Codex R1 HIGH, 2026-04-28). Repeated imports inside
+# functions are O(1) lookups in ``sys.modules`` after the first call, so
+# the cost is negligible compared to the runtime debuggability win.
 
 __all__ = ["main", "build_parser"]
 
 
 _REPORT_KINDS = ("static", "lifting-lug", "pressure-vessel")
-_UNIT_SYSTEMS = {
-    "si": UnitSystem.SI,
-    "si-mm": UnitSystem.SI_MM,
-    "english": UnitSystem.ENGLISH,
-    "unknown": UnitSystem.UNKNOWN,
-}
+# String keys only — argparse needs them at module load. We resolve to
+# the ``UnitSystem`` enum inside ``main()`` after the lazy import, so
+# this constant is safe even when ``app.core.types`` is broken.
+_UNIT_SYSTEM_KEYS = ("si", "si-mm", "english", "unknown")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -121,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--unit-system",
-        choices=sorted(_UNIT_SYSTEMS),
+        choices=sorted(_UNIT_SYSTEM_KEYS),
         default="si-mm",
         help="UnitSystem the .frd was produced in (default: si-mm).",
     )
@@ -222,7 +219,13 @@ def _run_doctor() -> int:
 
     failed = False
 
-    # Hard deps: anything required to produce a .docx.
+    # Hard deps: anything required to produce a .docx. We split the
+    # failure reporting between ``NOT INSTALLED`` (clean ImportError —
+    # the wheel is missing) and ``BROKEN`` (any other Exception, e.g.
+    # a transitive RuntimeError / AttributeError from a partial upgrade).
+    # The contract per the module docstring is "missing or unimportable",
+    # and an unimportable-but-installed package is still a doctor finding
+    # the engineer needs to see — not a stack trace from a crashing probe.
     for module_name, label in (
         ("numpy", "numpy"),
         ("docx", "python-docx"),
@@ -231,6 +234,10 @@ def _run_doctor() -> int:
             mod = importlib.import_module(module_name)
         except ImportError as exc:
             print(f"  {label}: NOT INSTALLED ({exc})")
+            failed = True
+            continue
+        except Exception as exc:
+            print(f"  {label}: BROKEN ({type(exc).__name__}: {exc})")
             failed = True
             continue
         version = getattr(mod, "__version__", "(no __version__)")
@@ -327,10 +334,29 @@ def _parse_float_csv(label: str, raw: str) -> list[float]:
 
 def _produce(
     args: argparse.Namespace,
-    reader: CalculiXReader,
-) -> tuple[ReportSpec, EvidenceBundle, TemplateSpec]:
+    reader: "CalculiXReader",
+) -> "tuple[ReportSpec, EvidenceBundle, TemplateSpec]":
+    # Annotations are forward-refs (strings) under
+    # ``from __future__ import annotations``; the actual names
+    # are bound by the lazy import below. Quoted explicitly so
+    # static checkers reading without the future-annotations
+    # context don't complain.
     """Dispatch to the matching producer + return the template that
     the report should validate against."""
+    # Lazy imports — see the module-top comment. These names are bound
+    # only here so a broken submodule surfaces in --doctor instead of
+    # the import-time crash.
+    from app.services.report.draft import (
+        generate_lifting_lug_summary,
+        generate_pressure_vessel_local_stress_summary,
+        generate_static_strength_summary,
+    )
+    from app.services.report.templates import (
+        EQUIPMENT_FOUNDATION_STATIC,
+        LIFTING_LUG,
+        PRESSURE_VESSEL_LOCAL_STRESS,
+    )
+
     # ``--resample`` is only meaningful for the pressure-vessel
     # template (it controls the SCL linearization grid). Silently
     # ignoring it for the other kinds would be a foot-gun: an
@@ -411,7 +437,28 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     _resolve_identity_defaults(args)
-    unit_system = _UNIT_SYSTEMS[args.unit_system]
+
+    # Lazy imports — see module-top comment. If any of these fail we
+    # surface as exit 4 with an actionable hint pointing at --doctor;
+    # the engineer ran a real report so there's no graceful degrade,
+    # but the message is now self-explanatory.
+    try:
+        from app.adapters.calculix import CalculiXReader
+        from app.core.types import UnitSystem
+    except Exception as exc:
+        print(
+            f"internal error: cannot load report runtime ({type(exc).__name__}: {exc})\n"
+            f"Hint: run `report-cli --doctor` to identify the broken module.",
+            file=sys.stderr,
+        )
+        return 4
+
+    unit_system = {
+        "si": UnitSystem.SI,
+        "si-mm": UnitSystem.SI_MM,
+        "english": UnitSystem.ENGLISH,
+        "unknown": UnitSystem.UNKNOWN,
+    }[args.unit_system]
 
     try:
         reader = CalculiXReader(args.frd, unit_system=unit_system)
@@ -434,6 +481,11 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 4
+
+    # Lazy-import the exporter + its refusal classes for the same
+    # broken-submodule-survives-doctor reason as in _produce.
+    from app.services.report.exporter import ExportError, export_docx
+    from app.services.report.templates import TemplateValidationError
 
     try:
         out = export_docx(
