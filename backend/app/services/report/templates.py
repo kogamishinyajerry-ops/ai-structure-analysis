@@ -254,13 +254,19 @@ def validate_report(
                 f"Sections present: "
                 f"{[s.title for s in _walk_sections(report.sections)]!r}"
             )
+        n_candidates = len(candidates)
+        candidate_suffix = (
+            f" ({n_candidates} same-titled section(s) checked, none satisfy)"
+            if n_candidates > 1
+            else ""
+        )
         last_error: TemplateValidationError | None = None
         for sec in candidates:
             if sec.level != req.level:
                 last_error = TemplateValidationError(
                     f"template {template.template_id!r} requires section "
                     f"{req.title!r} at level {req.level}; report has it "
-                    f"at level {sec.level}."
+                    f"at level {sec.level}.{candidate_suffix}"
                 )
                 continue
             citations = _distinct_citation_count(sec.content or "")
@@ -270,6 +276,7 @@ def validate_report(
                     f"{req.title!r} to cite at least "
                     f"{req.minimum_evidence_citations} distinct evidence "
                     f"items (EV-* tokens); found {citations}."
+                    f"{candidate_suffix}"
                 )
                 continue
             # All requirements satisfied for this candidate.
