@@ -123,6 +123,28 @@ const _basenameOf = (p: string): string => {
   return i >= 0 ? p.slice(i + 1) : p;
 };
 
+/**
+ * Mimic Node's ``url.pathToFileURL`` in the browser-side renderer
+ * (no node:url available with contextIsolation). Handles:
+ *   - Windows backslash → forward slash
+ *   - Drive-letter prefix (C:\…) → /C:/… (file:// requires it)
+ *   - percent-encoding of reserved chars # ? that would otherwise be
+ *     parsed as fragment / query, plus the spaces / non-ASCII that
+ *     ``encodeURI`` covers
+ *
+ * Codex R1 LOW renderer.ts:141 — raw ``file://${absPath}`` did not
+ * percent-encode # ? (legal POSIX filename chars) and was fragile on
+ * Windows.
+ */
+const _pathToFileURL = (absPath: string): string => {
+  let p = absPath.replace(/\\/g, "/");
+  if (!p.startsWith("/")) p = "/" + p;
+  return (
+    "file://" +
+    encodeURI(p).replace(/#/g, "%23").replace(/\?/g, "%3F")
+  );
+};
+
 const _openLightbox = (src: string) => {
   const overlay = document.createElement("div");
   overlay.className = "figure-lightbox";
@@ -138,7 +160,7 @@ const addFigure = (absPath: string) => {
   // because we run with sandbox:false + no CSP restriction on img-src
   // for local files. Cache-bust with a timestamp so a re-run with the
   // same paths refreshes the image instead of showing the stale one.
-  const fileUrl = `file://${absPath}?t=${Date.now()}`;
+  const fileUrl = `${_pathToFileURL(absPath)}?t=${Date.now()}`;
   const fig = document.createElement("figure");
   const img = document.createElement("img");
   img.src = fileUrl;

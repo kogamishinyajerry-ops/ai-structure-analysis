@@ -46,19 +46,23 @@ _VTK_QUADRATIC_WEDGE = 26
 #     files emit these.
 # We map both.
 CALCULIX_TO_VTK: dict[str, tuple[int, int]] = {
-    # Numeric .frd codes (CalculiX manual §6.6 / Abaqus 1971-1981 ref)
-    "1": (_VTK_HEXAHEDRON, 8),  # 8-node hex (HEX8 / C3D8)
-    "2": (_VTK_QUADRATIC_HEXAHEDRON, 20),  # 20-node hex (C3D20)
-    "3": (_VTK_TETRA, 4),  # 4-node tet (C3D4)
-    "4": (_VTK_QUADRATIC_TETRA, 10),  # 10-node tet (C3D10)
-    "5": (_VTK_WEDGE, 6),  # 6-node wedge (C3D6)
-    "6": (_VTK_QUADRATIC_WEDGE, 15),  # 15-node wedge (C3D15)
-    "7": (_VTK_TRIANGLE, 3),  # 3-node tri shell (S3 / CPS3)
-    "8": (_VTK_QUADRATIC_TRIANGLE, 6),  # 6-node tri shell (S6)
-    "9": (_VTK_QUAD, 4),  # 4-node quad shell (S4 / CPS4)
-    "10": (_VTK_QUADRATIC_QUAD, 8),  # 8-node quad shell (S8)
-    "11": (_VTK_LINE, 2),  # 2-node beam (B31)
-    "12": (_VTK_QUADRATIC_EDGE, 3),  # 3-node beam (B32)
+    # Numeric .frd codes per CalculiX FRD writer (cgx 2.10 manual / co-design.pop-coe.eu).
+    # Codex R1 HIGH 2026-04-27: the previous mapping 2/4/5/6 was off by one
+    # topology each — only GS-001 (all type 1) stayed green; any HE20/PE6/
+    # PE15/TET10 .frd would have rendered the wrong cell or been silently
+    # dropped on a width mismatch.
+    "1": (_VTK_HEXAHEDRON, 8),               # he8  — 8-node hex (HEX8 / C3D8)
+    "2": (_VTK_WEDGE, 6),                    # pe6  — 6-node wedge (C3D6)
+    "3": (_VTK_TETRA, 4),                    # tet4 — 4-node tet (C3D4)
+    "4": (_VTK_QUADRATIC_HEXAHEDRON, 20),    # he20 — 20-node hex (C3D20)
+    "5": (_VTK_QUADRATIC_WEDGE, 15),         # pe15 — 15-node wedge (C3D15)
+    "6": (_VTK_QUADRATIC_TETRA, 10),         # tet10 — 10-node tet (C3D10)
+    "7": (_VTK_TRIANGLE, 3),                 # tri3 — 3-node tri shell (S3 / CPS3)
+    "8": (_VTK_QUADRATIC_TRIANGLE, 6),       # tri6 — 6-node tri shell (S6)
+    "9": (_VTK_QUAD, 4),                     # qu4  — 4-node quad shell (S4 / CPS4)
+    "10": (_VTK_QUADRATIC_QUAD, 8),          # qu8  — 8-node quad shell (S8)
+    "11": (_VTK_LINE, 2),                    # be2  — 2-node beam (B31)
+    "12": (_VTK_QUADRATIC_EDGE, 3),          # be3  — 3-node beam (B32)
 
     # Abaqus-style stems
     # Solid 3D — linear
