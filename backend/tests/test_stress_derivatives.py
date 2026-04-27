@@ -92,13 +92,43 @@ def test_principals_pure_shear_known_eigenvalues() -> None:
     assert np.isclose(s_min[0], -tau)
 
 
+def test_principals_distinguishes_s13_from_s23_indices() -> None:
+    """Codex R1 NIT: pin the S13/S23 column ordering at row indexing time.
+
+    Swapping ``S13`` and ``S23`` in the tensor assembly would still pass
+    the pure-shear analytical cases (eigenvalues are τ, 0, -τ for any
+    single off-diagonal). This test feeds an asymmetric tensor whose
+    S13-vs-S23 swap shifts the principal-stress decomposition, so a
+    transposition regression breaks the assertion.
+
+    Tensor:    diag(5, 3, 1), S13=2 (others 0)
+    Principal axis decoupled at y → one eigenvalue is 3.
+    The xz-plane 2x2 submatrix [[5, 2], [2, 1]] has eigenvalues
+    3 ± 2√2  ≈ 5.828427, 0.171573.
+    Sorted descending: (3 + 2√2,  3,  3 - 2√2).
+    """
+    t = np.array([[5.0, 3.0, 1.0, 0.0, 0.0, 2.0]])  # S13 = 2, S23 = 0
+    s_max, s_mid, s_min = principals(t)
+    assert np.isclose(s_max[0], 3.0 + 2.0 * np.sqrt(2.0))
+    assert np.isclose(s_mid[0], 3.0)
+    assert np.isclose(s_min[0], 3.0 - 2.0 * np.sqrt(2.0))
+
+
 def test_principals_invariants_match_trace_and_det() -> None:
-    # For any symmetric tensor, sum of eigs == trace, product == det.
+    """Per the docstring: sum of eigs == trace, product of eigs == det."""
     rng = np.random.default_rng(seed=7)
     t = rng.standard_normal((30, 6)) * 50.0
     s_max, s_mid, s_min = principals(t)
     trace = t[:, 0] + t[:, 1] + t[:, 2]
     assert np.allclose(s_max + s_mid + s_min, trace)
+    # Determinant invariant — Codex R1 NIT closure.
+    s11, s22, s33, s12, s23, s13 = (t[:, i] for i in range(6))
+    det = (
+        s11 * (s22 * s33 - s23 * s23)
+        - s12 * (s12 * s33 - s23 * s13)
+        + s13 * (s12 * s23 - s22 * s13)
+    )
+    assert np.allclose(s_max * s_mid * s_min, det)
 
 
 # ---- max_shear -------------------------------------------------------------
