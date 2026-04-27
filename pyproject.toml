@@ -60,6 +60,14 @@ Repository = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
 "Notion Control Hub" = "https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9"
 
 [project.scripts]
+# NOTE: ``run-well-harness`` (and any future console_scripts that point
+# at ``app.*``) currently fail at runtime because the installed top-
+# level package is ``backend``, not ``app`` (see ai_structure_fea.egg-
+# info/top_level.txt). Until the packaging is reorganized, run CLIs as
+# modules from inside ``backend/``:
+#     cd backend && python -m app.services.report.cli ...
+# The ``report-cli`` console_script entry is intentionally NOT registered
+# here so we don't ship a script that ModuleNotFoundError's on first run.
 run-well-harness = "app.well_harness.cli:main"
 
 [tool.setuptools.packages.find]
