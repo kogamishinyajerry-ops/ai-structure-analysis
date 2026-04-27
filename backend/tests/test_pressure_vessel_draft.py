@@ -10,7 +10,7 @@ P+Q correspond to the documented categorised stresses.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import pytest
@@ -46,7 +46,12 @@ class _SCLReader:
 
     SOLVER_NAME = "synthetic"
 
-    def __init__(self, *, node_ids: np.ndarray, tensors: np.ndarray) -> None:
+    def __init__(
+        self,
+        *,
+        node_ids: "np.ndarray[Any, Any]",
+        tensors: "np.ndarray[Any, Any]",
+    ) -> None:
         assert tensors.shape == (node_ids.size, 6)
         self._node_ids = node_ids
         self._tensors = tensors
@@ -125,7 +130,7 @@ class _SCLReader:
         self, name: CanonicalField, step_id: int
     ) -> Optional[FieldData]:
         if name is CanonicalField.STRESS_TENSOR and step_id == 1:
-            return self._fd  # type: ignore[return-value]
+            return self._fd
         return None
 
     def close(self) -> None:

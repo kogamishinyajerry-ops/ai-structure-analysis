@@ -33,18 +33,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
 
 
-# Accept either a plain Python int sequence or a numpy integer array.
-# ``Sequence[int]`` alone rejects ``np.ndarray[np.int64]`` under mypy
-# strict (Codex R1 PR #77 MEDIUM); ndarrays are convertible to int via
-# ``int()`` at use sites, so widening the surface is sound.
-_IntArrayLike = Union[Sequence[int], "npt.NDArray[np.integer[npt.NBitBase]]"]
-_FloatArrayLike = Union[Sequence[float], "npt.NDArray[np.floating[npt.NBitBase]]"]
+# Accept either a plain Python int sequence or a numpy ndarray. The
+# narrower form ``npt.NDArray[np.integer[npt.NBitBase]]`` looks
+# correct but mypy's generic-invariance rejects concrete subtypes
+# like ``np.int64`` (Codex R2 PR #77 MEDIUM). Using ``npt.NDArray[Any]``
+# accepts any-dtype arrays; runtime coercion via ``int()`` at the use
+# site validates each element. Trade-off: we lose the static "must be
+# integer dtype" check, but Codex confirmed runtime accepts a wide
+# enough surface that the static narrowing wasn't load-bearing.
+_IntArrayLike = Union[Sequence[int], "npt.NDArray[Any]"]
+_FloatArrayLike = Union[Sequence[float], "npt.NDArray[Any]"]
 
 from app.core.types import (
     CanonicalField,
