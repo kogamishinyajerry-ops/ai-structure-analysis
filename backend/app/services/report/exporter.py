@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Iterable, List, Set
+from typing import TYPE_CHECKING, Iterable, List, Optional, Set
 
 from docx import Document
 from docx.document import Document as _DocxDocument
@@ -45,18 +45,27 @@ from app.models import (
     SimulationEvidence,
 )
 
+if TYPE_CHECKING:
+    from app.services.report.templates import TemplateSpec
+
 
 __all__ = ["export_docx", "ExportError", "find_cited_evidence_ids"]
 
 
-_CITATION_RE = re.compile(r"\bEV-[A-Z0-9][A-Z0-9_\-]*\b")
+CITATION_RE = re.compile(r"\bEV-[A-Z0-9][A-Z0-9_\-]*\b")
 """Citation pattern. ``EV-`` prefix followed by ``[A-Z0-9]`` then any
 ``[A-Z0-9_-]``. Word-boundary anchored so a stray ``EV-FOO`` inside a
 URL won't accidentally match a leading hyphen.
 
 The pattern intentionally rejects lowercase / mixed-case to avoid
 false-positive collisions with prose. Authors who deviate must
-introduce the new convention via RFC."""
+introduce the new convention via RFC.
+
+This is the single source of truth for the citation regex; downstream
+validators (e.g. :mod:`templates`) import it directly to avoid drift
+between rendering and validation."""
+
+_CITATION_RE = CITATION_RE  # backwards-compat alias for in-module callers
 
 
 class ExportError(ValueError):
@@ -209,16 +218,34 @@ def export_docx(
     bundle: EvidenceBundle,
     *,
     output_path: Path,
+    template: "Optional[TemplateSpec]" = None,
 ) -> Path:
     """Materialise ``(report, bundle)`` to a DOCX at ``output_path``.
 
     Returns the resolved output path on success.
 
+    When ``template`` is provided, the report is validated against the
+    template contract via :func:`templates.validate_report` *before*
+    any DOCX is written; a violation surfaces as
+    :class:`TemplateValidationError`. ``template=None`` skips the
+    template check (backward-compatible with W4 callers).
+
     Raises:
         ExportError: bundle linkage broken, an evidence_id cited in
             section content doesn't resolve in the bundle, or the
             output directory doesn't exist.
+        TemplateValidationError: ``template`` was passed and the
+            report violates its contract.
     """
+    if template is not None:
+        # Imported lazily to keep the module-import graph acyclic
+        # (templates.py imports from app.models, exporter.py also
+        # imports from app.models — fine — but we want to keep
+        # templates.py optional from the exporter side).
+        from app.services.report.templates import validate_report
+
+        validate_report(report, bundle, template=template)
+
     if report.evidence_bundle_id != bundle.bundle_id:
         raise ExportError(
             f"bundle linkage broken: report.evidence_bundle_id="
