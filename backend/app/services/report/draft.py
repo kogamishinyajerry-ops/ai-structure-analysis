@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 import numpy as np
 import numpy.typing as npt
@@ -46,6 +46,7 @@ from app.core.types import (
     UnitSystem,
 )
 from app.domain.stress_derivatives import von_mises
+from app.domain.stress_linearization import linearize_through_thickness
 from app.models import (
     EvidenceBundle,
     EvidenceItem,
@@ -59,6 +60,7 @@ from app.models import (
 __all__ = [
     "generate_static_strength_summary",
     "generate_lifting_lug_summary",
+    "generate_pressure_vessel_local_stress_summary",
 ]
 
 
@@ -431,3 +433,232 @@ def generate_lifting_lug_summary(
         bundle_id=bundle_id,
         step_id=step_id,
     )
+
+
+# --- pressure-vessel local stress (ASME VIII Div 2 §5.5) -----------------
+
+
+def generate_pressure_vessel_local_stress_summary(
+    reader: ReaderHandle,
+    *,
+    project_id: str,
+    task_id: str,
+    report_id: str,
+    bundle_id: str,
+    scl_node_ids: Sequence[int],
+    scl_distances: Sequence[float],
+    step_id: Optional[int] = None,
+    template_id: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Tuple[ReportSpec, EvidenceBundle]:
+    """Generate a pressure-vessel local-stress assessment report draft.
+
+    Operates on a Stress Classification Line (SCL) — a line through
+    the wall thickness from inner surface to outer surface. The
+    engineer identifies the SCL by its node IDs (in inner→outer order)
+    and the per-node distances along the line. Both must be supplied;
+    the producer does not auto-detect SCL geometry.
+
+    Reports three categorised stresses per ASME VIII Div 2 §5.5.3:
+
+      * **EV-PM**: P_m = von_mises(membrane). The through-thickness-
+        averaged stress.
+      * **EV-PM-PB**: max(von_mises(σ at outer surface),
+        von_mises(σ at inner surface)) where σ_outer = membrane +
+        bending_outer, σ_inner = membrane - bending_outer.
+      * **EV-P-Q**: max von_mises(σ(s)) along the SCL — the worst-
+        case primary+secondary (membrane+bending+peak) stress.
+
+    Inputs
+    ------
+    scl_node_ids:
+        Sequence of integer node IDs that lie on the SCL, ORDERED
+        from inner surface (s = 0) to outer surface (s = t). The
+        engineer is responsible for SCL identification.
+    scl_distances:
+        Sequence of per-node distances along the SCL (typically
+        from the inner surface). Must be uniformly spaced (the
+        Layer-3 linearizer enforces this).
+
+    Caveats
+    -------
+    Region selection (which SCL is the worst case) is the engineer's
+    responsibility — the producer does not search for a
+    worst-location SCL. Future Layer-3 work (RFC-002 candidate)
+    could automate that.
+
+    Raises
+    ------
+    ValueError
+        On length mismatch between node_ids and distances, fewer
+        than 2 SCL nodes, missing STRESS_TENSOR field, unknown
+        node IDs, non-NODE-located stress field, or non-uniform
+        SCL spacing (raised by the Layer-3 linearizer).
+    """
+    template_id_resolved = template_id or "pressure_vessel_local_stress"
+    title_resolved = title or "Pressure-vessel local-stress assessment"
+
+    if len(scl_node_ids) != len(scl_distances):
+        raise ValueError(
+            f"scl_node_ids length {len(scl_node_ids)} != "
+            f"scl_distances length {len(scl_distances)}"
+        )
+    if len(scl_node_ids) < 2:
+        raise ValueError(
+            f"SCL requires at least 2 nodes; got {len(scl_node_ids)}"
+        )
+
+    states = reader.solution_states
+    if not states:
+        raise ValueError(
+            f"reader for task {task_id!r} has no solution states; "
+            "nothing to summarise"
+        )
+    if step_id is None:
+        step = states[-1]
+    else:
+        matches = [s for s in states if s.step_id == step_id]
+        if not matches:
+            raise ValueError(
+                f"step_id={step_id!r} not present in reader for task "
+                f"{task_id!r}; available: {[s.step_id for s in states]}"
+            )
+        step = matches[0]
+
+    stress_fd = reader.get_field(CanonicalField.STRESS_TENSOR, step.step_id)
+    if stress_fd is None:
+        raise ValueError(
+            f"solution state {step.step_id!r} has no STRESS_TENSOR "
+            "field; cannot perform local-stress assessment."
+        )
+    _require_node_location(stress_fd, "stress-tensor")
+
+    all_tensors = stress_fd.values()  # shape (N_total, 6)
+    node_index = reader.mesh.node_index
+    try:
+        scl_indices = [node_index[int(nid)] for nid in scl_node_ids]
+    except KeyError as exc:
+        raise ValueError(
+            f"SCL node id {exc.args[0]!r} not present in reader's mesh."
+        ) from None
+    scl_tensors = np.asarray(all_tensors[scl_indices], dtype=np.float64)
+    distances_arr = np.asarray(scl_distances, dtype=np.float64)
+
+    # Layer-3 linearization. Raises ValueError on non-uniform spacing
+    # or other shape problems — the producer surfaces those directly
+    # (engineer's job to resample).
+    decomposition = linearize_through_thickness(scl_tensors, distances_arr)
+
+    # Categorised stresses.
+    p_m = float(von_mises(decomposition.membrane.reshape(1, 6))[0])
+    sigma_outer = (decomposition.membrane + decomposition.bending_outer).reshape(1, 6)
+    sigma_inner = (decomposition.membrane - decomposition.bending_outer).reshape(1, 6)
+    p_m_plus_p_b = float(
+        max(
+            von_mises(sigma_outer)[0],
+            von_mises(sigma_inner)[0],
+        )
+    )
+    # Primary + secondary: max von_mises along the SCL (= membrane +
+    # bending + peak everywhere). Already encoded in the input tensors.
+    p_plus_q_per_point = von_mises(scl_tensors)
+    p_plus_q_idx = int(np.argmax(p_plus_q_per_point))
+    p_plus_q = float(p_plus_q_per_point[p_plus_q_idx])
+    p_plus_q_node = int(scl_node_ids[p_plus_q_idx])
+
+    unit_s = _unit_label_for_system(stress_fd.metadata.unit_system, "stress")
+
+    bundle = EvidenceBundle(
+        bundle_id=bundle_id,
+        task_id=task_id,
+        title=f"Evidence backing {title_resolved}",
+    )
+
+    inner_node = int(scl_node_ids[0])
+    outer_node = int(scl_node_ids[-1])
+    scl_location_label = (
+        f"SCL nodes [{inner_node} → {outer_node}], "
+        f"{len(scl_node_ids)} samples"
+    )
+
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-PM",
+            evidence_type=EvidenceType.SIMULATION,
+            title="Primary membrane stress P_m",
+            description=None,
+            data=SimulationEvidence(
+                value=p_m,
+                unit=unit_s,
+                location=scl_location_label,
+            ),
+            field_metadata=stress_fd.metadata,
+            derivation=None,
+            source=stress_fd.metadata.source_solver,
+            source_file=str(stress_fd.metadata.source_file),
+        )
+    )
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-PM-PB",
+            evidence_type=EvidenceType.SIMULATION,
+            title="Maximum primary membrane + bending stress (P_m + P_b)",
+            description=None,
+            data=SimulationEvidence(
+                value=p_m_plus_p_b,
+                unit=unit_s,
+                location=f"{scl_location_label}, surface max",
+            ),
+            field_metadata=stress_fd.metadata,
+            derivation=["EV-PM"],
+            source=stress_fd.metadata.source_solver,
+            source_file=str(stress_fd.metadata.source_file),
+        )
+    )
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-P-Q",
+            evidence_type=EvidenceType.SIMULATION,
+            title="Maximum primary + secondary stress along SCL (P_m + P_b + Q)",
+            description=None,
+            data=SimulationEvidence(
+                value=p_plus_q,
+                unit=unit_s,
+                location=f"node {p_plus_q_node} (along SCL)",
+            ),
+            field_metadata=stress_fd.metadata,
+            derivation=["EV-PM-PB"],
+            source=stress_fd.metadata.source_solver,
+            source_file=str(stress_fd.metadata.source_file),
+        )
+    )
+
+    section_lines = [
+        f"- 薄膜应力 P_m: **{p_m:.6g} {unit_s}**  *(EV-PM)*",
+        (
+            f"- 膜+弯应力 P_m + P_b (表面最大): "
+            f"**{p_m_plus_p_b:.6g} {unit_s}**  *(EV-PM-PB)*"
+        ),
+        (
+            f"- 膜+弯+二次应力 P_m + P_b + Q (SCL沿线最大): "
+            f"**{p_plus_q:.6g} {unit_s}** "
+            f"@ node {p_plus_q_node}  *(EV-P-Q)*"
+        ),
+    ]
+
+    summary = ReportSection(
+        title="局部应力评估 (Local stress assessment)",
+        level=1,
+        content="\n".join(section_lines),
+    )
+
+    report = ReportSpec(
+        report_id=report_id,
+        project_id=project_id,
+        title=title_resolved,
+        template_id=template_id_resolved,
+        sections=[summary],
+        generated_at=datetime.utcnow(),
+        evidence_bundle_id=bundle.bundle_id,
+    )
+    return report, bundle
