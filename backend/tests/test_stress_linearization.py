@@ -380,22 +380,36 @@ def test_resample_round_trips_endpoint_values_exactly() -> None:
     assert sigma_out[-1, 0] == pytest.approx(40.0)
 
 
-def test_resample_preserves_linear_field_exactly() -> None:
-    """Linear-in-s tensor field is exactly recovered after resampling
-    on any monotone input grid (linear-interp is exact for linear inputs).
-    This is the contract that lets :func:`linearize_through_thickness`
-    produce ``bending_outer`` faithful to the source field."""
+def test_resample_preserves_linear_field_to_float_precision() -> None:
+    """Linear-in-s tensor field is recovered to float64 precision on
+    any monotone input grid (Codex R1 nit: ``np.interp`` is not
+    bit-exact for arbitrary slopes, only those representable in
+    binary; we get machine-epsilon-scale residual instead). This is
+    the contract that lets :func:`linearize_through_thickness`
+    produce ``bending_outer`` faithful to the source field.
+    """
     s_in = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0], dtype=np.float64)
     s_mid = 1.0
-    # σ_xx = 50 + 30 * (s - s_mid) → linear bending superposed on
-    # constant membrane.
+
+    # Probe slopes that are exactly representable (50, 30) and
+    # slopes that are NOT (1/3, π) — both should recover to
+    # machine-epsilon relative tolerance, not bit-exact.
     sigma_in = np.zeros((6, 6), dtype=np.float64)
     sigma_in[:, 0] = 50.0 + 30.0 * (s_in - s_mid)
+    sigma_in[:, 1] = 7.0 + (1.0 / 3.0) * (s_in - s_mid)
+    sigma_in[:, 2] = -2.0 + np.pi * (s_in - s_mid)
 
     sigma_out, s_out = resample_to_uniform(sigma_in, s_in, n_points=21)
 
-    expected = 50.0 + 30.0 * (s_out - s_mid)
-    np.testing.assert_allclose(sigma_out[:, 0], expected, rtol=1e-12)
+    np.testing.assert_allclose(
+        sigma_out[:, 0], 50.0 + 30.0 * (s_out - s_mid), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        sigma_out[:, 1], 7.0 + (1.0 / 3.0) * (s_out - s_mid), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        sigma_out[:, 2], -2.0 + np.pi * (s_out - s_mid), rtol=1e-12
+    )
 
 
 def test_resample_then_linearize_pipeline_recovers_pure_bending() -> None:
@@ -470,11 +484,15 @@ def test_resample_minimum_two_points_works() -> None:
     np.testing.assert_allclose(sigma_out, sigma_in)
 
 
-def test_resample_default_n_points_is_21_odd_so_centre_lies_at_s_mid() -> None:
-    """The default of 21 is documented as 'odd so the centre sample
-    sits exactly at s_mid'. Lock that contract — a future change to
-    an even default would silently break the parity assumption used
-    by the linearizer's pure-peak parity tests."""
+def test_resample_default_n_points_is_21_odd_centre_at_s_mid() -> None:
+    """Lock the default at odd 21 (Codex R1 nit: even-vs-odd does NOT
+    actually affect linearizer parity invariants — the linearizer
+    handles even and odd grids identically. The reason the project
+    pins 21 is just (a) plenty of through-thickness resolution for
+    ASME §5.5.3 reads, (b) odd so an engineer reading the resampled
+    array sees the exact centre sample at ``s_mid``, which is useful
+    when manually inspecting the field). Future changes to this
+    default should be intentional, hence the lock."""
     s_in = np.array([0.0, 0.5, 1.0, 1.5, 2.0], dtype=np.float64)
     sigma_in = np.zeros((5, 6), dtype=np.float64)
     sigma_out, s_out = resample_to_uniform(sigma_in, s_in)  # default

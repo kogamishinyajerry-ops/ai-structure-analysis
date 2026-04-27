@@ -268,9 +268,12 @@ def resample_to_uniform(
         along the SCL. Need not start at zero.
     n_points
         Number of uniformly-spaced output points. Default ``21`` is
-        chosen as an ASME §5.5.3-style baseline (enough density for
-        through-thickness peak resolution; odd so the centre sample
-        sits exactly at ``s_mid``). Must be ≥ 2.
+        a project convention — enough density for through-thickness
+        peak resolution under ASME §5.5.3 reads, and odd so the
+        centre sample sits exactly at ``s_mid`` (useful when
+        engineers manually inspect the resampled field). Even values
+        are accepted; the linearizer handles them identically. Must
+        be ≥ 2.
 
     Returns
     -------
@@ -298,9 +301,14 @@ def resample_to_uniform(
     Linear-interp recovery preserves:
       * the input value at every output point that coincides with an
         input point (exact match)
-      * monotonicity — a strictly monotone tensor component stays
-        strictly monotone
-      * a globally-linear input field — exact
+      * monotonicity in the floating-point sense: a non-decreasing
+        component stays non-decreasing (a *strictly* increasing
+        component may flatten into FP plateaus when adjacent input
+        points sit very close to one another, but never reverses)
+      * a globally-linear input field, *to float64 precision* — for
+        slopes that aren't representable exactly in binary (1/3, π,
+        very large coefficients, etc.) the residual stays at
+        machine-epsilon relative scale, not bit-exact
 
     It does NOT preserve through-thickness average (the resampled
     membrane will differ from the source membrane by O(h²) wherever
