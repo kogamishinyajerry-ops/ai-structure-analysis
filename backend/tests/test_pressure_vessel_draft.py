@@ -178,14 +178,14 @@ def test_bundle_has_three_distinct_evidence_ids() -> None:
         scl_distances=[0.0, 0.5, 1.0, 1.5, 2.0],
     )
     ids = {item.evidence_id for item in bundle.evidence_items}
-    assert ids == {"EV-PM", "EV-PM-PB", "EV-P-Q"}
+    assert ids == {"EV-PM", "EV-PM-PB", "EV-MAX-VM-SCL"}
     for item in bundle.evidence_items:
         assert item.evidence_type is EvidenceType.SIMULATION
 
 
 def test_evidence_dag_links_pmpb_to_pm_and_pq_to_pmpb() -> None:
     """ADR-012 derivation chain: EV-PM-PB derives from EV-PM,
-    EV-P-Q derives from EV-PM-PB."""
+    EV-MAX-VM-SCL derives from EV-PM-PB."""
     rdr = _make_reader_with_uniaxial_membrane()
     _, bundle = generate_pressure_vessel_local_stress_summary(
         rdr,  # type: ignore[arg-type]
@@ -196,7 +196,7 @@ def test_evidence_dag_links_pmpb_to_pm_and_pq_to_pmpb() -> None:
     by_id = {item.evidence_id: item for item in bundle.evidence_items}
     assert by_id["EV-PM"].derivation is None
     assert by_id["EV-PM-PB"].derivation == ["EV-PM"]
-    assert by_id["EV-P-Q"].derivation == ["EV-PM-PB"]
+    assert by_id["EV-MAX-VM-SCL"].derivation == ["EV-PM-PB"]
 
 
 # --- numerical correctness -------------------------------------------------
@@ -218,7 +218,7 @@ def test_pure_membrane_p_m_equals_input_pm_pb_pq_equal_pm() -> None:
     by_id = {item.evidence_id: item for item in bundle.evidence_items}
     assert by_id["EV-PM"].data.value == pytest.approx(100.0)
     assert by_id["EV-PM-PB"].data.value == pytest.approx(100.0)
-    assert by_id["EV-P-Q"].data.value == pytest.approx(100.0)
+    assert by_id["EV-MAX-VM-SCL"].data.value == pytest.approx(100.0)
 
 
 def test_pure_bending_p_m_zero_pb_equal_slope_pq_equal_slope() -> None:
@@ -240,7 +240,7 @@ def test_pure_bending_p_m_zero_pb_equal_slope_pq_equal_slope() -> None:
     by_id = {item.evidence_id: item for item in bundle.evidence_items}
     assert by_id["EV-PM"].data.value == pytest.approx(0.0, abs=1e-10)
     assert by_id["EV-PM-PB"].data.value == pytest.approx(slope, rel=1e-9)
-    assert by_id["EV-P-Q"].data.value == pytest.approx(slope, rel=1e-9)
+    assert by_id["EV-MAX-VM-SCL"].data.value == pytest.approx(slope, rel=1e-9)
 
 
 def test_membrane_plus_bending_separates_correctly() -> None:
@@ -261,7 +261,7 @@ def test_membrane_plus_bending_separates_correctly() -> None:
     by_id = {item.evidence_id: item for item in bundle.evidence_items}
     assert by_id["EV-PM"].data.value == pytest.approx(50.0)
     assert by_id["EV-PM-PB"].data.value == pytest.approx(80.0, rel=1e-9)
-    assert by_id["EV-P-Q"].data.value == pytest.approx(80.0, rel=1e-9)
+    assert by_id["EV-MAX-VM-SCL"].data.value == pytest.approx(80.0, rel=1e-9)
 
 
 def test_pq_picks_max_along_scl_when_field_has_quadratic_residual() -> None:
@@ -301,7 +301,7 @@ def test_pq_picks_max_along_scl_when_field_has_quadratic_residual() -> None:
     )
     by_id = {item.evidence_id: item for item in bundle.evidence_items}
     # P+Q at midplane = 150 (sample at index 2, which is node 30)
-    assert by_id["EV-P-Q"].data.value == pytest.approx(150.0, rel=1e-9)
+    assert by_id["EV-MAX-VM-SCL"].data.value == pytest.approx(150.0, rel=1e-9)
     # P_m via 5-point trapz: weight-sum-mean of [20,110,150,140,80]
     # with weights [0.25,0.5,0.5,0.5,0.25] / 2 = 112.5.
     assert by_id["EV-PM"].data.value == pytest.approx(112.5, rel=1e-9)
@@ -324,7 +324,7 @@ def test_section_content_cites_all_three_evidence_ids() -> None:
     content = report.sections[0].content or ""
     assert "EV-PM" in content
     assert "EV-PM-PB" in content
-    assert "EV-P-Q" in content
+    assert "EV-MAX-VM-SCL" in content
 
 
 def test_output_validates_against_pressure_vessel_template() -> None:
@@ -352,6 +352,24 @@ def test_unit_pinned_to_field_metadata_unit_system() -> None:
     )
     for item in bundle.evidence_items:
         assert item.data.unit == "MPa"
+
+
+def test_accepts_numpy_arrays_for_scl_inputs() -> None:
+    """Codex R1 PR #77 MEDIUM regression: the public type hints
+    accept numpy integer / float arrays, not just plain Sequence
+    types. Engineers extracting SCL data via numpy slicing should be
+    able to pass the result directly without a cast."""
+    rdr = _make_reader_with_uniaxial_membrane()
+    node_ids_np = np.array([10, 20, 30, 40, 50], dtype=np.int64)
+    distances_np = np.linspace(0.0, 2.0, 5, dtype=np.float64)
+    report, bundle = generate_pressure_vessel_local_stress_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        scl_node_ids=node_ids_np,
+        scl_distances=distances_np,
+    )
+    assert report.template_id == "pressure_vessel_local_stress"
+    assert len(bundle.evidence_items) == 3
 
 
 # --- preconditions / refusal -----------------------------------------------

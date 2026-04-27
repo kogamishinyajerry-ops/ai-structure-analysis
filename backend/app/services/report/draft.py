@@ -33,10 +33,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
+
+
+# Accept either a plain Python int sequence or a numpy integer array.
+# ``Sequence[int]`` alone rejects ``np.ndarray[np.int64]`` under mypy
+# strict (Codex R1 PR #77 MEDIUM); ndarrays are convertible to int via
+# ``int()`` at use sites, so widening the surface is sound.
+_IntArrayLike = Union[Sequence[int], "npt.NDArray[np.integer[npt.NBitBase]]"]
+_FloatArrayLike = Union[Sequence[float], "npt.NDArray[np.floating[npt.NBitBase]]"]
 
 from app.core.types import (
     CanonicalField,
@@ -445,8 +453,8 @@ def generate_pressure_vessel_local_stress_summary(
     task_id: str,
     report_id: str,
     bundle_id: str,
-    scl_node_ids: Sequence[int],
-    scl_distances: Sequence[float],
+    scl_node_ids: _IntArrayLike,
+    scl_distances: _FloatArrayLike,
     step_id: Optional[int] = None,
     template_id: Optional[str] = None,
     title: Optional[str] = None,
@@ -466,19 +474,23 @@ def generate_pressure_vessel_local_stress_summary(
       * **EV-PM-PB**: max(von_mises(σ at outer surface),
         von_mises(σ at inner surface)) where σ_outer = membrane +
         bending_outer, σ_inner = membrane - bending_outer.
-      * **EV-P-Q**: max von_mises(σ(s)) along the SCL — the worst-
-        case primary+secondary (membrane+bending+peak) stress.
+      * **EV-MAX-VM-SCL**: max von_mises(σ(s)) along the SCL — the
+        worst-case **total** stress, ``P_m + P_b + Q + F``. The MVP
+        does not split Q (secondary) from F (peak) because the
+        Layer-3 linearizer's ``peak`` field carries the combined
+        ``Q + F`` residual; honest labelling reflects this. RFC-002
+        candidate: a Q/F split decomposition.
 
     Inputs
     ------
     scl_node_ids:
-        Sequence of integer node IDs that lie on the SCL, ORDERED
-        from inner surface (s = 0) to outer surface (s = t). The
-        engineer is responsible for SCL identification.
+        Integer node IDs on the SCL, ORDERED from inner surface to
+        outer surface. Accepts plain ``Sequence[int]`` or a NumPy
+        integer array (per the typed alias ``_IntArrayLike``).
     scl_distances:
-        Sequence of per-node distances along the SCL (typically
-        from the inner surface). Must be uniformly spaced (the
-        Layer-3 linearizer enforces this).
+        Per-node distances along the SCL (typically from the inner
+        surface). Must be uniformly spaced (the Layer-3 linearizer
+        rejects non-uniform).
 
     Caveats
     -------
@@ -559,12 +571,12 @@ def generate_pressure_vessel_local_stress_summary(
             von_mises(sigma_inner)[0],
         )
     )
-    # Primary + secondary: max von_mises along the SCL (= membrane +
-    # bending + peak everywhere). Already encoded in the input tensors.
-    p_plus_q_per_point = von_mises(scl_tensors)
-    p_plus_q_idx = int(np.argmax(p_plus_q_per_point))
-    p_plus_q = float(p_plus_q_per_point[p_plus_q_idx])
-    p_plus_q_node = int(scl_node_ids[p_plus_q_idx])
+    # Total stress along SCL: max von_mises(σ(s)) = max(P_m + P_b + Q + F)
+    # (we do NOT split Q from F at MVP — see EV-MAX-VM-SCL note).
+    max_vm_per_point = von_mises(scl_tensors)
+    max_vm_idx = int(np.argmax(max_vm_per_point))
+    max_vm = float(max_vm_per_point[max_vm_idx])
+    max_vm_node = int(scl_node_ids[max_vm_idx])
 
     unit_s = _unit_label_for_system(stress_fd.metadata.unit_system, "stress")
 
@@ -617,14 +629,17 @@ def generate_pressure_vessel_local_stress_summary(
     )
     bundle.add_evidence(
         EvidenceItem(
-            evidence_id="EV-P-Q",
+            evidence_id="EV-MAX-VM-SCL",
             evidence_type=EvidenceType.SIMULATION,
-            title="Maximum primary + secondary stress along SCL (P_m + P_b + Q)",
+            title=(
+                "Maximum total stress along SCL (P_m + P_b + Q + F; "
+                "Q/F not split at MVP)"
+            ),
             description=None,
             data=SimulationEvidence(
-                value=p_plus_q,
+                value=max_vm,
                 unit=unit_s,
-                location=f"node {p_plus_q_node} (along SCL)",
+                location=f"node {max_vm_node} (along SCL)",
             ),
             field_metadata=stress_fd.metadata,
             derivation=["EV-PM-PB"],
@@ -640,9 +655,9 @@ def generate_pressure_vessel_local_stress_summary(
             f"**{p_m_plus_p_b:.6g} {unit_s}**  *(EV-PM-PB)*"
         ),
         (
-            f"- 膜+弯+二次应力 P_m + P_b + Q (SCL沿线最大): "
-            f"**{p_plus_q:.6g} {unit_s}** "
-            f"@ node {p_plus_q_node}  *(EV-P-Q)*"
+            f"- SCL沿线总应力最大值 P_m + P_b + Q + F (Q/F 未拆分): "
+            f"**{max_vm:.6g} {unit_s}** "
+            f"@ node {max_vm_node}  *(EV-MAX-VM-SCL)*"
         ),
     ]
 
