@@ -27,25 +27,59 @@ from __future__ import annotations
 
 import importlib
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 THIS_FILE = Path(__file__).resolve()
 
-# Active source trees that the editable install exposes. We scan all of
-# them: a ``backend.app.X`` import in any of these would create a
-# distinct module object alongside the canonical ``app.X``. Excluded:
-# ``_frozen`` (Sprint-N quarantine, RFC-001 §6.1 Bucket B), the test
-# file itself, and any ``__pycache__`` artifacts.
-_SCAN_ROOTS: tuple[Path, ...] = (
-    REPO_ROOT / "backend" / "app",
-    REPO_ROOT / "backend" / "tests",
-    REPO_ROOT / "tests",
-    REPO_ROOT / "agents",
-    REPO_ROOT / "schemas",
-    REPO_ROOT / "tools",
-    REPO_ROOT / "checkers",
-    REPO_ROOT / "reporters",
+# Deny-list of directory *names* (not paths) we don't recurse into.
+# Everything else under REPO_ROOT is scanned. An allow-list approach
+# was rejected after R1 — Codex showed it missed legitimately-installed
+# top-level trees like ``persistence``, ``scratch`` and ad-hoc one-off
+# scripts under ``scripts/``. Scanning the whole repo and excluding
+# build/venv/quarantine artifacts is cheaper to keep correct than
+# enumerating every active source tree.
+_EXCLUDED_DIR_NAMES = frozenset(
+    {
+        "__pycache__",
+        "_frozen",  # Sprint-N quarantine, RFC-001 §6.1 Bucket B
+        ".git",
+        ".venv",
+        "venv",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".codebuddy",
+        ".vscode",
+        ".planning",
+        "ai_structure_fea.egg-info",
+        "node_modules",
+        "htmlcov",
+        "build",
+        "dist",
+        # Pure-data / non-Python tree-roots — scanning them would
+        # silently scoop up generated artifacts (vtu/csv/json) and
+        # add noise. Python files inside any of these would be a
+        # red flag in their own right.
+        "calculix_cases",
+        "data",
+        "docs",
+        "frontend",
+        "golden_samples",
+        "project_state",
+        "prompts",
+        "reports",
+        "runs",
+        "templates",
+        "config",
+        # ``scratch/`` is in .gitignore — local-only ad-hoc files.
+        # Different developers have different content here, so we
+        # don't enforce the import contract on it. Anything under
+        # ``scratch/`` that ought to be canonical-path-clean should
+        # be promoted out of scratch first.
+        "scratch",
+    }
 )
 
 
@@ -82,23 +116,34 @@ _FORBIDDEN_IMPORT = re.compile(
 )
 
 
-def _python_files_under(root: Path) -> list[Path]:
-    if not root.exists():
-        return []
-    return [
-        p
-        for p in root.rglob("*.py")
-        # Skip the test file itself — it intentionally references the
-        # pattern in a comment + the regex above. We use ``samefile``
-        # instead of path equality so it survives symlinks.
-        if not p.samefile(THIS_FILE)
-        # Skip __pycache__ artifacts.
-        and "__pycache__" not in p.parts
-        # Skip the frozen-Sprint-N quarantine — those modules are not
-        # actively maintained (RFC-001 §6.1 Bucket B). The CI harness
-        # excludes them too via the ``legacy`` marker.
-        and "_frozen" not in p.parts
-    ]
+def _iter_active_python_files() -> Iterator[Path]:
+    """Yield every active .py file under REPO_ROOT, skipping the
+    deny-listed directories and this test file itself.
+
+    We walk the tree manually instead of ``rglob('*.py')`` so we can
+    prune subtrees the instant we see a deny-listed directory name —
+    cheaper and less likely to read megabytes from
+    ``ai_structure_fea.egg-info`` etc.
+    """
+    stack: list[Path] = [REPO_ROOT]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = list(cur.iterdir())
+        except (OSError, PermissionError):
+            continue
+        for entry in entries:
+            if entry.is_dir():
+                if entry.name in _EXCLUDED_DIR_NAMES:
+                    continue
+                if entry.name.startswith(".") and entry != REPO_ROOT:
+                    # Catch any future hidden-dir we forgot to enumerate.
+                    continue
+                stack.append(entry)
+            elif entry.suffix == ".py":
+                if entry.samefile(THIS_FILE):
+                    continue
+                yield entry
 
 
 def test_no_source_imports_via_backend_app_path() -> None:
@@ -112,18 +157,19 @@ def test_no_source_imports_via_backend_app_path() -> None:
     based singletons, lru_cache state) would diverge silently. Keep the
     canonical path ``app.X``.
 
-    Scan covers every active source tree the editable install exposes
-    — not just ``backend/`` — so a regression in ``agents/``,
-    ``schemas/``, root ``tests/`` etc. trips this guard too.
+    Scan walks the entire repo (with a small deny-list of build /
+    venv / quarantine / non-Python-data subtrees) so a regression in
+    *any* tree the editable install exposes — including ad-hoc
+    one-offs in ``scratch/`` or ``scripts/`` and additional top-level
+    packages like ``persistence/`` — trips this guard.
     """
     offenders: list[tuple[Path, int, str]] = []
-    for root in _SCAN_ROOTS:
-        for py in _python_files_under(root):
-            text = py.read_text(encoding="utf-8", errors="replace")
-            for match in _FORBIDDEN_IMPORT.finditer(text):
-                line_no = text.count("\n", 0, match.start()) + 1
-                line = text.splitlines()[line_no - 1]
-                offenders.append((py.relative_to(REPO_ROOT), line_no, line.strip()))
+    for py in _iter_active_python_files():
+        text = py.read_text(encoding="utf-8", errors="replace")
+        for match in _FORBIDDEN_IMPORT.finditer(text):
+            line_no = text.count("\n", 0, match.start()) + 1
+            line = text.splitlines()[line_no - 1]
+            offenders.append((py.relative_to(REPO_ROOT), line_no, line.strip()))
     assert not offenders, (
         "Found imports via the ``backend.app.X`` path — use ``app.X`` "
         "instead (see tests/test_packaging.py docstring):\n"
