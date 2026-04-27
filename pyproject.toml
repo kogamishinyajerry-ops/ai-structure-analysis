@@ -61,6 +61,7 @@ Repository = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
 
 [project.scripts]
 run-well-harness = "app.well_harness.cli:main"
+report-cli = "app.services.report.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
