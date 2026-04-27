@@ -157,7 +157,58 @@ def test_pressure_vessel_requires_scl_args(
                 str(out),
             ]
         )
-    assert "scl-nodes" in str(excinfo.value)
+    # Engineers script around exit code 2 for argparse-style refusals;
+    # ``SystemExit("string")`` would silently degrade to 1.
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "scl-nodes" in captured.err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "scl_nodes,scl_distances,expected_fragment",
+    [
+        # Trailing comma → empty field, must reject (silent drop is a
+        # silent normalization the CLI does not promise).
+        ("1,2,3,", "0.0,0.5,1.0", "empty field"),
+        ("1,2,3", "0.0,0.5,1.0,", "empty field"),
+        # Repeated comma.
+        ("1,,3", "0.0,0.5,1.0", "empty field"),
+        # NaN must reject — uniform-spacing check would otherwise
+        # report a domain refusal (exit 3) for an input-shape problem.
+        ("1,2,3", "0.0,nan,1.0", "non-finite"),
+        ("1,2,3", "0.0,0.5,inf", "non-finite"),
+        # Length mismatch is an input-shape error → exit 2.
+        ("1,2,3,4", "0.0,0.5,1.0", "must have equal length"),
+    ],
+)
+def test_pressure_vessel_malformed_scl_returns_2(
+    gs001: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    scl_nodes: str,
+    scl_distances: str,
+    expected_fragment: str,
+) -> None:
+    out = tmp_path / "pv.docx"
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                "--frd",
+                str(gs001),
+                "--kind",
+                "pressure-vessel",
+                "--output",
+                str(out),
+                "--scl-nodes",
+                scl_nodes,
+                "--scl-distances",
+                scl_distances,
+            ]
+        )
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert expected_fragment in captured.err
     assert not out.exists()
 
 

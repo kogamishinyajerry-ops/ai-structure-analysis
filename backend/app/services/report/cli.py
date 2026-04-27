@@ -15,11 +15,22 @@ Three report kinds are supported, matching the three MVP templates:
   * ``pressure-vessel`` — local stress assessment along an SCL
                          (requires ``--scl-nodes`` + ``--scl-distances``)
 
-Exit codes:
+Exit codes (engineers script around these — treat as a contract):
   0  success — DOCX written
-  2  argparse / input error
-  3  domain refusal (ADR-012 violation, missing field, etc.)
+  2  argparse / input error (missing flag, malformed CSV, NaN, length
+     mismatch between --scl-nodes and --scl-distances, etc.)
+  3  domain refusal (ADR-012 violation, missing field, template-
+     validation refusal, export refusal, etc.)
   4  unexpected internal error
+
+Invocation (run from the ``backend/`` directory until the project's
+top-level packaging is reorganized — tracked separately from this
+PR; the existing ``run-well-harness`` script entry has the same
+limitation)::
+
+    cd backend
+    python -m app.services.report.cli --frd path/to/result.frd \\
+        --kind static --output report.docx
 
 The CLI is intentionally thin — every substantive piece of work lives
 in the L1-L4 modules. This module's job is *plumbing*: turn argv
@@ -30,10 +41,11 @@ the .docx. No engineering decisions hide here.
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 import traceback
 from pathlib import Path
-from typing import List, Optional
+from typing import List, NoReturn, Optional
 
 from app.adapters.calculix import CalculiXReader
 from app.core.types import UnitSystem
@@ -158,24 +170,79 @@ def _resolve_identity_defaults(args: argparse.Namespace) -> None:
         args.bundle_id = f"B-{stem}"
 
 
+def _input_error(msg: str) -> NoReturn:
+    """Print an input-error message to stderr and exit with code 2.
+
+    Centralizes the exit-code contract: argparse-style refusals are
+    code 2 regardless of which call site raised them. ``SystemExit("...")``
+    with a string argument exits with code 1, which would silently break
+    the engineer-facing exit-code contract documented in the module
+    docstring. Always go through this helper for argparse-level errors.
+    """
+    print(f"error: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
 def _parse_int_csv(label: str, raw: str) -> List[int]:
-    try:
-        return [int(piece.strip()) for piece in raw.split(",") if piece.strip()]
-    except ValueError as exc:
-        raise SystemExit(
-            f"--{label}: expected comma-separated integers, got "
-            f"{raw!r} ({exc})"
-        )
+    """Parse a strict comma-separated list of integers.
+
+    Empty fields (e.g. trailing comma, repeated commas) are an error,
+    not silently dropped. Calls ``_input_error`` (exit 2) on any
+    malformed input.
+    """
+    pieces = raw.split(",")
+    out: List[int] = []
+    for piece in pieces:
+        stripped = piece.strip()
+        if not stripped:
+            _input_error(
+                f"--{label}: empty field in comma-separated list "
+                f"(got {raw!r})"
+            )
+        try:
+            out.append(int(stripped))
+        except ValueError as exc:
+            _input_error(
+                f"--{label}: expected comma-separated integers, got "
+                f"{raw!r} ({exc})"
+            )
+    if not out:
+        _input_error(f"--{label}: empty value")
+    return out
 
 
 def _parse_float_csv(label: str, raw: str) -> List[float]:
-    try:
-        return [float(piece.strip()) for piece in raw.split(",") if piece.strip()]
-    except ValueError as exc:
-        raise SystemExit(
-            f"--{label}: expected comma-separated floats, got "
-            f"{raw!r} ({exc})"
-        )
+    """Parse a strict comma-separated list of finite floats.
+
+    Empty fields are rejected. NaN and ±Inf are rejected — the
+    pressure-vessel SCL contract requires finite, ordered, uniformly-
+    spaced distances.
+    """
+    pieces = raw.split(",")
+    out: List[float] = []
+    for piece in pieces:
+        stripped = piece.strip()
+        if not stripped:
+            _input_error(
+                f"--{label}: empty field in comma-separated list "
+                f"(got {raw!r})"
+            )
+        try:
+            value = float(stripped)
+        except ValueError as exc:
+            _input_error(
+                f"--{label}: expected comma-separated floats, got "
+                f"{raw!r} ({exc})"
+            )
+        if not math.isfinite(value):
+            _input_error(
+                f"--{label}: non-finite value {stripped!r} "
+                f"(NaN/Inf not allowed)"
+            )
+        out.append(value)
+    if not out:
+        _input_error(f"--{label}: empty value")
+    return out
 
 
 def _produce(
@@ -203,12 +270,17 @@ def _produce(
         return report, bundle, LIFTING_LUG
     # pressure-vessel
     if args.scl_nodes is None or args.scl_distances is None:
-        raise SystemExit(
+        _input_error(
             "--kind=pressure-vessel requires --scl-nodes and "
             "--scl-distances."
         )
     nodes = _parse_int_csv("scl-nodes", args.scl_nodes)
     distances = _parse_float_csv("scl-distances", args.scl_distances)
+    if len(nodes) != len(distances):
+        _input_error(
+            f"--scl-nodes ({len(nodes)} values) and --scl-distances "
+            f"({len(distances)} values) must have equal length"
+        )
     report, bundle = generate_pressure_vessel_local_stress_summary(
         reader,
         scl_node_ids=nodes,
@@ -219,11 +291,17 @@ def _produce(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """Programmatic entry point (also wired as ``report-cli`` script).
+    """Programmatic entry point.
 
-    Returns an exit code; argparse-level errors raise SystemExit
-    directly per stdlib convention. Domain refusals (ADR-012 / template
-    / export-error) are caught and reported on stderr with exit code 3.
+    Returns an exit code on success and on caught domain refusals.
+    Input-validation errors (argparse, malformed CSV, missing required
+    SCL args, length mismatch) raise ``SystemExit(2)`` per the contract
+    documented in the module docstring; ``argparse`` and ``_input_error``
+    both honour exit code 2.
+
+    Domain refusals (ADR-012 / template / export-error / producer
+    ``ValueError``) are caught and reported on stderr with exit code 3.
+    Unexpected exceptions surface as exit code 4 with a traceback.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
