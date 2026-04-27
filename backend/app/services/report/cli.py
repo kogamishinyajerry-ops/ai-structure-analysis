@@ -79,7 +79,11 @@ _UNIT_SYSTEMS = {
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="report-cli",
+        # No console_script entry is registered (see pyproject.toml);
+        # the engineer-facing invocation is the module form, so the
+        # usage banner reflects that rather than advertising a
+        # non-existent ``report-cli`` shell command.
+        prog="python -m app.services.report.cli",
         description=(
             "Generate a structural-analysis report (.docx) from a "
             "CalculiX .frd result file."
