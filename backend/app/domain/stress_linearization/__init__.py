@@ -158,12 +158,14 @@ def linearize_through_thickness(
         )
     if n > 2:
         # Reject non-uniform spacing. Use a relative tolerance against
-        # the median spacing so float-precision wobble (e.g. from
-        # np.linspace round-trips) doesn't trip a strict-equality
-        # check. Rejecting is the conservative choice — see the Notes
-        # section's discussion of even-symmetric leakage.
+        # the median spacing so float-precision wobble doesn't trip a
+        # strict-equality check. ``rtol=1e-6`` accommodates float32
+        # quantization (~1e-7 relative error) while still catching
+        # real non-uniformity at the ≥0.01% level — well below the
+        # threshold at which the antisymmetric-integrand leak
+        # (Codex R1 HIGH) becomes engineering-significant.
         ref = float(np.median(diffs))
-        if not np.allclose(diffs, ref, rtol=1e-9, atol=0.0):
+        if not np.allclose(diffs, ref, rtol=1e-6, atol=0.0):
             raise ValueError(
                 "linearize_through_thickness requires uniformly-spaced "
                 f"SCL points; got diffs min/max = "

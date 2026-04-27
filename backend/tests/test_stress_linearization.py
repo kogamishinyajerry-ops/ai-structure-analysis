@@ -232,12 +232,31 @@ def test_rejects_subtle_non_uniform_spacing() -> None:
 
 def test_accepts_uniform_spacing_with_floating_point_jitter() -> None:
     """Float-precision wobble from np.linspace round-trips must NOT
-    trip the uniform check (rtol=1e-9)."""
+    trip the uniform check."""
     s = np.linspace(0.0, 1.0, 17)
     tensors = np.zeros((17, 6), dtype=np.float64)
     tensors[:, 0] = 5.0  # constant — easy positive case
     result = linearize_through_thickness(tensors, s)
     assert result.membrane[0] == pytest.approx(5.0)
+
+
+def test_accepts_uniform_float32_grid() -> None:
+    """Codex R2 MEDIUM regression: float32 grids carry larger
+    quantization wobble (~1e-7 relative) than float64 (~1e-15);
+    the uniform-check tolerance must accommodate either dtype.
+    Probes exactly the cases Codex used to demonstrate the
+    false-rejection bug."""
+    for s in (
+        np.linspace(0.0, 1.0, 11, dtype=np.float32),
+        (np.arange(11, dtype=np.float32) * np.float32(0.1)),
+        np.linspace(0.0, 2.0, 9, dtype=np.float32),
+    ):
+        tensors = np.zeros((s.size, 6), dtype=np.float64)
+        tensors[:, 0] = 7.0  # constant — pure membrane
+        result = linearize_through_thickness(tensors, s)
+        assert result.membrane[0] == pytest.approx(7.0), s.tolist()
+        assert np.allclose(result.bending_outer, 0.0, atol=1e-6)
+        assert np.allclose(result.peak, 0.0, atol=1e-6)
 
 
 def test_two_point_scl_is_always_uniform() -> None:
