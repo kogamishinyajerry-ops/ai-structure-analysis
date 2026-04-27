@@ -58,10 +58,14 @@ _EXCLUDED_DIR_NAMES = frozenset(
         "htmlcov",
         "build",
         "dist",
-        # Pure-data / non-Python tree-roots — scanning them would
-        # silently scoop up generated artifacts (vtu/csv/json) and
-        # add noise. Python files inside any of these would be a
-        # red flag in their own right.
+        # Tree roots whose .py files are not active runtime code in
+        # the canonical-import contract sense — scanning them adds
+        # noise from generated artifacts (vtu/csv/json) or, in the
+        # case of ``golden_samples/``, ingests reference-asset
+        # scripts (theory/canonical-data sources, see
+        # backend/app/rag/sources/README.md) that are read-only and
+        # don't import live ``app.X``-vs-``backend.app.X`` symbols
+        # the way active source does.
         "calculix_cases",
         "data",
         "docs",
@@ -159,9 +163,10 @@ def test_no_source_imports_via_backend_app_path() -> None:
 
     Scan walks the entire repo (with a small deny-list of build /
     venv / quarantine / non-Python-data subtrees) so a regression in
-    *any* tree the editable install exposes — including ad-hoc
-    one-offs in ``scratch/`` or ``scripts/`` and additional top-level
-    packages like ``persistence/`` — trips this guard.
+    *any* active tree — including ad-hoc one-offs in ``scripts/`` and
+    additional top-level packages like ``persistence/`` — trips this
+    guard. Note: ``scratch/`` is in ``.gitignore`` and is therefore
+    excluded; CI sees an empty ``scratch/`` anyway.
     """
     offenders: list[tuple[Path, int, str]] = []
     for py in _iter_active_python_files():
