@@ -187,6 +187,84 @@ def test_validate_report_refuses_too_few_citations() -> None:
         validate_report(report, bundle, template=EQUIPMENT_FOUNDATION_STATIC)
 
 
+def test_validate_report_refuses_duplicate_evidence_id_double_count() -> None:
+    """Codex R1 HIGH: citing the same evidence_id twice does not satisfy
+    a 'minimum 2 evidence items' requirement — only DISTINCT EV-* tokens
+    count."""
+    items = [
+        EvidenceItem(
+            evidence_id="EV-A",
+            evidence_type=EvidenceType.SIMULATION,
+            title="t-A",
+            data=SimulationEvidence(value=1.0, unit="mm", location="node 1"),
+            source="synthetic",
+        )
+    ]
+    bundle = EvidenceBundle(bundle_id="B", task_id="T", title="b")
+    for it in items:
+        bundle.add_evidence(it)
+    # Section content cites EV-A twice; raw findall returns 2, but
+    # set() returns 1 — must refuse against minimum=2 template.
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="equipment_foundation_static",
+        sections=[
+            ReportSection(
+                title="结构强度摘要 (Static-strength summary)",
+                level=1,
+                content="- value: **0.5 mm** *(EV-A)* and again *(EV-A)*",
+            )
+        ],
+        evidence_bundle_id="B",
+    )
+    with pytest.raises(TemplateValidationError, match="at least 2 distinct"):
+        validate_report(report, bundle, template=EQUIPMENT_FOUNDATION_STATIC)
+
+
+def test_validate_report_accepts_later_duplicate_when_earlier_under_cites() -> None:
+    """Codex R1 MEDIUM: when two sections share a title, the validator
+    must accept the report if ANY candidate satisfies the requirement,
+    not just the first one walked."""
+    items = [
+        EvidenceItem(
+            evidence_id=eid,
+            evidence_type=EvidenceType.SIMULATION,
+            title=f"t-{eid}",
+            data=SimulationEvidence(value=1.0, unit="mm", location="node 1"),
+            source="synthetic",
+        )
+        for eid in ("EV-A", "EV-B")
+    ]
+    bundle = EvidenceBundle(bundle_id="B", task_id="T", title="b")
+    for it in items:
+        bundle.add_evidence(it)
+    # First same-titled section under-cites (1); second satisfies (2).
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="equipment_foundation_static",
+        sections=[
+            ReportSection(
+                title="结构强度摘要 (Static-strength summary)",
+                level=1,
+                content="- only one *(EV-A)*",
+            ),
+            ReportSection(
+                title="wrapper", level=1, content=None,
+                subsections=[
+                    ReportSection(
+                        title="结构强度摘要 (Static-strength summary)",
+                        level=1,
+                        content="- two distinct *(EV-A)* *(EV-B)*",
+                    ),
+                ],
+            ),
+        ],
+        evidence_bundle_id="B",
+    )
+    # Must NOT raise — the second candidate satisfies.
+    validate_report(report, bundle, template=EQUIPMENT_FOUNDATION_STATIC)
+
+
 def test_validate_report_finds_section_in_subsection_tree() -> None:
     """Section title can live anywhere in the report tree, not just
     at the top level."""

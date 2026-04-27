@@ -42,11 +42,11 @@ Key invariants enforced by :func:`validate_report`:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, Tuple
 
 from app.models import EvidenceBundle, ReportSection, ReportSpec
+from app.services.report.exporter import CITATION_RE
 
 
 __all__ = [
@@ -60,12 +60,6 @@ __all__ = [
     "supported_template_ids",
     "validate_report",
 ]
-
-
-_CITATION_RE = re.compile(r"\bEV-[A-Z0-9][A-Z0-9_\-]*\b")
-"""Citation pattern, must match :data:`exporter._CITATION_RE`. Kept
-local to avoid coupling templates → exporter; if either drifts the
-test suite catches it via the e2e roundtrip."""
 
 
 @dataclass(frozen=True)
@@ -199,13 +193,22 @@ def _walk_sections(sections: Iterable[ReportSection]) -> Iterator[ReportSection]
             stack.append(child)
 
 
-def _find_section_by_title(
+def _find_sections_by_title(
     sections: Iterable[ReportSection], title: str
-) -> Optional[ReportSection]:
-    for sec in _walk_sections(sections):
-        if sec.title == title:
-            return sec
-    return None
+) -> List[ReportSection]:
+    """Return *all* sections whose title matches ``title``. Multiple
+    matches are allowed — :func:`validate_report` accepts the report
+    if *any* candidate satisfies the level + citation requirements
+    (avoids rejecting a report just because an earlier duplicate-titled
+    section under-cites; Codex R1 MEDIUM finding)."""
+    return [s for s in _walk_sections(sections) if s.title == title]
+
+
+def _distinct_citation_count(content: str) -> int:
+    """Count the number of *distinct* ``EV-*`` tokens cited in
+    ``content``. Repeating the same citation N times still counts as
+    one piece of evidence (Codex R1 HIGH finding)."""
+    return len(set(CITATION_RE.findall(content)))
 
 
 def validate_report(
@@ -217,9 +220,14 @@ def validate_report(
     """Refuse if ``report`` does not honour the ``template`` contract.
 
     Raises :class:`TemplateValidationError` on the first violation
-    encountered (template_id mismatch → missing section → wrong level
-    → too few citations). Single-error semantics keep the failure
-    message actionable; the engineer fixes one issue and re-runs.
+    encountered (template_id mismatch → missing section → no candidate
+    section satisfies level+citation requirements). Single-error
+    semantics keep the failure message actionable.
+
+    Duplicate section titles are tolerated: the report passes if *any*
+    same-titled section satisfies the requirement. The error message
+    on rejection is taken from the *last* candidate inspected so the
+    engineer sees the closest-to-correct mismatch.
 
     The ``bundle`` parameter is currently consulted only via the
     cited-evidence count derived from section content. A future
@@ -238,27 +246,34 @@ def validate_report(
     _ = bundle
 
     for req in template.required_sections:
-        sec = _find_section_by_title(report.sections, req.title)
-        if sec is None:
+        candidates = _find_sections_by_title(report.sections, req.title)
+        if not candidates:
             raise TemplateValidationError(
                 f"template {template.template_id!r} requires a section "
                 f"titled {req.title!r}; report has no such section. "
                 f"Sections present: "
                 f"{[s.title for s in _walk_sections(report.sections)]!r}"
             )
-        if sec.level != req.level:
-            raise TemplateValidationError(
-                f"template {template.template_id!r} requires section "
-                f"{req.title!r} at level {req.level}; report has it at "
-                f"level {sec.level}."
-            )
-        citations = (
-            len(_CITATION_RE.findall(sec.content)) if sec.content else 0
-        )
-        if citations < req.minimum_evidence_citations:
-            raise TemplateValidationError(
-                f"template {template.template_id!r} requires section "
-                f"{req.title!r} to cite at least "
-                f"{req.minimum_evidence_citations} evidence items "
-                f"(EV-* tokens); found {citations}."
-            )
+        last_error: TemplateValidationError | None = None
+        for sec in candidates:
+            if sec.level != req.level:
+                last_error = TemplateValidationError(
+                    f"template {template.template_id!r} requires section "
+                    f"{req.title!r} at level {req.level}; report has it "
+                    f"at level {sec.level}."
+                )
+                continue
+            citations = _distinct_citation_count(sec.content or "")
+            if citations < req.minimum_evidence_citations:
+                last_error = TemplateValidationError(
+                    f"template {template.template_id!r} requires section "
+                    f"{req.title!r} to cite at least "
+                    f"{req.minimum_evidence_citations} distinct evidence "
+                    f"items (EV-* tokens); found {citations}."
+                )
+                continue
+            # All requirements satisfied for this candidate.
+            last_error = None
+            break
+        if last_error is not None:
+            raise last_error

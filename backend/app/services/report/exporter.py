@@ -52,14 +52,20 @@ if TYPE_CHECKING:
 __all__ = ["export_docx", "ExportError", "find_cited_evidence_ids"]
 
 
-_CITATION_RE = re.compile(r"\bEV-[A-Z0-9][A-Z0-9_\-]*\b")
+CITATION_RE = re.compile(r"\bEV-[A-Z0-9][A-Z0-9_\-]*\b")
 """Citation pattern. ``EV-`` prefix followed by ``[A-Z0-9]`` then any
 ``[A-Z0-9_-]``. Word-boundary anchored so a stray ``EV-FOO`` inside a
 URL won't accidentally match a leading hyphen.
 
 The pattern intentionally rejects lowercase / mixed-case to avoid
 false-positive collisions with prose. Authors who deviate must
-introduce the new convention via RFC."""
+introduce the new convention via RFC.
+
+This is the single source of truth for the citation regex; downstream
+validators (e.g. :mod:`templates`) import it directly to avoid drift
+between rendering and validation."""
+
+_CITATION_RE = CITATION_RE  # backwards-compat alias for in-module callers
 
 
 class ExportError(ValueError):
