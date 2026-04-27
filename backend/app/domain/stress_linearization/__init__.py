@@ -48,12 +48,17 @@ Component convention: tensors are `[σ_xx, σ_yy, σ_zz, σ_xy, σ_yz,
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
 
-__all__ = ["LinearizedStress", "linearize_through_thickness"]
+__all__ = [
+    "LinearizedStress",
+    "linearize_through_thickness",
+    "resample_to_uniform",
+]
 
 
 @dataclass(frozen=True)
@@ -233,3 +238,123 @@ def linearize_through_thickness(
         bending_outer=bending_outer,
         peak=peak,
     )
+
+
+def resample_to_uniform(
+    tensors: npt.NDArray[Any],
+    distances: npt.NDArray[Any],
+    *,
+    n_points: int = 21,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Linear-interpolate a per-component stress-tensor SCL field onto
+    a uniform grid spanning ``[distances[0], distances[-1]]``.
+
+    Engineers extracting SCL data from CalculiX (or any other FE
+    solver) routinely get *non-uniform* node spacing because the mesh
+    refines toward stress concentrators. :func:`linearize_through_thickness`
+    rejects non-uniform inputs (the antisymmetric integrand
+    ``Σ w_i (s_i - s_mid)³`` no longer vanishes, leaking spurious
+    bending into pure-peak fields — Codex R1 HIGH on PR #76). This
+    helper resamples a non-uniform input onto a uniform grid so the
+    linearizer's contract is satisfied.
+
+    Parameters
+    ----------
+    tensors
+        Shape ``(N, 6)``. The 6 stress-tensor components in
+        ``[σ_xx, σ_yy, σ_zz, σ_xy, σ_yz, σ_xz]`` order.
+    distances
+        Shape ``(N,)``. Strictly monotonically increasing distance
+        along the SCL. Need not start at zero.
+    n_points
+        Number of uniformly-spaced output points. Default ``21`` is
+        chosen as an ASME §5.5.3-style baseline (enough density for
+        through-thickness peak resolution; odd so the centre sample
+        sits exactly at ``s_mid``). Must be ≥ 2.
+
+    Returns
+    -------
+    (tensors_resampled, distances_resampled)
+        ``tensors_resampled`` shape ``(n_points, 6)`` is the linearly-
+        interpolated tensor field; ``distances_resampled`` shape
+        ``(n_points,)`` is ``np.linspace(distances[0], distances[-1],
+        n_points)``.
+
+    Raises
+    ------
+    ValueError
+        On shape mismatch, fewer than 2 input points, non-strictly-
+        monotonic input distances, or ``n_points < 2``.
+
+    Notes
+    -----
+    The interpolation is per-component linear (``np.interp``) — the
+    simplest possible scheme. Higher-order spline / Hermite
+    reconstruction is intentionally NOT offered: ASME stress
+    classification is a *macro-scale* read of the through-thickness
+    field, and any smoothing scheme richer than linear lets you
+    accidentally invent peak that wasn't in the source data.
+
+    Linear-interp recovery preserves:
+      * the input value at every output point that coincides with an
+        input point (exact match)
+      * monotonicity — a strictly monotone tensor component stays
+        strictly monotone
+      * a globally-linear input field — exact
+
+    It does NOT preserve through-thickness average (the resampled
+    membrane will differ from the source membrane by O(h²) wherever
+    the field has non-zero curvature). For ASME §5.5.3 P_m the
+    practical effect is below engineering tolerance once ``n_points``
+    is in the typical 11-41 range.
+
+    Engineers using this helper should:
+      1. Resample once with ``n_points`` chosen for the desired
+         through-thickness resolution.
+      2. Pass the resampled outputs to
+         :func:`linearize_through_thickness` for the M/B/Q decomposition.
+
+    Example
+    -------
+    >>> import numpy as np
+    >>> # Non-uniform CalculiX nodes along the SCL.
+    >>> s_raw = np.array([0.0, 0.1, 0.4, 1.0, 1.6, 2.0])
+    >>> sigma_raw = np.zeros((6, 6))
+    >>> sigma_raw[:, 0] = 50.0 + 30.0 * (s_raw - 1.0)  # linear bending
+    >>> sigma, s = resample_to_uniform(sigma_raw, s_raw, n_points=21)
+    >>> result = linearize_through_thickness(sigma, s)
+    """
+    if tensors.ndim != 2 or tensors.shape[1] != 6:
+        raise ValueError(
+            f"tensors must be shape (N, 6); got {tensors.shape}"
+        )
+    if distances.ndim != 1 or distances.shape[0] != tensors.shape[0]:
+        raise ValueError(
+            "distances must be shape (N,) and match tensors along axis 0; "
+            f"got distances shape {distances.shape} vs "
+            f"tensors.shape[0]={tensors.shape[0]}"
+        )
+    n = tensors.shape[0]
+    if n < 2:
+        raise ValueError(
+            f"resampling requires at least 2 SCL points; got {n}"
+        )
+    if n_points < 2:
+        raise ValueError(
+            f"n_points must be >= 2; got {n_points}"
+        )
+
+    s_in = distances.astype(np.float64, copy=False)
+    diffs = np.diff(s_in)
+    if np.any(diffs <= 0):
+        raise ValueError(
+            "distances must be strictly monotonically increasing"
+        )
+
+    s_out = np.linspace(s_in[0], s_in[-1], n_points, dtype=np.float64)
+    sigma_in = tensors.astype(np.float64, copy=False)
+    sigma_out = np.empty((n_points, 6), dtype=np.float64)
+    for k in range(6):
+        sigma_out[:, k] = np.interp(s_out, s_in, sigma_in[:, k])
+
+    return sigma_out, s_out
