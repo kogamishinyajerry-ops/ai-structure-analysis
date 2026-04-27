@@ -123,6 +123,15 @@ button.primary {
   border-color: var(--primary);
 }
 
+button.secondary {
+  /* Demo button — discoverable but not competing with the primary
+     Run button. Outline style flags it as a one-click shortcut
+     rather than the canonical action. */
+  border-color: var(--primary);
+  color: var(--primary);
+  background: transparent;
+}
+
 fieldset {
   border: 1px solid var(--border);
   border-radius: 4px;

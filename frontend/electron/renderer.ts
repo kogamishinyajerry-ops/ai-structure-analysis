@@ -39,6 +39,7 @@ interface ElectronApi {
   openFrd: () => Promise<string | null>;
   saveDocx: (suggested: string) => Promise<string | null>;
   revealInFolder: (filepath: string) => Promise<boolean>;
+  getDemoFrd: () => Promise<string | null>;
   runReport: (req: RunReportRequest) => Promise<RunReportResult>;
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
@@ -70,6 +71,7 @@ const sclDistancesInput = $<HTMLInputElement>("scl-distances");
 const resampleInput = $<HTMLInputElement>("resample");
 const runBtn = $<HTMLButtonElement>("run");
 const revealBtn = $<HTMLButtonElement>("reveal");
+const demoBtn = $<HTMLButtonElement>("demo-gs001");
 const statusEl = $<HTMLDivElement>("statusEl");
 const log = $<HTMLPreElement>("log");
 
@@ -177,6 +179,35 @@ runBtn.addEventListener("click", async () => {
   }
   runBtn.disabled = false;
   updateFormState();
+});
+
+// --- GS-001 demo button ----------------------------------------------------
+
+/**
+ * Auto-fill the form with the bundled GS-001 sample case and trigger
+ * Run. One-click smoke test for the demo audience: by the time they
+ * blink, the L1→L4→DOCX pipeline has produced a real .docx on disk.
+ *
+ * The button is hidden if main.ts couldn't locate the .frd
+ * (packaged builds without the bundled samples shouldn't advertise
+ * a broken shortcut).
+ */
+demoBtn.addEventListener("click", () => {
+  const demoFrd = demoBtn.dataset.frd;
+  if (!demoFrd) return;
+  frdInput.value = demoFrd;
+  kindSelect.value = "static";
+  outputInput.value = demoFrd.replace(/\.frd$/i, "_static.docx");
+  // Pressure-vessel inputs are not needed for static; the form-state
+  // recalc clears the requirement.
+  updateFormState();
+  runBtn.click();
+});
+
+void window.api.getDemoFrd().then((demoFrd) => {
+  if (!demoFrd) return;
+  demoBtn.dataset.frd = demoFrd;
+  demoBtn.hidden = false;
 });
 
 // --- init ------------------------------------------------------------------

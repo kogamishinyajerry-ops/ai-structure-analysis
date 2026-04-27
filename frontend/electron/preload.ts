@@ -50,6 +50,11 @@ contextBridge.exposeInMainWorld("api", {
   revealInFolder: (filepath: string): Promise<boolean> =>
     ipcRenderer.invoke("reveal-in-folder", filepath),
 
+  // Returns the bundled GS-001 sample's .frd path if discoverable,
+  // else null (the renderer hides the demo button on null).
+  getDemoFrd: (): Promise<string | null> =>
+    ipcRenderer.invoke("get-demo-frd"),
+
   // Run the report. The promise resolves *after* the subprocess
   // exits; intermediate stdout/stderr arrive as events.
   runReport: (req: RunReportRequest): Promise<RunReportResult> =>
