@@ -44,7 +44,7 @@ import math
 import sys
 import traceback
 from pathlib import Path
-from typing import List, NoReturn, Optional
+from typing import NoReturn
 
 from app.adapters.calculix import CalculiXReader
 from app.core.types import UnitSystem
@@ -63,7 +63,6 @@ from app.services.report.templates import (
     TemplateValidationError,
 )
 
-
 __all__ = ["main", "build_parser"]
 
 
@@ -80,23 +79,38 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="report-cli",
         description=(
-            "Generate a structural-analysis report (.docx) from a "
-            "CalculiX .frd result file."
+            "Generate a structural-analysis report (.docx) from a CalculiX .frd result file."
         ),
     )
     p.add_argument(
         "--frd",
-        required=True,
         type=Path,
-        help="Path to the CalculiX .frd result file.",
+        default=None,
+        help=(
+            "Path to the CalculiX .frd result file. Required for a "
+            "report run; ignored under --doctor."
+        ),
     )
     p.add_argument(
         "--kind",
-        required=True,
         choices=_REPORT_KINDS,
+        default=None,
         help=(
             "Which report template to produce. 'pressure-vessel' "
-            "additionally requires --scl-nodes and --scl-distances."
+            "additionally requires --scl-nodes and --scl-distances. "
+            "Required for a report run; ignored under --doctor."
+        ),
+    )
+    p.add_argument(
+        "--doctor",
+        action="store_true",
+        help=(
+            "Print an installation-diagnostic and exit. Reports python "
+            "version, key dependency versions (numpy / python-docx), and "
+            "the report-cli console-script path so the engineer can "
+            "confirm a working install. Exits 0 when healthy, 3 when "
+            "any required component is missing or unimportable. Does not "
+            "require --frd or --kind."
         ),
     )
     p.add_argument(
@@ -121,9 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--step-id",
         type=int,
         default=None,
-        help=(
-            "Optional solution-state ID. Defaults to the final state."
-        ),
+        help=("Optional solution-state ID. Defaults to the final state."),
     )
     p.add_argument(
         "--scl-nodes",
@@ -184,6 +196,75 @@ def _resolve_identity_defaults(args: argparse.Namespace) -> None:
         args.bundle_id = f"B-{stem}"
 
 
+def _run_doctor() -> int:
+    """Print an installation diagnostic and return an exit code.
+
+    Healthy → 0. Any missing or unimportable required component → 3
+    (matches the domain-refusal class in the module exit-code contract:
+    a broken install can't produce reports).
+
+    Stays inside this module deliberately — the Electron shell's spawn-
+    failure hint says "run report-cli --doctor", and that hint should
+    work without depending on app.adapters or app.models being fully
+    importable. We import probes inline so a broken sub-module surfaces
+    as a clear failure line, not a top-of-file ImportError that the
+    engineer can't act on.
+    """
+    import importlib
+    import shutil
+
+    print("report-cli --doctor")
+    print(f"  python: {sys.version.split()[0]}  ({sys.executable})")
+
+    rc_path = shutil.which("report-cli")
+    print(f"  report-cli on PATH: {rc_path or '<<not on PATH>>'}")
+    print(f"  cli module: {Path(__file__).resolve()}")
+
+    failed = False
+
+    # Hard deps: anything required to produce a .docx.
+    for module_name, label in (
+        ("numpy", "numpy"),
+        ("docx", "python-docx"),
+    ):
+        try:
+            mod = importlib.import_module(module_name)
+        except ImportError as exc:
+            print(f"  {label}: NOT INSTALLED ({exc})")
+            failed = True
+            continue
+        version = getattr(mod, "__version__", "(no __version__)")
+        print(f"  {label}: {version}")
+
+    # In-tree imports — exercise the L1/L4 surfaces the report run
+    # actually touches. Catch ImportError separately so a single broken
+    # sub-module is a focused diagnostic line, not a confusing whole-
+    # process traceback.
+    for dotted in (
+        "app.adapters.calculix",
+        "app.services.report.draft",
+        "app.services.report.exporter",
+        "app.services.report.templates",
+    ):
+        try:
+            importlib.import_module(dotted)
+        except Exception as exc:  # ImportError + downstream init errors
+            print(f"  {dotted}: IMPORT FAILED ({type(exc).__name__}: {exc})")
+            failed = True
+            continue
+        print(f"  {dotted}: ok")
+
+    if failed:
+        print(
+            "doctor: one or more required components are missing or broken.",
+            file=sys.stderr,
+        )
+        return 3
+
+    print("doctor: all required components are healthy.")
+    return 0
+
+
 def _input_error(msg: str) -> NoReturn:
     """Print an input-error message to stderr and exit with code 2.
 
@@ -197,7 +278,7 @@ def _input_error(msg: str) -> NoReturn:
     raise SystemExit(2)
 
 
-def _parse_int_csv(label: str, raw: str) -> List[int]:
+def _parse_int_csv(label: str, raw: str) -> list[int]:
     """Parse a strict comma-separated list of integers.
 
     Empty fields (e.g. trailing comma, repeated commas) are an error,
@@ -205,27 +286,21 @@ def _parse_int_csv(label: str, raw: str) -> List[int]:
     malformed input.
     """
     pieces = raw.split(",")
-    out: List[int] = []
+    out: list[int] = []
     for piece in pieces:
         stripped = piece.strip()
         if not stripped:
-            _input_error(
-                f"--{label}: empty field in comma-separated list "
-                f"(got {raw!r})"
-            )
+            _input_error(f"--{label}: empty field in comma-separated list (got {raw!r})")
         try:
             out.append(int(stripped))
         except ValueError as exc:
-            _input_error(
-                f"--{label}: expected comma-separated integers, got "
-                f"{raw!r} ({exc})"
-            )
+            _input_error(f"--{label}: expected comma-separated integers, got {raw!r} ({exc})")
     if not out:
         _input_error(f"--{label}: empty value")
     return out
 
 
-def _parse_float_csv(label: str, raw: str) -> List[float]:
+def _parse_float_csv(label: str, raw: str) -> list[float]:
     """Parse a strict comma-separated list of finite floats.
 
     Empty fields are rejected. NaN and ±Inf are rejected — the
@@ -233,26 +308,17 @@ def _parse_float_csv(label: str, raw: str) -> List[float]:
     spaced distances.
     """
     pieces = raw.split(",")
-    out: List[float] = []
+    out: list[float] = []
     for piece in pieces:
         stripped = piece.strip()
         if not stripped:
-            _input_error(
-                f"--{label}: empty field in comma-separated list "
-                f"(got {raw!r})"
-            )
+            _input_error(f"--{label}: empty field in comma-separated list (got {raw!r})")
         try:
             value = float(stripped)
         except ValueError as exc:
-            _input_error(
-                f"--{label}: expected comma-separated floats, got "
-                f"{raw!r} ({exc})"
-            )
+            _input_error(f"--{label}: expected comma-separated floats, got {raw!r} ({exc})")
         if not math.isfinite(value):
-            _input_error(
-                f"--{label}: non-finite value {stripped!r} "
-                f"(NaN/Inf not allowed)"
-            )
+            _input_error(f"--{label}: non-finite value {stripped!r} (NaN/Inf not allowed)")
         out.append(value)
     if not out:
         _input_error(f"--{label}: empty value")
@@ -284,21 +350,14 @@ def _produce(
         step_id=args.step_id,
     )
     if args.kind == "static":
-        report, bundle = generate_static_strength_summary(
-            reader, **common_kwargs
-        )
+        report, bundle = generate_static_strength_summary(reader, **common_kwargs)
         return report, bundle, EQUIPMENT_FOUNDATION_STATIC
     if args.kind == "lifting-lug":
-        report, bundle = generate_lifting_lug_summary(
-            reader, **common_kwargs
-        )
+        report, bundle = generate_lifting_lug_summary(reader, **common_kwargs)
         return report, bundle, LIFTING_LUG
     # pressure-vessel
     if args.scl_nodes is None or args.scl_distances is None:
-        _input_error(
-            "--kind=pressure-vessel requires --scl-nodes and "
-            "--scl-distances."
-        )
+        _input_error("--kind=pressure-vessel requires --scl-nodes and --scl-distances.")
     nodes = _parse_int_csv("scl-nodes", args.scl_nodes)
     distances = _parse_float_csv("scl-distances", args.scl_distances)
     if len(nodes) != len(distances):
@@ -307,9 +366,7 @@ def _produce(
             f"({len(distances)} values) must have equal length"
         )
     if args.resample is not None and args.resample < 2:
-        _input_error(
-            f"--resample must be >= 2; got {args.resample}"
-        )
+        _input_error(f"--resample must be >= 2; got {args.resample}")
     report, bundle = generate_pressure_vessel_local_stress_summary(
         reader,
         scl_node_ids=nodes,
@@ -320,7 +377,7 @@ def _produce(
     return report, bundle, PRESSURE_VESSEL_LOCAL_STRESS
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """Programmatic entry point.
 
     Returns an exit code on success and on caught domain refusals.
@@ -335,6 +392,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.doctor:
+        return _run_doctor()
+
+    # --frd and --kind are not argparse-required so --doctor can run
+    # without them; enforce the report-run contract here instead.
+    if args.frd is None:
+        _input_error("--frd is required (or pass --doctor for diagnostics).")
+    if args.kind is None:
+        _input_error("--kind is required (or pass --doctor for diagnostics).")
 
     if not args.frd.is_file():
         print(
@@ -363,8 +430,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 3
     except Exception:  # pragma: no cover — defensive guard
         print(
-            "internal error during report production:\n"
-            + traceback.format_exc(),
+            "internal error during report production:\n" + traceback.format_exc(),
             file=sys.stderr,
         )
         return 4
@@ -381,8 +447,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 3
     except Exception:  # pragma: no cover — defensive guard
         print(
-            "internal error during DOCX export:\n"
-            + traceback.format_exc(),
+            "internal error during DOCX export:\n" + traceback.format_exc(),
             file=sys.stderr,
         )
         return 4

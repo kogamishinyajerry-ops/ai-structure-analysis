@@ -200,7 +200,10 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
         "report:stderr",
         `failed to spawn report-cli: ${err.message}\n` +
           `Hint: pip install -e . from the repo root, then make sure ` +
-          `the venv's bin/ is on PATH.\n`
+          `the venv's bin/ is on PATH. Once installed, run\n` +
+          `  report-cli --doctor\n` +
+          `from the same shell that launches this app to verify the ` +
+          `install is healthy.\n`
       );
       evt.sender.send("report:exit", -1);
       resolve({ ok: false, exitCode: -1, outputPath: req.output });

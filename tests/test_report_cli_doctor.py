@@ -1,0 +1,116 @@
+"""Tests for ``report-cli --doctor`` — RFC-001 W5c install probe.
+
+The probe is the engineer's first move when the Electron shell can't
+spawn ``report-cli``. It must:
+
+* run without ``--frd`` / ``--kind``
+* print a self-diagnostic to stdout (so the Electron renderer's stdout
+  pane shows it without users hunting through stderr)
+* exit 0 when the install is healthy
+* exit 3 when a required dep is missing or unimportable (matches the
+  domain-refusal exit-code class in the cli.py contract)
+"""
+
+from __future__ import annotations
+
+import sys
+
+import pytest
+from app.services.report.cli import build_parser, main
+
+
+def test_parser_accepts_doctor_alone() -> None:
+    """`--doctor` must parse cleanly without --frd/--kind."""
+    parser = build_parser()
+    ns = parser.parse_args(["--doctor"])
+    assert ns.doctor is True
+    assert ns.frd is None
+    assert ns.kind is None
+
+
+def test_doctor_default_off() -> None:
+    """`--doctor` defaults to off so existing report runs aren't
+    surprised by a flag they didn't pass."""
+    parser = build_parser()
+    ns = parser.parse_args(["--frd", "x.frd", "--kind", "static"])
+    assert ns.doctor is False
+
+
+def test_doctor_runs_returns_zero_in_healthy_env(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """In the dev / CI environment numpy + python-docx + the in-tree
+    modules are all importable, so doctor must exit 0."""
+    rc = main(["--doctor"])
+    assert rc == 0
+
+    captured = capsys.readouterr()
+    # Spot-check that the diagnostic actually printed something useful.
+    assert "report-cli --doctor" in captured.out
+    assert "python:" in captured.out
+    assert "numpy:" in captured.out
+    assert "python-docx:" in captured.out
+    # Healthy summary line is on stdout, not stderr.
+    assert "all required components are healthy" in captured.out
+
+
+def test_doctor_reports_missing_hard_dep(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """When a hard dep is missing, doctor must exit 3 and print a
+    'NOT INSTALLED' line for it on stdout (so the engineer sees what
+    to install). The summary failure line goes to stderr.
+
+    Setting ``sys.modules["docx"] = None`` is the documented way to
+    make ``import docx`` raise ImportError without touching disk:
+    importlib treats a None entry in the cache as a sentinel meaning
+    'known not to exist'. That probes the doctor's own try/except
+    handling without taking the python-docx wheel offline.
+    """
+    monkeypatch.setitem(sys.modules, "docx", None)
+
+    rc = main(["--doctor"])
+    assert rc == 3
+
+    captured = capsys.readouterr()
+    assert "python-docx: NOT INSTALLED" in captured.out
+    assert "missing or broken" in captured.err
+
+
+def test_main_without_frd_or_doctor_exits_two(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Removing argparse-required from --frd shifts the check to main();
+    must still exit 2 with a clear hint about --doctor."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--kind", "static"])
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "--frd" in err
+    assert "--doctor" in err
+
+
+def test_main_without_kind_or_doctor_exits_two(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Same as above, for --kind."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--frd", "x.frd"])
+    assert excinfo.value.code == 2
+    err = capsys.readouterr().err
+    assert "--kind" in err
+    assert "--doctor" in err
+
+
+def test_doctor_exit_path_uses_sys_executable(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The python interpreter line must surface the actual interpreter
+    path, not a generic 'python' string. Engineers debugging an
+    'install looks fine but Electron can't find it' situation need to
+    see which venv the report-cli is running under."""
+    rc = main(["--doctor"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert sys.executable in captured.out
