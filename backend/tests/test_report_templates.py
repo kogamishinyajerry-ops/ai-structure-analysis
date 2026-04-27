@@ -517,6 +517,60 @@ def test_template_id_mismatch_short_circuits_per_section_checks() -> None:
     assert "synthetic_multi" in violations[0]
 
 
+def test_duplicate_title_failure_reports_last_candidate_inspected() -> None:
+    """When multiple same-titled sections all fail, the violation
+    message reflects the *last* candidate inspected in DFS pre-order
+    (Codex R1 nit: docstring previously claimed "closest-to-correct"
+    but the implementation just keeps overwriting last_error).
+
+    Lock down the actual behavior so future refactors don't silently
+    change which candidate's failure mode is reported. If we ever
+    want a smarter selection ("closest-to-correct"), this test
+    documents the change.
+    """
+    items = [
+        EvidenceItem(
+            evidence_id="EV-A",
+            evidence_type=EvidenceType.SIMULATION,
+            title="t",
+            data=SimulationEvidence(value=1.0, unit="mm", location="node 1"),
+            source="synthetic",
+        )
+    ]
+    bundle = _empty_bundle()
+    for it in items:
+        bundle.add_evidence(it)
+    # First duplicate: correct level (1), under-cites (1 < 2).
+    # Second duplicate: wrong level (2), under-cites (also 1 < 2).
+    # Walker visits in declaration order, so the 'wrong level'
+    # message wins because it's the last one set.
+    report = ReportSpec(
+        report_id="R", project_id="P", title="t",
+        template_id="equipment_foundation_static",
+        sections=[
+            ReportSection(
+                title="结构强度摘要 (Static-strength summary)",
+                level=1,
+                content="- only one *(EV-A)*",
+            ),
+            ReportSection(
+                title="结构强度摘要 (Static-strength summary)",
+                level=2,
+                content="- only one *(EV-A)*",
+            ),
+        ],
+        evidence_bundle_id="B",
+    )
+    violations = validate_report_collect(
+        report, bundle, template=EQUIPMENT_FOUNDATION_STATIC
+    )
+    assert len(violations) == 1
+    # Last candidate inspected wins — its failure mode was wrong-level.
+    assert "at level 2" in violations[0]
+    # Both candidates are accounted for in the suffix count.
+    assert "2 same-titled section(s) checked" in violations[0]
+
+
 def test_template_validation_error_violations_defaults_to_message() -> None:
     """Backward-compat: constructing the exception without a violations
     kwarg (e.g. external callers raising it directly) still produces a

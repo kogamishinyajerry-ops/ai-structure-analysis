@@ -251,10 +251,13 @@ def validate_report_collect(
         template alignment first). This is the only short-circuit.
       * Each ``SectionRequirement`` is checked independently: missing
         section → 1 violation; same-titled candidates that all fail
-        their level+citation contract → 1 violation referencing the
-        candidate that came closest. We do NOT emit one violation per
-        bad candidate; that would multiply the noise without adding
-        signal.
+        their level+citation contract → 1 violation derived from the
+        *last* same-titled candidate inspected (DFS pre-order order).
+        We do NOT emit one violation per bad candidate; that would
+        multiply the noise without adding signal. The "last one
+        inspected" wording is deliberate — earlier we considered
+        picking the "closest-to-correct" candidate, but the simpler
+        rule is what's implemented and what callers should rely on.
 
     Duplicate section titles are still tolerated: the requirement
     passes if *any* same-titled section satisfies level + citation.
