@@ -93,10 +93,10 @@ of the binary) applies uniformly.
 
 ### 3.1 vortex_radioss — MPL-2.0
 
-[vortex-radioss](https://github.com/anthrax3/vortex-radioss) is a
+[vortex-radioss](https://github.com/Vortex-CAE/Vortex-Radioss) is a
 Python parser for OpenRadioss `.A###` animation binaries, licensed
-**MPL-2.0**. We import it from `pyproject.toml` and use its
-`RadiossReader` class in
+**MPL-2.0** (license file at the upstream repo root). We import it
+from `pyproject.toml` and use its `RadiossReader` class in
 `backend/app/adapters/openradioss/reader.py` (around line 466).
 
 MPL-2.0 is a file-level copyleft. It does NOT propagate to the rest
@@ -139,8 +139,7 @@ the upstream QA test bundle. The full licensing analysis is in
 
 - The adapter source code (`backend/app/adapters/openradioss/`) —
   MIT.
-- The test suite (`backend/tests/test_openradioss_adapter.py`) —
-  MIT.
+- The test suite (`tests/test_openradioss_adapter.py`) — MIT.
 - The `OpenRadiossReader` Protocol implementation — MIT.
 - Any other MIT code in this repository.
 
