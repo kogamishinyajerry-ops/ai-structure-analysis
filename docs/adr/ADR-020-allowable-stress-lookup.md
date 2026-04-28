@@ -82,7 +82,9 @@ Local-membrane (PL) and bending (Pb) categories use **2× and 3×** [σ] respect
 
 ### 3. Why these formulas, and why simplified
 
-**GB 150.3-2011 §4.1.5 Table 4** lists [σ] directly per grade per temperature. The simplified `min(σ_y/1.5, σ_u/3.0)` formula is the **conservative lower-bound** generator — Table 4's published values for low-alloy pressure-vessel grades (Q345R, 16MnR) sit roughly **8–10% above** the simplified formula at room temperature (Table 4 effectively uses `σ_u/2.7` for those grades, per the standard's own footnote). Concretely: Q345R simplified = `min(345/1.5, 510/3.0) = 156.7 MPa`; Table 4 publishes ≈ 170 MPa. The simplified path is **safe (conservative)** — it never returns an [σ] higher than Table 4 — but it is **not** identical.
+**GB 150.3-2011 §4.1.5 Table 4** lists [σ] directly per grade per temperature. The simplified `min(σ_y/1.5, σ_u/3.0)` formula is the **conservative lower-bound** generator — Table 4's published values for low-alloy pressure-vessel grades (Q345R, 16MnR) sit roughly **8–10% above** the simplified formula at room temperature (Table 4 effectively uses `σ_u/2.7` for those grades, per the standard's own footnote). Concretely: Q345R simplified = `min(345/1.5, 510/3.0) = min(230.0, 170.0) = 170.0 MPa`; Table 4 publishes ≈ 170 MPa for Q345R at room T, so the simplified formula and Table 4 happen to agree for *this* grade. For 16MnR (σ_y=345, σ_u=470 — same yield as Q345R but lower ultimate) the simplified formula returns `min(230.0, 156.7) = 156.7 MPa`; Table 4 publishes ≈ 170 MPa, exposing the ~8% gap. The simplified path is **safe (conservative)** — it never returns an [σ] higher than Table 4 — but it is **not** identical.
+
+(Earlier revisions of this ADR cited "Q345R simplified = 156.7 MPa" — that calculation mixed Q345R's σ_y with Q345B's σ_u; the correct Q345R simplified value is 170.0 MPa as shown above. Corrected during W6c lib drafting; the W6b regression test `test_simplified_vs_table4_conservative_gap_is_pinned` already pins the right number.)
 
 We compute (and accept the conservative gap) rather than table-look-up because:
 
