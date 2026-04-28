@@ -64,6 +64,69 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
+# Reader-input validation (shared by Tier 2)
+# ---------------------------------------------------------------------------
+
+
+def _validate_step_ids(reader: ReaderHandle, step_ids: list[int]) -> None:
+    """All ``step_ids`` must be advertised by ``reader.solution_states``.
+
+    Codex R1 finding: without this, an unknown step_id silently becomes
+    "field unavailable" (because ``get_field`` returns ``None`` for both
+    unknown-step AND known-step-with-no-field per ADR-003). Plots and
+    DOCX summaries would then plot a flat zero where the engineer
+    expects a hard failure. Distinguishing unknown-step at the orchestrator
+    level keeps the API ergonomic — Tier 1 helpers keep their own
+    validation contracts.
+    """
+    known = {s.step_id for s in reader.solution_states}
+    bad = [sid for sid in step_ids if sid not in known]
+    if bad:
+        raise KeyError(
+            f"step_id(s) {bad!r} not in reader.solution_states "
+            f"(known: {sorted(known)!r})"
+        )
+
+
+def _validate_node_indices(
+    node_indices: npt.NDArray[np.int64], n_nodes: int
+) -> None:
+    """``node_indices`` must be 1-D integer array with values in
+    ``[0, n_nodes)``. Codex R1 finding: numpy advanced indexing is
+    happy to silently wrap negative indices and to broadcast 2-D
+    inputs — both produce *plausible-looking* but semantically wrong
+    answers. The mesh contract (``Mesh.node_id_array`` vs
+    ``Mesh.node_index``) explicitly separates external IDs from dense
+    array positions, so passing the wrong one is a real footgun for
+    downstream W7c viz / W7f DOCX callers.
+    """
+    if node_indices.ndim != 1:
+        raise ValueError(
+            f"node_indices must be 1-D; got shape {node_indices.shape}"
+        )
+    if not np.issubdtype(node_indices.dtype, np.integer):
+        raise ValueError(
+            f"node_indices must be integer dtype; got {node_indices.dtype}"
+        )
+    if node_indices.size == 0:
+        # Allow empty subset — caller will get max=0.0 from
+        # max_displacement_magnitude, which is consistent with the
+        # documented empty-input behaviour.
+        return
+    if int(node_indices.min()) < 0:
+        raise ValueError(
+            f"node_indices must be non-negative (these are 0-based row "
+            f"positions, not external node IDs); got "
+            f"min={int(node_indices.min())}"
+        )
+    if int(node_indices.max()) >= n_nodes:
+        raise ValueError(
+            f"node_indices out of bounds for mesh with {n_nodes} nodes; "
+            f"got max={int(node_indices.max())}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Tier 1 — pure-array helpers
 # ---------------------------------------------------------------------------
 
@@ -144,7 +207,16 @@ def eroded_history(
     feature-detect via ``isinstance`` first and skip this section in
     DOCX/viz output if the active adapter does not implement it
     (e.g. CalculiX has no element erosion).
+
+    Unknown ``step_id``s raise ``KeyError`` upfront (validated against
+    ``reader.solution_states``); the underlying
+    ``deleted_facets_for`` already raises on unknown step but the
+    upfront check fires before we partial-process the dict.
     """
+    # SupportsElementDeletion is structural; it composes with
+    # ReaderHandle for any concrete adapter we have. _validate_step_ids
+    # uses the ReaderHandle surface (solution_states) so we narrow.
+    _validate_step_ids(reader, step_ids)  # type: ignore[arg-type]
     return {sid: count_eroded(reader.deleted_facets_for(sid)) for sid in step_ids}
 
 
@@ -158,7 +230,10 @@ def perforation_event_step(
     the contact-only GS-100 fixture (74/74 alive at every state) hits
     this path and gets ``None``, matching engineer intuition for "no
     perforation observed".
+
+    Unknown ``step_id``s raise ``KeyError`` upfront.
     """
+    _validate_step_ids(reader, step_ids)  # type: ignore[arg-type]
     for sid in step_ids:
         flags = reader.deleted_facets_for(sid)
         if count_eroded(flags) > 0:
@@ -176,16 +251,31 @@ def displacement_history(
 
     ``node_indices`` (if given) restricts the max to a subset — handy
     for "plate-only" or "projectile-only" envelopes once a node
-    partitioning exists. Without it the result is the global max.
+    partitioning exists. The indices are **0-based row positions in
+    the mesh array**, not external solver node IDs (use
+    ``Mesh.node_index`` to map IDs → row positions). Validated for
+    1-D integer dtype, non-negative, in-bounds against the mesh size.
 
-    States that don't advertise ``DISPLACEMENT`` are recorded as
-    ``0.0`` (mirrors ``max_displacement_magnitude`` on empty input)
-    — this matches the contract that ``get_field`` returns ``None``
-    for unavailable fields rather than fabricating zeros (ADR-003);
-    the *aggregate* "no displacement available at this step" is best
-    expressed as 0.0 here so downstream plotting code does not have
-    to special-case ``None``.
+    Unknown ``step_id``s raise ``KeyError`` upfront — without this
+    check, ``get_field`` returns ``None`` for both "unknown step" and
+    "known step with no DISPLACEMENT field" (ADR-003), so a stale or
+    mistyped ``step_ids`` list would silently fabricate zero rows in
+    the output and downstream plots would flatten without warning.
+    Codex R1 finding.
+
+    States that DO appear in ``solution_states`` but happen to have
+    no DISPLACEMENT field at this step (extremely rare — DISPLACEMENT
+    is the OpenRadioss adapter's universal carve-out per ADR-021)
+    record ``0.0``. ADR-003 fabrication still applies at the field
+    level — the underlying ``get_field`` correctly returns ``None``;
+    only the *aggregate* "no displacement available" is expressed as
+    0.0 to keep plotting code free of ``None`` special cases.
     """
+    _validate_step_ids(reader, step_ids)
+    if node_indices is not None:
+        _validate_node_indices(
+            np.asarray(node_indices), reader.mesh.node_id_array.size
+        )
     out: dict[int, float] = {}
     for sid in step_ids:
         f = reader.get_field(CanonicalField.DISPLACEMENT, sid)

@@ -113,11 +113,26 @@ def test_max_displacement_magnitude_rejects_wrong_shape() -> None:
 # ---------------------------------------------------------------------------
 
 
+class _StubSolutionState:
+    """Minimal struct satisfying the SolutionState attribute access used
+    by the Tier 2 step_id validation."""
+
+    def __init__(self, step_id: int) -> None:
+        self.step_id = step_id
+
+
 class _StubReaderWithErosion:
-    """Minimal ``SupportsElementDeletion`` shim for unit tests."""
+    """Minimal ``SupportsElementDeletion`` + partial ``ReaderHandle``
+    shim for unit tests. ``solution_states`` is required by the
+    upfront step_id validation introduced after Codex R1 — without
+    it ``displacement_history`` / ``eroded_history`` /
+    ``perforation_event_step`` would not raise on unknown steps."""
 
     def __init__(self, by_step: dict[int, np.ndarray]) -> None:
         self._by_step = by_step
+        self.solution_states = [
+            _StubSolutionState(sid) for sid in sorted(by_step)
+        ]
 
     def deleted_facets_for(self, step_id: int) -> "np.ndarray":
         if step_id not in self._by_step:
@@ -168,6 +183,154 @@ def test_perforation_event_step_skips_steps_not_in_list() -> None:
         }
     )
     assert perforation_event_step(rdr, [1, 3]) is None
+
+
+def test_eroded_history_unknown_step_raises_keyerror() -> None:
+    """Codex R1: unknown step_ids must fail upfront, not partial-process
+    and silently mask the bad index."""
+    rdr = _StubReaderWithErosion({1: np.ones(5, dtype=np.int8)})
+    with pytest.raises(KeyError, match="999"):
+        eroded_history(rdr, [1, 999])
+
+
+def test_perforation_event_step_unknown_step_raises_keyerror() -> None:
+    rdr = _StubReaderWithErosion({1: np.ones(5, dtype=np.int8)})
+    with pytest.raises(KeyError, match="42"):
+        perforation_event_step(rdr, [42])
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 — synthetic Reader stubs for displacement_history validation
+# ---------------------------------------------------------------------------
+
+
+class _StubMesh:
+    def __init__(self, n: int) -> None:
+        self.node_id_array = np.arange(1, n + 1, dtype=np.int64)
+
+
+class _StubFieldData:
+    def __init__(self, vals: np.ndarray) -> None:
+        self._vals = vals
+        self.metadata = None  # not consulted by the orchestrator
+
+    def values(self) -> np.ndarray:
+        return self._vals
+
+
+class _StubDispReader:
+    """ReaderHandle-shaped stub that returns canned displacement fields."""
+
+    def __init__(
+        self,
+        n_nodes: int,
+        disp_by_step: dict[int, np.ndarray],
+    ) -> None:
+        self.mesh = _StubMesh(n_nodes)
+        self._disp_by_step = disp_by_step
+        self.solution_states = [
+            _StubSolutionState(sid) for sid in sorted(disp_by_step)
+        ]
+
+    def get_field(self, name, step_id):  # type: ignore[no-untyped-def]
+        if step_id not in self._disp_by_step:
+            return None  # mimics adapter behaviour for unknown step
+        return _StubFieldData(self._disp_by_step[step_id])
+
+
+def _disp_arr(rows: list[list[float]]) -> np.ndarray:
+    return np.asarray(rows, dtype=np.float64)
+
+
+def test_displacement_history_basic() -> None:
+    rdr = _StubDispReader(
+        n_nodes=3,
+        disp_by_step={
+            1: _disp_arr([[0, 0, 0], [0, 0, 0], [0, 0, 0]]),
+            2: _disp_arr([[1, 0, 0], [0, 2, 0], [0, 0, 3]]),
+        },
+    )
+    h = displacement_history(rdr, [1, 2])
+    assert h[1] == pytest.approx(0.0)
+    assert h[2] == pytest.approx(3.0)
+
+
+def test_displacement_history_unknown_step_raises_keyerror() -> None:
+    """Codex R1: displacement_history must NOT silently fabricate 0.0
+    for an unknown step — that flattens W7c/W7f plots without warning.
+    """
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    with pytest.raises(KeyError, match="999"):
+        displacement_history(rdr, [1, 999])
+
+
+def test_displacement_history_node_subset_basic() -> None:
+    rdr = _StubDispReader(
+        n_nodes=4,
+        disp_by_step={
+            1: _disp_arr([[10, 0, 0], [0, 0, 0], [0, 5, 0], [0, 0, 0]])
+        },
+    )
+    # Restrict to indices [1, 3] — both zero rows. Max should be 0.
+    h = displacement_history(
+        rdr, [1], node_indices=np.array([1, 3], dtype=np.int64)
+    )
+    assert h[1] == pytest.approx(0.0)
+
+
+def test_displacement_history_negative_index_rejected() -> None:
+    """Codex R1: numpy advanced indexing wraps negative indices to the
+    tail. node_indices is documented as 0-based array positions, so
+    negative values are a usage bug — fail loudly."""
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        displacement_history(
+            rdr, [1], node_indices=np.array([-1], dtype=np.int64)
+        )
+
+
+def test_displacement_history_out_of_bounds_index_rejected() -> None:
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    with pytest.raises(ValueError, match="out of bounds"):
+        displacement_history(
+            rdr, [1], node_indices=np.array([5], dtype=np.int64)
+        )
+
+
+def test_displacement_history_2d_node_indices_rejected() -> None:
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    with pytest.raises(ValueError, match="must be 1-D"):
+        displacement_history(
+            rdr, [1], node_indices=np.zeros((2, 2), dtype=np.int64)
+        )
+
+
+def test_displacement_history_non_integer_dtype_rejected() -> None:
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    with pytest.raises(ValueError, match="integer dtype"):
+        displacement_history(
+            rdr, [1], node_indices=np.array([1.5], dtype=np.float64)
+        )
+
+
+def test_displacement_history_empty_subset_returns_zero() -> None:
+    rdr = _StubDispReader(
+        n_nodes=3, disp_by_step={1: _disp_arr([[1, 0, 0]])}
+    )
+    h = displacement_history(
+        rdr, [1], node_indices=np.array([], dtype=np.int64)
+    )
+    assert h[1] == 0.0
 
 
 # ---------------------------------------------------------------------------
