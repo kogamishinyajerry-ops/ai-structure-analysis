@@ -902,8 +902,8 @@ def main(argv: list[str] | None = None) -> int:
             # unavailable" hint without taking the whole run down.
             print(
                 f"warning: viewport export failed ({type(exc).__name__}: {exc}); "
-                f"continuing with DOCX-only output. Pass --no-viewport "
-                f"or omit --viewport-out to suppress this stage.",
+                f"continuing with DOCX-only output. Omit --viewport-out "
+                f"to suppress this stage.",
                 file=sys.stderr,
                 flush=True,
             )

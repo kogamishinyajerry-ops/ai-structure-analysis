@@ -167,6 +167,23 @@ def export_run(
             f"vortex_radioss is required for VTU export but is not importable: {exc}"
         ) from exc
 
+    # Codex R1 HIGH on PR #111 — the manifest keys ``time_ms`` and
+    # ``max_displacement_mm`` are unit-bearing, but the parameter
+    # accepts arbitrary UnitSystem values. Until the schema grows
+    # explicit per-key units (e.g. via a ``units: {time: "ms", ...}``
+    # block, deferred to W8a-units), the only honest contract is to
+    # refuse non-si-mm runs rather than silently mislabel them. The
+    # OpenRadioss adapter in W7b is itself si-mm-only, so this is not
+    # a regression of any user flow today — it just locks the contract
+    # so a future ADR-003 violation cannot slip in via a different
+    # ``UnitSystem`` value.
+    if unit_system is not UnitSystem.SI_MM:
+        raise VTUExportError(
+            f"viewport export currently only supports SI_MM; got "
+            f"{unit_system.value}. Multi-unit manifest schema is "
+            f"planned for W8a-units."
+        )
+
     if not openradioss_root.is_dir():
         raise VTUExportError(
             f"OpenRadioss root is not a directory: {openradioss_root}"
@@ -227,18 +244,55 @@ def export_run(
             del_3d = np.asarray(arrays["delElt3DA"], dtype=bool)
             del_2d = np.asarray(arrays["delEltA"], dtype=bool)
 
+            # Codex R1 HIGH on PR #111 — assert connectivity / deletion
+            # array lengths agree with the header BEFORE assembling the
+            # grid. The previous ``zip(..., strict=False)`` silently
+            # truncated to the shorter array, so a length drift would
+            # drop cells from the VTU while the manifest still reported
+            # the full header counts. That is a data-integrity bug for
+            # the viewport — refuse the frame instead.
+            if connect_3d.shape[0] != n_solids_total:
+                raise VTUExportError(
+                    f"frame {frame_path.name} solid connectivity rows "
+                    f"({connect_3d.shape[0]}) differ from reference "
+                    f"nbElts3D ({n_solids_total}); mesh topology "
+                    f"changed mid-run, viewport contract forbids."
+                )
+            if del_3d.shape[0] != n_solids_total:
+                raise VTUExportError(
+                    f"frame {frame_path.name} solid delElt array length "
+                    f"({del_3d.shape[0]}) differs from nbElts3D "
+                    f"({n_solids_total})."
+                )
+            if connect_2d.shape[0] != n_facets_total:
+                raise VTUExportError(
+                    f"frame {frame_path.name} facet connectivity rows "
+                    f"({connect_2d.shape[0]}) differ from reference "
+                    f"nbFacets ({n_facets_total}); mesh topology "
+                    f"changed mid-run, viewport contract forbids."
+                )
+            if del_2d.shape[0] != n_facets_total:
+                raise VTUExportError(
+                    f"frame {frame_path.name} facet delElt array length "
+                    f"({del_2d.shape[0]}) differs from nbFacets "
+                    f"({n_facets_total})."
+                )
+
             # pyvista cells layout: [n_pts_in_cell, p0, p1, ..., n_pts_in_cell, ...]
+            # Lengths are pinned by the asserts above; ``strict=True``
+            # makes the contract explicit and any future regression
+            # surfaces as a clean ValueError instead of a silent drop.
             cells_blocks: list[np.ndarray] = []
             cell_types: list[int] = []
             cell_alive: list[bool] = []
             cell_kind: list[int] = []  # 0 = solid (brick), 1 = facet (quad)
 
-            for row, alive in zip(connect_3d, del_3d, strict=False):
+            for row, alive in zip(connect_3d, del_3d, strict=True):
                 cells_blocks.append(np.array([8, *row], dtype=np.int64))
                 cell_types.append(_VTK_HEXAHEDRON)
                 cell_alive.append(bool(alive))
                 cell_kind.append(0)
-            for row, alive in zip(connect_2d, del_2d, strict=False):
+            for row, alive in zip(connect_2d, del_2d, strict=True):
                 cells_blocks.append(np.array([4, *row], dtype=np.int64))
                 cell_types.append(_VTK_QUAD)
                 cell_alive.append(bool(alive))

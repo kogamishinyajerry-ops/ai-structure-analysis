@@ -388,6 +388,73 @@ def test_ambiguous_frame_collision_raises(
         )
 
 
+def test_non_si_mm_unit_system_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R1 HIGH on PR #111 — manifest keys are unit-bearing
+    (``time_ms``, ``max_displacement_mm``). Until the schema grows
+    explicit per-key units, non-SI_MM runs must be refused rather
+    than silently mislabelled."""
+    pytest.importorskip("pyvista")
+    deck = tmp_path / "deck"  # type: ignore[attr-defined]
+    deck.mkdir()
+    with pytest.raises(VTUExportError, match="only supports SI_MM"):
+        export_run(
+            openradioss_root=deck,
+            rootname="model_00",
+            output_dir=tmp_path / "out",  # type: ignore[attr-defined]
+            unit_system=UnitSystem.SI,
+        )
+    with pytest.raises(VTUExportError, match="only supports SI_MM"):
+        export_run(
+            openradioss_root=deck,
+            rootname="model_00",
+            output_dir=tmp_path / "out2",  # type: ignore[attr-defined]
+            unit_system=UnitSystem.ENGLISH,
+        )
+
+
+def test_connectivity_length_mismatch_refused_not_silently_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+    gs101_baked: Path,
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R1 HIGH on PR #111 — the previous ``zip(..., strict=False)``
+    silently truncated cells when ``connect3DA`` and ``delElt3DA``
+    drifted in length (e.g. corrupt frame parse). The exporter must
+    refuse the frame instead, otherwise the manifest reports the full
+    header counts while the VTU silently drops cells.
+
+    Simulate the drift by patching ``RadiossReader.raw_arrays`` to
+    return a truncated ``delElt3DA`` after the first call.
+    """
+    pv = pytest.importorskip("pyvista")  # noqa: F841
+    import numpy as np
+    from vortex_radioss.animtod3plot.RadiossReader import RadiossReader
+
+    real_init = RadiossReader.__init__
+    call_count = {"n": 0}
+
+    def patched_init(self: RadiossReader, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)
+        call_count["n"] += 1
+        # Reference frame parses cleanly; second-onwards we lop off
+        # the last entry of delElt3DA so length disagrees with
+        # connect3DA / nbElts3D.
+        if call_count["n"] >= 2:
+            arr = np.asarray(self.raw_arrays["delElt3DA"], dtype=bool)
+            self.raw_arrays["delElt3DA"] = arr[:-1]
+
+    monkeypatch.setattr(RadiossReader, "__init__", patched_init)
+
+    with pytest.raises(VTUExportError, match="delElt array length"):
+        export_run(
+            openradioss_root=gs101_baked,
+            rootname="model_00",
+            output_dir=tmp_path / "out",  # type: ignore[attr-defined]
+        )
+
+
 # ---------------------------------------------------------------------------
 # Bucket 5 — physics smoke test (GS-101 documented behaviour)
 # ---------------------------------------------------------------------------
