@@ -53,6 +53,15 @@ rag = [
     "sentence-transformers>=2.7",
     "chromadb>=0.5",
 ]
+# OpenRadioss adapter — RFC-001 W7b. Reads .A***.gz animation files
+# and T01 time-history binaries via Vortex-CAE/Vortex-Radioss (MPL-2.0),
+# which wraps lasso-python (LS-Dyna .d3plot reader). The OpenRadioss
+# solver itself (AGPL-3.0) is NOT a Python dep — it runs as a Docker
+# subprocess (tools/openradioss/Dockerfile, lands in W7e).
+openradioss = [
+    "vortex-radioss>=1.2",
+    "lasso-python>=2.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
