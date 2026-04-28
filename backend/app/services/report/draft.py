@@ -31,6 +31,7 @@ What this module does NOT do (deferred to W4+ per RFC §6.4):
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -399,29 +400,36 @@ _ALLOWABLE_EVIDENCE_ID: Final[str] = "EV-ALLOWABLE-001"
 _VERDICT_EVIDENCE_ID: Final[str] = "EV-VERDICT-001"
 
 
+_SYMBOL_TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
+
+
 def _format_inputs_substitution(formula: str, inputs: Mapping[str, float]) -> str:
     """Render the substitution line shown in § 许用应力.
 
-    Returns ``"min(σ_y / 1.5, σ_u / 3.0) = min(345.0 / 1.5, 470.0 / 3.0)"``-style.
-    Engineers cross-check this against the source clause; the renderer
-    must NOT round any input — that's the kind of silent loss ADR-012
-    tries to prevent.
+    Returns ``"min(sigma_y / 1.5, sigma_u / 3.0) = min(345 / 1.5, 470 / 3.0)"``-style
+    by replacing each whole-word symbol present in ``inputs`` with its
+    numeric value. Engineers cross-check this against the source clause;
+    the renderer must NOT round any input — that's the kind of silent
+    loss ADR-012 tries to prevent.
 
-    The function only handles the shapes the W6b YAML emits today
-    (formulas referencing ``sigma_y`` and ``sigma_u``). For unknown
-    keys it falls back to a generic ``key=value`` join so a future
-    formula extension still produces a readable line.
+    Whole-word matching matters: a future YAML formula referencing both
+    ``sigma_y`` and ``sigma_yield`` must not collapse to the wrong
+    substitution. The regex anchors each replacement at word boundaries
+    (``\\b``) and the substitution dict is consulted exactly once per
+    matched token, so nothing is double-replaced even if a numeric
+    value happens to spell another input key.
+
+    Numeric formatting uses ``:g`` to strip trailing zeros — ``345.0``
+    renders as ``345`` rather than ``345.0`` so the audit-line stays
+    short, but precision is preserved (``2.5`` stays ``2.5``).
     """
-    # Replace the symbolic σ_y / σ_u placeholders verbatim, in priority
-    # order, then leave anything else alone. ``str.replace`` in two
-    # passes avoids the ``str.format`` interpretation of the YAML's raw
-    # symbols.
-    rendered = formula
-    if "sigma_y" in inputs:
-        rendered = rendered.replace("sigma_y", f"{inputs['sigma_y']:g}")
-    if "sigma_u" in inputs:
-        rendered = rendered.replace("sigma_u", f"{inputs['sigma_u']:g}")
-    return rendered
+    def _sub(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token in inputs:
+            return f"{inputs[token]:g}"
+        return token
+
+    return _SYMBOL_TOKEN_RE.sub(_sub, formula)
 
 
 def _build_allowable_and_verdict_evidence(
@@ -557,14 +565,28 @@ def _build_verdict_section(
     sigma_allow_value = inputs_dict["sigma_allow"]
     threshold_value = inputs_dict["threshold"]
 
+    # Pick relations from the actual numbers, not from kind. With
+    # threshold=1.5, a FAIL can occur even when σ_max ≤ [σ] (e.g.
+    # SF=1.2 < 1.5). Hard-coding ">" / "<" by kind would render a
+    # factually wrong inequality in that case — exactly the kind of
+    # silent untruth ADR-012 forbids in audit-trail content.
+    if sigma_max_value < sigma_allow_value:
+        relation = "<"
+    elif sigma_max_value > sigma_allow_value:
+        relation = ">"
+    else:
+        relation = "="
+    if verdict.safety_factor > threshold_value:
+        sf_relation = ">"
+    elif verdict.safety_factor < threshold_value:
+        sf_relation = "<"
+    else:
+        sf_relation = "="
+
     if verdict.kind == "PASS":
-        relation = "≤"
-        sf_relation = "≥"
         verdict_text_zh = "强度满足要求"
         verdict_text_en = "PASS"
     else:
-        relation = ">"
-        sf_relation = "<"
         verdict_text_zh = "强度不满足要求"
         verdict_text_en = "FAIL"
 

@@ -976,6 +976,79 @@ def test_w6c2_lifting_lug_accepts_same_kwargs() -> None:
     assert "EV-LUG-VM-MAX" in derivation
 
 
+def test_w6c2_verdict_relation_truthful_when_threshold_above_floor_and_fail() -> None:
+    """With threshold=1.5 and σ_max=140 MPa < [σ]=156.67 MPa, the SF
+    is 1.119 — FAIL against the institute-internal margin, but σ_max
+    is genuinely BELOW [σ]. Hard-coding ``>`` for the σ-relation on
+    FAIL would print the audit-line as ``σ_max > [σ]`` — factually
+    wrong and exactly the silent untruth ADR-012 forbids in
+    audit-trail content."""
+    rdr = _make_synthetic_stress_reader(140.0)
+    report, _ = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+        threshold=1.5,
+    )
+    verdict_section = next(
+        s for s in report.sections if s.title.startswith("评定结论")
+    )
+    # Verdict is FAIL (SF=1.119 < threshold=1.5)…
+    assert "FAIL" in verdict_section.content
+    # …but σ_max=140 IS less than [σ]=156.67 — the rendered inequality
+    # must be ``<`` (or ``≤`` / ``=`` for boundary), NEVER ``>``.
+    assert "140" in verdict_section.content
+    # Find the σ_max-vs-[σ] clause and assert its relation is honest.
+    # The line shape is "σ_max = 140 ... < [σ] = 156.667 ...".
+    assert "σ_max = 140 MPa < [σ]" in verdict_section.content
+
+
+def test_w6c2_format_inputs_substitution_respects_word_boundaries() -> None:
+    """A future YAML formula could reference both ``sigma_y`` and
+    ``sigma_yield`` (or ``sigma_u`` and ``sigma_ut``). The naive
+    ``str.replace`` strategy would corrupt the longer token by
+    consuming the shorter one as a substring; the word-boundary
+    regex must isolate each whole-word symbol.
+
+    This is the bug Codex was specifically pointed at on PR #100 R1
+    review focus #6 — fixing it pre-emptively here closes the audit
+    hole before any future formula trips it.
+    """
+    from app.services.report.draft import _format_inputs_substitution
+
+    # Today's formulas only have sigma_y / sigma_u — sanity check first.
+    assert _format_inputs_substitution(
+        "min(sigma_y / 1.5, sigma_u / 3.0)",
+        {"sigma_y": 345.0, "sigma_u": 470.0},
+    ) == "min(345 / 1.5, 470 / 3.0)"
+
+    # Tomorrow's formula: sigma_y AND sigma_yield in the same expression.
+    # If we mis-replaced sigma_y first, sigma_yield would become
+    # "345ield" — a clear corruption of the audit line. The regex
+    # boundaries must keep them distinct.
+    rendered = _format_inputs_substitution(
+        "min(sigma_y / 1.5, sigma_yield / 2.0)",
+        {"sigma_y": 345.0, "sigma_yield": 400.0},
+    )
+    assert "345" in rendered
+    assert "400" in rendered
+    assert "ield" not in rendered  # no truncated token surviving
+    assert rendered == "min(345 / 1.5, 400 / 2.0)"
+
+    # Symbol present in the formula but absent from inputs is left alone
+    # (a future formula extension might reference a new symbol the data
+    # layer hasn't started supplying yet — better to leave it visible
+    # than silently disappear it).
+    rendered = _format_inputs_substitution(
+        "min(sigma_y / 1.5, sigma_u / 3.0, E_j)",
+        {"sigma_y": 345.0, "sigma_u": 470.0},
+    )
+    assert "E_j" in rendered  # untouched
+    assert "345" in rendered
+    assert "470" in rendered
+
+
 def test_w6c2_allowable_section_shows_substituted_formula() -> None:
     """The substitution line must show the actual σ_y / σ_u numbers,
     not the symbolic placeholders. ADR-020 §5: engineers cross-check
