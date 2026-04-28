@@ -106,11 +106,10 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on("bake:stderr", handler);
     return () => ipcRenderer.removeListener("bake:stderr", handler);
   },
-  onBakeExit: (cb: (exitCode: number) => void): (() => void) => {
-    const handler = (_e: unknown, code: number) => cb(code);
-    ipcRenderer.on("bake:exit", handler);
-    return () => ipcRenderer.removeListener("bake:exit", handler);
-  },
+  // No onBakeExit — the bake handler resolves the IPC promise with
+  // {ok, exitCode, ...} so the renderer reads exit through the await,
+  // not a separate event subscription. The "bake:exit" channel is
+  // still emitted by main.ts in case a future feature needs it.
 
   // W6a / Codex R1 PR #91 LOW: single source of truth is
   // backend/app/data/materials.json. The renderer pulls the dropdown

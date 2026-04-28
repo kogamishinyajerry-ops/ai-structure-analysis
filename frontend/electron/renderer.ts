@@ -70,7 +70,6 @@ interface ElectronApi {
   onFigure: (cb: (path: string) => void) => () => void;
   onBakeStdout: (cb: (text: string) => void) => () => void;
   onBakeStderr: (cb: (text: string) => void) => () => void;
-  onBakeExit: (cb: (exitCode: number) => void) => () => void;
 }
 
 declare global {
@@ -467,6 +466,12 @@ void window.api.getDemoGs101Deck().then((deckDir) => {
   // to decide whether to advertise the bake button.
   if (!deckDir) return;
   bakeGs101Btn.hidden = false;
+  // Re-run the form state so the inFlight gate is applied if a
+  // run/bake is already in progress when this late-resolving promise
+  // settles (Codex R4 NIT — without this, the button briefly appears
+  // enabled even though the click would be a no-op via the top-of-
+  // handler re-entry guard).
+  updateFormState();
 });
 
 // --- material dropdown population (Codex R1 LOW PR #91 fix) --------------
