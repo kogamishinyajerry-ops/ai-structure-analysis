@@ -209,6 +209,28 @@ class CalculiXReader:
         # ADR-003: do not fabricate. BCs live in the .inp deck.
         return []
 
+    def element_inventory(self) -> dict[str, int]:
+        """``SupportsElementInventory`` capability — count elements by
+        canonical type label.
+
+        FRD ``-2`` records carry the element-type string verbatim
+        (e.g. ``"HEX8"``, ``"TET4"``); we group by that label without
+        normalising. The returned dict is fresh per call so the
+        Layer-4 caller can iterate without worrying about mid-call
+        mutation by another thread (Codex W6e R1 risk class —
+        same shape as the deep-freeze pattern in W6b's YAML loader).
+        Iteration order is descending by count so the renderer can
+        present the dominant types first.
+        """
+        self._check_open()
+        counts: dict[str, int] = {}
+        for elem in self._parsed.elements.values():
+            label = elem.element_type
+            counts[label] = counts.get(label, 0) + 1
+        # Sort descending by count, then alphabetical on ties — stable
+        # presentation order for the audit line.
+        return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
     @property
     def solution_states(self) -> list[SolutionState]:
         self._check_open()
