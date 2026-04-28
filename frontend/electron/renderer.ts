@@ -36,11 +36,20 @@ interface RunReportFailure {
 
 type RunReportResult = RunReportSuccess | RunReportFailure;
 
+interface MaterialOption {
+  codeGrade: string;
+  codeStandard: string;
+  sigmaY: number;
+  sigmaU: number;
+  citation: string;
+}
+
 interface ElectronApi {
   openFrd: () => Promise<string | null>;
   saveDocx: (suggested: string) => Promise<string | null>;
   revealInFolder: (filepath: string) => Promise<boolean>;
   getDemoFrd: () => Promise<string | null>;
+  listMaterials: () => Promise<MaterialOption[]>;
   runReport: (req: RunReportRequest) => Promise<RunReportResult>;
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
@@ -310,6 +319,53 @@ void window.api.getDemoFrd().then((demoFrd) => {
   demoBtn.dataset.frd = demoFrd;
   demoBtn.hidden = false;
 });
+
+// --- material dropdown population (Codex R1 LOW PR #91 fix) --------------
+
+/**
+ * Populate the material <select> from the CLI's list-materials output.
+ * Codex R1 PR #91 LOW: HTML used to hardcode <option> values, so a 13th
+ * grade in materials.json would silently fall off the dropdown. Now
+ * materials.json is the single source of truth — main.ts shells out to
+ * `report-cli --list-materials` and we append one option per row.
+ *
+ * The empty default option is left in place by HTML so a CLI failure
+ * doesn't strand the user with a non-functional dropdown.
+ */
+const populateMaterialDropdown = async (): Promise<void> => {
+  let mats: MaterialOption[] = [];
+  try {
+    mats = await window.api.listMaterials();
+  } catch {
+    // CLI not on PATH or threw — empty dropdown is the fallback.
+    return;
+  }
+  if (mats.length === 0) return;
+
+  // Group by code_standard so the optgroup structure matches the
+  // engineer's mental model (GB vs ASME).
+  const byStandard = new Map<string, MaterialOption[]>();
+  for (const m of mats) {
+    const list = byStandard.get(m.codeStandard) ?? [];
+    list.push(m);
+    byStandard.set(m.codeStandard, list);
+  }
+  for (const [standard, list] of byStandard) {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = standard;
+    for (const m of list) {
+      const opt = document.createElement("option");
+      opt.value = m.codeGrade;
+      opt.textContent =
+        `${m.codeGrade} — σ_y=${m.sigmaY} MPa, σ_u=${m.sigmaU} MPa`;
+      opt.title = m.citation;
+      optgroup.appendChild(opt);
+    }
+    materialSelect.appendChild(optgroup);
+  }
+};
+
+void populateMaterialDropdown();
 
 // --- init ------------------------------------------------------------------
 

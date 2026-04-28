@@ -240,7 +240,16 @@ def _render_material_section(
     # Two-column "label / value" table mirroring the GB / ASME row
     # layout common in 化工/电力 design-institute reports.
     table = doc.add_table(rows=0, cols=2)
-    table.style = "Light Grid Accent 1"
+    # Codex R1 nit (PR #91): a future PR that swaps in a real .docx
+    # template might not carry "Light Grid Accent 1". Fall back to
+    # the document's default table style rather than raising KeyError.
+    try:
+        table.style = "Light Grid Accent 1"
+    except KeyError:
+        # python-docx raises KeyError when the named style is absent.
+        # Default styling still produces a readable table; the engineer
+        # can re-style at edit time.
+        pass
 
     rows: list[tuple[str, str]] = [
         ("牌号 / Grade", f"{material.code_grade} ({material.code_standard})"),
@@ -383,13 +392,15 @@ def export_docx(
     for ln in info_lines:
         doc.add_paragraph(ln)
 
-    _render_section_tree(doc, report.sections)
+    # Codex R1 PR #91 MEDIUM: § 材料属性 must sit BEFORE the body
+    # sections per RFC-001 §2.2 step 4 ("模型概况 → 材料属性 → 边界条件
+    # → 关键结果"). Today the static draft generators emit "key
+    # results" as the body section; placing material AFTER section_tree
+    # would violate that order. Material now precedes the body; W6e
+    # (模型概况) can land above it without further reshape.
     if material is not None:
-        # W6a: § 材料属性 sits between the body sections and the
-        # appendices so an engineer sweeping the document top-to-bottom
-        # sees the material context before the evidence audit trail.
-        # Order will be reshaped if W6e (模型概况) lands above it.
         _render_material_section(doc, material)
+    _render_section_tree(doc, report.sections)
     _render_evidence_appendix(doc, bundle)
     if figures:
         _render_figures_appendix(doc, figures)

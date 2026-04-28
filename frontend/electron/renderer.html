@@ -37,24 +37,12 @@
 
         <div class="field">
           <label for="material">材料 / Material</label>
+          <!-- Codex R1 PR #91 LOW: options populated at runtime from
+               `report-cli --list-materials` (single source of truth =
+               backend/app/data/materials.json). The empty default is
+               always present; renderer.ts adds the real grades. -->
           <select id="material">
             <option value="">— 不渲染材料章节 / no material section —</option>
-            <optgroup label="GB 碳钢 / 低合金钢">
-              <option value="Q235B">Q235B (GB/T 700) — 普碳钢</option>
-              <option value="Q345B">Q345B (GB/T 1591) — 低合金高强度</option>
-              <option value="Q345R">Q345R (GB 713) — 中低压容器</option>
-              <option value="Q370R">Q370R (GB 713) — 中高压容器</option>
-              <option value="16MnR">16MnR (GB 713-2008) — 旧牌号 (≈Q345R)</option>
-              <option value="15CrMoR">15CrMoR (GB 713) — 抗氢中温</option>
-              <option value="14Cr1MoR">14Cr1MoR (GB 713) — 抗氢高温</option>
-              <option value="20#">20# (GB/T 699) — 优质碳素</option>
-            </optgroup>
-            <optgroup label="ASME 容器 / 锻件">
-              <option value="SA-516-70">SA-516-70 — 容器钢板 (≈Q345R)</option>
-              <option value="SA-105">SA-105 — 碳钢锻件 (≈20#)</option>
-              <option value="SA-106-B">SA-106-B — 高温无缝管 (≈20#)</option>
-              <option value="SA-387-Gr11-Cl2">SA-387 Gr.11 Cl.2 — 抗氢钢 (≈15CrMoR)</option>
-            </optgroup>
           </select>
           <span class="hint">
             选材料后 DOCX 会渲染 § 材料属性 章节并附标准引用；不选则不出此章节。

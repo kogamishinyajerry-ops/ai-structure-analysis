@@ -159,6 +159,55 @@ ipcMain.handle("get-demo-frd", () => {
   return null;
 });
 
+/**
+ * Pull the built-in material library list by invoking
+ * ``report-cli --list-materials`` and parsing its tab-separated stdout.
+ *
+ * Codex R1 PR #91 LOW fix: the renderer used to hardcode option values,
+ * which drifts from materials.json. Now materials.json is the single
+ * source of truth — the renderer asks the CLI at startup.
+ *
+ * Returns ``[]`` on any failure (CLI not on PATH, malformed output,
+ * non-zero exit). The renderer treats an empty list as "no
+ * materials available, type one via CLI"; the dropdown's empty
+ * default option remains usable.
+ *
+ * NOTE: this uses ``execFile`` with no shell, and the `--list-materials`
+ * args are constants — no injection surface.
+ */
+ipcMain.handle("list-materials", async (): Promise<unknown[]> => {
+  return new Promise((resolve) => {
+    const proc = spawn("report-cli", ["--list-materials"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf-8");
+    });
+    proc.on("error", () => resolve([]));
+    proc.on("close", (code) => {
+      if (code !== 0) return resolve([]);
+      const rows: unknown[] = [];
+      for (const line of out.split(/\r?\n/)) {
+        if (!line || line.startsWith("#")) continue;
+        const parts = line.split("\t");
+        if (parts.length < 5) continue;
+        const sigmaY = Number(parts[2]);
+        const sigmaU = Number(parts[3]);
+        if (!Number.isFinite(sigmaY) || !Number.isFinite(sigmaU)) continue;
+        rows.push({
+          codeGrade: parts[0],
+          codeStandard: parts[1],
+          sigmaY,
+          sigmaU,
+          citation: parts[4],
+        });
+      }
+      resolve(rows);
+    });
+  });
+});
+
 // --- IPC: report-cli subprocess --------------------------------------------
 
 ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunReportRequest) => {

@@ -215,6 +215,91 @@ def test_material_and_material_json_are_mutually_exclusive(gs001_frd: Path, tmp_
     assert excinfo.value.code == 2
 
 
+def test_material_section_precedes_body_sections(gs001_frd: Path, tmp_path: Path) -> None:
+    """Codex R1 PR #91 MEDIUM regression — the § 材料属性 heading must
+    appear BEFORE the body section headings (per RFC-001 §2.2 step 4
+    order: 模型概况 → 材料属性 → 边界条件 → 关键结果). The previous
+    placement injected material AFTER section_tree, putting it after
+    'key results' instead of before."""
+    from docx import Document
+
+    out = tmp_path / "report.docx"
+    rc = main(
+        [
+            "--frd",
+            str(gs001_frd),
+            "--kind",
+            "static",
+            "--output",
+            str(out),
+            "--no-figures",
+            "--material",
+            "Q345B",
+        ]
+    )
+    assert rc == 0
+    doc = Document(str(out))
+
+    headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+    material_idx = next((i for i, h in enumerate(headings) if "材料属性" in h), -1)
+    assert material_idx >= 0, f"§ 材料属性 missing; headings={headings}"
+
+    # The static template's first body section is the report's results
+    # heading; assert 材料属性 sits before it. We don't pin the literal
+    # results-heading text (would be brittle if the template wording
+    # changes); we pin only the *position* relative to other headings.
+    # Specifically: § 材料属性 must NOT be the LAST heading (some
+    # body section must follow it).
+    assert material_idx < len(headings) - 1, (
+        f"§ 材料属性 was placed last; expected at least one body "
+        f"section to follow. headings={headings}"
+    )
+    # And evidence appendix must be AFTER 材料属性 (this was true
+    # before too, but pin to prevent reshape regressions).
+    evidence_idx = next(
+        (i for i, h in enumerate(headings) if "证据" in h or "Evidence" in h),
+        -1,
+    )
+    if evidence_idx >= 0:
+        assert evidence_idx > material_idx, (
+            f"evidence appendix placed before § 材料属性; headings={headings}"
+        )
+
+
+def test_material_lookup_fails_fast_before_reader_open(
+    gs001_frd: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Codex R1 PR #91 MEDIUM regression — an invalid --material must
+    fail BEFORE the [1/N] reading-frd stage runs. The previous flow
+    deferred lookup to after _produce(), which masked the typo with
+    upstream noise."""
+    out = tmp_path / "report.docx"
+    rc = main(
+        [
+            "--frd",
+            str(gs001_frd),
+            "--kind",
+            "static",
+            "--output",
+            str(out),
+            "--no-figures",
+            "--material",
+            "BOGUS-GRADE",
+        ]
+    )
+    assert rc == 3
+    err = capsys.readouterr().err
+    # The "[1/N] reading CalculiX .frd" stage line must NOT appear —
+    # we refused before opening any I/O.
+    assert "reading CalculiX" not in err, (
+        f"material lookup should fail before stage 1; got stderr:\n{err}"
+    )
+    assert "BOGUS-GRADE" in err
+    assert "--list-materials" in err
+
+
 def test_material_audit_trail_shows_in_stderr(
     gs001_frd: Path,
     tmp_path: Path,

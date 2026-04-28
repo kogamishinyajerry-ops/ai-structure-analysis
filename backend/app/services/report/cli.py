@@ -533,6 +533,36 @@ def main(argv: list[str] | None = None) -> int:
 
     _resolve_identity_defaults(args)
 
+    # W6a / Codex R1 PR #91 MEDIUM: validate --material / --material-json
+    # BEFORE opening any I/O or running _produce(). A typo'd --material
+    # should fail fast with a clear message, not after CalculiXReader
+    # spins up and the report has been (re-)derived. Lookup is pure;
+    # the audit-trail _detail line is emitted later when the stage
+    # printer is wired up.
+    material = None
+    if args.material is not None or args.material_json is not None:
+        from app.services.report.materials_lib import (
+            MaterialLookupError,
+            load_user_supplied_json,
+            lookup_builtin,
+        )
+        try:
+            if args.material is not None:
+                material = lookup_builtin(args.material)
+                if material is None:
+                    print(
+                        f"error: --material {args.material!r} is not in the "
+                        f"built-in library. Run `report-cli --list-materials` "
+                        f"to see available code grades.",
+                        file=sys.stderr,
+                    )
+                    return 3
+            else:
+                material = load_user_supplied_json(args.material_json)
+        except MaterialLookupError as exc:
+            print(f"error: material refused: {exc}", file=sys.stderr)
+            return 3
+
     # Lazy imports — see module-top comment. If any of these fail we
     # surface as exit 4 with an actionable hint pointing at --doctor;
     # the engineer ran a real report so there's no graceful degrade,
@@ -659,42 +689,20 @@ def main(argv: list[str] | None = None) -> int:
             )
             figures = {}
 
-    # W6a / ADR-019 — resolve material AFTER report production so
-    # any malformed --material-json error appears in the audit trail
-    # right before export, not at parser time. The two flags are
-    # mutually exclusive (argparse-enforced); when neither is set,
-    # ``material`` stays None and the exporter skips § 材料属性.
-    material = None
-    if args.material is not None or args.material_json is not None:
-        from app.services.report.materials_lib import (
-            MaterialLookupError,
-            load_user_supplied_json,
-            lookup_builtin,
-        )
-        try:
-            if args.material is not None:
-                material = lookup_builtin(args.material)
-                if material is None:
-                    print(
-                        f"error: --material {args.material!r} is not in the "
-                        f"built-in library. Run `report-cli --list-materials` "
-                        f"to see available code grades.",
-                        file=sys.stderr,
-                    )
-                    return 3
-                _detail(
-                    f"material: {material.code_grade} ({material.code_standard}) "
-                    f"sigma_y={material.yield_strength:g} sigma_u={material.ultimate_strength:g}"
-                )
-            else:
-                material = load_user_supplied_json(args.material_json)
-                _detail(
-                    f"material: USER-SUPPLIED {material.code_grade} "
-                    f"({material.code_standard}) — flagged in DOCX"
-                )
-        except MaterialLookupError as exc:
-            print(f"error: material refused: {exc}", file=sys.stderr)
-            return 3
+    # W6a audit-trail: surface the chosen material on stderr so the
+    # Electron log pane records it. Lookup itself happened pre-stage-1
+    # (see fail-fast block above); here we only emit the detail line.
+    if material is not None:
+        if material.is_user_supplied:
+            _detail(
+                f"material: USER-SUPPLIED {material.code_grade} "
+                f"({material.code_standard}) — flagged in DOCX"
+            )
+        else:
+            _detail(
+                f"material: {material.code_grade} ({material.code_standard}) "
+                f"sigma_y={material.yield_strength:g} sigma_u={material.ultimate_strength:g}"
+            )
 
     # Lazy-import the exporter + its refusal classes for the same
     # broken-submodule-survives-doctor reason as in _produce.
