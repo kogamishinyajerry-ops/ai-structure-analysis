@@ -1,0 +1,19 @@
+# Copyright (C) 2026 Altair Engineering Inc. ("Holder")
+# Model is licensed by Holder under CC BY-NC 4.0
+# (https://creativecommons.org/licenses/by-nc/4.0/legalcode).
+#
+# Modified for GS-101-demo: added /ANIM/DT to dump animation frames so
+# the OpenRadioss adapter can ingest the run.
+#RADIOSS ENGINE
+#
+/RUN/model_00/1/
+  3
+#
+/PRINT/-1000
+#
+/ANIM/DT
+  0.    0.3
+/ANIM/BRICK/EPSP
+/ANIM/SHELL/EPSP
+/ANIM/SHELL/TENS/STRESS/ALL
+/ANIM/BRICK/TENS/STRESS
