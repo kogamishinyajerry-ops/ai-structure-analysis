@@ -42,20 +42,25 @@ docker run --rm openradioss:arm64 starter_linuxa64 -help
 The shipped GS-100 fixture is a baked output set; the W7b adapter consumes the
 `A*.gz` frames directly and does not need to be re-baked for routine use.
 A re-bake from `BOULE1V5_0000.rad` is **not** self-contained because the deck
-ends with `#include qadiags.inc` (deck line 449), and `qadiags.inc` lives in
-the OpenRadioss QA tree under `OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/`,
-which we deliberately do not vendor (CC BY-NC 4.0 + size).
+contains `#include qadiags.inc` near the end, and `qadiags.inc` lives in the
+OpenRadioss QA tree under
+`OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/data/qadiags.inc`
+(verified against `gh api repos/OpenRadioss/OpenRadioss/contents/...` —
+the file sits in the `data/` subdirectory, not the top of `small_boule_igsti/`).
+We deliberately do not vendor it (CC BY-NC 4.0 + size).
 
-To re-bake, pull the matching QA file alongside the deck (or symlink the
-upstream QA dir into `/work`), then:
+To re-bake, stage `qadiags.inc` next to the deck files in `/work` (or mount
+the upstream `.../small_boule_igsti/data/` directory at `/work` directly),
+then:
 
 ```bash
 cd <repo-root>
-# Stage the deck + the upstream qadiags.inc into a scratch dir first.
+# Stage the deck + the upstream qadiags.inc into a scratch dir.
+# /work must contain BOULE1V5_0000.rad, BOULE1V5_0001.rad, AND qadiags.inc.
 mkdir -p /tmp/gs100-rebake
 cp golden_samples/GS-100-radioss-smoke/BOULE1V5_0000.rad /tmp/gs100-rebake/
 cp golden_samples/GS-100-radioss-smoke/BOULE1V5_0001.rad /tmp/gs100-rebake/
-cp /path/to/OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/qadiags.inc \
+cp /path/to/OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/data/qadiags.inc \
    /tmp/gs100-rebake/
 
 docker run --rm \
