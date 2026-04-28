@@ -508,50 +508,69 @@ def _rag_module_aliases(tree: ast.AST) -> set[str]:
     point `<rag-module>.<KB-alias>` IS a KnowledgeBase reference under
     a re-exported alias.
 
-    Catches the common module-import shapes:
-      - `import rag.kb`             → root name `rag` is rag-rooted
-      - `import app.rag.kb`         → root name `app` ... but path-prefix
-                                       must include `rag`; we record
-                                       `app` only if the first segment
-                                       leads to rag (kept conservative
-                                       — see comment below).
-      - `from app.rag import kb`    → `kb`
-      - `from app.rag import kb as rk`  → `rk`
-      - `from . import kb`          → `kb`
-      - `from app import rag`       → `rag`
+    Catches the rag-module-name shapes only (NOT class/function imports):
+      - `import rag` or `import rag.X` (no alias)        → bind `rag`
+      - `import <X.rag.Y> as <Z>` (alias)                → bind `Z`
+      - `import rag.kb as <Z>`                           → bind `Z`
+      - `from app.rag import kb [as <Z>]`                → bind `kb` / `Z`
+      - `from . import kb [as <Z>]` (relative bare-mod)  → bind `kb` / `Z`
+      - `from app import rag [as <Z>]`                   → bind `rag` / `Z`
+
+    Explicitly DOES NOT trust:
+      - `import app.rag.kb` (no alias)  — binds `app`, but `app` is the
+        parent package, not the rag module. Trusting `app` lets
+        `app.other.X` slip through provenance gates.
+      - `from app.rag.kb import KnowledgeBase as KB` — KB is a class
+        member, not a submodule. Adding KB makes `KB.X()` trusted,
+        which Codex R3 demonstrated is a real bypass.
+      - `from .kb import X` — X is a member of kb, not a submodule.
+
+    R7-fix3.1 (post Codex R3 MEDIUM, 2026-04-28) tightens the rules
+    against the bypass classes Codex R3 found.
     """
     aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias_node in node.names:
-                # `import rag` / `import rag.kb`: record the leftmost
-                # segment when the dotted path mentions `rag`. We do NOT
-                # record `app` for `import app.rag.kb` because `app.foo`
-                # would falsely become trusted; require a literal `rag`
-                # segment in the import path.
+                parts = alias_node.name.split(".")
                 if alias_node.asname:
-                    # `import rag.kb as r` — r is now the rag.kb module
-                    if "rag" in alias_node.name.split("."):
+                    # `import X.Y.Z as Q` — Q is bound to the full
+                    # module path; trust if path mentions `rag`.
+                    if "rag" in parts:
                         aliases.add(alias_node.asname)
                 else:
-                    # `import rag.kb` binds `rag` (the leftmost segment)
-                    parts = alias_node.name.split(".")
-                    if "rag" in parts:
+                    # `import X.Y.Z` — leftmost X is bound. Trust ONLY
+                    # when leftmost is literally `rag` (so we don't
+                    # over-trust `app` from `import app.rag.kb`).
+                    if parts and parts[0] == "rag":
                         aliases.add(parts[0])
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
             level = node.level or 0
-            mod_parts = mod.split(".") if mod else []
-            from_rag_pkg = (
-                mod == "app.rag"
-                or "rag" in mod_parts
-                or (level >= 1 and (mod == "" or "rag" in mod_parts))
-            )
-            if from_rag_pkg:
-                for alias_node in node.names:
-                    if alias_node.name == "*":
-                        continue
-                    aliases.add(alias_node.asname or alias_node.name)
+            # Classify the from-target. We only trust imported names as
+            # module aliases when the from-target is the rag PACKAGE
+            # (not any deeper member-bearing module like `app.rag.kb`).
+            is_rag_package_from = mod == "app.rag" or mod == "rag"
+            is_relative_bare = level >= 1 and mod == ""
+            # `from app import rag` — the package itself is the bound
+            # name; permit this shape so the resulting `rag` alias
+            # gets added below (with the name == "rag" check).
+            is_app_from_rag_via_app = mod == "app"
+            for alias_node in node.names:
+                if alias_node.name == "*":
+                    continue
+                bound = alias_node.asname or alias_node.name
+                # Only trust as a rag-module alias when the import shape
+                # is one of the explicit module-binding patterns.
+                if (
+                    is_rag_package_from
+                    or is_relative_bare
+                    or is_app_from_rag_via_app
+                    and alias_node.name == "rag"
+                ):
+                    aliases.add(bound)
+                # All other ImportFrom shapes are member imports — do
+                # NOT add the bound name (Codex R3 MEDIUM closure).
     return aliases
 
 
@@ -1677,3 +1696,110 @@ class TestR7Fix3ProvenanceAwareAttribute:
         tree2 = _parse("x = make().b\n")
         attr2 = next(n for n in ast.walk(tree2) if isinstance(n, ast.Attribute))
         assert _attribute_root_name(attr2) is None
+
+
+class TestR7Fix31RagModuleAliasesTighten:
+    """Codex R3 (2026-04-28) found `_rag_module_aliases` over-trusts
+    parent segments and class-member imports. R7-fix3.1 tightens it.
+
+    Bypass classes Codex R3 reproduced:
+      - `import app.rag.kb` adds `app` to rma → `app.other.KB()` flags.
+      - `from app.rag.kb import KnowledgeBase as KB` adds `KB` to rma →
+        `KB.MyKB()` (where MyKB is tracked subclass) flags.
+      - `from app import rag` was missed → `rag.kb.KB()` doesn't flag.
+    """
+
+    def test_r7fix31_import_app_rag_kb_does_not_trust_app(self):
+        """`import app.rag.kb` must NOT add `app` to rma."""
+        tree = _parse("import app.rag.kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "app" not in rma
+
+    def test_r7fix31_import_app_rag_kb_app_other_call_no_false_positive(self):
+        """The full Codex R3 repro #1: `app.other.KB()`."""
+        tree = _parse(
+            "import app.rag.kb\n"
+            "import app.other\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def f(): return app.other.KB()\n"
+        )
+        # KB is in aliases (from rag.kb import as), but `app` must NOT
+        # be in rma — the call goes through unrelated `app.other` path.
+        rma = _rag_module_aliases(tree)
+        assert "app" not in rma
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix31_class_import_does_not_pollute_rma(self):
+        """`from app.rag.kb import KnowledgeBase as KB` must NOT add KB to rma."""
+        tree = _parse("from app.rag.kb import KnowledgeBase as KB\n")
+        rma = _rag_module_aliases(tree)
+        assert "KB" not in rma  # KB is a class, not a module
+
+    def test_r7fix31_class_import_no_kb_dot_other_false_positive(self):
+        """The Codex R3 repro #2: `KB.MyKB()` where KB is the class."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def f(): return KB.MyKB()\n"  # weird but legal Python
+        )
+        # KB in aliases (subclass tracking), MyKB in aliases (subclass).
+        # rma must NOT contain KB (it's a class member, not a module).
+        # Therefore `KB.MyKB()` must NOT flag as KB ctor.
+        aliases = _knowledgebase_local_aliases(tree)
+        rma = _rag_module_aliases(tree)
+        assert "KB" in aliases
+        assert "MyKB" in aliases
+        assert "KB" not in rma
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix31_from_app_import_rag_collected(self):
+        """The Codex R3 repro #3: missing shape now collected."""
+        tree = _parse("from app import rag\n")
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+
+    def test_r7fix31_from_app_import_rag_then_rag_kb_kb_call_flags(self):
+        """`from app import rag; from x import KB; rag.kb.KB()` must flag."""
+        tree = _parse(
+            "from app import rag\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def f(): return rag.kb.KB()\n"
+        )
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+        # rag.kb.KB() — leftmost is `rag` which is in rma; KB is in
+        # aliases (from the as-import). Must flag.
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix31_from_kb_member_import_does_not_pollute_rma(self):
+        """`from .kb import get_kb` (member of kb submodule) must NOT add get_kb to rma."""
+        tree = _parse("from .kb import get_kb\n")
+        rma = _rag_module_aliases(tree)
+        # get_kb is a function member of kb, not a module
+        assert "get_kb" not in rma
+
+    def test_r7fix31_from_dot_import_kb_collected(self):
+        """`from . import kb` (sibling submodule) DOES add kb."""
+        tree = _parse("from . import kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "kb" in rma
+
+    def test_r7fix31_import_rag_kb_collected(self):
+        """`import rag.kb` adds `rag` (leftmost is literally `rag`)."""
+        tree = _parse("import rag.kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+
+    def test_r7fix31_import_rag_kb_as_aliased(self):
+        """`import rag.kb as r` adds `r`."""
+        tree = _parse("import rag.kb as r\n")
+        rma = _rag_module_aliases(tree)
+        assert "r" in rma
+        assert "rag" not in rma  # alias replaces the leftmost binding
+
+    def test_r7fix31_unrelated_module_not_collected(self):
+        """`import unrelated.module` must NOT add anything."""
+        tree = _parse("import unrelated.module\n")
+        rma = _rag_module_aliases(tree)
+        assert "unrelated" not in rma
