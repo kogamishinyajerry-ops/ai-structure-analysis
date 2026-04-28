@@ -28,6 +28,7 @@ yet — the workbench facade lands in Phase 2.1 follow-up; the RAG track
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -357,7 +358,11 @@ class TestR2RagFacadeIsSoleChokePoint:
 # ---------------------------------------------------------------------------
 
 
-def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
+def _annotation_mentions_knowledgebase(
+    node: ast.AST | None,
+    aliases: set[str] | None = None,
+    rag_module_aliases: set[str] | None = None,
+) -> bool:
     """True if a function-parameter annotation references `KnowledgeBase`.
 
     Catches:
@@ -372,9 +377,34 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
     object reference, NOT an instance — passing the class through is not
     a singleton bypass. We skip the inner walk under any `type[...]` /
     `Type[...]` subscript so this annotation pattern is allowed.
+
+    R7 hardening (post Codex R4-verification MEDIUM, 2026-04-28): accepts
+    a precomputed alias set so renamed imports and KB subclasses are also
+    recognised in annotations. Codex repro that exposed the gap:
+
+        from app.rag.kb import KnowledgeBase as KB
+        def advise(kb: KB): ...                      # bypasses the
+                                                       # literal-name match
+
+        class MyKB(KnowledgeBase): pass
+        def advise(kb: MyKB): ...                    # subclass annotation
+
+    The caller passes the alias set built by `_knowledgebase_local_aliases`
+    so all three predicates share one resolution policy.
+
+    R7-fix2 (post Codex R1 MEDIUM, 2026-04-28): forward-ref strings now
+    also match alias names via word-boundary regex. `def advise(kb: "KB")`
+    matches when KB is in aliases; `"KBConfig"` does NOT (\\b anchors).
+
+    R7-fix3 (post Codex R2 MEDIUM, 2026-04-28): the Attribute branch is
+    provenance-aware. Literal `<x>.KnowledgeBase` always flags. Alias
+    attribute (`<x>.KB`) only flags when the leftmost Name is in
+    `rag_module_aliases` — `rag.kb.KB` is genuinely the same class
+    via re-export but `obj.MyKB` (where obj is unrelated) does not flag.
     """
     if node is None:
         return False
+    name_set = {"KnowledgeBase"} | (aliases or set())
     # R4: skip inside type[X] / Type[X] subscripts. The annotation `cls:
     # type[KnowledgeBase]` says "any subclass of KB", not "an instance" —
     # accepting the class doesn't load the model.
@@ -390,25 +420,65 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
                 slc = sub.slice
                 for inner in ast.walk(slc):
                     skip_nodes.add(id(inner))
+    # R7-fix2 (post Codex R1 MEDIUM, 2026-04-28): forward-ref strings
+    # must also match alias names. Pre-fix the string branch only matched
+    # substrings of the literal "KnowledgeBase", so `def advise(kb: "KB")`
+    # where KB is an aliased import slipped through. Use word-boundary
+    # matching so `"KBConfig"` does not false-flag.
+    string_pattern: re.Pattern[str] | None = None
+    if name_set:
+        # `re.escape` so alias names containing regex metachars are safe.
+        # Alternation is anchored with \b on both sides.
+        string_pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in name_set) + r")\b")
     for sub in ast.walk(node):
         if id(sub) in skip_nodes:
             continue
-        if isinstance(sub, ast.Name) and sub.id == "KnowledgeBase":
+        if isinstance(sub, ast.Name) and sub.id in name_set:
             return True
-        if isinstance(sub, ast.Attribute) and sub.attr == "KnowledgeBase":
-            return True
-        # forward-ref strings: `kb: "KnowledgeBase"` or `"Optional[KnowledgeBase]"`
+        # Attribute branch. R7-fix3 (post Codex R2 MEDIUM, 2026-04-28):
+        # provenance-aware. The literal class name `KnowledgeBase` is
+        # always a hit (it's the canonical class identifier). For
+        # aliases, only flag when the leftmost Name in the chain is a
+        # known rag-module alias — `rag.kb.KB` is genuinely the same
+        # KB if `rag.kb` is the rag.kb module, but `obj.MyKB` where
+        # `obj` is an unrelated runtime object must not flag.
+        if isinstance(sub, ast.Attribute):
+            if sub.attr == "KnowledgeBase":
+                return True
+            if (
+                sub.attr in name_set
+                and rag_module_aliases is not None
+                and _attribute_root_name(sub) in rag_module_aliases
+            ):
+                return True
+        # forward-ref strings: `kb: "KnowledgeBase"` or `"Optional[KB]"`
         if (
             isinstance(sub, ast.Constant)
             and isinstance(sub.value, str)
-            and "KnowledgeBase" in sub.value
+            and string_pattern is not None
+            and string_pattern.search(sub.value)
         ):
             return True
     return False
 
 
-def _function_takes_knowledgebase_param(fn: ast.AST) -> bool:
-    """True if any function arg/kwarg in fn is annotated as KnowledgeBase."""
+def _function_takes_knowledgebase_param(
+    fn: ast.AST,
+    aliases: set[str] | None = None,
+    rag_module_aliases: set[str] | None = None,
+) -> bool:
+    """True if any function arg/kwarg in fn is annotated as KnowledgeBase.
+
+    R7 hardening (post Codex R4-verification MEDIUM, 2026-04-28): accepts
+    an optional alias set so callers that have already walked the
+    enclosing module pass it through to `_annotation_mentions_knowledgebase`.
+    Without aliases, only the literal name `KnowledgeBase` and dotted-attr
+    forms match — alias and subclass annotations evade.
+
+    R7-fix3 (post Codex R2 MEDIUM, 2026-04-28): also threads the rag-
+    module alias set into the Attribute branch so provenance-aware
+    matching applies to `<rag-module>.<alias>` annotations.
+    """
     if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
         return False
     args = fn.args
@@ -419,7 +489,88 @@ def _function_takes_knowledgebase_param(fn: ast.AST) -> bool:
         + ([args.vararg] if args.vararg else [])
         + ([args.kwarg] if args.kwarg else [])
     )
-    return any(a is not None and _annotation_mentions_knowledgebase(a.annotation) for a in all_args)
+    return any(
+        a is not None
+        and _annotation_mentions_knowledgebase(a.annotation, aliases, rag_module_aliases)
+        for a in all_args
+    )
+
+
+def _rag_module_aliases(tree: ast.AST) -> set[str]:
+    """Collect local names that resolve to a known rag-package module.
+
+    R7-fix3 (post Codex R2 MEDIUM, 2026-04-28): used as the provenance
+    gate for Attribute-form alias matching. Without a provenance check,
+    treating any `attr in aliases` as a hit false-flagged unrelated
+    attribute access (`some.KB()`, `obj.MyKB()`) once `KB` or `MyKB`
+    happened to be in the alias set. We only widen the Attribute branch
+    when the leftmost Name resolves to a rag-package module — at that
+    point `<rag-module>.<KB-alias>` IS a KnowledgeBase reference under
+    a re-exported alias.
+
+    Catches ONLY unambiguous module-import shapes:
+      - `import rag` / `import rag.X` (no alias)         → bind `rag`
+      - `import <X.rag.Y> as <Q>` (alias)                → bind `Q`
+
+    Explicitly does NOT trust ImportFrom at all. Per Codex R4 finding
+    (2026-04-28): Python `from MOD import X` is statically ambiguous
+    between submodule import and class/function re-export via
+    __init__.py. `from app.rag import KnowledgeBase` re-exports the
+    class; `from app.rag import kb` imports the submodule; AST cannot
+    tell them apart, so trusting the bound name re-opens provenance
+    bypasses (`KB.MyKB()` flagged where KB is a class re-export).
+
+    Known limitations (acceptable conservative bias for a discipline
+    test — rare shapes in real facade code, and Codex review provides
+    post-hoc catches). All three apply equally to ALL Attribute-form
+    branches (annotation, ctor call, subclass base):
+      - `from app.rag import kb; kb.KnowledgeBase()` — literal class
+        name still flags via canonical-name branch (provenance-free).
+      - `from app.rag import kb; kb.KB()` (alias attribute via member
+        import) — does NOT flag because `kb` was never trusted.
+      - `def f(x: kb.KB)` (annotation via member-imported kb) — same.
+      - `class MyKB(kb.KB): pass; MyKB()` (subclass base via member
+        import) — same.
+      - `from . import kb; kb.X()` — same.
+
+    Workaround for facade authors who need the alias form caught: use
+    `import rag.kb` (unambiguous module import) instead of `from . import
+    kb` / `from app.rag import kb`. Then `rag.kb.KB()` flags correctly.
+
+    R7-fix3.2 (post Codex R4 MEDIUM, 2026-04-28).
+    """
+    aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Import):
+            continue
+        for alias_node in node.names:
+            parts = alias_node.name.split(".")
+            if alias_node.asname:
+                # `import X.Y.Z as Q` — Q binds the full module path;
+                # trust if the dotted path contains `rag`.
+                if "rag" in parts:
+                    aliases.add(alias_node.asname)
+            else:
+                # `import X.Y.Z` — leftmost X is bound. Trust ONLY
+                # when leftmost is literally `rag`. So `import rag`,
+                # `import rag.kb` add `rag`; `import app.rag.kb`
+                # binds `app` (parent) which is NOT trusted.
+                if parts and parts[0] == "rag":
+                    aliases.add(parts[0])
+    return aliases
+
+
+def _attribute_root_name(node: ast.AST) -> str | None:
+    """Return the leftmost Name id of an Attribute chain, or None.
+
+    For `a.b.c` returns `"a"`; for `a` returns `"a"`; for non-Name roots
+    (e.g. `func().attr`) returns None.
+    """
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
 
 
 def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
@@ -437,6 +588,8 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
     `Name(id=...)` calls whose id is in the alias set.
     """
     aliases: set[str] = set()
+    # R7-fix3: provenance gate for the Attribute-form subclass branch.
+    rag_module_aliases_local = _rag_module_aliases(tree)
     # 1. Imports: `from <mod> import KnowledgeBase [as X]`
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -476,6 +629,39 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
         return False
 
     # Multi-pass to follow chains: `cls = KnowledgeBase; cls2 = cls`.
+    # R7 (post Codex R4-verification MEDIUM, 2026-04-28): also fold in
+    # subclasses. A subclass of KnowledgeBase is constructable as a KB
+    # instance (Liskov), and instances of it ARE KnowledgeBase instances.
+    # Codex bypass repro:
+    #
+    #     class MyKB(KnowledgeBase): pass
+    #     def advise(kb: MyKB): ...        # annotation evades literal match
+    #     def build(): return MyKB()       # ctor evades literal match
+    #
+    # We treat any class whose bases reference a known alias as itself an
+    # alias. The fixpoint loop already iterates so transitive subclass
+    # chains (`class A(KB); class B(A)`) propagate cleanly.
+    def _bases_reference_alias(class_def: ast.ClassDef) -> bool:
+        for base in class_def.bases:
+            if isinstance(base, ast.Name) and base.id in seen_aliases:
+                return True
+            if isinstance(base, ast.Attribute):
+                # `class X(kb.KnowledgeBase)` — literal class name
+                # always pinned regardless of leftmost name.
+                if base.attr == "KnowledgeBase":
+                    return True
+                # R7-fix3 (post Codex R2 MEDIUM, 2026-04-28):
+                # provenance-aware. Only flag alias-attr base when the
+                # leftmost Name is a known rag-module alias. `obj.MyKB`
+                # where MyKB is in seen_aliases through unrelated path
+                # must NOT flag.
+                if (
+                    base.attr in seen_aliases
+                    and _attribute_root_name(base) in rag_module_aliases_local
+                ):
+                    return True
+        return False
+
     for _ in range(8):  # bounded fixpoint
         before = len(seen_aliases)
         for node in ast.walk(tree):
@@ -491,6 +677,11 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
             elif isinstance(node, ast.NamedExpr):
                 if isinstance(node.target, ast.Name) and _value_resolves_to_alias(node.value):
                     seen_aliases.add(node.target.id)
+            # R7: subclass declaration. `class MyKB(KnowledgeBase)` adds
+            # `MyKB` to the alias set so both annotation and ctor checks
+            # catch its use downstream.
+            elif isinstance(node, ast.ClassDef) and _bases_reference_alias(node):
+                seen_aliases.add(node.name)
         if len(seen_aliases) == before:
             break
     return seen_aliases
@@ -511,16 +702,23 @@ def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
     deterrent, not a sandbox.
     """
     aliases = _knowledgebase_local_aliases(tree) | {"KnowledgeBase"}
+    rag_module_aliases = _rag_module_aliases(tree)
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
         if isinstance(func, ast.Name) and func.id in aliases:
             return True
-        # `kb.KnowledgeBase()` style — attribute always pinned to the
-        # class name itself, regardless of the parent module's binding.
-        if isinstance(func, ast.Attribute) and func.attr == "KnowledgeBase":
-            return True
+        # `kb.KnowledgeBase()` literal-class always flags. R7-fix3 (post
+        # Codex R2 MEDIUM, 2026-04-28): alias-form attribute (`kb.KB()`,
+        # `rag.kb.KB()`) only flags when the leftmost Name is a known
+        # rag-module alias. This prevents `obj.MyKB()` from false-flagging
+        # once MyKB happens to be in the alias set through unrelated path.
+        if isinstance(func, ast.Attribute):
+            if func.attr == "KnowledgeBase":
+                return True
+            if func.attr in aliases and _attribute_root_name(func) in rag_module_aliases:
+                return True
         # R6 (post Codex R5 LOW): `(KB := KnowledgeBase)()` — Call.func
         # is a NamedExpr whose value resolves to a KB alias. The walrus
         # binds KB AND immediately calls it; both halves are caught
@@ -529,8 +727,11 @@ def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
             inner = func.value
             if isinstance(inner, ast.Name) and inner.id in aliases:
                 return True
-            if isinstance(inner, ast.Attribute) and inner.attr == "KnowledgeBase":
-                return True
+            if isinstance(inner, ast.Attribute):
+                if inner.attr == "KnowledgeBase":
+                    return True
+                if inner.attr in aliases and _attribute_root_name(inner) in rag_module_aliases:
+                    return True
     return False
 
 
@@ -635,12 +836,18 @@ def test_rag_facade_does_not_take_knowledgebase_param():
         pytest.skip(f"{facade} does not exist yet — Phase 2.1 follow-up adds it")
     tree = _parse_file(facade)
     assert tree is not None
+    # R7: resolve aliases (renamed imports + subclasses + assignment chains)
+    # once per module so annotation matching catches alias forms too.
+    # R7-fix3: also resolve rag-module aliases for provenance-aware
+    # Attribute-form matching.
+    aliases = _knowledgebase_local_aliases(tree)
+    rag_module_aliases = _rag_module_aliases(tree)
     violations: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if node.name.startswith("_"):
                 continue  # private helpers may pass KB internally
-            if _function_takes_knowledgebase_param(node):
+            if _function_takes_knowledgebase_param(node, aliases, rag_module_aliases):
                 violations.append(
                     f"{facade.relative_to(_REPO_ROOT)}:{node.lineno}: "
                     f"public function `{node.name}` takes a KnowledgeBase "
@@ -1154,4 +1361,494 @@ class TestR6IfExpAndWalrusAliases:
     def test_r6_walrus_attribute_form_is_caught(self):
         """`(K := kb.KnowledgeBase)()` — attribute-form via walrus."""
         tree = _parse("from app.rag import kb\ndef f(): return (K := kb.KnowledgeBase)()\n")
+        assert _calls_knowledgebase_constructor(tree)
+
+
+# ---------------------------------------------------------------------------
+# R7 hardening — alias annotations + subclass tracking
+# (post Codex R4-verification 2026-04-28 MEDIUM)
+#
+# Codex's R4 verification of the merged PR #53 found two open bypasses
+# the R4-R6 hardenings did NOT cover:
+#
+#   MEDIUM-1 (alias annotation): `from x import KnowledgeBase as KB;
+#     def advise(kb: KB): ...` — _annotation_mentions_knowledgebase
+#     only matched the literal name `KnowledgeBase`, so renamed imports
+#     evaded the param check entirely.
+#
+#   MEDIUM-2 (subclass): `class MyKB(KnowledgeBase): pass; def advise(kb:
+#     MyKB); MyKB()` — neither annotation nor ctor predicate tracked
+#     subclasses; both passed silently.
+#
+# R7 fix:
+# - _annotation_mentions_knowledgebase accepts an alias set; the public
+#   test functions resolve it via _knowledgebase_local_aliases per-module.
+# - _knowledgebase_local_aliases also folds in any class whose bases
+#   reference a known alias (or `kb.KnowledgeBase` attribute form).
+# - Alias propagation is a fixpoint, so transitive subclass chains
+#   (`class A(KB); class B(A)`) all resolve.
+# ---------------------------------------------------------------------------
+
+
+class TestR7AliasAnnotationAndSubclass:
+    """Codex R4-verification (2026-04-28): the two open MEDIUM bypasses."""
+
+    def test_codex_r7_renamed_import_in_annotation_is_caught(self):
+        """The exact Codex bypass: alias param annotation."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_codex_r7_subclass_param_annotation_is_caught(self):
+        """`class MyKB(KnowledgeBase); def advise(kb: MyKB)` — subclass."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def advise(query, kb: MyKB): ...\n"
+        )
+        fn = next(
+            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "advise"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_codex_r7_subclass_constructor_call_is_caught(self):
+        """`class MyKB(KnowledgeBase); return MyKB()` — subclass ctor."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_subclass_via_attribute_base_is_caught(self):
+        """`class MyKB(kb.KnowledgeBase): pass` — attribute-form base."""
+        tree = _parse(
+            "from app.rag import kb\n"
+            "class MyKB(kb.KnowledgeBase): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_transitive_subclass_chain_is_caught(self):
+        """`class A(KB); class B(A); B()` — transitive via fixpoint."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class A(KnowledgeBase): pass\n"
+            "class B(A): pass\n"
+            "def build(): return B()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "A" in aliases and "B" in aliases
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_unrelated_class_is_not_flagged(self):
+        """`class OtherClass(SomeUnrelatedBase)` — must NOT be aliased."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class OtherClass(object): pass\n"
+            "def build(): return OtherClass()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "OtherClass" not in aliases
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7_alias_annotation_with_optional_wrapper_is_caught(self):
+        """`Optional[KB]` where KB is a renamed import — must be caught."""
+        tree = _parse(
+            "from typing import Optional\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def advise(query, kb: Optional[KB] = None): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7_unresolved_alias_without_aliases_falls_back_to_literal(self):
+        """Backwards compatibility: callers passing no alias set still get
+        the pre-R7 literal-name behaviour. Documents the failure mode for
+        callers that haven't been wired through."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        # Without aliases, alias annotation is missed (this is the gap the
+        # R7 fix closes when callers do pass aliases).
+        assert not _function_takes_knowledgebase_param(fn)
+
+
+class TestR7Fix2AliasForwardRefAndAttributeAlias:
+    """Codex R1 verification on PR #104 found two open bypasses post-R7:
+
+    MEDIUM-1: alias forward-ref string. `def advise(kb: "KB")` where
+      KB is an aliased import — string-annotation branch only matched
+      substrings of literal "KnowledgeBase".
+
+    MEDIUM-2: subclass / ctor via attribute alias. `class MyKB(rag.kb.KB)`
+      and `rag.kb.KB()` (where KB is an aliased re-export) evaded
+      because the Attribute branch only matched literal
+      `attr == "KnowledgeBase"`.
+
+    Fix: string-annotation matches alias names with word boundaries;
+    Attribute branches in `_calls_knowledgebase_constructor` and
+    `_bases_reference_alias` widen to any attr in the alias set.
+    """
+
+    def test_r7fix2_alias_forward_ref_string_is_caught(self):
+        """`def advise(kb: "KB")` after `import KnowledgeBase as KB`."""
+        tree = _parse(
+            'from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: "KB"): ...\n'
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "KB" in aliases
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7fix2_alias_forward_ref_string_word_boundary(self):
+        """`KBConfig` is NOT KB — must not false-flag despite alias=`KB`."""
+        tree = _parse(
+            'from app.rag.kb import KnowledgeBase as KB\ndef advise(query, cfg: "KBConfig"): ...\n'  # noqa: F722
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        # KB is in aliases but "KBConfig" is a different identifier;
+        # word-boundary regex must not match.
+        assert not _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7fix2_subclass_via_attribute_alias_is_caught(self):
+        """`class MyKB(rag.kb.KB): pass` after `from x.y import KB`."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "class MyKB(rag.kb.KB): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix2_attribute_alias_constructor_call_is_caught(self):
+        """`return rag.kb.KB()` directly — Attribute call to aliased re-export."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "def build(): return rag.kb.KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix2_attribute_alias_in_annotation_is_caught(self):
+        """`def advise(kb: rag.kb.KB)` — Attribute annotation via alias.
+        R7-fix3: requires rag_module_aliases for the provenance gate."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "def advise(query, kb: rag.kb.KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        rma = _rag_module_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases, rma)
+
+    def test_r7fix2_unrelated_attribute_attr_is_not_flagged(self):
+        """`some.module.OtherThing()` — must NOT be flagged as KB ctor."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "import some.module\n"
+            "def build(): return some.module.OtherThing()\n"
+        )
+        assert not _calls_knowledgebase_constructor(tree)
+
+
+class TestR7Fix3ProvenanceAwareAttribute:
+    """Codex R2 (2026-04-28) flagged 1 MEDIUM: blanket `attr in aliases`
+    in the Attribute branch was provenance-blind. False positives:
+      - `_calls_knowledgebase_constructor` flagged `some.KB()` if KB in aliases
+      - flagged `obj.MyKB()` once MyKB tracked as subclass
+      - `_function_takes_knowledgebase_param` flagged `kb: other.MyKB`
+      - `class Derived(other.MyKB)` added Derived to alias set
+
+    R7-fix3: only widen the Attribute branch when leftmost Name is a
+    known rag-module alias. Literal `attr == "KnowledgeBase"` always
+    flags (canonical class identifier).
+    """
+
+    def test_r7fix3_unrelated_attr_call_no_false_positive(self):
+        """`some.KB()` where some is NOT a rag module — KB-named alias
+        in scope must NOT cause false flag."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import some.module as some\n"
+            "def f(): return some.KB()\n"
+        )
+        # KB IS in aliases (from the rag.kb import), but `some.KB` is
+        # an unrelated module attribute. Must NOT flag.
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "KB" in aliases
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix3_unrelated_obj_subclass_call_no_false_positive(self):
+        """`obj.MyKB()` where obj is unrelated — must NOT flag despite
+        MyKB being tracked as a subclass alias somewhere."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"  # MyKB enters aliases
+            "import some.factory as obj\n"
+            "def f(): return obj.MyKB()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases  # subclass tracking works
+        # But obj.MyKB is unrelated — must not flag.
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix3_unrelated_attr_annotation_no_false_positive(self):
+        """`def advise(kb: other.MyKB)` — alias-named attr but unrelated root."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "import other\n"
+            "def advise(query, kb: other.MyKB): ...\n"
+        )
+        fn = next(
+            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "advise"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        rma = _rag_module_aliases(tree)
+        assert "other" not in rma  # unrelated module
+        assert not _function_takes_knowledgebase_param(fn, aliases, rma)
+
+    def test_r7fix3_unrelated_subclass_base_not_added_to_aliases(self):
+        """`class Derived(other.MyKB)` must NOT add Derived to aliases."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "import other\n"
+            "class Derived(other.MyKB): pass\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases
+        assert "Derived" not in aliases
+
+    def test_r7fix3_rag_module_attr_alias_still_caught(self):
+        """`rag.kb.KB()` where rag is a known rag-module — MUST still flag."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "def f(): return rag.kb.KB()\n"
+        )
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix3_literal_kb_knowledgebase_attr_always_flags(self):
+        """`obj.KnowledgeBase()` — literal class name is provenance-free hit."""
+        tree = _parse("import some.unrelated as obj\ndef f(): return obj.KnowledgeBase()\n")
+        # No rag-module alias for `obj`, but the .attr is the literal
+        # canonical class name. Must flag (defensive: anyone spelling
+        # KnowledgeBase verbatim cannot legitimately mean something else).
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix3_rag_module_aliases_collects_known_shapes(self):
+        """R7-fix3.2: _rag_module_aliases trusts ONLY `import` statements
+        with literal `rag` in the path. ImportFrom shapes (regardless of
+        target) are statically ambiguous between submodule and class
+        re-export and are not trusted (see Codex R4 finding)."""
+        tree = _parse(
+            "import rag.kb\n"
+            "import rag.kb as rk\n"
+            "from app.rag import kb\n"
+            "from app.rag import kb as rk2\n"
+            "from . import kb as relkb\n"
+            "import unrelated.module\n"
+        )
+        rma = _rag_module_aliases(tree)
+        # Trusted (Import statements with `rag` in path):
+        assert "rag" in rma
+        assert "rk" in rma
+        # Not trusted (ImportFrom — could be class re-export):
+        assert "kb" not in rma
+        assert "rk2" not in rma
+        assert "relkb" not in rma
+        # Unrelated import never trusted:
+        assert "unrelated" not in rma
+
+    def test_r7fix3_attribute_root_name_helper(self):
+        """`_attribute_root_name` returns leftmost Name id or None."""
+        # a.b.c → "a"
+        tree = _parse("x = a.b.c\n")
+        attr = next(n for n in ast.walk(tree) if isinstance(n, ast.Attribute))
+        assert _attribute_root_name(attr) == "a"
+        # bare Name returns its id
+        name = ast.Name(id="solo")
+        assert _attribute_root_name(name) == "solo"
+        # non-Name root (Call().attr) returns None
+        tree2 = _parse("x = make().b\n")
+        attr2 = next(n for n in ast.walk(tree2) if isinstance(n, ast.Attribute))
+        assert _attribute_root_name(attr2) is None
+
+
+class TestR7Fix31RagModuleAliasesTighten:
+    """Codex R3 (2026-04-28) found `_rag_module_aliases` over-trusts
+    parent segments and class-member imports. R7-fix3.1 tightens it.
+
+    Bypass classes Codex R3 reproduced:
+      - `import app.rag.kb` adds `app` to rma → `app.other.KB()` flags.
+      - `from app.rag.kb import KnowledgeBase as KB` adds `KB` to rma →
+        `KB.MyKB()` (where MyKB is tracked subclass) flags.
+      - `from app import rag` was missed → `rag.kb.KB()` doesn't flag.
+    """
+
+    def test_r7fix31_import_app_rag_kb_does_not_trust_app(self):
+        """`import app.rag.kb` must NOT add `app` to rma."""
+        tree = _parse("import app.rag.kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "app" not in rma
+
+    def test_r7fix31_import_app_rag_kb_app_other_call_no_false_positive(self):
+        """The full Codex R3 repro #1: `app.other.KB()`."""
+        tree = _parse(
+            "import app.rag.kb\n"
+            "import app.other\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def f(): return app.other.KB()\n"
+        )
+        # KB is in aliases (from rag.kb import as), but `app` must NOT
+        # be in rma — the call goes through unrelated `app.other` path.
+        rma = _rag_module_aliases(tree)
+        assert "app" not in rma
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix31_class_import_does_not_pollute_rma(self):
+        """`from app.rag.kb import KnowledgeBase as KB` must NOT add KB to rma."""
+        tree = _parse("from app.rag.kb import KnowledgeBase as KB\n")
+        rma = _rag_module_aliases(tree)
+        assert "KB" not in rma  # KB is a class, not a module
+
+    def test_r7fix31_class_import_no_kb_dot_other_false_positive(self):
+        """The Codex R3 repro #2: `KB.MyKB()` where KB is the class."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def f(): return KB.MyKB()\n"  # weird but legal Python
+        )
+        # KB in aliases (subclass tracking), MyKB in aliases (subclass).
+        # rma must NOT contain KB (it's a class member, not a module).
+        # Therefore `KB.MyKB()` must NOT flag as KB ctor.
+        aliases = _knowledgebase_local_aliases(tree)
+        rma = _rag_module_aliases(tree)
+        assert "KB" in aliases
+        assert "MyKB" in aliases
+        assert "KB" not in rma
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix32_from_app_import_rag_not_collected(self):
+        """R7-fix3.2: `from app import rag` is ambiguous (rag could be a
+        class re-export from app/__init__.py) and is NOT trusted. To get
+        the rag-package alias trusted, write `import rag` instead."""
+        tree = _parse("from app import rag\n")
+        rma = _rag_module_aliases(tree)
+        assert "rag" not in rma
+
+    def test_r7fix32_from_kb_member_import_does_not_pollute_rma(self):
+        """`from .kb import get_kb` (member of kb submodule) must NOT add."""
+        tree = _parse("from .kb import get_kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "get_kb" not in rma
+
+    def test_r7fix32_from_dot_import_kb_not_collected(self):
+        """R7-fix3.2: `from . import kb` is also statically ambiguous
+        (kb could be a class re-export from __init__) and is NOT trusted.
+        Documented limitation — facade callers should `import rag.kb`
+        instead, which is unambiguously a submodule import."""
+        tree = _parse("from . import kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "kb" not in rma
+
+    def test_r7fix31_import_rag_kb_collected(self):
+        """`import rag.kb` adds `rag` (leftmost is literally `rag`)."""
+        tree = _parse("import rag.kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+
+    def test_r7fix31_import_rag_kb_as_aliased(self):
+        """`import rag.kb as r` adds `r`."""
+        tree = _parse("import rag.kb as r\n")
+        rma = _rag_module_aliases(tree)
+        assert "r" in rma
+        assert "rag" not in rma  # alias replaces the leftmost binding
+
+    def test_r7fix31_unrelated_module_not_collected(self):
+        """`import unrelated.module` must NOT add anything."""
+        tree = _parse("import unrelated.module\n")
+        rma = _rag_module_aliases(tree)
+        assert "unrelated" not in rma
+
+
+class TestR7Fix32ImportFromIsAmbiguous:
+    """Codex R4 (2026-04-28) showed `_rag_module_aliases` over-trusted
+    ImportFrom: `from app.rag import KnowledgeBase as KB` re-exports a
+    class but added KB to rma, re-opening `KB.MyKB()` as a false positive.
+    Same for `from app.rag import get_kb`.
+
+    R7-fix3.2: ImportFrom is statically ambiguous between submodule
+    import and class/function re-export (Python `__init__.py` can
+    re-export anything). Stop trusting any ImportFrom-bound name.
+    """
+
+    def test_r7fix32_from_rag_import_class_alias_no_false_positive(self):
+        """The Codex R4 repro #1: `from app.rag import KnowledgeBase as KB; KB.MyKB()`."""
+        tree = _parse(
+            "from app.rag import KnowledgeBase as KB\n"
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def f(): return KB.MyKB()\n"
+        )
+        rma = _rag_module_aliases(tree)
+        assert "KB" not in rma  # class re-export, not a module
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix32_from_rag_import_function_alias_no_false_positive(self):
+        """The Codex R4 repro #2: `from app.rag import get_kb; get_kb.MyKB()`."""
+        tree = _parse(
+            "from app.rag import get_kb\n"
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def f(): return get_kb.MyKB()\n"
+        )
+        rma = _rag_module_aliases(tree)
+        assert "get_kb" not in rma  # function re-export, not a module
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix32_import_rag_kb_still_collected(self):
+        """The trusted shape still works: `import rag.kb` adds `rag`."""
+        tree = _parse("import rag.kb\n")
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+
+    def test_r7fix32_import_rag_kb_then_rag_kb_kb_ctor_flags(self):
+        """`import rag.kb; from x import KB; rag.kb.KB()` STILL flags."""
+        tree = _parse(
+            "import rag.kb\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def f(): return rag.kb.KB()\n"
+        )
+        rma = _rag_module_aliases(tree)
+        assert "rag" in rma
+        # rag.kb.KB(): leftmost `rag` in rma, attr `KB` in aliases. Flag.
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix32_literal_class_attr_always_flags_no_provenance(self):
+        """Provenance-free literal `KnowledgeBase` attr always flags
+        regardless of leftmost name."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "import some.unrelated as obj\n"
+            "def f(): return obj.KnowledgeBase()\n"
+        )
+        # `obj` not in rma (unrelated), but attr is the literal canonical
+        # class name — must still flag.
         assert _calls_knowledgebase_constructor(tree)

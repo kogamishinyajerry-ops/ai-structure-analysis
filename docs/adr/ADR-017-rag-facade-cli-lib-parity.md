@@ -147,6 +147,10 @@ R6 fix (post Codex R5 R6 MEDIUM/LOW): two more alias-RHS forms closed:
 - MEDIUM (IfExp / conditional alias): `KB = KnowledgeBase if cond else AltClass; KB()` defeated `_knowledgebase_local_aliases` because the assignment-walk only matched bare `Name` RHS. Fix: a recursive `_value_resolves_to_alias()` helper walks `IfExp.body` / `IfExp.orelse` / `NamedExpr.value`. If EITHER IfExp branch matches a KB alias the target is bound (conservative: a statically-undecidable conditional must err toward catching the bypass).
 - LOW (walrus / NamedExpr): `(KB := KnowledgeBase)()` defeated both the alias-walk and the constructor scan. Fix: the alias-walk visits `NamedExpr` targets and binds them when `.value` resolves to a KB alias. The constructor scan also recognises `Call.func` as `NamedExpr` directly (covers the in-place call form on Python 3.11+).
 
+R7 fix (post Codex R4-verification 2026-04-28 MEDIUM x2): two open bypasses the R4-R6 hardening did not cover:
+- MEDIUM (alias annotation): `from x import KnowledgeBase as KB; def advise(kb: KB)` evaded `_function_takes_knowledgebase_param` because `_annotation_mentions_knowledgebase()` only matched the literal name `KnowledgeBase`. Fix: the predicate accepts an alias set so the same alias resolution used by the constructor scan also applies to annotations. Public test functions resolve aliases per-module via `_knowledgebase_local_aliases(tree)` and pass them through.
+- MEDIUM (subclass tracking): `class MyKB(KnowledgeBase): pass; def advise(kb: MyKB); def build(): return MyKB()` evaded both the param check and the constructor check because subclasses were not folded into the alias set. Fix: `_knowledgebase_local_aliases()` adds any `ClassDef` whose bases reference a known alias (or the literal `kb.KnowledgeBase` attribute form). The bounded fixpoint propagates transitive subclass chains.
+
 Pure-AST static checks — no import-time execution; <100ms on the whole repo.
 
 ---
