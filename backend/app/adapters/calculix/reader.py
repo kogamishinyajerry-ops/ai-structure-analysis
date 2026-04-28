@@ -21,8 +21,10 @@ ADR compliance:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Callable, Optional
+from types import MappingProxyType
+from typing import Any, Callable, ClassVar, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -346,6 +348,68 @@ class CalculiXReader:
     def close(self) -> None:
         # No native handle held open; flag for sanity checks.
         self._closed = True
+
+    # --- SupportsElementInventory (RFC-001 W6e) --------------------------
+
+    # FRD ``-3`` block stores the element type as an integer code per
+    # the CalculiX FRD spec. The Sprint-2 parser stores the code as a
+    # string ("1", "2", ...) verbatim. The W6e ``ELEMENT_TYPE_GROUPS``
+    # table is keyed on Abaqus-style names (C3D10, S4R, B31, ...) — the
+    # cross-solver standard. Translate the FRD codes here so the
+    # model_overview library never sees the raw integers.
+    #
+    # CalculiX FRD type-code → Abaqus name table (from cgx-2.21
+    # "frdtypes.txt" + cross-checked against
+    # https://github.com/Dhondtguido/CalculiX/blob/master/CalculiX/ccx_2.21/src/frd.c).
+    # The integer-to-string map is intentionally narrow — codes the
+    # solver does not emit yet (axisymmetric, gap, contact-pair, ...)
+    # are absent and pass through unchanged into ``GROUP_OTHER``.
+    _FRD_TYPE_CODE_TO_ABAQUS: ClassVar[Mapping[str, str]] = MappingProxyType(
+        {
+            "1": "C3D8",   # 8-node linear hex
+            "2": "C3D6",   # 6-node linear penta (wedge)
+            "3": "C3D4",   # 4-node linear tet
+            "4": "C3D20",  # 20-node quadratic hex
+            "5": "C3D15",  # 15-node quadratic penta
+            "6": "C3D10",  # 10-node quadratic tet
+            "7": "S3",     # 3-node tri shell
+            "8": "S6",     # 6-node tri shell
+            "9": "S4",     # 4-node quad shell
+            "10": "S8",    # 8-node quad shell
+            "11": "B31",   # 2-node lin beam
+            "12": "B32",   # 3-node quad beam
+        }
+    )
+
+    def element_types(self) -> tuple[str, ...]:
+        """Return per-element type strings in element-id order.
+
+        Implements ``SupportsElementInventory`` (W6e) so the Layer-4
+        model-overview library can render the § 模型概览 section.
+        Translates raw FRD integer-coded type strings ("1", "2", ...)
+        from the parser to canonical Abaqus-style names ("C3D8",
+        "C3D10", "S4R", ...) via :attr:`_FRD_TYPE_CODE_TO_ABAQUS`,
+        which is the vocabulary the W6e grouping table consumes. Codes
+        not in the table pass through verbatim — the W6e library
+        buckets them into ``GROUP_OTHER`` and the engineer sees the
+        raw FRD code so they can extend the table if needed.
+
+        Element ordering: sorted by ``element_id`` so the order is
+        stable across calls (FRD's internal block order can change
+        between solver runs even on the same input). The W6e summary
+        only consumes counts, so order does not affect the rendered
+        output, but a deterministic order makes mesh-quality follow-
+        ups (median element size by type, etc.) reproducible.
+        """
+        self._check_open()
+        elements = self._parsed.elements
+        if not elements:
+            return ()
+        translate = self._FRD_TYPE_CODE_TO_ABAQUS
+        return tuple(
+            translate.get(elements[eid].element_type, elements[eid].element_type)
+            for eid in sorted(elements)
+        )
 
     # --- helpers ---------------------------------------------------------
 

@@ -81,3 +81,35 @@ class SupportsElementDeletion(Protocol):
     """
 
     def deleted_facets_for(self, step_id: int) -> "npt.NDArray[np.int8]": ...
+
+
+@runtime_checkable
+class SupportsElementInventory(Protocol):
+    """Optional Layer-2 capability: per-element type strings (RFC-001 W6e).
+
+    Adapters that can enumerate element types (CalculiX FRD's
+    ``-3``-block ``element_type`` field, OpenRadioss A-frame mesh
+    metadata, Abaqus .inp ``*ELEMENT, TYPE=`` keywords, etc.)
+    implement this. The W6e ``model_overview`` library feature-
+    detects it via ``isinstance(reader, SupportsElementInventory)``
+    so the § 模型概览 section gracefully degrades to "node count
+    only" on adapters that haven't yet wired the capability.
+
+    Returns: ``tuple[str, ...]`` of element-type identifiers, one
+    per element, in the adapter's natural enumeration order. The
+    string vocabulary is solver-native (e.g. ``"C3D10"`` for an
+    Abaqus / CalculiX 10-node tet, ``"BRICK8"`` for an OpenRadioss
+    8-node hex) — no cross-solver normalization happens at Layer 2.
+
+    The library that consumes this (``model_overview.summarize_model``)
+    is responsible for human-readable grouping in the DOCX (e.g.
+    ``"C3D10"`` → ``"四面体 (C3D10)"``).
+
+    Length contract: the returned tuple's length equals the adapter's
+    total element count. Adapters with no element data MUST NOT
+    declare this capability — a zero-length tuple is reserved for
+    the "fully-parsed mesh with no elements" case (degenerate but
+    valid; Layer-3 surfaces a warning).
+    """
+
+    def element_types(self) -> tuple[str, ...]: ...
