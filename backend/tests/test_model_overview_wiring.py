@@ -168,6 +168,11 @@ def test_evidence_does_not_fabricate_element_count_when_inventory_missing(
         # declares the capability but the underlying FRD has no -3
         # block, so element_types() returns None.
         monkeypatch.setattr(reader._parsed, "elements", {})
+        # Capture the always-known node count BEFORE we close the
+        # reader so the regression test can pin the replacement
+        # contract directly. Mirrors how ``summarize_model`` derives
+        # total_nodes (Mesh Protocol — len of the node-id array).
+        expected_node_count = float(len(reader.mesh.node_id_array))
         _, bundle = generate_static_strength_summary(
             reader,
             project_id="P-W6E2-NF",
@@ -183,10 +188,17 @@ def test_evidence_does_not_fabricate_element_count_when_inventory_missing(
         for item in bundle.evidence_items
         if item.evidence_id == "EV-MODEL-OVERVIEW-001"
     )
-    # Value cannot claim a concrete element count.
-    assert ev.data.unit != "elements", (
-        f"unit must not assert 'elements' when inventory unavailable; "
+    # Codex R2 NIT on PR #110: pin the *replacement* contract directly
+    # (anchor to the always-known node count) instead of just the
+    # negative absence of the original bug — otherwise drift to
+    # ``unit="foo"`` or ``value=0.0, unit="nodes"`` would still pass.
+    assert ev.data.unit == "nodes", (
+        f"unit must anchor to nodes when inventory unavailable; "
         f"got unit={ev.data.unit!r}"
+    )
+    assert ev.data.value == expected_node_count, (
+        f"value must equal node count in unavailable branch; "
+        f"got value={ev.data.value!r}, expected={expected_node_count!r}"
     )
     # citation_anchor must spell out the unknown state.
     anchor = ev.data.citation_anchor or ""
@@ -198,8 +210,19 @@ def test_evidence_does_not_fabricate_element_count_when_inventory_missing(
         f"citation_anchor must mark element count as unknown; "
         f"got {anchor!r}"
     )
-    # Description still flags the unavailable state for human review.
-    assert "has_inventory=False" in (ev.description or "")
+    # Codex R2 LOW on PR #110: description must also stay symmetric
+    # with citation_anchor — no "elements=0" leak into human-readable
+    # text that a UI / log might surface verbatim.
+    description = ev.description or ""
+    assert "elements=0" not in description, (
+        f"description leaked elements=0 sentinel in unavailable branch: "
+        f"{description!r}"
+    )
+    assert "elements=unknown" in description, (
+        f"description must say elements=unknown in unavailable branch; "
+        f"got {description!r}"
+    )
+    assert "has_inventory=False" in description
 
 
 # ---------------------------------------------------------------------------

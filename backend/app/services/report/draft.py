@@ -694,9 +694,16 @@ def _build_model_overview_evidence_and_section(
     """
     overview = summarize_model(reader)
 
+    # Codex R2 LOW on PR #110: keep the human-readable ``description``
+    # symmetric with ``citation_anchor`` so a UI / log that surfaces
+    # description verbatim doesn't leak the synthetic ``elements=0``
+    # sentinel from the unavailable branch.
+    elements_text = (
+        str(overview.total_elements) if overview.has_inventory else "unknown"
+    )
     description = (
         f"Reader-derived mesh statistics: nodes={overview.total_nodes}, "
-        f"elements={overview.total_elements}, "
+        f"elements={elements_text}, "
         f"has_inventory={overview.has_inventory}"
     )
 
