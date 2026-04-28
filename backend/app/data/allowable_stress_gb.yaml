@@ -51,5 +51,5 @@ applies_weld_efficiency: false
 # Notes rendered in the DOCX § 许用应力 section when this code path is used.
 docx_disclaimers:
   - "本计算依据 GB 150.3-2011 §4.1.5 简化算式，适用于常温（≤50°C）范围。"
-  - "本简化算式对低合金钢偏保守 ~8%；如需 Table 4 精确值请工程师手动核对。"
+  - "本简化算式（σ_u/3.0）从不高于 Table 4（Table 4 对部分等级允许 σ_u/2.7）；偏差仅在 σ_u-leg 主导时出现（例 Q345B 简化 156.7 vs Table 4 ~170, 偏低 ~8%；Q345R 两者皆 170.0）。如需精确值请工程师手动核对 Table 4。"
   - "焊缝系数 E_j 须由工程师在评定结论中显式应用。"
