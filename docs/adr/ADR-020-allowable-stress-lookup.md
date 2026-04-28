@@ -184,4 +184,5 @@ Plus one regression test pinning the **value** of Q345R simplified vs GB 150.3-2
 | Version | Date | Notes |
 |---|---|---|
 | 0.1 | 2026-04-27 | Initial draft prepared during Codex outage window. Awaits user buy-in on GB 150 vs 150.3 citation + bilingual policy. |
-| 0.2 | 2026-04-27 | Self-correction after spot-check: simplified formula is **conservative ~8%** vs Table 4 for low-alloy pressure-vessel grades, not "within ±2 MPa". Acknowledged the gap, pinned it via regression test, added DOCX disclaimer. |
+| 0.2 | 2026-04-27 | Self-correction after spot-check: simplified formula is **bounded above by Table 4 by construction** (σ_u/3.0 ≤ σ_u/2.7), not "within ±2 MPa". The gap is non-uniform: it appears only when the σ_u-leg governs (Q345B 156.7 vs Table 4 ~170, ~8% lower), and disappears when the σ_y-leg governs (Q345R / 16MnR 170.0, equal to Table 4). Pinned the value via regression test, added DOCX disclaimer. See §3 truth table for per-grade values. |
+| 0.3 | 2026-04-28 | W6c PR #99 cleanup (Codex R1 / R2 / R3): corrected the Q345R "156.7" calculation typo (actual = 170.0); fixed 16MnR claim (also 170.0, not the gap example); rewrote uniform "~8%" claims at §3.1 / §5 / revision-history / `allowable_stress_gb.yaml` docx_disclaimers to reflect the §3 truth table — the gap is conditional on which leg governs. |
