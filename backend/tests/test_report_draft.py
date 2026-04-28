@@ -1096,6 +1096,277 @@ def test_w6c2_format_inputs_substitution_respects_word_boundaries() -> None:
     assert "470" in rendered
 
 
+# ---------------------------------------------------------------------------
+# W6d.2 — § 边界条件 wiring
+# ---------------------------------------------------------------------------
+
+
+def _write_bc_yaml(tmp_path: Path, body: str) -> Path:
+    from textwrap import dedent
+
+    p = tmp_path / "bc.yaml"
+    p.write_text(dedent(body), encoding="utf-8")
+    return p
+
+
+def test_w6d2_bc_yaml_appends_section_and_evidence(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """When ``bc_yaml_path`` is provided, the draft grows by one
+    level-1 section (§ 边界条件) and the bundle gains exactly one
+    new ``EV-BC-001`` ReferenceEvidence pointing at the source file.
+    """
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: fixed_bottom
+            kind: fixed
+            target: NSET=bottom
+            components: {ux: 0.0, uy: 0.0, uz: 0.0}
+            unit_system: SI_mm
+          - name: top_pressure
+            kind: pressure
+            target: ELSET=top_face
+            components: {pressure: 5.0}
+            unit_system: SI_mm
+        """,
+    )
+    report, bundle = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        bc_yaml_path=p,
+    )
+
+    titles = [s.title for s in report.sections]
+    assert "边界条件 (Boundary conditions)" in titles
+
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert "EV-BC-001" in ids
+
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    bc_ev = by_id["EV-BC-001"]
+    assert bc_ev.evidence_type is EvidenceType.REFERENCE
+    assert bc_ev.data.kind == "reference"
+    # value = number of BCs (2), unit = "conditions"
+    assert bc_ev.data.value == 2.0
+    assert bc_ev.data.unit == "conditions"
+    assert bc_ev.data.source_document == str(p)
+
+
+def test_w6d2_bc_section_lists_each_bc_in_source_order(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """The section content lists each BC in source order — engineers
+    cross-reference the rendered DOCX back to their bc.yaml by index."""
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: alpha
+            kind: fixed
+            target: NSET=a
+            components: {ux: 0.0}
+            unit_system: SI_mm
+          - name: beta
+            kind: force
+            target: NSET=b
+            components: {fx: 100.0}
+            unit_system: SI_mm
+          - name: gamma
+            kind: pressure
+            target: ELSET=g
+            components: {pressure: 2.5}
+            unit_system: SI_mm
+        """,
+    )
+    report, _ = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        bc_yaml_path=p,
+    )
+    bc_section = next(
+        s for s in report.sections if s.title.startswith("边界条件")
+    )
+    # Each BC name must appear once and in source order.
+    pos_alpha = bc_section.content.find("alpha")
+    pos_beta = bc_section.content.find("beta")
+    pos_gamma = bc_section.content.find("gamma")
+    assert pos_alpha != -1 and pos_beta != -1 and pos_gamma != -1
+    assert pos_alpha < pos_beta < pos_gamma
+    # The summary line shows total + grouping
+    assert "共 **3** 项" in bc_section.content
+    # The citation appears inside the section
+    assert "EV-BC-001" in bc_section.content
+
+
+def test_w6d2_no_bc_yaml_leaves_sections_unchanged(
+    gs001_reader: CalculiXReader,
+) -> None:
+    """Backwards-compat: when ``bc_yaml_path`` is not provided, the
+    report shape matches the old W4 path exactly. No § 边界条件
+    section, no EV-BC-001."""
+    report, bundle = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    titles = [s.title for s in report.sections]
+    assert not any(t.startswith("边界条件") for t in titles)
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert "EV-BC-001" not in ids
+
+
+def test_w6d2_empty_bc_yaml_emits_placeholder_with_evidence(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """Empty bc.yaml = engineer touched the file but had nothing to
+    list. The renderer must emit a [需工程师确认] placeholder section
+    *with* citation back to the source — distinguishes "uploaded
+    empty" from "did not upload" in the audit trail."""
+    p = tmp_path / "bc.yaml"
+    p.write_text("", encoding="utf-8")  # empty file → 0 BCs
+    report, bundle = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        bc_yaml_path=p,
+    )
+    bc_section = next(
+        s for s in report.sections if s.title.startswith("边界条件")
+    )
+    assert "需工程师确认" in bc_section.content
+    assert "EV-BC-001" in bc_section.content
+
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    assert by_id["EV-BC-001"].data.value == 0.0
+
+
+def test_w6d2_mixed_unit_systems_warns_in_section(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """Mixed unit systems is almost always a wizard bug; surfacing
+    the warning at sign time is cheaper than catching it at audit."""
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: a
+            kind: fixed
+            target: NSET=a
+            components: {ux: 0.0}
+            unit_system: SI_mm
+          - name: b
+            kind: pressure
+            target: ELSET=b
+            components: {pressure: 1.0}
+            unit_system: SI
+        """,
+    )
+    report, _ = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        bc_yaml_path=p,
+    )
+    bc_section = next(
+        s for s in report.sections if s.title.startswith("边界条件")
+    )
+    assert "混合单位系统" in bc_section.content
+    assert "SI_mm" in bc_section.content and "SI" in bc_section.content
+
+
+def test_w6d2_malformed_bc_yaml_propagates(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """``BCSummaryError`` from the loader must propagate cleanly so
+    the engineer sees the error at draft time, not at DOCX render."""
+    from app.services.report.boundary_summary import BCSummaryError
+
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: bad
+            kind: fixed
+            target: NSET=x
+            components: {fx: .nan}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="must be finite"):
+        generate_static_strength_summary(
+            gs001_reader,
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            bc_yaml_path=p,
+        )
+
+
+def test_w6d2_lifting_lug_accepts_bc_yaml(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """Symmetric: the lug producer also forwards ``bc_yaml_path`` so
+    a lifting-lug DOCX can carry § 边界条件."""
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: lug_pin
+            kind: fixed
+            target: NSET=lug_hole
+            components: {ux: 0.0, uy: 0.0, uz: 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    report, bundle = generate_lifting_lug_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        bc_yaml_path=p,
+    )
+    titles = [s.title for s in report.sections]
+    assert "边界条件 (Boundary conditions)" in titles
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert "EV-BC-001" in ids
+
+
+def test_w6d2_bc_section_coexists_with_w6c2_verdict_sections(
+    gs001_reader: CalculiXReader, tmp_path: Path
+) -> None:
+    """Stacking the two W6 wedges: verdict + BC sections appear
+    alongside the max-field summary. Total = 4 sections (max-field +
+    许用应力 + 评定结论 + 边界条件)."""
+    p = _write_bc_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: fixed_bottom
+            kind: fixed
+            target: NSET=bottom
+            components: {ux: 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    report, bundle = generate_static_strength_summary(
+        gs001_reader,
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+        bc_yaml_path=p,
+    )
+    # Codex R1 PR #102 MEDIUM: pin the exact ordered sequence + level
+    # contract, not just membership. Order matters because the DOCX
+    # renderer iterates sections sequentially; level matters because
+    # 许用应力 / 评定结论 are sub-sections of the max-field summary
+    # while 边界条件 is its own top-level chapter.
+    sequence = [(s.title, s.level) for s in report.sections]
+    assert sequence == [
+        ("结构强度摘要 (Static-strength summary)", 1),
+        ("许用应力 (Allowable stress)", 2),
+        ("评定结论 (Strength verdict)", 2),
+        ("边界条件 (Boundary conditions)", 1),
+    ]
+
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert {"EV-VM-MAX", "EV-ALLOWABLE-001", "EV-VERDICT-001", "EV-BC-001"} <= ids
+
+
 def test_w6c2_allowable_section_shows_substituted_formula() -> None:
     """The substitution line must show the actual σ_y / σ_u numbers,
     not the symbolic placeholders. ADR-020 §5: engineers cross-check
