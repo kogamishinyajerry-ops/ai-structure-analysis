@@ -357,7 +357,9 @@ class TestR2RagFacadeIsSoleChokePoint:
 # ---------------------------------------------------------------------------
 
 
-def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
+def _annotation_mentions_knowledgebase(
+    node: ast.AST | None, aliases: set[str] | None = None
+) -> bool:
     """True if a function-parameter annotation references `KnowledgeBase`.
 
     Catches:
@@ -372,9 +374,27 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
     object reference, NOT an instance — passing the class through is not
     a singleton bypass. We skip the inner walk under any `type[...]` /
     `Type[...]` subscript so this annotation pattern is allowed.
+
+    R7 hardening (post Codex R4-verification MEDIUM, 2026-04-28): accepts
+    a precomputed alias set so renamed imports and KB subclasses are also
+    recognised in annotations. Codex repro that exposed the gap:
+
+        from app.rag.kb import KnowledgeBase as KB
+        def advise(kb: KB): ...                      # bypasses the
+                                                       # literal-name match
+
+        class MyKB(KnowledgeBase): pass
+        def advise(kb: MyKB): ...                    # subclass annotation
+
+    The caller passes the alias set built by `_knowledgebase_local_aliases`
+    so all three predicates share one resolution policy. Forward-ref
+    strings still match on substring of "KnowledgeBase" only — string
+    annotations naming an alias are not resolvable without symbol
+    tracking, which is out of scope for an AST-only check.
     """
     if node is None:
         return False
+    name_set = {"KnowledgeBase"} | (aliases or set())
     # R4: skip inside type[X] / Type[X] subscripts. The annotation `cls:
     # type[KnowledgeBase]` says "any subclass of KB", not "an instance" —
     # accepting the class doesn't load the model.
@@ -393,7 +413,7 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
     for sub in ast.walk(node):
         if id(sub) in skip_nodes:
             continue
-        if isinstance(sub, ast.Name) and sub.id == "KnowledgeBase":
+        if isinstance(sub, ast.Name) and sub.id in name_set:
             return True
         if isinstance(sub, ast.Attribute) and sub.attr == "KnowledgeBase":
             return True
@@ -407,8 +427,15 @@ def _annotation_mentions_knowledgebase(node: ast.AST | None) -> bool:
     return False
 
 
-def _function_takes_knowledgebase_param(fn: ast.AST) -> bool:
-    """True if any function arg/kwarg in fn is annotated as KnowledgeBase."""
+def _function_takes_knowledgebase_param(fn: ast.AST, aliases: set[str] | None = None) -> bool:
+    """True if any function arg/kwarg in fn is annotated as KnowledgeBase.
+
+    R7 hardening (post Codex R4-verification MEDIUM, 2026-04-28): accepts
+    an optional alias set so callers that have already walked the
+    enclosing module pass it through to `_annotation_mentions_knowledgebase`.
+    Without aliases, only the literal name `KnowledgeBase` and dotted-attr
+    forms match — alias and subclass annotations evade.
+    """
     if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
         return False
     args = fn.args
@@ -419,7 +446,10 @@ def _function_takes_knowledgebase_param(fn: ast.AST) -> bool:
         + ([args.vararg] if args.vararg else [])
         + ([args.kwarg] if args.kwarg else [])
     )
-    return any(a is not None and _annotation_mentions_knowledgebase(a.annotation) for a in all_args)
+    return any(
+        a is not None and _annotation_mentions_knowledgebase(a.annotation, aliases)
+        for a in all_args
+    )
 
 
 def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
@@ -476,6 +506,28 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
         return False
 
     # Multi-pass to follow chains: `cls = KnowledgeBase; cls2 = cls`.
+    # R7 (post Codex R4-verification MEDIUM, 2026-04-28): also fold in
+    # subclasses. A subclass of KnowledgeBase is constructable as a KB
+    # instance (Liskov), and instances of it ARE KnowledgeBase instances.
+    # Codex bypass repro:
+    #
+    #     class MyKB(KnowledgeBase): pass
+    #     def advise(kb: MyKB): ...        # annotation evades literal match
+    #     def build(): return MyKB()       # ctor evades literal match
+    #
+    # We treat any class whose bases reference a known alias as itself an
+    # alias. The fixpoint loop already iterates so transitive subclass
+    # chains (`class A(KB); class B(A)`) propagate cleanly.
+    def _bases_reference_alias(class_def: ast.ClassDef) -> bool:
+        for base in class_def.bases:
+            if isinstance(base, ast.Name) and base.id in seen_aliases:
+                return True
+            # `class X(kb.KnowledgeBase)` — attribute base on the rag.kb
+            # module alias. Use the literal class name as the anchor.
+            if isinstance(base, ast.Attribute) and base.attr == "KnowledgeBase":
+                return True
+        return False
+
     for _ in range(8):  # bounded fixpoint
         before = len(seen_aliases)
         for node in ast.walk(tree):
@@ -491,6 +543,11 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
             elif isinstance(node, ast.NamedExpr):
                 if isinstance(node.target, ast.Name) and _value_resolves_to_alias(node.value):
                     seen_aliases.add(node.target.id)
+            # R7: subclass declaration. `class MyKB(KnowledgeBase)` adds
+            # `MyKB` to the alias set so both annotation and ctor checks
+            # catch its use downstream.
+            elif isinstance(node, ast.ClassDef) and _bases_reference_alias(node):
+                seen_aliases.add(node.name)
         if len(seen_aliases) == before:
             break
     return seen_aliases
@@ -635,12 +692,15 @@ def test_rag_facade_does_not_take_knowledgebase_param():
         pytest.skip(f"{facade} does not exist yet — Phase 2.1 follow-up adds it")
     tree = _parse_file(facade)
     assert tree is not None
+    # R7: resolve aliases (renamed imports + subclasses + assignment chains)
+    # once per module so annotation matching catches alias forms too.
+    aliases = _knowledgebase_local_aliases(tree)
     violations: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if node.name.startswith("_"):
                 continue  # private helpers may pass KB internally
-            if _function_takes_knowledgebase_param(node):
+            if _function_takes_knowledgebase_param(node, aliases):
                 violations.append(
                     f"{facade.relative_to(_REPO_ROOT)}:{node.lineno}: "
                     f"public function `{node.name}` takes a KnowledgeBase "
@@ -1155,3 +1215,120 @@ class TestR6IfExpAndWalrusAliases:
         """`(K := kb.KnowledgeBase)()` — attribute-form via walrus."""
         tree = _parse("from app.rag import kb\ndef f(): return (K := kb.KnowledgeBase)()\n")
         assert _calls_knowledgebase_constructor(tree)
+
+
+# ---------------------------------------------------------------------------
+# R7 hardening — alias annotations + subclass tracking
+# (post Codex R4-verification 2026-04-28 MEDIUM)
+#
+# Codex's R4 verification of the merged PR #53 found two open bypasses
+# the R4-R6 hardenings did NOT cover:
+#
+#   MEDIUM-1 (alias annotation): `from x import KnowledgeBase as KB;
+#     def advise(kb: KB): ...` — _annotation_mentions_knowledgebase
+#     only matched the literal name `KnowledgeBase`, so renamed imports
+#     evaded the param check entirely.
+#
+#   MEDIUM-2 (subclass): `class MyKB(KnowledgeBase): pass; def advise(kb:
+#     MyKB); MyKB()` — neither annotation nor ctor predicate tracked
+#     subclasses; both passed silently.
+#
+# R7 fix:
+# - _annotation_mentions_knowledgebase accepts an alias set; the public
+#   test functions resolve it via _knowledgebase_local_aliases per-module.
+# - _knowledgebase_local_aliases also folds in any class whose bases
+#   reference a known alias (or `kb.KnowledgeBase` attribute form).
+# - Alias propagation is a fixpoint, so transitive subclass chains
+#   (`class A(KB); class B(A)`) all resolve.
+# ---------------------------------------------------------------------------
+
+
+class TestR7AliasAnnotationAndSubclass:
+    """Codex R4-verification (2026-04-28): the two open MEDIUM bypasses."""
+
+    def test_codex_r7_renamed_import_in_annotation_is_caught(self):
+        """The exact Codex bypass: alias param annotation."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_codex_r7_subclass_param_annotation_is_caught(self):
+        """`class MyKB(KnowledgeBase); def advise(kb: MyKB)` — subclass."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def advise(query, kb: MyKB): ...\n"
+        )
+        fn = next(
+            n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "advise"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_codex_r7_subclass_constructor_call_is_caught(self):
+        """`class MyKB(KnowledgeBase); return MyKB()` — subclass ctor."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class MyKB(KnowledgeBase): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_subclass_via_attribute_base_is_caught(self):
+        """`class MyKB(kb.KnowledgeBase): pass` — attribute-form base."""
+        tree = _parse(
+            "from app.rag import kb\n"
+            "class MyKB(kb.KnowledgeBase): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_transitive_subclass_chain_is_caught(self):
+        """`class A(KB); class B(A); B()` — transitive via fixpoint."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class A(KnowledgeBase): pass\n"
+            "class B(A): pass\n"
+            "def build(): return B()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "A" in aliases and "B" in aliases
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7_unrelated_class_is_not_flagged(self):
+        """`class OtherClass(SomeUnrelatedBase)` — must NOT be aliased."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "class OtherClass(object): pass\n"
+            "def build(): return OtherClass()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "OtherClass" not in aliases
+        assert not _calls_knowledgebase_constructor(tree)
+
+    def test_r7_alias_annotation_with_optional_wrapper_is_caught(self):
+        """`Optional[KB]` where KB is a renamed import — must be caught."""
+        tree = _parse(
+            "from typing import Optional\n"
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "def advise(query, kb: Optional[KB] = None): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7_unresolved_alias_without_aliases_falls_back_to_literal(self):
+        """Backwards compatibility: callers passing no alias set still get
+        the pre-R7 literal-name behaviour. Documents the failure mode for
+        callers that haven't been wired through."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        # Without aliases, alias annotation is missed (this is the gap the
+        # R7 fix closes when callers do pass aliases).
+        assert not _function_takes_knowledgebase_param(fn)
