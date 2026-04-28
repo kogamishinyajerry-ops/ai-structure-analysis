@@ -208,15 +208,15 @@ def eroded_history(
     DOCX/viz output if the active adapter does not implement it
     (e.g. CalculiX has no element erosion).
 
-    Unknown ``step_id``s raise ``KeyError`` upfront (validated against
-    ``reader.solution_states``); the underlying
-    ``deleted_facets_for`` already raises on unknown step but the
-    upfront check fires before we partial-process the dict.
+    Unknown ``step_id``s raise ``KeyError`` via the underlying
+    ``deleted_facets_for`` per the ``SupportsElementDeletion``
+    Protocol contract. We deliberately do NOT pre-validate against
+    ``reader.solution_states`` here because that attribute is part of
+    ``ReaderHandle`` and not of this sub-Protocol; tightening the
+    accepted type would be a backwards-incompatible contract change.
+    Callers needing fail-fast across many step_ids should compose
+    with their own ``solution_states`` check first.
     """
-    # SupportsElementDeletion is structural; it composes with
-    # ReaderHandle for any concrete adapter we have. _validate_step_ids
-    # uses the ReaderHandle surface (solution_states) so we narrow.
-    _validate_step_ids(reader, step_ids)  # type: ignore[arg-type]
     return {sid: count_eroded(reader.deleted_facets_for(sid)) for sid in step_ids}
 
 
@@ -231,9 +231,10 @@ def perforation_event_step(
     this path and gets ``None``, matching engineer intuition for "no
     perforation observed".
 
-    Unknown ``step_id``s raise ``KeyError`` upfront.
+    Unknown ``step_id``s raise ``KeyError`` via
+    ``deleted_facets_for`` (Protocol contract); see ``eroded_history``
+    for why we don't pre-validate against ``solution_states``.
     """
-    _validate_step_ids(reader, step_ids)  # type: ignore[arg-type]
     for sid in step_ids:
         flags = reader.deleted_facets_for(sid)
         if count_eroded(flags) > 0:

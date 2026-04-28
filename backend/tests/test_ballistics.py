@@ -199,6 +199,40 @@ def test_perforation_event_step_unknown_step_raises_keyerror() -> None:
         perforation_event_step(rdr, [42])
 
 
+class _DeletionOnlyReader:
+    """Minimal ``SupportsElementDeletion`` shim — implements ONLY
+    ``deleted_facets_for``, no ``solution_states`` and no other
+    ``ReaderHandle`` attribute. Pins Codex R2's contract repro: the
+    erosion orchestrators must accept this surface without
+    AttributeError on ``solution_states``."""
+
+    def __init__(self, by_step: dict[int, np.ndarray]) -> None:
+        self._by_step = by_step
+
+    def deleted_facets_for(self, step_id: int) -> "np.ndarray":
+        if step_id not in self._by_step:
+            raise KeyError(step_id)
+        return self._by_step[step_id]
+
+
+def test_eroded_history_accepts_supports_element_deletion_only() -> None:
+    """Codex R2: tightening the accepted type to require
+    ``solution_states`` would be a backwards-incompatible contract
+    regression — the erosion orchestrators advertise
+    ``SupportsElementDeletion`` only, so this minimal shim must work."""
+    rdr = _DeletionOnlyReader(
+        {1: np.array([1, 0, 1], dtype=np.int8), 2: np.zeros(3, dtype=np.int8)}
+    )
+    assert eroded_history(rdr, [1, 2]) == {1: 1, 2: 3}
+
+
+def test_perforation_event_step_accepts_supports_element_deletion_only() -> None:
+    rdr = _DeletionOnlyReader(
+        {1: np.ones(3, dtype=np.int8), 2: np.array([1, 0, 1], dtype=np.int8)}
+    )
+    assert perforation_event_step(rdr, [1, 2]) == 2
+
+
 # ---------------------------------------------------------------------------
 # Tier 2 — synthetic Reader stubs for displacement_history validation
 # ---------------------------------------------------------------------------
