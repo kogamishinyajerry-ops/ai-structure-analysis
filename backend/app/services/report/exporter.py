@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set
 
 from docx import Document
 from docx.document import Document as _DocxDocument
@@ -213,12 +213,42 @@ def _render_evidence_appendix(
                 run.italic = True
 
 
+def _render_figures_appendix(
+    doc: _DocxDocument, figures: "Dict[str, Path]"
+) -> None:
+    """Add a 'Figures' appendix that embeds each PNG with a short caption.
+
+    ``figures`` maps figure-name → PNG path. Names are dictionary keys
+    (insertion-ordered in modern Python), so the caller controls the
+    order. Each figure is added as ``add_picture`` followed by a
+    small italic caption with the figure name. Width is fixed at 6 in.
+    (the typical Word page width less margins) so figures embed
+    consistently across templates.
+    """
+    from docx.shared import Inches
+
+    if not figures:
+        return
+    doc.add_heading("附录: 结果云图 / Figures", level=1)
+    for name, path in figures.items():
+        if not path.is_file():
+            # Skip silently rather than crash export — a missing figure
+            # was already surfaced by the renderer's stderr warning;
+            # don't double-fail the report on its absence.
+            continue
+        doc.add_picture(str(path), width=Inches(6.0))
+        cap = doc.add_paragraph(f"图 — {name}", style="Intense Quote")
+        for run in cap.runs:
+            run.italic = True
+
+
 def export_docx(
     report: ReportSpec,
     bundle: EvidenceBundle,
     *,
     output_path: Path,
     template: "Optional[TemplateSpec]" = None,
+    figures: "Optional[Dict[str, Path]]" = None,
 ) -> Path:
     """Materialise ``(report, bundle)`` to a DOCX at ``output_path``.
 
@@ -293,6 +323,8 @@ def export_docx(
 
     _render_section_tree(doc, report.sections)
     _render_evidence_appendix(doc, bundle)
+    if figures:
+        _render_figures_appendix(doc, figures)
 
     doc.save(str(resolved_output))
     return resolved_output

@@ -44,6 +44,7 @@ interface ElectronApi {
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
   onExit: (cb: (exitCode: number) => void) => () => void;
+  onFigure: (cb: (path: string) => void) => () => void;
 }
 
 declare global {
@@ -75,6 +76,8 @@ const demoBtn = $<HTMLButtonElement>("demo-gs001");
 const statusEl = $<HTMLDivElement>("statusEl");
 const violationsBox = $<HTMLDivElement>("violations");
 const violationsList = $<HTMLUListElement>("violations-list");
+const figuresBox = $<HTMLDivElement>("figures");
+const figuresGrid = $<HTMLDivElement>("figures-grid");
 const log = $<HTMLPreElement>("log");
 
 // --- helpers ---------------------------------------------------------------
@@ -111,6 +114,69 @@ const showViolations = (violations: readonly string[]) => {
 const clearViolations = () => {
   violationsList.replaceChildren();
   violationsBox.hidden = true;
+};
+
+// --- figure gallery -------------------------------------------------------
+
+const _basenameOf = (p: string): string => {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
+};
+
+/**
+ * Mimic Node's ``url.pathToFileURL`` in the browser-side renderer
+ * (no node:url available with contextIsolation). Handles:
+ *   - Windows backslash → forward slash
+ *   - Drive-letter prefix (C:\…) → /C:/… (file:// requires it)
+ *   - percent-encoding of reserved chars # ? that would otherwise be
+ *     parsed as fragment / query, plus the spaces / non-ASCII that
+ *     ``encodeURI`` covers
+ *
+ * Codex R1 LOW renderer.ts:141 — raw ``file://${absPath}`` did not
+ * percent-encode # ? (legal POSIX filename chars) and was fragile on
+ * Windows.
+ */
+const _pathToFileURL = (absPath: string): string => {
+  let p = absPath.replace(/\\/g, "/");
+  if (!p.startsWith("/")) p = "/" + p;
+  return (
+    "file://" +
+    encodeURI(p).replace(/#/g, "%23").replace(/\?/g, "%3F")
+  );
+};
+
+const _openLightbox = (src: string) => {
+  const overlay = document.createElement("div");
+  overlay.className = "figure-lightbox";
+  const img = document.createElement("img");
+  img.src = src;
+  overlay.appendChild(img);
+  overlay.addEventListener("click", () => overlay.remove());
+  document.body.appendChild(overlay);
+};
+
+const addFigure = (absPath: string) => {
+  // Electron can load file:// URLs from the main-process filesystem
+  // because we run with sandbox:false + no CSP restriction on img-src
+  // for local files. Cache-bust with a timestamp so a re-run with the
+  // same paths refreshes the image instead of showing the stale one.
+  const fileUrl = `${_pathToFileURL(absPath)}?t=${Date.now()}`;
+  const fig = document.createElement("figure");
+  const img = document.createElement("img");
+  img.src = fileUrl;
+  img.alt = _basenameOf(absPath);
+  img.addEventListener("click", () => _openLightbox(fileUrl));
+  const cap = document.createElement("figcaption");
+  cap.textContent = _basenameOf(absPath);
+  fig.appendChild(img);
+  fig.appendChild(cap);
+  figuresGrid.appendChild(fig);
+  figuresBox.hidden = false;
+};
+
+const clearFigures = () => {
+  figuresGrid.replaceChildren();
+  figuresBox.hidden = true;
 };
 
 const updateFormState = () => {
@@ -161,12 +227,14 @@ sclDistancesInput.addEventListener("input", updateFormState);
 
 window.api.onStdout(appendLog);
 window.api.onStderr(appendLog);
+window.api.onFigure(addFigure);
 
 runBtn.addEventListener("click", async () => {
   runBtn.disabled = true;
   revealBtn.disabled = true;
   clearLog();
   clearViolations();
+  clearFigures();
   setStatus("running…", "running");
 
   const kind = kindSelect.value as RunReportRequest["kind"];

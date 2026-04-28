@@ -186,6 +186,16 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     }
   }
 
+  // Mirror the CLI's default figs_dir derivation: <output>.figs/.
+  // Forwarded `figure:` paths must live under this directory, be
+  // absolute, and end in .png. Anything else is dropped — defends
+  // the renderer's permissive img-src against a stderr-line
+  // injection (Codex R1 LOW main.ts:202).
+  const expectedFigsDir = path.resolve(
+    path.dirname(req.output),
+    path.basename(req.output, path.extname(req.output)) + ".figs",
+  );
+
   // ``report-cli`` is the console_script registered by
   // pyproject.toml [project.scripts]. We assume it's on PATH —
   // bundling Python is the customer-demo scope (W5+, separate PR).
@@ -194,8 +204,33 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   child.stdout.on("data", (chunk: Buffer) => {
     evt.sender.send("report:stdout", chunk.toString("utf-8"));
   });
+  // Buffer stderr by line so a "figure: <path>" announcement isn't
+  // split across two chunks. The CLI flushes after each line so the
+  // boundary is reliable; we just need to reassemble across TCP-style
+  // chunk arbitrariness.
+  let stderrBuf = "";
   child.stderr.on("data", (chunk: Buffer) => {
-    evt.sender.send("report:stderr", chunk.toString("utf-8"));
+    const text = chunk.toString("utf-8");
+    evt.sender.send("report:stderr", text);
+    stderrBuf += text;
+    let nl: number;
+    while ((nl = stderrBuf.indexOf("\n")) >= 0) {
+      const line = stderrBuf.slice(0, nl);
+      stderrBuf = stderrBuf.slice(nl + 1);
+      const m = /^figure:\s+(.+)$/.exec(line.trim());
+      if (m && m[1]) {
+        const candidate = path.resolve(m[1]);
+        const rel = path.relative(expectedFigsDir, candidate);
+        const insideFigsDir = !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+        if (
+          path.isAbsolute(m[1]) &&
+          candidate.toLowerCase().endsWith(".png") &&
+          insideFigsDir
+        ) {
+          evt.sender.send("report:figure", candidate);
+        }
+      }
+    }
   });
 
   return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {

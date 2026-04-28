@@ -179,12 +179,16 @@ def test_report_run_emits_progress_stages_to_stderr(
             "static",
             "--output",
             str(out),
+            "--no-figures",  # keep this test focused on stage-progress text
         ]
     )
     assert rc == 0
     captured = capsys.readouterr()
 
     # All 4 stage headers must appear, in order, on stderr.
+    # (W5f added a 5th 'rendering figures' stage; this test deliberately
+    # uses --no-figures to keep its surface narrow. Figure-rendering is
+    # exercised by tests/test_report_cli_figures.py.)
     expected_prefixes = [
         "[1/4] reading CalculiX .frd:",
         "[2/4] producing report:",
@@ -235,6 +239,7 @@ def test_no_validate_template_drops_validation_stage(
             "--output",
             str(out),
             "--no-validate-template",
+            "--no-figures",
         ]
     )
     assert rc == 0
