@@ -412,6 +412,53 @@ def test_resolve_node_ids_absent_falls_back_to_arange() -> None:
     np.testing.assert_array_equal(ids, np.array([1, 2, 3, 4, 5]))
 
 
+def test_constructor_failure_cleans_up_tmpdir(tmp_path: Path) -> None:
+    """Codex R2 MEDIUM: if the first ``_read_frame`` raises during
+    ``__init__`` the scratch dir must NOT leak. Earlier code only
+    installed ``weakref.finalize`` after the first read succeeded."""
+    if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
+        pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
+    import shutil as _sh
+    from unittest import mock
+
+    # Stage a copy of GS-100 in tmp_path so the test cannot accidentally
+    # litter the real fixture directory if cleanup regresses.
+    for src in GS100_DIR.iterdir():
+        _sh.copy(src, tmp_path / src.name)
+
+    import tempfile as _tf
+
+    real_mkdtemp = _tf.mkdtemp  # capture before patching
+    captured: dict[str, Path] = {}
+
+    def fake_mkdtemp(prefix: str = "openradioss-") -> str:
+        d = real_mkdtemp(prefix=prefix)
+        captured["path"] = Path(d)
+        return d
+
+    def boom(self, idx: int):  # type: ignore[no-redef]
+        raise RuntimeError("simulated parser failure")
+
+    with (
+        mock.patch(
+            "app.adapters.openradioss.reader.tempfile.mkdtemp",
+            side_effect=fake_mkdtemp,
+        ),
+        mock.patch.object(OpenRadiossReader, "_read_frame", boom),
+        pytest.raises(RuntimeError, match="simulated parser failure"),
+    ):
+        OpenRadiossReader(
+            root_dir=tmp_path,
+            rootname="BOULE1V5",
+            unit_system=UnitSystem.SI_MM,
+        )
+
+    assert "path" in captured, "mkdtemp should have run before failure"
+    assert not captured["path"].exists(), (
+        f"scratch dir {captured['path']} leaked after failed __init__"
+    )
+
+
 def test_displacement_metadata_records_id_synthesis(
     gs100_reader: OpenRadiossReader,
 ) -> None:

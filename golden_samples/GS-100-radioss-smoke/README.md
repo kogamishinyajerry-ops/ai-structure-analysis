@@ -7,8 +7,11 @@
 > `OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/dtmin_02/`
 > (model © **Altair Engineering Inc.**), redistributed under
 > [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
-> See `LICENSE-NOTICES.md` at the repo root for the project-wide mixed-
-> license boundary. Engine-deck modifications (`BOULE1V5_0001.rad` —
+> See `docs/adr/ADR-021-gs100-radioss-smoke-fixture.md` §Licensing for
+> the full mixed-license boundary across this fixture; W7g (RFC-002)
+> will lift that section into a repo-root `LICENSE-NOTICES.md` once
+> additional solver adapters land. Engine-deck modifications
+> (`BOULE1V5_0001.rad` —
 > two scalar parameters changed, see "Origin" below) are released
 > alongside the original under the same CC BY-NC 4.0 terms.
 
@@ -70,10 +73,14 @@ The diff is preserved as `BOULE1V5_0001.rad` (modified) vs.
 
 ## What this fixture does NOT exercise
 
-- Stress / displacement / velocity field extraction — see GS-101 (W7e) for
-  a fixture that ships actual `/ANIM/ELEM/STRESS` + `/ANIM/NODA/DISPL`
-  output. The legacy keyword set used by this Altair upstream model is not
-  compatible with field-output keywords.
+- Native displacement / velocity / stress field output (i.e. fields
+  written by the solver into `vTextA` / `tTextA`) — see GS-101 (W7e)
+  for a fixture that ships actual `/ANIM/ELEM/STRESS` and
+  `/ANIM/NODA/DISPL` output. The legacy keyword set used by this
+  Altair upstream model is not compatible with those field-output
+  keywords. (Note: the adapter still surfaces
+  `CanonicalField.DISPLACEMENT` from `coorA(t)-coorA(0)` per the
+  ADR-021 §Decision carve-out — that path is exercised here.)
 - Element erosion (`delEltA` differs from all-1) — same; needs Johnson-
   Cook + failure criterion in GS-101.
 - Multi-part materials / multi-property interfaces — minimal here.

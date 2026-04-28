@@ -216,37 +216,55 @@ class OpenRadiossReader:
         # Decompress any .gz frames into a per-instance scratch dir.
         # Vortex-Radioss does NOT auto-decompress (verified W7a — the
         # binary parser reads gzip magic as garbage and ValueErrors).
+        #
+        # Cleanup safety net (Codex R2 MEDIUM): register
+        # ``weakref.finalize`` *immediately* after ``mkdtemp`` succeeds
+        # so a failure later in ``__init__`` (first ``_read_frame``
+        # raises, gzip is corrupt, etc.) still wipes the scratch dir on
+        # GC. Earlier code only installed the finalizer after the first
+        # frame had been parsed, leaking the tmpdir on constructor
+        # failure. We also try eager cleanup in the failure path so the
+        # caller doesn't have to wait for GC.
+        self._finalizer: Optional[weakref.finalize] = None
         self._decompressed: dict[int, Path] = {}
-        for idx, p in self._frame_paths.items():
-            if p.suffix == ".gz":
-                if self._tmpdir is None:
-                    self._tmpdir = Path(tempfile.mkdtemp(prefix="openradioss-"))
-                tgt = self._tmpdir / p.with_suffix("").name
-                with gzip.open(p, "rb") as gz, open(tgt, "wb") as out:
-                    shutil.copyfileobj(gz, out)
-                self._decompressed[idx] = tgt
-            else:
-                self._decompressed[idx] = p
+        try:
+            for idx, p in self._frame_paths.items():
+                if p.suffix == ".gz":
+                    if self._tmpdir is None:
+                        self._tmpdir = Path(
+                            tempfile.mkdtemp(prefix="openradioss-")
+                        )
+                        self._finalizer = weakref.finalize(
+                            self, _rmtree_safely, self._tmpdir
+                        )
+                    tgt = self._tmpdir / p.with_suffix("").name
+                    with gzip.open(p, "rb") as gz, open(tgt, "wb") as out:
+                        shutil.copyfileobj(gz, out)
+                    self._decompressed[idx] = tgt
+                else:
+                    self._decompressed[idx] = p
 
-        # Read first frame eagerly for mesh + ID-stable node array.
-        # Subsequent reads materialise per-call (ADR-004 — no caching).
-        first_idx = next(iter(self._decompressed))
-        h0, a0 = self._read_frame(first_idx)
-        self._first_idx = first_idx
-        coor0 = np.asarray(a0["coorA"], dtype=np.float64)
-        node_ids, n_synth = self._resolve_node_ids(a0.get("nodNumA"), int(h0["nbNodes"]))
-        self._n_synthesized_ids = n_synth
-        self._mesh = _ORMesh(coor0, node_ids, unit_system)
-
-        # Tmpdir cleanup safety net: if close() never runs (caller drops
-        # the reference without using the context-manager or calling
-        # close() explicitly), weakref.finalize still wipes the scratch
-        # dir. The finalizer is detached on close() to avoid double-free.
-        self._finalizer: Optional[weakref.finalize]
-        if self._tmpdir is not None:
-            self._finalizer = weakref.finalize(self, _rmtree_safely, self._tmpdir)
-        else:
-            self._finalizer = None
+            # Read first frame eagerly for mesh + ID-stable node array.
+            # Subsequent reads materialise per-call (ADR-004 — no caching).
+            first_idx = next(iter(self._decompressed))
+            h0, a0 = self._read_frame(first_idx)
+            self._first_idx = first_idx
+            coor0 = np.asarray(a0["coorA"], dtype=np.float64)
+            node_ids, n_synth = self._resolve_node_ids(
+                a0.get("nodNumA"), int(h0["nbNodes"])
+            )
+            self._n_synthesized_ids = n_synth
+            self._mesh = _ORMesh(coor0, node_ids, unit_system)
+        except BaseException:
+            # Eager cleanup so the caller doesn't have to wait for GC.
+            # The finalizer is best-effort — if eager cleanup itself
+            # raises, the GC finalizer remains armed as a fallback.
+            if self._finalizer is not None:
+                with suppress(Exception):
+                    self._finalizer()
+                self._finalizer = None
+            self._tmpdir = None
+            raise
 
         # Build SolutionState list. ``time`` from header — meaningful
         # for transient runs; ``load_factor`` is None (OpenRadioss is
