@@ -49,9 +49,11 @@ OpenRadioss QA tree under
 the file sits in the `data/` subdirectory, not the top of `small_boule_igsti/`).
 We deliberately do not vendor it (CC BY-NC 4.0 + size).
 
-To re-bake, stage `qadiags.inc` next to the deck files in `/work` (or mount
-the upstream `.../small_boule_igsti/data/` directory at `/work` directly),
-then:
+To re-bake, stage `qadiags.inc` next to the local `BOULE1V5_*` deck files in
+`/work`, then run the docker recipe below. (Mounting the upstream
+`.../small_boule_igsti/data/` directory directly at `/work` would NOT work —
+that directory ships the upstream `BOULEV44_0000.rad` / `BOULEV44_0001.rad`
+deck files, not our renamed `BOULE1V5_*` derivatives.)
 
 ```bash
 cd <repo-root>
