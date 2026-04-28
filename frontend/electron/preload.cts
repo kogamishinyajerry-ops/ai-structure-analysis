@@ -25,6 +25,15 @@ interface RunReportRequest {
   sclNodes?: string;
   sclDistances?: string;
   resample?: number | null;
+  material?: string;
+}
+
+interface MaterialOption {
+  codeGrade: string;
+  codeStandard: string;
+  sigmaY: number;
+  sigmaU: number;
+  citation: string;
 }
 
 interface RunReportSuccess {
@@ -54,6 +63,16 @@ contextBridge.exposeInMainWorld("api", {
   // else null (the renderer hides the demo button on null).
   getDemoFrd: (): Promise<string | null> =>
     ipcRenderer.invoke("get-demo-frd"),
+
+  // W6a / Codex R1 PR #91 LOW: single source of truth is
+  // backend/app/data/materials.json. The renderer pulls the dropdown
+  // contents from `report-cli --list-materials` so adding a 13th
+  // grade is a JSON-only PR, no HTML edit. Returns [] if report-cli
+  // is broken / not on PATH; the dropdown then falls back to a
+  // non-functional empty state and the engineer can still type
+  // --material via CLI.
+  listMaterials: (): Promise<MaterialOption[]> =>
+    ipcRenderer.invoke("list-materials"),
 
   // Run the report. The promise resolves *after* the subprocess
   // exits; intermediate stdout/stderr arrive as events.

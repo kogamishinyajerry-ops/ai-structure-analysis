@@ -1,0 +1,55 @@
+# Allowable-stress simplified factors for GB 150.3-2011 §4.1.5
+#
+# ADR-020. Read-only. Adding rows: data-only PR.
+#
+# Scope: room temperature only (T <= 50°C). High-T factors deferred to M4+.
+# The simplified formula is a conservative lower-bound: Table 4 published [σ]
+# for low-alloy pressure-vessel grades (Q345R, 16MnR) sits ~8-10% above the
+# simplified value at room temp (Table 4 uses σ_u/2.7 for those grades per
+# its own footnote). Q345R example: simplified = 156.7 MPa, Table 4 ≈ 170 MPa.
+# The DOCX renderer flags `is_simplified=True` so engineers see the gap.
+#
+# Citation: GB 150.3-2011 第 3 部分 (设计) §4.1.5 安全系数 Table 4 Note 1.
+
+revision_date: 2026-04-27
+
+formula:
+  expression: "min(sigma_y / 1.5, sigma_u / 3.0)"
+  rationale: |
+    Per GB 150.3-2011 §4.1.5, carbon and low-alloy steel allowable stress at
+    design temperature is min(σ_y/n_s, σ_u/n_b) where the simplified room-temperature
+    safety factors are n_s = 1.5 (yield) and n_b = 3.0 (ultimate).
+  yield_safety_factor: 1.5
+  ultimate_safety_factor: 3.0
+
+# Validity range. The wedge refuses to compute outside this band; high-T
+# allowables require Table 4 lookup, which is M4+ work.
+temperature_range_celsius:
+  min: -20
+  max: 50
+
+clause_citation: "GB 150.3-2011 §4.1.5 Table 4 Note 1 (常温简化)"
+
+# Materials this formula applies to.
+applicable_categories:
+  - carbon_steel
+  - low_alloy_steel
+  - pressure_vessel_steel
+
+# Categories that exist in materials.json but require a different simplified path.
+# Currently empty (all 8 GB entries in materials.json fall in the categories above).
+# When stainless / titanium etc. land in M4+, this section will list them with
+# their distinct safety factors (e.g. austenitic stainless typically uses n_s=1.5
+# but n_b=3.5 per GB 150.3 §4.1.5 Note 2).
+not_yet_supported_categories: []
+
+# Welded-joint efficiency (E_j). GB 150.3 §6.6.1 multiplies [σ] by E_j (≤ 1.0)
+# for welded components. The wedge does NOT apply E_j here; E_j is a structure-
+# level decision applied at the W6c verdict step (ADR-021), not a material lookup.
+applies_weld_efficiency: false
+
+# Notes rendered in the DOCX § 许用应力 section when this code path is used.
+docx_disclaimers:
+  - "本计算依据 GB 150.3-2011 §4.1.5 简化算式，适用于常温（≤50°C）范围。"
+  - "本简化算式对低合金钢偏保守 ~8%；如需 Table 4 精确值请工程师手动核对。"
+  - "焊缝系数 E_j 须由工程师在评定结论中显式应用。"

@@ -36,6 +36,21 @@
         </div>
 
         <div class="field">
+          <label for="material">材料 / Material</label>
+          <!-- Codex R1 PR #91 LOW: options populated at runtime from
+               `report-cli --list-materials` (single source of truth =
+               backend/app/data/materials.json). The empty default is
+               always present; renderer.ts adds the real grades. -->
+          <select id="material">
+            <option value="">— 不渲染材料章节 / no material section —</option>
+          </select>
+          <span class="hint">
+            选材料后 DOCX 会渲染 § 材料属性 章节并附标准引用；不选则不出此章节。
+            如需自定义材料，传 <code>--material-json</code> 给 report-cli (CLI only)。
+          </span>
+        </div>
+
+        <div class="field">
           <label for="output">Output .docx</label>
           <div class="row">
             <input id="output" type="text" readonly placeholder="—" />

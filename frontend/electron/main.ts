@@ -48,7 +48,17 @@ interface RunReportRequest {
   sclNodes?: string;
   sclDistances?: string;
   resample?: number | null;
+  // W6a — built-in material code_grade (e.g. "Q345B"). Empty/undefined
+  // means no § 材料属性 section in the DOCX.
+  material?: string;
 }
+
+// Conservative whitelist for --material values. Only forward strings
+// that match standard CalculiX/ASME grade designations — letters,
+// digits, dash, hash, slash. The renderer's <select> already produces
+// safe values, but main.ts is the trust boundary, so re-validate here.
+// Codex R1 LOW-style defense (cf. PR #90 R1 #3): never trust IPC payload.
+const MATERIAL_GRADE_RE = /^[A-Za-z0-9][A-Za-z0-9_\-./#+]{0,63}$/;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -149,6 +159,55 @@ ipcMain.handle("get-demo-frd", () => {
   return null;
 });
 
+/**
+ * Pull the built-in material library list by invoking
+ * ``report-cli --list-materials`` and parsing its tab-separated stdout.
+ *
+ * Codex R1 PR #91 LOW fix: the renderer used to hardcode option values,
+ * which drifts from materials.json. Now materials.json is the single
+ * source of truth — the renderer asks the CLI at startup.
+ *
+ * Returns ``[]`` on any failure (CLI not on PATH, malformed output,
+ * non-zero exit). The renderer treats an empty list as "no
+ * materials available, type one via CLI"; the dropdown's empty
+ * default option remains usable.
+ *
+ * NOTE: this uses ``execFile`` with no shell, and the `--list-materials`
+ * args are constants — no injection surface.
+ */
+ipcMain.handle("list-materials", async (): Promise<unknown[]> => {
+  return new Promise((resolve) => {
+    const proc = spawn("report-cli", ["--list-materials"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf-8");
+    });
+    proc.on("error", () => resolve([]));
+    proc.on("close", (code) => {
+      if (code !== 0) return resolve([]);
+      const rows: unknown[] = [];
+      for (const line of out.split(/\r?\n/)) {
+        if (!line || line.startsWith("#")) continue;
+        const parts = line.split("\t");
+        if (parts.length < 5) continue;
+        const sigmaY = Number(parts[2]);
+        const sigmaU = Number(parts[3]);
+        if (!Number.isFinite(sigmaY) || !Number.isFinite(sigmaU)) continue;
+        rows.push({
+          codeGrade: parts[0],
+          codeStandard: parts[1],
+          sigmaY,
+          sigmaU,
+          citation: parts[4],
+        });
+      }
+      resolve(rows);
+    });
+  });
+});
+
 // --- IPC: report-cli subprocess --------------------------------------------
 
 ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunReportRequest) => {
@@ -184,6 +243,18 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     if (req.resample != null) {
       args.push("--resample", String(req.resample));
     }
+  }
+  if (req.material) {
+    if (!MATERIAL_GRADE_RE.test(req.material)) {
+      return {
+        ok: false as const,
+        violations: [
+          `Invalid material code grade: ${req.material!.slice(0, 60)} ` +
+            `(expected built-in code like Q345B / SA-516-70).`,
+        ],
+      };
+    }
+    args.push("--material", req.material);
   }
 
   // Mirror the CLI's default figs_dir derivation: <output>.figs/.

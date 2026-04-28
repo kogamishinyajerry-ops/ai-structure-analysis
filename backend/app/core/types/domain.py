@@ -45,16 +45,39 @@ class Mesh(Protocol):
 
 @dataclass(frozen=True)
 class Material:
-    """Linear-elastic material card. The MVP wedge does not need
-    plasticity / damage / temperature dependence; those land in M4+
-    once the wedge proves its value.
+    """Linear-elastic material card with strength + standards-citation
+    fields needed for the engineer-signs-DOCX wedge (RFC-001 §2.2 step 4
+    "材料属性" + ADR-019).
+
+    The MVP wedge does not need plasticity / damage / temperature
+    dependence; those land in M4+ once the wedge proves its value.
+
+    ``yield_strength`` (σ_y) and ``ultimate_strength`` (σ_u) are
+    required for the W6b allowable-stress pipeline and the W6c
+    PASS/FAIL verdict — without them the safety-factor chain is
+    structurally impossible.
+
+    ``source_citation`` is the standard clause the strength values
+    came from (e.g. ``"GB/T 1591-2018 §6.2 Table 7"``). It is rendered
+    verbatim in the DOCX § 材料属性 row so the signing engineer can
+    audit the value back to source.
+
+    ``is_user_supplied=True`` means the engineer typed the values into
+    the form rather than picking a built-in; the DOCX renderer adds a
+    ``[需工程师确认]`` flag in that case (RFC-001 §2.4 rule 4).
     """
 
     name: str
-    youngs_modulus: float          # in unit_system's stress unit
+    youngs_modulus: float          # E, in unit_system's stress unit
     poissons_ratio: float
     density: float | None          # in unit_system's mass-per-volume; None if unused
+    yield_strength: float          # σ_y, in unit_system's stress unit
+    ultimate_strength: float       # σ_u, in unit_system's stress unit
+    code_standard: str             # "GB" | "ASME" | "EN"
+    code_grade: str                # canonical grade per the standard, e.g. "Q345B"
+    source_citation: str           # standard clause the values came from
     unit_system: UnitSystem
+    is_user_supplied: bool = False
 
 
 @dataclass(frozen=True)
