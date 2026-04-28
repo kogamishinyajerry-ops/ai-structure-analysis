@@ -348,6 +348,44 @@ def test_summary_refuses_non_mapping_return() -> None:
         summarize_model_overview(rdr)  # type: ignore[arg-type]
 
 
+class _CExtensionSpoofReader(_SyntheticReader):
+    """Codex R2 PR #103 MEDIUM: bound C-extension callables fall
+    through ``inspect.signature()`` (raises ValueError), so the
+    earlier validator delegated to ``method()`` and let the raw
+    TypeError leak through. Use ``sqlite3.Connection.execute`` —
+    Codex's exact POC — to pin the fallback.
+    """
+
+    def __init__(
+        self,
+        node_ids: list[int],
+        coords: np.ndarray,
+        unit_system: UnitSystem = UnitSystem.SI_MM,
+    ) -> None:
+        super().__init__(node_ids, coords, unit_system)
+        import sqlite3
+
+        # ``execute`` is a bound C-extension method requiring 1 positional
+        # arg (the SQL string). Calling it zero-arg raises
+        # ``TypeError: execute expected at least 1 argument, got 0``.
+        self._conn = sqlite3.connect(":memory:")
+        self.element_inventory = self._conn.execute  # type: ignore[assignment]
+
+
+def test_summary_refuses_c_extension_callable_with_required_args() -> None:
+    """The fallback for non-introspectable callables must translate
+    the TypeError into a clean ModelOverviewError so the adapter
+    contract violation is surfaced uniformly."""
+    rdr = _CExtensionSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    assert isinstance(rdr, SupportsElementInventory)
+    with pytest.raises(
+        ModelOverviewError, match="non-introspectable element_inventory"
+    ):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
 class _MutableCount:
     """Stand-in for an adapter that wraps counts in a mutable
     object. Validates that the normaliser refuses non-int-typed
