@@ -20,7 +20,11 @@ COPY OpenRadioss /opt/OpenRadioss
 
 ENV OPENRADIOSS_PATH=/opt/OpenRadioss
 ENV PATH=/opt/OpenRadioss/exec:$PATH
-ENV LD_LIBRARY_PATH=/opt/OpenRadioss/extlib/hm_reader/linuxa64:/opt/OpenRadioss/extlib/h3d/lib/linuxa64:/opt/OpenRadioss/extlib/ArmFlang_runtime/linuxa64:${LD_LIBRARY_PATH:-}
+# debian:12-slim never sets LD_LIBRARY_PATH itself, so referencing
+# ${LD_LIBRARY_PATH:-} triggered BuildKit's UndefinedVar warning and
+# wouldn't append anything useful — write the OpenRadioss extlib
+# paths directly.
+ENV LD_LIBRARY_PATH=/opt/OpenRadioss/extlib/hm_reader/linuxa64:/opt/OpenRadioss/extlib/h3d/lib/linuxa64:/opt/OpenRadioss/extlib/ArmFlang_runtime/linuxa64
 ENV RAD_H3D_PATH=/opt/OpenRadioss/extlib/h3d/lib/linuxa64
 ENV RAD_CFG_PATH=/opt/OpenRadioss/hm_cfg_files
 

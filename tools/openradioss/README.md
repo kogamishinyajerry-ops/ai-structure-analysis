@@ -37,21 +37,44 @@ docker run --rm openradioss:arm64 starter_linuxa64 -help
 # Expected: starter usage banner, exit 0.
 ```
 
-## Re-bake GS-100 (reference recipe)
+## Re-bake GS-100 (requires upstream QA include)
+
+The shipped GS-100 fixture is a baked output set; the W7b adapter consumes the
+`A*.gz` frames directly and does not need to be re-baked for routine use.
+A re-bake from `BOULE1V5_0000.rad` is **not** self-contained because the deck
+ends with `#include qadiags.inc` (deck line 449), and `qadiags.inc` lives in
+the OpenRadioss QA tree under `OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/`,
+which we deliberately do not vendor (CC BY-NC 4.0 + size).
+
+To re-bake, pull the matching QA file alongside the deck (or symlink the
+upstream QA dir into `/work`), then:
 
 ```bash
 cd <repo-root>
+# Stage the deck + the upstream qadiags.inc into a scratch dir first.
+mkdir -p /tmp/gs100-rebake
+cp golden_samples/GS-100-radioss-smoke/BOULE1V5_0000.rad /tmp/gs100-rebake/
+cp golden_samples/GS-100-radioss-smoke/BOULE1V5_0001.rad /tmp/gs100-rebake/
+cp /path/to/OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/qadiags.inc \
+   /tmp/gs100-rebake/
+
 docker run --rm \
-  -v $PWD/golden_samples/GS-100-radioss-smoke:/work \
+  -v /tmp/gs100-rebake:/work \
   openradioss:arm64 bash -c '
     cd /work
     starter_linuxa64 -i BOULE1V5_0000.rad -np 1
     engine_linuxa64  -i BOULE1V5_0001.rad
   '
-gunzip -k golden_samples/GS-100-radioss-smoke/BOULE1V5A*.gz   # adapter consumes the gzip directly
 ```
 
-Expected output: starter prints `0 ERROR(S)`, engine prints `NORMAL TERMINATION`. The animation files (`BOULE1V5A001.gz` … `BOULE1V5A021.gz`) are produced; the W7b adapter ships only the 3 representative frames (A001 / A011 / A021) — the in-between frames can be discarded after the bake. (The adapter also auto-decompresses on first read; the `gunzip` step is only useful if you want to inspect the binary contents directly.)
+Expected on a successful re-bake: starter prints `0 ERROR(S)`, engine prints
+`NORMAL TERMINATION`, and `BOULE1V5A001.gz` … `BOULE1V5A021.gz` are written to
+`/tmp/gs100-rebake/`. The W7b adapter ships only the 3 representative frames
+(A001 / A011 / A021); the in-between frames can be discarded after the bake.
+
+**Common failure**: omitting `qadiags.inc` makes the starter abort with
+`ERROR ID : 100002 — Include file qadiags.inc not found` and exit 2. That is
+not a Docker problem — it means the QA include was not staged into `/work`.
 
 ## Apple Silicon notes
 
