@@ -470,3 +470,98 @@ def test_identity_defaults_derived_from_frd_stem(
     assert "P-gs001_result" in text
     assert "R-gs001_result" in text
     assert "B-gs001_result" in text
+
+
+# --- ballistic CLI argparse surface --------------------------------------
+# Codex R2 PR #95 HIGH: _resolve_identity_defaults dereferenced
+# args.frd.stem unconditionally and crashed for --kind=ballistic. These
+# tests pin the new argparse-validation contract so a future regression
+# in the ballistic CLI path surfaces before reaching reader construction.
+
+
+def _expect_exit2(argv: list[str]) -> SystemExit:
+    """All ``_input_error`` paths raise ``SystemExit(2)``; the existing
+    --resample tests use the same wrapping pattern (see
+    ``test_pressure_vessel_resample_below_2_returns_2``)."""
+    with pytest.raises(SystemExit) as excinfo:
+        main(argv)
+    assert excinfo.value.code == 2
+    return excinfo.value  # type: ignore[return-value]
+
+
+def test_ballistic_kind_rejects_frd() -> None:
+    _expect_exit2(["--frd", "/dev/null", "--kind", "ballistic"])
+
+
+def test_ballistic_kind_requires_openradioss_root_and_rootname() -> None:
+    """--kind=ballistic without --openradioss-root / --rootname must
+    fail at argparse-validation time (exit 2), not crash deeper in
+    main() with AttributeError."""
+    _expect_exit2(["--kind", "ballistic"])
+
+
+def test_ballistic_kind_rejects_step_id() -> None:
+    _expect_exit2(
+        [
+            "--kind",
+            "ballistic",
+            "--openradioss-root",
+            "/tmp",
+            "--rootname",
+            "X",
+            "--step-id",
+            "0",
+        ]
+    )
+
+
+def test_ballistic_kind_rejects_figures() -> None:
+    _expect_exit2(
+        [
+            "--kind",
+            "ballistic",
+            "--openradioss-root",
+            "/tmp",
+            "--rootname",
+            "X",
+            "--figures",
+        ]
+    )
+
+
+def test_openradioss_flags_rejected_with_non_ballistic_kind(
+    gs001: Path, tmp_path: Path
+) -> None:
+    _expect_exit2(
+        [
+            "--frd",
+            str(gs001),
+            "--kind",
+            "static",
+            "--openradioss-root",
+            "/tmp",
+            "--rootname",
+            "X",
+        ]
+    )
+
+
+def test_ballistic_identity_defaults_use_rootname_not_frd_stem(
+    tmp_path: Path,
+) -> None:
+    """Codex R2 PR #95 HIGH repro: _resolve_identity_defaults must NOT
+    crash when args.frd is None. With a non-existent
+    --openradioss-root the run aborts at the directory-existence
+    check (exit 2), but only AFTER identity-default resolution
+    succeeds. A regression to the old args.frd.stem code would
+    crash with AttributeError before reaching that check."""
+    _expect_exit2(
+        [
+            "--kind",
+            "ballistic",
+            "--openradioss-root",
+            str(tmp_path / "does-not-exist"),
+            "--rootname",
+            "BOULE1V5",
+        ]
+    )

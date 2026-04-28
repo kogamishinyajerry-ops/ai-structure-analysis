@@ -263,9 +263,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_identity_defaults(args: argparse.Namespace) -> None:
-    """Auto-fill project_id/task_id/report_id/bundle_id from the .frd
-    stem when the engineer didn't supply them explicitly."""
-    stem = args.frd.stem or "report"
+    """Auto-fill project_id/task_id/report_id/bundle_id from a stable
+    stem when the engineer didn't supply them explicitly.
+
+    Stem source depends on the input mode:
+      * CalculiX (--frd path/to/run.frd)        → ``run`` (.frd basename)
+      * OpenRadioss (--openradioss-root ...
+        + --rootname BOULE1V5)                  → ``BOULE1V5``
+      * neither (e.g. caller pre-populated all
+        IDs)                                    → ``report`` fallback
+
+    Codex R2 HIGH (PR #95): the earlier code unconditionally
+    dereferenced ``args.frd.stem``, which crashes the ballistic CLI
+    path with AttributeError because ``args.frd`` is None when the
+    engineer passes ``--openradioss-root`` instead.
+    """
+    if args.frd is not None:
+        stem = args.frd.stem or "report"
+    elif args.rootname:
+        stem = args.rootname
+    else:
+        stem = "report"
     if args.project_id is None:
         args.project_id = f"P-{stem}"
     if args.task_id is None:
