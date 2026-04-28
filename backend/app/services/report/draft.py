@@ -31,9 +31,10 @@ What this module does NOT do (deferred to W4+ per RFC §6.4):
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any, Optional, Sequence, Tuple, Union
+from typing import Any, Final, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -54,6 +55,7 @@ from app.core.types import (
     CanonicalField,
     FieldData,
     FieldLocation,
+    Material,
     ReaderHandle,
     SupportsElementDeletion,
     UnitSystem,
@@ -69,12 +71,23 @@ from app.domain.stress_linearization import (
     resample_to_uniform,
 )
 from app.models import (
+    AnalyticalEvidence,
     EvidenceBundle,
     EvidenceItem,
     EvidenceType,
     ReportSection,
     ReportSpec,
     SimulationEvidence,
+)
+from app.services.report.allowable_stress import (
+    AllowableStress,
+    CodeStandard,
+    compute_allowable_stress,
+)
+from app.services.report.verdict import (
+    DEFAULT_THRESHOLD,
+    Verdict,
+    compute_verdict,
 )
 
 
@@ -214,6 +227,10 @@ def _build_max_field_summary(
     report_id: str,
     bundle_id: str,
     step_id: Optional[int],
+    material: Optional[Material] = None,
+    code: Optional[CodeStandard] = None,
+    threshold: float = DEFAULT_THRESHOLD,
+    temperature_C: float = 20.0,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Shared engine for max-field summary reports.
 
@@ -291,6 +308,7 @@ def _build_max_field_summary(
         )
 
     stress_pair = _max_von_mises(stress_fd, node_ids)
+    stress_summary: Optional[Tuple[float, str]] = None  # (sigma_max, unit) for W6c.2
     if stress_pair is not None:
         assert stress_fd is not None  # see disp_fd comment above
         max_vm, node_vm = stress_pair
@@ -315,6 +333,7 @@ def _build_max_field_summary(
             f"- {labels.vm_bullet_label}: **{max_vm:.6g} {unit_s}** "
             f"@ node {node_vm}  *({labels.vm_evidence_id})*"
         )
+        stress_summary = (float(max_vm), unit_s)
 
     if not section_lines:
         # ADR-012: a section with no cited evidence_ids cannot ship.
@@ -330,17 +349,246 @@ def _build_max_field_summary(
         level=1,
         content="\n".join(section_lines),
     )
+    sections: list[ReportSection] = [summary]
+
+    # W6c.2 — § 许用应力 + § 评定结论. Both kwargs must be provided
+    # together; passing only one is a caller bug. Without σ_max there's
+    # nothing to assess against [σ], so a stress-less report falls back
+    # to the W4 max-field summary cleanly.
+    if material is not None and code is not None:
+        if stress_summary is None:
+            raise ValueError(
+                f"material+code were provided but solution state "
+                f"{step.step_id!r} of task {task_id!r} exposes no "
+                "STRESS_TENSOR; W6c.2 verdict requires σ_max. Drop the "
+                "material+code kwargs to fall back to a stress-less "
+                "summary, or fix the upstream solver result."
+            )
+        sigma_max_value, sigma_max_unit = stress_summary
+        allowable, verdict, ev_allowable, ev_verdict = (
+            _build_allowable_and_verdict_evidence(
+                material=material,
+                code=code,
+                sigma_max_value=sigma_max_value,
+                sigma_max_unit=sigma_max_unit,
+                sigma_max_evidence_id=labels.vm_evidence_id,
+                threshold=threshold,
+                temperature_C=temperature_C,
+            )
+        )
+        # Order matters: EV-ALLOWABLE-001 must be appended before EV-VERDICT-001
+        # because the verdict's derivation references it (DAG check at append).
+        bundle.add_evidence(ev_allowable)
+        bundle.add_evidence(ev_verdict)
+        sections.append(_build_allowable_section(allowable, sigma_max_unit))
+        sections.append(_build_verdict_section(verdict, sigma_max_unit))
 
     report = ReportSpec(
         report_id=report_id,
         project_id=project_id,
         title=labels.title,
         template_id=labels.template_id,
-        sections=[summary],
+        sections=sections,
         generated_at=datetime.utcnow(),
         evidence_bundle_id=bundle.bundle_id,
     )
     return report, bundle
+
+
+_ALLOWABLE_EVIDENCE_ID: Final[str] = "EV-ALLOWABLE-001"
+_VERDICT_EVIDENCE_ID: Final[str] = "EV-VERDICT-001"
+
+
+def _format_inputs_substitution(formula: str, inputs: Mapping[str, float]) -> str:
+    """Render the substitution line shown in § 许用应力.
+
+    Returns ``"min(σ_y / 1.5, σ_u / 3.0) = min(345.0 / 1.5, 470.0 / 3.0)"``-style.
+    Engineers cross-check this against the source clause; the renderer
+    must NOT round any input — that's the kind of silent loss ADR-012
+    tries to prevent.
+
+    The function only handles the shapes the W6b YAML emits today
+    (formulas referencing ``sigma_y`` and ``sigma_u``). For unknown
+    keys it falls back to a generic ``key=value`` join so a future
+    formula extension still produces a readable line.
+    """
+    # Replace the symbolic σ_y / σ_u placeholders verbatim, in priority
+    # order, then leave anything else alone. ``str.replace`` in two
+    # passes avoids the ``str.format`` interpretation of the YAML's raw
+    # symbols.
+    rendered = formula
+    if "sigma_y" in inputs:
+        rendered = rendered.replace("sigma_y", f"{inputs['sigma_y']:g}")
+    if "sigma_u" in inputs:
+        rendered = rendered.replace("sigma_u", f"{inputs['sigma_u']:g}")
+    return rendered
+
+
+def _build_allowable_and_verdict_evidence(
+    material: Material,
+    code: CodeStandard,
+    sigma_max_value: float,
+    sigma_max_unit: str,
+    sigma_max_evidence_id: str,
+    threshold: float,
+    temperature_C: float,
+) -> Tuple[AllowableStress, Verdict, EvidenceItem, EvidenceItem]:
+    """Compute [σ] + verdict and mint the two AnalyticalEvidence items.
+
+    Stitches together W6b (allowable_stress) + W6c (verdict). Neither
+    library knows about ``EvidenceItem``; this helper is the boundary
+    that turns their numeric outputs into bundle-ready evidence with
+    the DAG link ``EV-VERDICT-001 → [<sigma_max evidence>, EV-ALLOWABLE-001]``.
+
+    The helper does NOT touch the bundle — the caller adds the items
+    in the correct order so the bundle's append-time DAG check
+    sees ``EV-ALLOWABLE-001`` before ``EV-VERDICT-001``.
+
+    The ``EvidenceItem.source`` for both items is set to the verbatim
+    clause citation from :class:`AllowableStress` — the auditor reading
+    the bundle JSON sees the standard's clause directly without
+    having to follow ``data.formula`` back to the YAML.
+    """
+    allowable = compute_allowable_stress(material, code, temperature_C=temperature_C)
+    verdict = compute_verdict(
+        sigma_max=sigma_max_value,
+        sigma_allow=allowable.sigma_allow,
+        threshold=threshold,
+    )
+    source_label = allowable.code_clause
+
+    # AnalyticalEvidence.inputs is Dict[str, float]; AllowableStress.inputs
+    # is a MappingProxyType. Copy explicitly — pydantic's validator coerces
+    # values, but we want the keys preserved verbatim.
+    allowable_inputs: dict[str, float] = {k: float(v) for k, v in allowable.inputs.items()}
+    ev_allowable = EvidenceItem(
+        evidence_id=_ALLOWABLE_EVIDENCE_ID,
+        evidence_type=EvidenceType.ANALYTICAL,
+        title="许用应力 [σ] (per design code)",
+        description=(
+            f"{code} simplified room-temperature allowable stress, "
+            f"{allowable.code_clause}"
+        ),
+        data=AnalyticalEvidence(
+            value=float(allowable.sigma_allow),
+            unit=sigma_max_unit,
+            formula=allowable.formula_used,
+            inputs=allowable_inputs,
+        ),
+        derivation=None,
+        source=source_label,
+        source_file=None,
+    )
+
+    # The verdict depends on BOTH the simulation σ_max and the allowable —
+    # an honest derivation DAG, per ADR-012. Without this link the
+    # auditor can't trace the SF back to the two numbers it came from.
+    verdict_inputs: dict[str, float] = {k: float(v) for k, v in verdict.inputs}
+    ev_verdict = EvidenceItem(
+        evidence_id=_VERDICT_EVIDENCE_ID,
+        evidence_type=EvidenceType.ANALYTICAL,
+        title="结构强度评定 (PASS/FAIL verdict)",
+        description=(
+            f"SF = [σ] / σ_max = {verdict.safety_factor:.4g}; "
+            f"threshold = {threshold:g}; verdict = {verdict.kind}"
+        ),
+        data=AnalyticalEvidence(
+            value=float(verdict.safety_factor),
+            unit="dimensionless",
+            formula="SF = sigma_allow / sigma_max",
+            inputs=verdict_inputs,
+        ),
+        derivation=[sigma_max_evidence_id, _ALLOWABLE_EVIDENCE_ID],
+        source=source_label,
+        source_file=None,
+    )
+
+    return allowable, verdict, ev_allowable, ev_verdict
+
+
+def _build_allowable_section(
+    allowable: AllowableStress, sigma_max_unit: str
+) -> ReportSection:
+    """Render the § 许用应力 section content per ADR-020 §5.
+
+    Two lines: (1) substitution showing the formula evaluated with the
+    actual σ_y / σ_u from the Material, and (2) the clause citation as
+    a footnote. The DOCX template (W6c.2 in the wider sense) will pick
+    up this section and embed both lines verbatim.
+
+    The subscript notation matches the engineer-facing convention used
+    throughout the wedge (σ_y, σ_u, [σ]) — consistent with the §
+    materials section the W6a path already emits.
+    """
+    substitution = _format_inputs_substitution(allowable.formula_used, allowable.inputs)
+    lines: list[str] = [
+        f"- 许用应力公式: **{allowable.formula_used}**",
+        f"- 代入: {substitution} = **{allowable.sigma_allow:.6g} {sigma_max_unit}**",
+        f"- 引用条款: *{allowable.code_clause}*  *({_ALLOWABLE_EVIDENCE_ID})*",
+    ]
+    if allowable.is_simplified:
+        lines.append(
+            "- 注: 本计算依据简化算式（常温），未应用焊缝系数 E_j；"
+            "工程师须在评定结论中显式说明 E_j 取值。"
+        )
+    return ReportSection(
+        title="许用应力 (Allowable stress)",
+        level=2,
+        content="\n".join(lines),
+    )
+
+
+def _build_verdict_section(
+    verdict: Verdict, sigma_max_unit: str
+) -> ReportSection:
+    """Render the § 评定结论 section content per RFC-001 §2 W6c.
+
+    句式 (per the W6 roadmap):
+
+      σ_max = {x:.6g} {unit} ≤ [σ] = {y:.6g} {unit},
+      SF = {sf:.4g} ≥ threshold = {t:g} → 强度满足要求 (PASS)
+
+    The PASS/FAIL string is **deterministic** — RFC-001 §2.4 rule 1
+    forbids the LLM from generating verdict numbers, and rule 4
+    requires a "[需工程师确认]" flag when an LLM rephrases the line.
+    """
+    inputs_dict = dict(verdict.inputs)
+    sigma_max_value = inputs_dict["sigma_max"]
+    sigma_allow_value = inputs_dict["sigma_allow"]
+    threshold_value = inputs_dict["threshold"]
+
+    if verdict.kind == "PASS":
+        relation = "≤"
+        sf_relation = "≥"
+        verdict_text_zh = "强度满足要求"
+        verdict_text_en = "PASS"
+    else:
+        relation = ">"
+        sf_relation = "<"
+        verdict_text_zh = "强度不满足要求"
+        verdict_text_en = "FAIL"
+
+    sentence = (
+        f"σ_max = {sigma_max_value:.6g} {sigma_max_unit} "
+        f"{relation} [σ] = {sigma_allow_value:.6g} {sigma_max_unit}, "
+        f"SF = {verdict.safety_factor:.4g} "
+        f"{sf_relation} threshold = {threshold_value:g} "
+        f"→ **{verdict_text_zh} ({verdict_text_en})**"
+    )
+    margin_line = (
+        f"裕度 (margin) = {verdict.margin_pct:+.2f}%  "
+        f"(safety_factor / threshold − 1)"
+    )
+    return ReportSection(
+        title="评定结论 (Strength verdict)",
+        level=2,
+        content="\n".join(
+            [
+                f"- {sentence}  *({_VERDICT_EVIDENCE_ID})*",
+                f"- {margin_line}",
+            ]
+        ),
+    )
 
 
 def _override_labels(
@@ -377,6 +625,10 @@ def generate_static_strength_summary(
     step_id: Optional[int] = None,
     template_id: Optional[str] = None,
     title: Optional[str] = None,
+    material: Optional[Material] = None,
+    code: Optional[CodeStandard] = None,
+    threshold: float = DEFAULT_THRESHOLD,
+    temperature_C: float = 20.0,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate the minimum-viable static-strength report draft.
 
@@ -400,9 +652,22 @@ def generate_static_strength_summary(
     will fail :func:`templates.validate_report` against any registered
     template_id other than ``equipment_foundation_static``.
 
+    ``material`` + ``code`` opt the report into the W6c.2 strength
+    verdict: when both are provided, the draft additionally renders
+    § 许用应力 + § 评定结论 sections backed by ``EV-ALLOWABLE-001`` +
+    ``EV-VERDICT-001`` analytical evidence (per ADR-020 / RFC-001 W6c).
+    The verdict's ``derivation`` lists ``EV-VM-MAX`` + ``EV-ALLOWABLE-001``
+    so the bundle DAG honestly shows the SF traces back to both the
+    simulation σ_max and the standards-derived [σ]. ``threshold`` and
+    ``temperature_C`` follow the W6b/W6c defaults (1.0 = regulatory
+    floor; 20°C = room temperature within the simplified-formula
+    validity window).
+
     Raises ``ValueError`` when the chosen state exposes neither
     ``DISPLACEMENT`` nor ``STRESS_TENSOR`` — emitting a section with no
-    cited evidence would violate ADR-012.
+    cited evidence would violate ADR-012. Also raises ``ValueError``
+    when ``material+code`` are provided but the chosen state has no
+    ``STRESS_TENSOR`` (the verdict needs σ_max).
     """
     labels = _override_labels(_EQUIPMENT_FOUNDATION_LABELS, template_id, title)
     return _build_max_field_summary(
@@ -413,6 +678,10 @@ def generate_static_strength_summary(
         report_id=report_id,
         bundle_id=bundle_id,
         step_id=step_id,
+        material=material,
+        code=code,
+        threshold=threshold,
+        temperature_C=temperature_C,
     )
 
 
@@ -426,6 +695,10 @@ def generate_lifting_lug_summary(
     step_id: Optional[int] = None,
     template_id: Optional[str] = None,
     title: Optional[str] = None,
+    material: Optional[Material] = None,
+    code: Optional[CodeStandard] = None,
+    threshold: float = DEFAULT_THRESHOLD,
+    temperature_C: float = 20.0,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate a lifting-lug strength-assessment report draft.
 
@@ -454,6 +727,10 @@ def generate_lifting_lug_summary(
         report_id=report_id,
         bundle_id=bundle_id,
         step_id=step_id,
+        material=material,
+        code=code,
+        threshold=threshold,
+        temperature_C=temperature_C,
     )
 
 

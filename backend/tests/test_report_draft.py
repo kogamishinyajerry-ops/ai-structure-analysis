@@ -21,6 +21,7 @@ from app.core.types import (
     FieldData,
     FieldLocation,
     FieldMetadata,
+    Material,
     UnitSystem,
 )
 from app.models import EvidenceType
@@ -649,3 +650,351 @@ def test_lifting_lug_summary_template_id_kwarg_overrides_default(
     )
     assert report.template_id == "custom_lug_v2"
     assert report.title == "Custom lug title"
+
+
+# ---------------------------------------------------------------------------
+# W6c.2 — § 许用应力 + § 评定结论 wiring
+# ---------------------------------------------------------------------------
+#
+# The W6c.2 contract: when ``material + code`` are both supplied to a
+# generator, the resulting draft additionally renders an allowable-stress
+# section and a verdict section, backed by ``EV-ALLOWABLE-001`` +
+# ``EV-VERDICT-001`` analytical evidence with an honest derivation DAG
+# pointing back to the σ_max simulation evidence.
+#
+# Inputs picked to make the math obvious:
+#   Q345B at room T → simplified [σ] = min(345/1.5, 470/3.0)
+#                                    = min(230.0, 156.67) = 156.67 MPa
+#   σ_max = 50 MPa  → SF = 156.67 / 50 ≈ 3.13  (PASS at threshold=1.0)
+#   σ_max = 200 MPa → SF = 156.67 / 200 ≈ 0.78 (FAIL at threshold=1.0)
+
+
+_Q345B = None  # populated below to avoid hitting the file system at import time
+
+
+def _make_q345b():
+    """Return a fresh Material(Q345B) — same numbers as the built-in JSON."""
+    return Material(
+        name="Q345B",
+        youngs_modulus=206_000.0,
+        poissons_ratio=0.30,
+        density=7.85e-9,
+        yield_strength=345.0,
+        ultimate_strength=470.0,
+        code_standard="GB",
+        code_grade="Q345B",
+        source_citation="GB/T 1591-2018 §6.2 Table 7",
+        unit_system=UnitSystem.SI_MM,
+        is_user_supplied=False,
+    )
+
+
+def _make_synthetic_stress_reader(
+    sigma_max_mpa: float,
+) -> "_SyntheticStressReader":
+    return _SyntheticStressReader(sigma_max_mpa)
+
+
+class _SyntheticStressReader:
+    """ReaderHandle exposing one node + STRESS_TENSOR with peak σ_vm =
+    ``sigma_max_mpa`` MPa. Bypasses CalculiX so the wedge tests run
+    even when the GS-001 .frd is unavailable."""
+
+    SOLVER_NAME = "synthetic"
+
+    def __init__(self, sigma_max_mpa: float) -> None:
+        from app.core.types import SolutionState
+
+        self._sigma_max_mpa = sigma_max_mpa
+
+        class _M:
+            @property
+            def node_id_array(self_inner) -> np.ndarray:  # type: ignore[type-arg]
+                return np.asarray([42], dtype=np.int64)
+
+            @property
+            def node_index(self_inner) -> dict[int, int]:
+                return {42: 0}
+
+            @property
+            def coordinates(self_inner) -> np.ndarray:  # type: ignore[type-arg]
+                return np.zeros((1, 3))
+
+            @property
+            def unit_system(self_inner) -> UnitSystem:
+                return UnitSystem.SI_MM
+
+        self._mesh = _M()
+        self._states = [
+            SolutionState(
+                step_id=1, step_name="static",
+                time=None, load_factor=None,
+                available_fields=(CanonicalField.STRESS_TENSOR,),
+            )
+        ]
+
+    @property
+    def mesh(self) -> object:
+        return self._mesh
+
+    @property
+    def materials(self) -> dict:  # type: ignore[type-arg]
+        return {}
+
+    @property
+    def boundary_conditions(self) -> list:  # type: ignore[type-arg]
+        return []
+
+    @property
+    def solution_states(self) -> list:  # type: ignore[type-arg]
+        return self._states
+
+    def get_field(
+        self, name: CanonicalField, step_id: int
+    ) -> Optional[FieldData]:
+        if step_id == 1 and name is CanonicalField.STRESS_TENSOR:
+            # Uniaxial tension: σ_xx = σ_max → von Mises = σ_max.
+            arr = np.zeros((1, 6), dtype=np.float64)
+            arr[0, 0] = self._sigma_max_mpa
+            meta = FieldMetadata(
+                name=CanonicalField.STRESS_TENSOR,
+                location=FieldLocation.NODE,
+                component_type=ComponentType.TENSOR_SYM_3D,
+                unit_system=UnitSystem.SI_MM,
+                source_solver="synthetic",
+                source_field_name="S",
+                source_file=Path("/dev/null"),
+                coordinate_system=CoordinateSystemKind.GLOBAL.value,
+                was_averaged="unknown",
+            )
+            return _SyntheticFieldData(meta, arr)
+        return None
+
+    def close(self) -> None:
+        pass
+
+
+def test_w6c2_with_material_pass_appends_two_sections() -> None:
+    """σ_max=50 MPa, Q345B GB → SF≈3.13 ≥ 1.0 → PASS. Report grows
+    from 1 section (max-field summary) to 3 sections (+ § 许用应力 +
+    § 评定结论)."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    report, bundle = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+
+    assert len(report.sections) == 3
+    titles = [s.title for s in report.sections]
+    assert "许用应力 (Allowable stress)" in titles
+    assert "评定结论 (Strength verdict)" in titles
+
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert {"EV-VM-MAX", "EV-ALLOWABLE-001", "EV-VERDICT-001"} <= ids
+
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    verdict_ev = by_id["EV-VERDICT-001"]
+    assert verdict_ev.evidence_type is EvidenceType.ANALYTICAL
+    assert verdict_ev.data.kind == "analytical"
+    # SF = 156.67 / 50 ≈ 3.133
+    assert verdict_ev.data.value == pytest.approx(156.6667 / 50.0, rel=1e-4)
+
+
+def test_w6c2_verdict_section_says_pass_when_sf_above_threshold() -> None:
+    rdr = _make_synthetic_stress_reader(50.0)
+    report, _ = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+    verdict_section = next(
+        s for s in report.sections if s.title.startswith("评定结论")
+    )
+    assert "PASS" in verdict_section.content
+    assert "强度满足要求" in verdict_section.content
+    assert "EV-VERDICT-001" in verdict_section.content
+
+
+def test_w6c2_verdict_section_says_fail_when_sf_below_threshold() -> None:
+    """σ_max=200 MPa > [σ]=156.67 MPa → SF≈0.78 < 1.0 → FAIL."""
+    rdr = _make_synthetic_stress_reader(200.0)
+    report, bundle = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+    verdict_section = next(
+        s for s in report.sections if s.title.startswith("评定结论")
+    )
+    assert "FAIL" in verdict_section.content
+    assert "强度不满足要求" in verdict_section.content
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    assert by_id["EV-VERDICT-001"].data.value < 1.0
+
+
+def test_w6c2_threshold_flips_marginal_design_to_fail() -> None:
+    """σ_max=120 → SF ≈ 1.305. PASS at threshold=1.0, FAIL at 1.5
+    (institute-internal margin). Same FE result, same material — only
+    the threshold flips the verdict."""
+    rdr = _make_synthetic_stress_reader(120.0)
+    _, bundle_default = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R1", bundle_id="B1",
+        material=_make_q345b(),
+        code="GB",
+    )
+    rdr2 = _make_synthetic_stress_reader(120.0)
+    _, bundle_strict = generate_static_strength_summary(
+        rdr2,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R2", bundle_id="B2",
+        material=_make_q345b(),
+        code="GB",
+        threshold=1.5,
+    )
+    by_id_default = {it.evidence_id: it for it in bundle_default.evidence_items}
+    by_id_strict = {it.evidence_id: it for it in bundle_strict.evidence_items}
+    # Same SF in both bundles — only the threshold (and thus the kind)
+    # differs. The kind is in the description string.
+    assert by_id_default["EV-VERDICT-001"].data.value == pytest.approx(
+        by_id_strict["EV-VERDICT-001"].data.value, rel=1e-9
+    )
+    assert "PASS" in by_id_default["EV-VERDICT-001"].description
+    assert "FAIL" in by_id_strict["EV-VERDICT-001"].description
+
+
+def test_w6c2_verdict_derivation_lists_sigma_max_and_allowable() -> None:
+    """ADR-012 honest DAG: EV-VERDICT-001 must list BOTH the simulation
+    σ_max evidence AND EV-ALLOWABLE-001 in its derivation. Without
+    this link, an auditor can't trace the SF back to the two numbers
+    it came from."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    _, bundle = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    derivation = by_id["EV-VERDICT-001"].derivation or []
+    assert "EV-VM-MAX" in derivation
+    assert "EV-ALLOWABLE-001" in derivation
+    # Allowable stands alone (it depends on the Material data, not on
+    # any other evidence in this bundle).
+    assert by_id["EV-ALLOWABLE-001"].derivation in (None, [])
+
+
+def test_w6c2_no_material_falls_through_to_old_behavior() -> None:
+    """Backwards compat: omitting material+code yields the same
+    1-section summary the W4 path always produced — no extra evidence,
+    no extra sections."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    report, bundle = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+    )
+    assert len(report.sections) == 1
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    assert "EV-ALLOWABLE-001" not in ids
+    assert "EV-VERDICT-001" not in ids
+
+
+def test_w6c2_material_without_stress_field_raises() -> None:
+    """W6c.2 verdict needs σ_max. If material+code are passed but the
+    chosen state has no STRESS_TENSOR, refuse loudly rather than emit
+    a verdict section with no σ_max number behind it."""
+
+    class _DispOnlyReader(_SyntheticStressReader):
+        def get_field(
+            self, name: CanonicalField, step_id: int
+        ) -> Optional[FieldData]:
+            if step_id == 1 and name is CanonicalField.DISPLACEMENT:
+                arr = np.array([[0.5, 0.0, 0.0]], dtype=np.float64)
+                meta = FieldMetadata(
+                    name=CanonicalField.DISPLACEMENT,
+                    location=FieldLocation.NODE,
+                    component_type=ComponentType.VECTOR_3D,
+                    unit_system=UnitSystem.SI_MM,
+                    source_solver="synthetic",
+                    source_field_name="DISP",
+                    source_file=Path("/dev/null"),
+                    coordinate_system=CoordinateSystemKind.GLOBAL.value,
+                    was_averaged="unknown",
+                )
+                return _SyntheticFieldData(meta, arr)
+            return None
+
+    rdr = _DispOnlyReader(50.0)
+    with pytest.raises(ValueError, match="W6c.2 verdict requires"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            material=_make_q345b(),
+            code="GB",
+        )
+
+
+def test_w6c2_cross_standard_request_propagates() -> None:
+    """A Q345B (GB) Material against ``code='ASME'`` must surface the
+    AllowableStressError from the W6b layer — the draft generator
+    does not auto-cross-reference standards (per ADR-020 §1)."""
+    from app.services.report.allowable_stress import AllowableStressError
+
+    rdr = _make_synthetic_stress_reader(50.0)
+    with pytest.raises(AllowableStressError, match="cross-standard"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            material=_make_q345b(),
+            code="ASME",
+        )
+
+
+def test_w6c2_lifting_lug_accepts_same_kwargs() -> None:
+    """Symmetry: the lug producer also accepts material+code+threshold."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    report, bundle = generate_lifting_lug_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+    assert report.template_id == "lifting_lug"
+    assert len(report.sections) == 3
+    ids = {item.evidence_id for item in bundle.evidence_items}
+    # The lug uses LUG-prefixed simulation evidence_ids, but the
+    # allowable / verdict IDs are stable across templates.
+    assert "EV-LUG-VM-MAX" in ids
+    assert "EV-ALLOWABLE-001" in ids
+    assert "EV-VERDICT-001" in ids
+    by_id = {item.evidence_id: item for item in bundle.evidence_items}
+    derivation = by_id["EV-VERDICT-001"].derivation or []
+    # Lug verdict derivation must reference the LUG-prefixed σ_max ID.
+    assert "EV-LUG-VM-MAX" in derivation
+
+
+def test_w6c2_allowable_section_shows_substituted_formula() -> None:
+    """The substitution line must show the actual σ_y / σ_u numbers,
+    not the symbolic placeholders. ADR-020 §5: engineers cross-check
+    [σ] back to source by reading the substituted line."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    report, _ = generate_static_strength_summary(
+        rdr,  # type: ignore[arg-type]
+        project_id="P", task_id="T", report_id="R", bundle_id="B",
+        material=_make_q345b(),
+        code="GB",
+    )
+    allowable_section = next(
+        s for s in report.sections if s.title.startswith("许用应力")
+    )
+    # Q345B σ_y=345, σ_u=470 — both must appear verbatim.
+    assert "345" in allowable_section.content
+    assert "470" in allowable_section.content
+    # And the resolved [σ] (156.67) must appear.
+    assert "156.667" in allowable_section.content or "156.67" in allowable_section.content
+    # And the clause citation.
+    assert "GB 150.3-2011" in allowable_section.content
+    assert "EV-ALLOWABLE-001" in allowable_section.content
