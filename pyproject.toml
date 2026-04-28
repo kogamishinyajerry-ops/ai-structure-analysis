@@ -58,6 +58,12 @@ rag = [
 # which wraps lasso-python (LS-Dyna .d3plot reader). The OpenRadioss
 # solver itself (AGPL-3.0) is NOT a Python dep — it runs as a Docker
 # subprocess (tools/openradioss/Dockerfile, lands in W7e).
+#
+# vortex-radioss is NOT distributed on PyPI (verified 2026-04-28: the
+# name is unknown to `pip install vortex-radioss`). The project lives
+# at github.com/Vortex-CAE/Vortex-Radioss. We resolve the source via
+# [tool.uv.sources] below; pip-only installs need
+# `pip install git+https://github.com/Vortex-CAE/Vortex-Radioss.git`.
 openradioss = [
     "vortex-radioss>=1.2",
     "lasso-python>=2.0",
@@ -132,3 +138,13 @@ markers = [
     "legacy: tests covering frozen Sprint-N modules under app._frozen/* (RFC-001 §6.1 Bucket B). Excluded from MVP coverage gates by default; run with `-m legacy` to opt in.",
 ]
 addopts = "-m 'not legacy'"
+
+# uv-only source override for the openradioss extra. uv resolves
+# `vortex-radioss` from this git ref; pip / PyPI installs must use
+# `pip install git+https://github.com/Vortex-CAE/Vortex-Radioss.git`
+# manually (PEP-440 doesn't have a portable [tool.uv.sources] equivalent
+# in [project.optional-dependencies] yet — see
+# https://docs.astral.sh/uv/reference/settings/#sources for the uv-
+# specific syntax).
+[tool.uv.sources]
+vortex-radioss = { git = "https://github.com/Vortex-CAE/Vortex-Radioss.git" }
