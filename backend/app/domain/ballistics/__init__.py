@@ -235,22 +235,22 @@ def perforation_event_step(
     ``deleted_facets_for`` (Protocol contract). Codex R3 finding: a
     naive early-return search (``return sid`` on first erosion)
     silently masked trailing invalid IDs — e.g. ``[1, 2, 999]`` with
-    step 2 eroded returned ``2`` instead of raising on ``999``. We
-    therefore pre-fetch all flags via ``deleted_facets_for`` before
-    searching, so the KeyError on any unknown ``step_id`` fires
-    regardless of where it sits in the list.
+    step 2 eroded returned ``2`` instead of raising on ``999``. Codex
+    R4 finding: an upfront pre-fetch list of every ``delEltA`` array
+    is correct but holds O(N × n_facets) memory until the search
+    finishes. We instead use a single-pass loop that records the
+    first eroded step and *continues* iterating so the
+    ``deleted_facets_for`` KeyError still fires on a trailing
+    unknown id, while only one flags array is live at a time.
     """
-    # Pre-fetch all flags (validates every step_id via the
-    # deleted_facets_for KeyError contract) before searching for the
-    # first erosion, so a trailing unknown id cannot be silently
-    # masked by an early return.
-    flags_per_step = [
-        (sid, reader.deleted_facets_for(sid)) for sid in step_ids
-    ]
-    for sid, flags in flags_per_step:
-        if count_eroded(flags) > 0:
-            return sid
-    return None
+    first_erosion: Optional[int] = None
+    for sid in step_ids:
+        flags = reader.deleted_facets_for(sid)
+        if first_erosion is None and count_eroded(flags) > 0:
+            first_erosion = sid
+        # Keep iterating after finding erosion so trailing unknown
+        # step_ids still trigger the KeyError contract.
+    return first_erosion
 
 
 def displacement_history(
