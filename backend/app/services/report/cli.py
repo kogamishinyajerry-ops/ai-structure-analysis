@@ -251,6 +251,24 @@ def build_parser() -> argparse.ArgumentParser:
             "wrapper accepted."
         ),
     )
+    # W8a — Layer-4-viz path. Emits per-state .vtu files plus a JSON
+    # manifest the Electron / vtk.js viewport consumes to scrub through
+    # the run. Only --kind=ballistic supports this today (CalculiX path
+    # is W8a-cx follow-up).
+    p.add_argument(
+        "--viewport-out",
+        type=Path,
+        default=None,
+        help=(
+            "Directory to emit a per-state .vtu animation + a "
+            "viewport_manifest.json the Electron / vtk.js viewport "
+            "loads to scrub through the run. Currently only "
+            "--kind=ballistic supports this; static / lifting-lug / "
+            "pressure-vessel kinds emit the DOCX without a viewport "
+            "until W8a-cx lands. The directory is created if missing; "
+            "existing manifests / VTU files in it are overwritten."
+        ),
+    )
     p.add_argument(
         "--list-materials",
         action="store_true",
@@ -716,11 +734,20 @@ def main(argv: list[str] | None = None) -> int:
     #   N export DOCX
     # The final stdout "wrote ..." line is not numbered — it's the
     # result, not a stage.
+    # W8a viewport export adds one stage when --viewport-out is set
+    # AND the kind supports it (ballistic only today). For other kinds
+    # the flag is silently ignored — we still want the user to be able
+    # to set --viewport-out in a generic Electron run config without
+    # the static path falling over.
+    _viewport_active = (
+        args.viewport_out is not None and args.kind == "ballistic"
+    )
     total_stages = (
         2
         + (1 if args.figures else 0)
         + (1 if args.validate_template else 0)
         + 1  # export
+        + (1 if _viewport_active else 0)
     )
 
     def _stage(n: int, msg: str) -> None:
@@ -846,6 +873,46 @@ def main(argv: list[str] | None = None) -> int:
             _detail(
                 f"material: {material.code_grade} ({material.code_standard}) "
                 f"sigma_y={material.yield_strength:g} sigma_u={material.ultimate_strength:g}"
+            )
+
+    # W8a — Layer-4-viz path. Run BEFORE the DOCX export so the viewport
+    # is populated even if the DOCX export refuses (template / ADR-012
+    # cited-evidence violation). The viewport is independent — it
+    # consumes the solver result file directly, not the bundle.
+    if _viewport_active:
+        _stage(
+            next_stage,
+            f"emitting viewport VTU + manifest: {args.viewport_out}",
+        )
+        next_stage += 1
+        try:
+            from app.viz.vtu_exporter import VTUExportError, export_run
+
+            manifest_path = export_run(
+                openradioss_root=args.openradioss_root,
+                rootname=args.rootname,
+                output_dir=args.viewport_out,
+                unit_system=unit_system,
+            )
+            _detail(f"viewport manifest: {manifest_path}")
+        except VTUExportError as exc:
+            # Viewport export failure does NOT abort the DOCX run —
+            # the engineer still gets the signable report. Surface on
+            # stderr so the Electron shell can display a "viewport
+            # unavailable" hint without taking the whole run down.
+            print(
+                f"warning: viewport export failed ({type(exc).__name__}: {exc}); "
+                f"continuing with DOCX-only output. Pass --no-viewport "
+                f"or omit --viewport-out to suppress this stage.",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            print(
+                f"warning: viewport export raised {type(exc).__name__}: {exc}; "
+                f"continuing with DOCX-only output.",
+                file=sys.stderr,
+                flush=True,
             )
 
     # Lazy-import the exporter + its refusal classes for the same

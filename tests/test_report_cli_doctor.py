@@ -28,6 +28,32 @@ def test_parser_accepts_doctor_alone() -> None:
     assert ns.kind is None
 
 
+def test_parser_accepts_viewport_out_for_ballistic() -> None:
+    """W8a — ``--viewport-out`` parses with the ballistic CLI shape."""
+    parser = build_parser()
+    ns = parser.parse_args(
+        [
+            "--kind",
+            "ballistic",
+            "--openradioss-root",
+            "/tmp/run",
+            "--rootname",
+            "model_00",
+            "--viewport-out",
+            "/tmp/viewport",
+        ]
+    )
+    assert str(ns.viewport_out) == "/tmp/viewport"
+    assert ns.kind == "ballistic"
+
+
+def test_parser_viewport_out_defaults_off() -> None:
+    """W8a — engineer must explicitly opt into the viewport export."""
+    parser = build_parser()
+    ns = parser.parse_args(["--frd", "x.frd", "--kind", "static"])
+    assert ns.viewport_out is None
+
+
 def test_doctor_default_off() -> None:
     """`--doctor` defaults to off so existing report runs aren't
     surprised by a flag they didn't pass."""
