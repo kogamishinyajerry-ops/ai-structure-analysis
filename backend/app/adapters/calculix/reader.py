@@ -381,8 +381,9 @@ class CalculiXReader:
         }
     )
 
-    def element_types(self) -> tuple[str, ...]:
-        """Return per-element type strings in element-id order.
+    def element_types(self) -> tuple[str, ...] | None:
+        """Return per-element type strings in element-id order, or
+        ``None`` when the FRD did not include an element block.
 
         Implements ``SupportsElementInventory`` (W6e) so the Layer-4
         model-overview library can render the § 模型概览 section.
@@ -394,6 +395,17 @@ class CalculiXReader:
         buckets them into ``GROUP_OTHER`` and the engineer sees the
         raw FRD code so they can extend the table if needed.
 
+        Codex R1 HIGH (PR #109): the three-state contract — capable
+        adapter returning real data, ``()``, or ``None`` — is what
+        lets the W6e.2 DOCX renderer distinguish "really zero
+        elements (confirmed)" from "inventory not in this FRD". Codex
+        flagged that previously the adapter returned ``()`` in both
+        cases, which silently turned a partial-FRD parse into a
+        confirmed-zero claim. Returning ``None`` when ``parsed.elements``
+        is empty preserves the graceful-degrade guarantee the W6e
+        library relies on (``isinstance(reader, ...)`` is True, but
+        ``has_inventory`` becomes False).
+
         Element ordering: sorted by ``element_id`` so the order is
         stable across calls (FRD's internal block order can change
         between solver runs even on the same input). The W6e summary
@@ -404,7 +416,12 @@ class CalculiXReader:
         self._check_open()
         elements = self._parsed.elements
         if not elements:
-            return ()
+            # The Sprint-2 parser leaves ``elements={}`` whenever the
+            # FRD has no ``-3`` block (or the block parse failed
+            # silently). We cannot tell the difference from inside
+            # the adapter, so degrade safely — None signals "inventory
+            # not reliably parsed; do not synthesize 0".
+            return None
         translate = self._FRD_TYPE_CODE_TO_ABAQUS
         return tuple(
             translate.get(elements[eid].element_type, elements[eid].element_type)

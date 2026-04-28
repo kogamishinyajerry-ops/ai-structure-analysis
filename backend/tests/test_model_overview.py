@@ -108,14 +108,24 @@ class _NoInventoryReader:
 
 
 class _InventoryReader(_NoInventoryReader):
-    """Reader that DOES declare SupportsElementInventory."""
+    """Reader that DOES declare SupportsElementInventory and reports
+    real inventory. Returns the configured tuple verbatim."""
 
     def __init__(self, n_nodes: int, types: tuple[str, ...]) -> None:
         super().__init__(n_nodes)
         self._types = types
 
-    def element_types(self) -> tuple[str, ...]:
+    def element_types(self) -> tuple[str, ...] | None:
         return self._types
+
+
+class _NoneInventoryReader(_NoInventoryReader):
+    """Reader that DECLARES the capability but explicitly reports
+    "inventory unavailable" (the W6e three-state contract — Codex R1
+    HIGH on PR #109)."""
+
+    def element_types(self) -> tuple[str, ...] | None:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -137,30 +147,46 @@ def test_no_inventory_capability_returns_zero_elements_with_flag() -> None:
     assert dict(overview.group_counts) == {}
 
 
-def test_no_inventory_does_not_call_element_types_method() -> None:
-    """Defensive: an adapter that incidentally has an
-    ``element_types`` attribute but does not declare the Protocol
-    should not be probed. Confirms the isinstance gate is the only
-    discovery path."""
+def test_runtime_checkable_protocol_treats_any_element_types_as_capable() -> None:
+    """``@runtime_checkable`` Protocol with one method matches *any*
+    object that has that attribute name — that is the documented
+    duck-typing contract of the Protocol decorator. This test pins
+    the behaviour so a future maintainer doesn't get surprised when
+    a coincidental ``element_types`` attribute trips the capability
+    gate. Adapters that don't want the capability must NOT define a
+    method by that name."""
 
     class _IncidentalElementTypes(_NoInventoryReader):
         called = False
 
-        def element_types(self) -> tuple[str, ...]:
+        def element_types(self) -> tuple[str, ...] | None:
             type(self).called = True
             return ("WHATEVER",)
 
     reader = _IncidentalElementTypes(n_nodes=7)
-    # Even though this class has element_types, runtime_checkable
-    # Protocol with one method WILL match — so this assertion confirms
-    # the Protocol is being respected. If the incidental attribute is
-    # the right shape, it IS the capability — that's the documented
-    # duck-typing contract of @runtime_checkable.
     assert isinstance(reader, SupportsElementInventory)
     overview = summarize_model(reader)
     assert overview.has_inventory is True
     assert _IncidentalElementTypes.called is True
     assert overview.total_elements == 1
+
+
+def test_capable_adapter_returning_none_degrades_to_no_inventory() -> None:
+    """Codex R1 HIGH (PR #109): the three-state contract. The
+    capability passes ``isinstance``, but the call returns ``None`` —
+    same DOCX shape as a non-capable adapter. Confirms that a
+    capable adapter with no parsed inventory data does NOT silently
+    become "0 elements (confirmed)"."""
+    reader = _NoneInventoryReader(n_nodes=42)
+    assert isinstance(reader, SupportsElementInventory)
+
+    overview = summarize_model(reader)
+
+    assert overview.total_nodes == 42
+    assert overview.total_elements == 0
+    assert overview.has_inventory is False
+    assert dict(overview.type_counts) == {}
+    assert dict(overview.group_counts) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -238,21 +264,22 @@ def test_known_types_bucket_correctly(
 
 
 class _BadInventoryListReader(_NoInventoryReader):
-    """Returns a list, not a tuple — capability contract requires a tuple."""
+    """Returns a list, not a tuple — capability contract requires
+    ``tuple[str, ...] | None``."""
 
-    def element_types(self) -> tuple[str, ...]:  # type: ignore[override]
-        return ["C3D10", "C3D10"]  # type: ignore[return-value]
+    def element_types(self):  # type: ignore[no-untyped-def]
+        return ["C3D10", "C3D10"]
 
 
 def test_non_tuple_return_raises() -> None:
     reader = _BadInventoryListReader(n_nodes=5)
-    with pytest.raises(ModelOverviewError, match="must return a tuple"):
+    with pytest.raises(ModelOverviewError, match=r"must return tuple"):
         summarize_model(reader)
 
 
 class _NonStringEntryReader(_NoInventoryReader):
-    def element_types(self) -> tuple[str, ...]:  # type: ignore[override]
-        return ("C3D10", 42, "S4R")  # type: ignore[return-value]
+    def element_types(self):  # type: ignore[no-untyped-def]
+        return ("C3D10", 42, "S4R")
 
 
 def test_non_string_entry_raises_with_index() -> None:
@@ -262,13 +289,69 @@ def test_non_string_entry_raises_with_index() -> None:
 
 
 class _EmptyEntryReader(_NoInventoryReader):
-    def element_types(self) -> tuple[str, ...]:
+    def element_types(self) -> tuple[str, ...] | None:
         return ("C3D10", "   ", "S4R")
 
 
 def test_empty_or_whitespace_entry_raises_with_index() -> None:
     reader = _EmptyEntryReader(n_nodes=5)
     with pytest.raises(ModelOverviewError, match=r"\[1\] is empty"):
+        summarize_model(reader)
+
+
+class _PaddedEntryReader(_NoInventoryReader):
+    def element_types(self) -> tuple[str, ...] | None:
+        return ("C3D10", " C3D10 ", "S4R")
+
+
+def test_leading_or_trailing_whitespace_entry_raises_with_index() -> None:
+    """Codex R1 LOW (PR #109): padded tokens like ``" C3D10 "`` would
+    silently land in a separate ``GROUP_OTHER`` bucket the engineer
+    can't reconcile against the deck. Refuse loudly."""
+    reader = _PaddedEntryReader(n_nodes=5)
+    with pytest.raises(
+        ModelOverviewError,
+        match=r"\[1\]=' C3D10 ' has leading or trailing whitespace",
+    ):
+        summarize_model(reader)
+
+
+class _NonCallableElementTypesReader(_NoInventoryReader):
+    """The capability attribute is present but is not callable —
+    duck-typed Protocol matches but the call would fail."""
+
+    element_types = "not-a-method"  # type: ignore[assignment]
+
+
+def test_non_callable_element_types_raises_model_overview_error() -> None:
+    """Codex R1 MEDIUM (PR #109): runtime_checkable Protocol checks
+    attribute presence, not callability. Raw call would yield
+    ``TypeError: 'str' object is not callable``; we wrap it as
+    ``ModelOverviewError`` so the W6e.2 DOCX renderer sees the
+    canonical exception type."""
+    reader = _NonCallableElementTypesReader(n_nodes=5)
+    with pytest.raises(ModelOverviewError, match=r"is not callable"):
+        summarize_model(reader)
+
+
+class _RaisingElementTypesReader(_NoInventoryReader):
+    """Adapter where ``element_types()`` raises an unexpected
+    exception (signature mismatch, broken implementation, ...)."""
+
+    def element_types(self, step_id: int) -> tuple[str, ...] | None:  # type: ignore[override]
+        # Simulates a real-world adapter bug: someone copy-pasted from
+        # a step-keyed API and the call ends up requiring an arg.
+        raise RuntimeError("simulated adapter bug")
+
+
+def test_element_types_raising_is_wrapped_in_model_overview_error() -> None:
+    """Codex R1 MEDIUM: an unexpected exception from inside the
+    capability invocation is wrapped so callers see a single
+    canonical exception class."""
+    reader = _RaisingElementTypesReader(n_nodes=5)
+    with pytest.raises(
+        ModelOverviewError, match=r"raised TypeError|raised RuntimeError"
+    ):
         summarize_model(reader)
 
 

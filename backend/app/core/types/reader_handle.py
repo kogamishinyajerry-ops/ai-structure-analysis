@@ -95,21 +95,33 @@ class SupportsElementInventory(Protocol):
     so the § 模型概览 section gracefully degrades to "node count
     only" on adapters that haven't yet wired the capability.
 
-    Returns: ``tuple[str, ...]`` of element-type identifiers, one
-    per element, in the adapter's natural enumeration order. The
-    string vocabulary is solver-native (e.g. ``"C3D10"`` for an
-    Abaqus / CalculiX 10-node tet, ``"BRICK8"`` for an OpenRadioss
-    8-node hex) — no cross-solver normalization happens at Layer 2.
+    Returns:
+        * ``tuple[str, ...]`` of solver-native element-type identifiers
+          (e.g. ``("C3D10", "C3D10", "S4R", ...)``) when the adapter
+          has fully-parsed element-inventory data. One entry per
+          element, in the adapter's natural enumeration order. The
+          string vocabulary is solver-native — no cross-solver
+          normalization happens at Layer 2.
+        * ``None`` when the underlying solver result file is missing
+          the element block (e.g. CalculiX ``.frd`` written with
+          ``--no-element``, partial FRD parse, or any case where the
+          adapter cannot reliably enumerate element types). The
+          ``ModelOverview`` consumer treats this as "inventory
+          unknown" rather than fabricating "0 elements".
+
+    The contract is intentionally three-state — adapter declares the
+    capability AND returns either real data OR explicit ``None`` —
+    rather than two-state (declares + always returns a tuple). The
+    three-state form is what lets the W6e.2 DOCX renderer
+    distinguish "really zero elements (confirmed)" from "inventory
+    not parsed for this run". A capable adapter returning the empty
+    tuple ``()`` means the mesh genuinely has no elements (degenerate
+    but valid). A capable adapter returning ``None`` means the
+    inventory could not be determined.
 
     The library that consumes this (``model_overview.summarize_model``)
     is responsible for human-readable grouping in the DOCX (e.g.
     ``"C3D10"`` → ``"四面体 (C3D10)"``).
-
-    Length contract: the returned tuple's length equals the adapter's
-    total element count. Adapters with no element data MUST NOT
-    declare this capability — a zero-length tuple is reserved for
-    the "fully-parsed mesh with no elements" case (degenerate but
-    valid; Layer-3 surfaces a warning).
     """
 
-    def element_types(self) -> tuple[str, ...]: ...
+    def element_types(self) -> tuple[str, ...] | None: ...

@@ -166,54 +166,100 @@ class ModelOverview:
 # ---------------------------------------------------------------------------
 
 
+def _no_inventory(total_nodes: int) -> ModelOverview:
+    """Build the canonical "inventory unavailable" ModelOverview.
+
+    Used both by the capability-absent path (adapter doesn't declare
+    ``SupportsElementInventory``) and the capability-returns-None path
+    (adapter declared the capability but the underlying solver result
+    file did not carry element data — Codex R1 HIGH on PR #109).
+    """
+    return ModelOverview(
+        total_nodes=total_nodes,
+        total_elements=0,
+        type_counts=MappingProxyType({}),
+        group_counts=MappingProxyType({}),
+        has_inventory=False,
+    )
+
+
 def summarize_model(reader: ReaderHandle) -> ModelOverview:
     """Build a :class:`ModelOverview` from a Layer-2 ReaderHandle.
 
     Always reads ``reader.mesh.node_id_array`` for the node count.
     Element data is gated on ``isinstance(reader, SupportsElementInventory)``:
 
-    * Capability present → ``element_types()`` is invoked, the
-      returned tuple is bucketed into both ``type_counts`` and
-      ``group_counts``, and ``has_inventory=True``.
-    * Capability absent → ``total_elements=0``,
-      ``type_counts={}``, ``group_counts={}``, ``has_inventory=False``.
-      The DOCX renderer then surfaces the "no inventory" placeholder.
+    * Capability absent → ``has_inventory=False``,
+      ``total_elements=0``, no fabricated counts. DOCX renderer
+      surfaces "no inventory" placeholder.
+    * Capability present and ``element_types()`` returns ``None`` →
+      same shape as capability-absent. The adapter explicitly
+      reported "the underlying file did not include element data"
+      (e.g. CalculiX FRD with no ``-3`` block). Per Codex R1 HIGH
+      on PR #109, this three-state contract is what lets the W6e.2
+      DOCX renderer distinguish "really zero (confirmed)" from
+      "inventory not parsed for this run".
+    * Capability present and returns a ``tuple`` → bucketed into
+      ``type_counts`` + ``group_counts``, ``has_inventory=True``.
+      A zero-length tuple is permitted and produces
+      ``total_elements=0, has_inventory=True`` — "0 elements
+      (confirmed)" rather than "inventory unknown".
 
-    Raises :class:`ModelOverviewError` when the capability returns
+    Raises :class:`ModelOverviewError` when a capable adapter returns
     malformed data:
 
-    * The result is not a tuple.
+    * ``element_types`` is not callable.
+    * Calling it raises an unexpected exception (signature mismatch,
+      broken adapter, etc.).
+    * The result is neither ``None`` nor a ``tuple``.
     * The result contains a non-string entry.
-    * The result contains an empty / whitespace-only string.
-
-    A zero-length tuple from a capable adapter is permitted (degenerate
-    but valid: a mesh with nodes but no elements). It produces
-    ``total_elements=0``, ``has_inventory=True`` — the DOCX renderer
-    treats that as "0 elements (confirmed)" rather than "inventory
-    unknown".
+    * The result contains an empty, whitespace-only, or
+      leading/trailing-whitespace-padded string. (Padding is rejected
+      rather than normalized: silently accepting ``" C3D10 "`` would
+      produce a stray bucket in the DOCX that the engineer can't
+      reconcile back to any solver-deck entry.)
     """
     node_id_array = reader.mesh.node_id_array
     total_nodes = int(len(node_id_array))
 
     if not isinstance(reader, SupportsElementInventory):
-        return ModelOverview(
-            total_nodes=total_nodes,
-            total_elements=0,
-            type_counts=MappingProxyType({}),
-            group_counts=MappingProxyType({}),
-            has_inventory=False,
-        )
+        return _no_inventory(total_nodes)
 
-    types = reader.element_types()
+    # Codex R1 MEDIUM: ``@runtime_checkable`` Protocol checks
+    # attribute presence, not callability or signature. Validate
+    # callability + wrap unexpected invocation errors so a malformed
+    # adapter surfaces as ``ModelOverviewError`` rather than a raw
+    # ``TypeError``/``AttributeError`` from deep inside the call.
+    fn = getattr(reader, "element_types", None)
+    if not callable(fn):
+        raise ModelOverviewError(
+            f"reader.element_types is not callable, got "
+            f"{type(fn).__name__}"
+        )
+    try:
+        types = fn()
+    except ModelOverviewError:
+        raise
+    except Exception as exc:
+        raise ModelOverviewError(
+            f"reader.element_types() raised "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+    if types is None:
+        # Adapter explicitly declared "inventory unavailable for this
+        # instance". Same DOCX shape as the capability-absent case.
+        return _no_inventory(total_nodes)
+
     if not isinstance(types, tuple):
         raise ModelOverviewError(
-            f"reader.element_types() must return a tuple, got "
-            f"{type(types).__name__}"
+            f"reader.element_types() must return tuple[str, ...] | None, "
+            f"got {type(types).__name__}"
         )
 
     # Validate every entry before counting so a malformed adapter
     # surfaces the exact bad index rather than ending up as a stray
-    # entry in `type_counts`.
+    # entry in ``type_counts``.
     for idx, t in enumerate(types):
         if not isinstance(t, str):
             raise ModelOverviewError(
@@ -223,6 +269,16 @@ def summarize_model(reader: ReaderHandle) -> ModelOverview:
         if not t.strip():
             raise ModelOverviewError(
                 f"reader.element_types()[{idx}] is empty / whitespace-only"
+            )
+        # Codex R1 LOW: refuse leading/trailing whitespace explicitly
+        # rather than silently normalizing. Otherwise a malformed
+        # adapter that emits ``" C3D10 "`` would land in a separate
+        # ``GROUP_OTHER`` bucket the engineer can't reconcile back to
+        # the deck.
+        if t != t.strip():
+            raise ModelOverviewError(
+                f"reader.element_types()[{idx}]={t!r} has leading or "
+                f"trailing whitespace; adapter must emit canonical tokens"
             )
 
     type_counter: Counter[str] = Counter(types)
