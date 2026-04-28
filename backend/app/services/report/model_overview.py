@@ -144,8 +144,12 @@ class ModelOverview:
       types not in ``ELEMENT_TYPE_GROUPS`` bucket into
       :data:`GROUP_OTHER`.
     * ``has_inventory`` — True when the adapter declared
-      ``SupportsElementInventory``. The DOCX renderer uses this flag
-      to decide whether to render the breakdown table or the "no
+      ``SupportsElementInventory`` AND ``element_types()`` returned
+      a tuple (possibly empty). False when either the capability is
+      absent OR the capability returned ``None`` to signal "inventory
+      not available for this instance" (Codex R1 HIGH on PR #109,
+      three-state contract). The DOCX renderer uses this flag to
+      decide whether to render the breakdown table or the "no
       inventory" placeholder; without it, "0 elements" would be
       structurally indistinguishable from "inventory not available".
 
@@ -230,19 +234,25 @@ def summarize_model(reader: ReaderHandle) -> ModelOverview:
     # callability + wrap unexpected invocation errors so a malformed
     # adapter surfaces as ``ModelOverviewError`` rather than a raw
     # ``TypeError``/``AttributeError`` from deep inside the call.
-    fn = getattr(reader, "element_types", None)
-    if not callable(fn):
-        raise ModelOverviewError(
-            f"reader.element_types is not callable, got "
-            f"{type(fn).__name__}"
-        )
+    #
+    # Codex R2 MEDIUM: ``getattr(reader, "element_types", None)`` must
+    # also run inside the ``try`` because ``element_types`` may be a
+    # ``@property`` whose getter raises (e.g. an adapter holding an
+    # unrecoverable state). Pulling the attribute access into the
+    # same wrap so descriptor-side errors come out canonicalised too.
     try:
+        fn = getattr(reader, "element_types", None)
+        if not callable(fn):
+            raise ModelOverviewError(
+                f"reader.element_types is not callable, got "
+                f"{type(fn).__name__}"
+            )
         types = fn()
     except ModelOverviewError:
         raise
     except Exception as exc:
         raise ModelOverviewError(
-            f"reader.element_types() raised "
+            f"reader.element_types raised "
             f"{type(exc).__name__}: {exc}"
         ) from exc
 

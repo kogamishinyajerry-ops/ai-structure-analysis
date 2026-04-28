@@ -355,6 +355,31 @@ def test_element_types_raising_is_wrapped_in_model_overview_error() -> None:
         summarize_model(reader)
 
 
+class _PropertyRaisingReader(_NoInventoryReader):
+    """Adapter that exposes ``element_types`` as a ``@property`` whose
+    *getter* raises. The runtime_checkable Protocol still matches
+    (the attribute exists), but the descriptor access itself fails."""
+
+    @property
+    def element_types(self) -> tuple[str, ...] | None:  # type: ignore[override]
+        raise RuntimeError("getter boom")
+
+
+def test_property_getter_raising_is_wrapped_in_model_overview_error() -> None:
+    """Codex R2 MEDIUM (PR #109): the original wrap landed
+    ``getattr(...)`` BEFORE the try-block, so a property-backed
+    ``element_types`` whose getter raised would surface the raw
+    RuntimeError instead of ModelOverviewError. R2 fix moved the
+    getattr inside the try; this test pins the behaviour."""
+    reader = _PropertyRaisingReader(n_nodes=5)
+    # The Protocol still matches because hasattr (== getattr +
+    # AttributeError catch) sees the descriptor name; the getter
+    # only fires when the attribute is actually accessed inside
+    # summarize_model.
+    with pytest.raises(ModelOverviewError, match=r"raised RuntimeError"):
+        summarize_model(reader)
+
+
 # ---------------------------------------------------------------------------
 # Bucket 5 — deep immutability
 # ---------------------------------------------------------------------------
@@ -419,6 +444,41 @@ _GS001_FRD: Path = (
     / "GS-001"
     / "gs001_result.frd"
 )
+
+
+@pytest.mark.skipif(not _GS001_FRD.is_file(), reason="GS-001 fixture missing")
+def test_calculix_reader_returns_none_when_frd_has_no_element_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex R2 LOW (PR #109): pin the actual CalculiX adapter
+    branch where ``parsed.elements == {}`` causes
+    ``CalculiXReader.element_types()`` to return ``None``.
+
+    Patch the parser result post-construction so we don't have to
+    fabricate an FRD without a -3 block (a real-world malformed
+    file). Confirms the three-state-contract Hugh-fix landed in the
+    actual adapter, not just the test doubles.
+    """
+    from app.adapters.calculix.reader import CalculiXReader
+
+    reader = CalculiXReader(_GS001_FRD, unit_system=UnitSystem.SI_MM)
+    try:
+        # Bypass the parser by zeroing the elements dict — simulates
+        # an FRD whose -3 block was missing or failed to parse.
+        monkeypatch.setattr(reader._parsed, "elements", {})
+
+        result = reader.element_types()
+        assert result is None, (
+            f"CalculiXReader with parsed.elements=={{}} must return "
+            f"None (three-state contract), got {result!r}"
+        )
+
+        overview = summarize_model(reader)
+        assert overview.has_inventory is False
+        assert overview.total_elements == 0
+        assert overview.total_nodes > 0  # node block was still valid
+    finally:
+        reader.close()
 
 
 @pytest.mark.skipif(not _GS001_FRD.is_file(), reason="GS-001 fixture missing")
