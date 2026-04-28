@@ -17,6 +17,7 @@ adapter type.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Optional, Protocol, runtime_checkable
 
 import numpy as np
@@ -81,3 +82,30 @@ class SupportsElementDeletion(Protocol):
     """
 
     def deleted_facets_for(self, step_id: int) -> "npt.NDArray[np.int8]": ...
+
+
+@runtime_checkable
+class SupportsElementInventory(Protocol):
+    """Optional Layer-2 capability: element-type inventory.
+
+    Adapters that parsed an element block from the solver result file
+    (CalculiX FRD ``-1`` / ``-2`` records, OpenRadioss ``.h3d``
+    element groups, etc.) implement this. Layer-4 model-overview
+    rendering feature-detects via
+    ``isinstance(reader, SupportsElementInventory)`` rather than
+    importing the concrete adapter type — keeps the Layer-4 → Layer-1
+    arrow forbidden by RFC-001 §4.2.
+
+    Returns: ``Mapping[str, int]`` keyed by canonical element-type
+    label as the solver named it (``"HEX8"``, ``"TET4"``, ``"S4R"``,
+    etc.); value is the count of elements of that type. The mapping
+    is ordered (``dict``-style) so the renderer can present the
+    distribution in a stable order — typically descending by count
+    or in source order, at the adapter's discretion.
+
+    The implementation MUST return a fresh / immutable mapping per
+    call so callers can iterate without worrying about mid-iteration
+    mutation.
+    """
+
+    def element_inventory(self) -> Mapping[str, int]: ...
