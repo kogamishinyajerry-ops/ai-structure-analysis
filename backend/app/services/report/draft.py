@@ -55,7 +55,13 @@ from app.core.types import (
     FieldData,
     FieldLocation,
     ReaderHandle,
+    SupportsElementDeletion,
     UnitSystem,
+)
+from app.domain.ballistics import (
+    displacement_history,
+    eroded_history,
+    perforation_event_step,
 )
 from app.domain.stress_derivatives import von_mises
 from app.domain.stress_linearization import (
@@ -73,6 +79,7 @@ from app.models import (
 
 
 __all__ = [
+    "generate_ballistic_penetration_summary",
     "generate_static_strength_summary",
     "generate_lifting_lug_summary",
     "generate_pressure_vessel_local_stress_summary",
@@ -702,6 +709,276 @@ def generate_pressure_vessel_local_stress_summary(
 
     summary = ReportSection(
         title="局部应力评估 (Local stress assessment)",
+        level=1,
+        content="\n".join(section_lines),
+    )
+
+    report = ReportSpec(
+        report_id=report_id,
+        project_id=project_id,
+        title=title_resolved,
+        template_id=template_id_resolved,
+        sections=[summary],
+        generated_at=datetime.utcnow(),
+        evidence_bundle_id=bundle.bundle_id,
+    )
+    return report, bundle
+
+
+# --- ballistic-penetration time-history (W7f) ----------------------------
+
+
+def _unit_label_for_time(system: UnitSystem) -> str:
+    """Time unit per ``UnitSystem`` (closed-set). ``UNKNOWN`` returns
+    ``'unknown'`` rather than guessing — the wizard pins this before
+    draft generation, so seeing ``unknown`` flags an upstream contract leak.
+    """
+    table: dict[UnitSystem, str] = {
+        UnitSystem.SI: "s",
+        UnitSystem.SI_MM: "ms",
+        UnitSystem.ENGLISH: "s",
+        UnitSystem.UNKNOWN: "unknown",
+    }
+    return table[system]
+
+
+def generate_ballistic_penetration_summary(
+    reader: ReaderHandle,
+    *,
+    project_id: str,
+    task_id: str,
+    report_id: str,
+    bundle_id: str,
+    template_id: Optional[str] = None,
+    title: Optional[str] = None,
+) -> Tuple[ReportSpec, EvidenceBundle]:
+    """Generate the ``ballistic_penetration_summary`` report draft.
+
+    Wires the Layer-1 ``ReaderHandle`` (typically OpenRadioss) through
+    the Layer-3 ``app.domain.ballistics`` derivations and emits a
+    single-section report whose evidence items capture:
+
+      * ``EV-BALLISTIC-DURATION`` — total run time (final state's
+        ``time``).
+      * ``EV-BALLISTIC-MAX-DISP`` — peak nodal displacement magnitude
+        across all states, with the step at which it occurred.
+      * ``EV-BALLISTIC-EROSION-FINAL`` — eroded facet count at the
+        final state. Emitted ONLY when the reader satisfies
+        ``SupportsElementDeletion`` (CalculiX has no erosion; this
+        evidence item is silently absent for it). The value is the
+        raw count, including 0 (a "0 eroded" outcome is non-trivial
+        evidence — it means the design survived the load case).
+      * ``EV-BALLISTIC-PERFORATION-EVENT`` — step_id at which the
+        first facet eroded. Emitted ONLY when the reader supports
+        erosion AND erosion was actually observed in the run. If no
+        erosion happened, the section text records "未观察到穿透 / no
+        perforation observed" without minting an evidence item (a
+        non-event isn't citeable per ADR-012).
+
+    Multi-state contract: unlike the static-strength generators, this
+    reader iterates EVERY ``solution_state`` to find the peak
+    displacement and the perforation step. ``step_id`` is therefore
+    NOT a parameter — the whole time history is the report subject.
+
+    ADR-001 / ADR-003 / ADR-012:
+      * Every per-state quantity comes from Layer 3 (``app.domain.ballistics``);
+        no derivation in this Layer-4 module.
+      * The unit_system flows from each evidence item's ``FieldMetadata``
+        (or the reader's ``mesh.unit_system`` for time, since the time
+        axis isn't part of any FieldMetadata yet — a known gap).
+      * Every evidence item carries a resolved ``evidence_id`` and the
+        section content cites at least 2 distinct ``EV-*`` tokens (the
+        template requires ``minimum_evidence_citations=2``).
+
+    ``template_id`` / ``title`` overrides match the static-strength
+    generators' opt-in pattern.
+    """
+    template_id_resolved = template_id or "ballistic_penetration_summary"
+    title_resolved = (
+        title or "Ballistic-penetration time-history summary"
+    )
+
+    states = reader.solution_states
+    if not states:
+        raise ValueError(
+            f"reader for task {task_id!r} has no solution states; "
+            "cannot generate a ballistic-penetration summary"
+        )
+
+    step_ids = [s.step_id for s in states]
+    state_lookup = {s.step_id: s for s in states}
+
+    disp_by_step = displacement_history(reader, step_ids)
+    has_erosion = isinstance(reader, SupportsElementDeletion)
+    erosion_by_step: dict[int, int] = (
+        eroded_history(reader, step_ids) if has_erosion else {}
+    )
+    perforation_step = (
+        perforation_event_step(reader, step_ids) if has_erosion else None
+    )
+
+    # Peak displacement across the whole time axis.
+    peak_step_id = max(disp_by_step, key=lambda sid: disp_by_step[sid])
+    peak_disp_value = float(disp_by_step[peak_step_id])
+
+    # Codex R1 HIGH: each evidence item must bind to its OWN step's
+    # FieldMetadata so source_file in the audit trail points to the
+    # actual file the value came from — earlier code reused
+    # peak_field metadata for duration / final-erosion / perforation
+    # evidence, which produced the wrong .Axxx path when peak
+    # displacement and the final state were different frames. We pull
+    # one DISPLACEMENT field per relevant step (ADR-021 makes
+    # DISPLACEMENT universal across OpenRadioss frames; for adapters
+    # that some day gate it, the contract failure surfaces here as a
+    # clear ValueError, not a silent metadata leak).
+    def _field_at(step_id: int) -> FieldData:
+        fd = reader.get_field(CanonicalField.DISPLACEMENT, step_id)
+        if fd is None:
+            raise ValueError(
+                f"reader has no DISPLACEMENT at step {step_id!r}; "
+                "ballistic summary requires per-step displacement "
+                "evidence for the audit trail (ADR-012)"
+            )
+        return fd
+
+    peak_field = _field_at(peak_step_id)
+
+    final_state = state_lookup[step_ids[-1]]
+    final_field = _field_at(final_state.step_id)
+    final_time = (
+        float(final_state.time) if final_state.time is not None else 0.0
+    )
+    time_unit = _unit_label_for_time(reader.mesh.unit_system)
+    length_unit = _unit_label_for_system(
+        peak_field.metadata.unit_system, "length"
+    )
+
+    bundle = EvidenceBundle(
+        bundle_id=bundle_id,
+        task_id=task_id,
+        title=f"Evidence backing {title_resolved}",
+    )
+
+    section_lines: list[str] = []
+
+    # 1) Run duration — bind to the FINAL state's metadata since that
+    # is the file the ``time`` value originated from.
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-BALLISTIC-DURATION",
+            evidence_type=EvidenceType.SIMULATION,
+            title="Total simulation duration",
+            description=None,
+            data=SimulationEvidence(
+                value=final_time,
+                unit=time_unit,
+                location=f"final state step_id={final_state.step_id}",
+            ),
+            field_metadata=final_field.metadata,
+            derivation=None,
+            source=final_field.metadata.source_solver,
+            source_file=str(final_field.metadata.source_file),
+        )
+    )
+    section_lines.append(
+        f"- 仿真时长 (Run duration): **{final_time:.6g} {time_unit}** "
+        f"@ final state step_id={final_state.step_id}  "
+        "*(EV-BALLISTIC-DURATION)*"
+    )
+
+    # 2) Peak displacement
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-BALLISTIC-MAX-DISP",
+            evidence_type=EvidenceType.SIMULATION,
+            title="Peak nodal displacement magnitude across run",
+            description=None,
+            data=SimulationEvidence(
+                value=peak_disp_value,
+                unit=length_unit,
+                location=f"step_id={peak_step_id}",
+            ),
+            field_metadata=peak_field.metadata,
+            derivation=None,
+            source=peak_field.metadata.source_solver,
+            source_file=str(peak_field.metadata.source_file),
+        )
+    )
+    section_lines.append(
+        f"- 峰值位移 (Peak displacement): "
+        f"**{peak_disp_value:.6g} {length_unit}** "
+        f"@ step_id={peak_step_id}  *(EV-BALLISTIC-MAX-DISP)*"
+    )
+
+    # 3) Eroded facet count (final state) — only when the reader
+    #    supports element deletion. Bind to the FINAL state's metadata
+    #    so source_file points to the file the count came from.
+    if has_erosion:
+        final_eroded = erosion_by_step[final_state.step_id]
+        bundle.add_evidence(
+            EvidenceItem(
+                evidence_id="EV-BALLISTIC-EROSION-FINAL",
+                evidence_type=EvidenceType.SIMULATION,
+                title="Eroded facet count at final state",
+                description=None,
+                data=SimulationEvidence(
+                    value=float(final_eroded),
+                    unit="facets",
+                    location=f"final state step_id={final_state.step_id}",
+                ),
+                field_metadata=final_field.metadata,
+                derivation=None,
+                source=final_field.metadata.source_solver,
+                source_file=str(final_field.metadata.source_file),
+            )
+        )
+        section_lines.append(
+            f"- 终态侵蚀单元数 (Eroded facets at final state): "
+            f"**{final_eroded} facets**  *(EV-BALLISTIC-EROSION-FINAL)*"
+        )
+
+    # 4) Perforation event — only when actually observed. Bind to the
+    #    perforation-step's metadata so source_file points to the file
+    #    where the first erosion was observed.
+    if has_erosion:
+        if perforation_step is not None:
+            perforation_time = (
+                float(state_lookup[perforation_step].time)
+                if state_lookup[perforation_step].time is not None
+                else 0.0
+            )
+            perforation_field = _field_at(perforation_step)
+            bundle.add_evidence(
+                EvidenceItem(
+                    evidence_id="EV-BALLISTIC-PERFORATION-EVENT",
+                    evidence_type=EvidenceType.SIMULATION,
+                    title="Perforation event step (first eroded facet)",
+                    description=None,
+                    data=SimulationEvidence(
+                        value=perforation_time,
+                        unit=time_unit,
+                        location=f"step_id={perforation_step}",
+                    ),
+                    field_metadata=perforation_field.metadata,
+                    derivation=["EV-BALLISTIC-EROSION-FINAL"],
+                    source=perforation_field.metadata.source_solver,
+                    source_file=str(perforation_field.metadata.source_file),
+                )
+            )
+            section_lines.append(
+                f"- 穿透事件 (Perforation event): "
+                f"**t={perforation_time:.6g} {time_unit}** "
+                f"@ step_id={perforation_step}  "
+                "*(EV-BALLISTIC-PERFORATION-EVENT)*"
+            )
+        else:
+            section_lines.append(
+                "- 穿透事件 (Perforation event): "
+                "**未观察到 / no perforation observed**"
+            )
+
+    summary = ReportSection(
+        title="弹道穿透时程摘要 (Ballistic-penetration time-history summary)",
         level=1,
         content="\n".join(section_lines),
     )

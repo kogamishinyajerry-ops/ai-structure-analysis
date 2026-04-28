@@ -39,9 +39,13 @@ GS001_FRD = (
 # --- registry / lookup ----------------------------------------------------
 
 
-def test_supported_template_ids_returns_three_known_templates() -> None:
+def test_supported_template_ids_returns_known_templates() -> None:
+    """W7f added BALLISTIC_PENETRATION_SUMMARY as the fourth registered
+    template. Future templates should extend this set in alphabetical
+    order to match the ``sorted()`` contract in ``supported_template_ids``."""
     ids = supported_template_ids()
     assert ids == (
+        "ballistic_penetration_summary",
         "equipment_foundation_static",
         "lifting_lug",
         "pressure_vessel_local_stress",
