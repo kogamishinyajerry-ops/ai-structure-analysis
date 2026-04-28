@@ -700,19 +700,38 @@ def _build_model_overview_evidence_and_section(
         f"has_inventory={overview.has_inventory}"
     )
 
+    # ADR-003 (do-not-fabricate) — Codex R1 HIGH on PR #110:
+    # when ``has_inventory`` is False the element count is unknown, not
+    # zero. The library encodes the unknown state as ``total_elements=0``
+    # but that 0 must not leak into a downstream consumer's evidence
+    # payload. Anchor the evidence to the always-known node count
+    # (Mesh Protocol guarantees node coordinates) and spell the missing
+    # element count out as text in the citation_anchor.
+    if overview.has_inventory:
+        ev_value = float(overview.total_elements)
+        ev_unit = "elements"
+        anchor = (
+            f"nodes={overview.total_nodes}, "
+            f"elements={overview.total_elements}"
+        )
+    else:
+        ev_value = float(overview.total_nodes)
+        ev_unit = "nodes"
+        anchor = (
+            f"nodes={overview.total_nodes}, "
+            f"elements=unknown (inventory unavailable)"
+        )
+
     ev = EvidenceItem(
         evidence_id=_MODEL_OVERVIEW_EVIDENCE_ID,
         evidence_type=EvidenceType.REFERENCE,
         title="模型概览 (model overview)",
         description=description,
         data=ReferenceEvidence(
-            value=float(overview.total_elements),
-            unit="elements",
+            value=ev_value,
+            unit=ev_unit,
             source_document="solver result file",
-            citation_anchor=(
-                f"nodes={overview.total_nodes}, "
-                f"elements={overview.total_elements}"
-            ),
+            citation_anchor=anchor,
         ),
         derivation=None,
         source="reader.mesh + SupportsElementInventory",

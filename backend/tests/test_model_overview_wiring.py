@@ -124,7 +124,13 @@ def test_model_overview_evidence_has_reference_type() -> None:
     — the evidence must be type=REFERENCE (parallels W6d's bc.yaml
     handling) so the renderer / auditor can distinguish it from
     SimulationEvidence (per-state field reads) and AnalyticalEvidence
-    (allowable / verdict computations)."""
+    (allowable / verdict computations).
+
+    GS-001 declares element inventory, so the inventory-available
+    branch fires: value = total element count, unit = "elements".
+    The inventory-unavailable branch is exercised by
+    ``test_evidence_does_not_fabricate_element_count_when_inventory_missing``.
+    """
     from app.models import EvidenceType
 
     _, bundle = _generate_static()
@@ -137,6 +143,63 @@ def test_model_overview_evidence_has_reference_type() -> None:
     # Value is the total element count cast to float.
     assert ev.data.value >= 0.0
     assert ev.data.unit == "elements"
+    assert "elements=" in ev.data.citation_anchor
+    assert "unknown" not in ev.data.citation_anchor
+
+
+def test_evidence_does_not_fabricate_element_count_when_inventory_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Codex R1 HIGH on PR #110 — ADR-003 (do-not-fabricate).
+
+    When the adapter cannot supply an element inventory, the evidence
+    bundle MUST NOT report ``elements=0`` as if zero were a confirmed
+    measurement. Anchor the evidence to the always-known node count
+    (Mesh Protocol guarantees node coordinates) and spell the missing
+    element count out as text in ``citation_anchor`` so any downstream
+    consumer that reads the payload (rather than the section prose)
+    sees the unknown state.
+    """
+    from app.services.report.draft import generate_static_strength_summary
+
+    reader = _gs001_reader()
+    try:
+        # Same simulation as the section-rendering test — adapter
+        # declares the capability but the underlying FRD has no -3
+        # block, so element_types() returns None.
+        monkeypatch.setattr(reader._parsed, "elements", {})
+        _, bundle = generate_static_strength_summary(
+            reader,
+            project_id="P-W6E2-NF",
+            task_id="T-W6E2-NF",
+            report_id="R-W6E2-NF",
+            bundle_id="B-W6E2-NF",
+        )
+    finally:
+        reader.close()
+
+    ev = next(
+        item
+        for item in bundle.evidence_items
+        if item.evidence_id == "EV-MODEL-OVERVIEW-001"
+    )
+    # Value cannot claim a concrete element count.
+    assert ev.data.unit != "elements", (
+        f"unit must not assert 'elements' when inventory unavailable; "
+        f"got unit={ev.data.unit!r}"
+    )
+    # citation_anchor must spell out the unknown state.
+    anchor = ev.data.citation_anchor or ""
+    assert "elements=0" not in anchor, (
+        f"citation_anchor fabricated elements=0 in unavailable branch: "
+        f"{anchor!r}"
+    )
+    assert "unknown" in anchor.lower(), (
+        f"citation_anchor must mark element count as unknown; "
+        f"got {anchor!r}"
+    )
+    # Description still flags the unavailable state for human review.
+    assert "has_inventory=False" in (ev.description or "")
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +320,19 @@ def test_section_lists_unknown_types_in_other_footnote(
     )
     assert "GASKET_X" in overview_section.content
     assert "MYSTERY" in overview_section.content
-    # The known C3D10 should NOT appear in the OTHER footnote.
-    assert "C3D10" not in overview_section.content.split("GROUP_OTHER includes")[-1] \
-        if "GROUP_OTHER includes" in overview_section.content \
-        else True
+    # The known C3D10 must NOT appear in the OTHER footnote.
+    # Codex R1 NIT on PR #110: isolate the actual footnote line and
+    # assert against it instead of splitting on a prose fragment.
+    other_footnote_lines = [
+        ln
+        for ln in overview_section.content.splitlines()
+        if "GROUP_OTHER includes" in ln
+    ]
+    assert len(other_footnote_lines) == 1, (
+        "expected exactly one GROUP_OTHER footnote line; "
+        f"got {other_footnote_lines!r}"
+    )
+    other_line = other_footnote_lines[0]
+    assert "GASKET_X" in other_line
+    assert "MYSTERY" in other_line
+    assert "C3D10" not in other_line
