@@ -35,6 +35,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Final, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -76,6 +77,7 @@ from app.models import (
     EvidenceBundle,
     EvidenceItem,
     EvidenceType,
+    ReferenceEvidence,
     ReportSection,
     ReportSpec,
     SimulationEvidence,
@@ -84,6 +86,11 @@ from app.services.report.allowable_stress import (
     AllowableStress,
     CodeStandard,
     compute_allowable_stress,
+)
+from app.services.report.boundary_summary import (
+    BCSummary,
+    load_boundary_conditions_yaml,
+    summarize_boundary_conditions,
 )
 from app.services.report.verdict import (
     DEFAULT_THRESHOLD,
@@ -232,6 +239,7 @@ def _build_max_field_summary(
     code: Optional[CodeStandard] = None,
     threshold: float = DEFAULT_THRESHOLD,
     temperature_C: float = 20.0,
+    bc_yaml_path: Optional[Path] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Shared engine for max-field summary reports.
 
@@ -395,6 +403,18 @@ def _build_max_field_summary(
         bundle.add_evidence(ev_verdict)
         sections.append(_build_allowable_section(allowable, sigma_max_unit))
         sections.append(_build_verdict_section(verdict, sigma_max_unit))
+
+    # W6d.2 — § 边界条件. Optional and self-contained (no derivation
+    # link from / to other evidence): the BC list is upstream context,
+    # not derived from σ_max or [σ]. ``BCSummaryError`` propagates
+    # cleanly so an engineer sees malformed bc.yaml here, not at
+    # DOCX render time.
+    if bc_yaml_path is not None:
+        ev_bc, bc_section = _build_boundary_conditions_evidence_and_section(
+            bc_yaml_path
+        )
+        bundle.add_evidence(ev_bc)
+        sections.append(bc_section)
 
     report = ReportSpec(
         report_id=report_id,
@@ -625,6 +645,113 @@ def _build_verdict_section(
     )
 
 
+_BC_EVIDENCE_ID: Final[str] = "EV-BC-001"
+
+
+def _build_boundary_conditions_evidence_and_section(
+    bc_yaml_path: Path,
+) -> Tuple[EvidenceItem, ReportSection]:
+    """Load ``bc.yaml``, summarise, and emit the § 边界条件 pair.
+
+    Returns ``(evidence_item, section)`` ready for the caller to append
+    in DAG-safe order. The evidence is a single ``ReferenceEvidence``
+    pointing at the source file (the BC list is *user-supplied*, not
+    derived from the simulation result), with ``value`` = number of
+    BCs and ``unit`` = ``"conditions"``. Per-BC detail lives in the
+    section content; the evidence carries the audit pointer back to
+    the source ``bc.yaml``.
+
+    Empty BC list (engineer uploaded an empty / placeholder file) is
+    NOT silently skipped — the section is rendered with a
+    ``[需工程师确认]`` placeholder line and the evidence still cites
+    the empty source so the auditor sees that "an engineer touched
+    this file" rather than "the wedge forgot the BCs".
+    """
+    bcs = load_boundary_conditions_yaml(bc_yaml_path)
+    summary = summarize_boundary_conditions(bcs)
+
+    ev = EvidenceItem(
+        evidence_id=_BC_EVIDENCE_ID,
+        evidence_type=EvidenceType.REFERENCE,
+        title="边界条件清单 (boundary conditions)",
+        description=(
+            f"User-supplied bc.yaml: {len(bcs)} boundary condition(s); "
+            f"unit systems: {', '.join(summary.unit_systems) or 'n/a'}"
+        ),
+        data=ReferenceEvidence(
+            value=float(len(bcs)),
+            unit="conditions",
+            source_document=str(bc_yaml_path),
+            citation_anchor="boundary_conditions[*]",
+        ),
+        derivation=None,
+        source="user-supplied bc.yaml",
+        source_file=str(bc_yaml_path),
+    )
+
+    section = _build_boundary_section(summary, bc_yaml_path)
+    return ev, section
+
+
+def _build_boundary_section(
+    summary: BCSummary, source_path: Path
+) -> ReportSection:
+    """Render the § 边界条件 section content.
+
+    Layout:
+
+    1. Summary line: ``共 N 项 (固定: 2, 压力: 1)`` + warning if mixed.
+    2. One bullet per BC: ``编号. 名称 (类型) @ 位置 — 分量 [单位]``.
+    3. Citation footer: ``({_BC_EVIDENCE_ID})``.
+
+    For empty input, a single ``[需工程师确认] 未提供边界条件...``
+    line is emitted — the engineer signing the DOCX must see that
+    the BCs were not captured rather than discover it during
+    technical review.
+
+    Mixed unit systems trigger an inline warning line — almost always
+    a wizard bug; better to surface it at sign time than at audit time.
+    """
+    lines: list[str] = []
+
+    if not summary.rows:
+        lines.append(
+            f"- **[需工程师确认]** 未提供边界条件数据 (bc.yaml at "
+            f"{source_path!s} loaded zero entries)."
+        )
+        lines.append(f"  *({_BC_EVIDENCE_ID})*")
+        return ReportSection(
+            title="边界条件 (Boundary conditions)",
+            level=1,
+            content="\n".join(lines),
+        )
+
+    counts = dict(summary.counts_by_kind)
+    total = sum(counts.values())
+    counts_str = ", ".join(f"{k}: {v}" for k, v in counts.items())
+    lines.append(
+        f"- 共 **{total}** 项边界条件 ({counts_str})  *({_BC_EVIDENCE_ID})*"
+    )
+
+    if len(summary.unit_systems) > 1:
+        lines.append(
+            f"- ⚠ **混合单位系统** ({', '.join(summary.unit_systems)}) — "
+            f"请工程师核对 bc.yaml 是否一致。"
+        )
+
+    for i, row in enumerate(summary.rows, start=1):
+        lines.append(
+            f"- {i}. **{row['name']}** ({row['kind']}) @ {row['target']} — "
+            f"{row['components']} [{row['unit_system']}]"
+        )
+
+    return ReportSection(
+        title="边界条件 (Boundary conditions)",
+        level=1,
+        content="\n".join(lines),
+    )
+
+
 def _override_labels(
     base: _SummaryLabels,
     template_id: Optional[str],
@@ -663,6 +790,7 @@ def generate_static_strength_summary(
     code: Optional[CodeStandard] = None,
     threshold: float = DEFAULT_THRESHOLD,
     temperature_C: float = 20.0,
+    bc_yaml_path: Optional[Path] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate the minimum-viable static-strength report draft.
 
@@ -716,6 +844,7 @@ def generate_static_strength_summary(
         code=code,
         threshold=threshold,
         temperature_C=temperature_C,
+        bc_yaml_path=bc_yaml_path,
     )
 
 
@@ -733,6 +862,7 @@ def generate_lifting_lug_summary(
     code: Optional[CodeStandard] = None,
     threshold: float = DEFAULT_THRESHOLD,
     temperature_C: float = 20.0,
+    bc_yaml_path: Optional[Path] = None,
 ) -> Tuple[ReportSpec, EvidenceBundle]:
     """Generate a lifting-lug strength-assessment report draft.
 
@@ -765,6 +895,7 @@ def generate_lifting_lug_summary(
         code=code,
         threshold=threshold,
         temperature_C=temperature_C,
+        bc_yaml_path=bc_yaml_path,
     )
 
 
