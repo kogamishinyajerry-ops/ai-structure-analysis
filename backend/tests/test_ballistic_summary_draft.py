@@ -223,6 +223,10 @@ def test_erosion_reader_no_perforation_records_observation_text() -> None:
     ev_ids = {ev.evidence_id for ev in bundle.evidence_items}
     assert "EV-BALLISTIC-EROSION-FINAL" in ev_ids
     assert "EV-BALLISTIC-PERFORATION-EVENT" not in ev_ids
+    # Codex R1 nit (2): pin bundle size so a future duplicate-add of
+    # EV-BALLISTIC-EROSION-FINAL (the cite reuses the existing entry,
+    # not a fresh one) cannot evade the set-based ev_ids check above.
+    assert len(bundle.evidence_items) == 3
     section_content = report.sections[0].content
     assert "no perforation observed" in section_content
     # ADR-012 / RFC-001 §2.4 rule 1: every claim line must reference an
@@ -230,13 +234,15 @@ def test_erosion_reader_no_perforation_records_observation_text() -> None:
     # the no-perforation line emitted no cite and the DOCX exporter
     # refused the report. Verify the perforation-event line ends with
     # the EV-BALLISTIC-EROSION-FINAL cite (the same evidence already
-    # used by the eroded-facets-final claim).
+    # used by the eroded-facets-final claim). Codex R1 nit (1): use
+    # endswith so a hypothetical "claim 1 cites X (EV-Y) and claim 2
+    # cites nothing" merge on the same line cannot pass.
     perforation_line = next(
-        line
+        line.rstrip()
         for line in section_content.splitlines()
         if "Perforation event" in line
     )
-    assert "(EV-BALLISTIC-EROSION-FINAL)" in perforation_line
+    assert perforation_line.endswith("*(EV-BALLISTIC-EROSION-FINAL)*")
     # GS-100-shaped baseline: 0 eroded at final.
     eroded_ev = next(
         ev for ev in bundle.evidence_items
