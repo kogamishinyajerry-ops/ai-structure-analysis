@@ -99,10 +99,10 @@ We compute (and accept the conservative gap) rather than table-look-up because:
 
 - a tabulated [σ] hides the formula; the auditor wants to see `σ_y / 1.5 = 230` not just "230 from Table 4"
 - temperature interpolation (M4) is a different formula; bolting tabulated values into the API now means re-architecting later
-- a conservative gap is **the right wedge default**: the engineer can override with a manual Table 4 value at the DOCX edit stage if they want to recover the 8–10%
+- a conservative-or-equal bound is **the right wedge default**: the simplified formula never returns higher than Table 4 by construction (Table 4's `σ_u/2.7` ≥ simplified's `σ_u/3.0`), so the engineer can always trust the simplified value as a lower bound. Where the σ_u-leg dominates (e.g. Q345B: 156.7 vs Table 4 ~170), the simplified value is materially below Table 4; where the σ_y-leg dominates (e.g. Q345R: 170.0, same as Table 4), there is no gap. Engineers can override with a manual Table 4 lookup at the DOCX edit stage in any case.
 - a regression test pins the value (`Q345R room-T simplified must be in [150, 170] MPa` — actual = 170.0 MPa, hits inclusive upper bound; the band catches future drift in either direction) so future changes can't silently move it
 
-The DOCX renderer **must** flag `is_simplified=True` and explicitly state "本算式对低合金钢偏保守 ~8%；如需精确值请查 Table 4"。
+The DOCX renderer **must** flag `is_simplified=True` and explicitly state "本算式为简化算式（`σ_u/3.0`）；Table 4 对部分等级允许 `σ_u/2.7`，可能高 ~8%。如需精确值请查 Table 4"。
 
 **ASME VIII Div 2 §5.5.1**: same reasoning. Table 5A has tabulated values; we compute and cite the formula to make the calculation traceable.
 
@@ -131,7 +131,7 @@ A new section `§ 许用应力 / Allowable Stress` between `§ 材料属性` and
                                        = 156.7 MPa
 
 [若 temperature_C > 50] ⚠ 本计算限于常温；高温下 [σ] 须查 Table 4。
-[若 is_simplified=True] 注：此为简化算式，与 Table 4 在常温范围内偏差 ≤2 MPa。
+[若 is_simplified=True] 注：此为简化算式（`σ_u/3.0`）；Table 4 对部分等级允许 `σ_u/2.7`。本算式从不高于 Table 4，但在 σ_u-leg 主导时可能偏低 ~8%（参 §3 表）。如需精确值请查 Table 4。
 ```
 
 Heading style level 1, formula rendering through a fixed template (no LLM), citation rendered as a hyperlink-styled paragraph.

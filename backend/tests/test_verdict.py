@@ -153,7 +153,8 @@ def test_sigma_allow_refuses_non_positive_or_non_finite(
         0.0,
         -1.0,
         0.5,  # below regulatory floor — Codex R1 HIGH on PR #99
-        0.999,  # one ulp below 1.0
+        0.999,  # marginally below 1.0 (not an ulp; just close enough to catch
+        # an off-by-one in the comparator)
         float("nan"),
         float("inf"),
     ],
