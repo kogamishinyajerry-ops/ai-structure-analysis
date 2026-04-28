@@ -13,12 +13,22 @@ export {};
 
 interface RunReportRequest {
   frd: string;
-  kind: "static" | "lifting-lug" | "pressure-vessel";
+  kind: "static" | "lifting-lug" | "pressure-vessel" | "ballistic";
   output: string;
   sclNodes?: string;
   sclDistances?: string;
   resample?: number | null;
   material?: string;
+  openradiossRoot?: string;
+  rootname?: string;
+}
+
+interface BakeGs101Result {
+  ok: boolean;
+  exitCode: number;
+  scratchDir: string;
+  rootname: string;
+  violations?: string[];
 }
 
 interface RunReportSuccess {
@@ -49,12 +59,18 @@ interface ElectronApi {
   saveDocx: (suggested: string) => Promise<string | null>;
   revealInFolder: (filepath: string) => Promise<boolean>;
   getDemoFrd: () => Promise<string | null>;
+  openOpenradiossRoot: () => Promise<string | null>;
+  getDemoGs101Deck: () => Promise<string | null>;
+  bakeGs101Demo: () => Promise<BakeGs101Result>;
   listMaterials: () => Promise<MaterialOption[]>;
   runReport: (req: RunReportRequest) => Promise<RunReportResult>;
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
   onExit: (cb: (exitCode: number) => void) => () => void;
   onFigure: (cb: (path: string) => void) => () => void;
+  onBakeStdout: (cb: (text: string) => void) => () => void;
+  onBakeStderr: (cb: (text: string) => void) => () => void;
+  onBakeExit: (cb: (exitCode: number) => void) => () => void;
 }
 
 declare global {
@@ -81,6 +97,11 @@ const pvFieldset = $<HTMLFieldSetElement>("pv-fieldset");
 const sclNodesInput = $<HTMLInputElement>("scl-nodes");
 const sclDistancesInput = $<HTMLInputElement>("scl-distances");
 const resampleInput = $<HTMLInputElement>("resample");
+const ballisticFieldset = $<HTMLFieldSetElement>("ballistic-fieldset");
+const openradiossRootInput = $<HTMLInputElement>("openradioss-root");
+const openradiossRootPick = $<HTMLButtonElement>("openradioss-root-pick");
+const rootnameInput = $<HTMLInputElement>("rootname");
+const bakeGs101Btn = $<HTMLButtonElement>("bake-gs101");
 const runBtn = $<HTMLButtonElement>("run");
 const revealBtn = $<HTMLButtonElement>("reveal");
 const demoBtn = $<HTMLButtonElement>("demo-gs001");
@@ -192,13 +213,18 @@ const clearFigures = () => {
 
 const updateFormState = () => {
   const isPv = kindSelect.value === "pressure-vessel";
+  const isBallistic = kindSelect.value === "ballistic";
   pvFieldset.classList.toggle("hidden", !isPv);
-  const ready =
-    Boolean(frdInput.value) &&
-    Boolean(outputInput.value) &&
-    (!isPv ||
-      (Boolean(sclNodesInput.value.trim()) &&
-        Boolean(sclDistancesInput.value.trim())));
+  ballisticFieldset.classList.toggle("hidden", !isBallistic);
+  // .frd is unused for ballistic — relax the check so the engineer
+  // can run a ballistic report without picking a (non-existent) .frd.
+  const inputReady = isBallistic
+    ? Boolean(openradiossRootInput.value) && Boolean(rootnameInput.value.trim())
+    : Boolean(frdInput.value) &&
+      (!isPv ||
+        (Boolean(sclNodesInput.value.trim()) &&
+          Boolean(sclDistancesInput.value.trim())));
+  const ready = inputReady && Boolean(outputInput.value);
   runBtn.disabled = !ready;
 };
 
@@ -233,6 +259,20 @@ revealBtn.addEventListener("click", () => {
 kindSelect.addEventListener("change", updateFormState);
 sclNodesInput.addEventListener("input", updateFormState);
 sclDistancesInput.addEventListener("input", updateFormState);
+rootnameInput.addEventListener("input", updateFormState);
+
+openradiossRootPick.addEventListener("click", async () => {
+  const picked = await window.api.openOpenradiossRoot();
+  if (picked) {
+    openradiossRootInput.value = picked;
+    // Suggest a default output path next to the chosen frames dir.
+    if (!outputInput.value) {
+      const root = rootnameInput.value.trim() || "ballistic";
+      outputInput.value = `${picked}/${root}_ballistic.docx`;
+    }
+    updateFormState();
+  }
+});
 
 // --- run ------------------------------------------------------------------
 
@@ -259,6 +299,9 @@ runBtn.addEventListener("click", async () => {
     req.sclNodes = sclNodesInput.value;
     req.sclDistances = sclDistancesInput.value;
     if (resampleRaw) req.resample = Number(resampleRaw);
+  } else if (kind === "ballistic") {
+    req.openradiossRoot = openradiossRootInput.value;
+    req.rootname = rootnameInput.value.trim();
   }
   // Empty option means "no material section" — leave req.material unset
   // so main.ts doesn't pass --material to the CLI.
@@ -318,6 +361,53 @@ void window.api.getDemoFrd().then((demoFrd) => {
   if (!demoFrd) return;
   demoBtn.dataset.frd = demoFrd;
   demoBtn.hidden = false;
+});
+
+// --- GS-101 demo bake (ballistic) -----------------------------------------
+
+/**
+ * Wire the bake button to the docker bake handler. Streams docker
+ * stdout/stderr into the same log pre that report-cli uses, so the
+ * engineer sees a single unified output panel.
+ *
+ * On success, pre-fills the ballistic fieldset with the scratch dir +
+ * canonical rootname so the engineer's next click is "Choose…" for
+ * the output .docx and then Run.
+ */
+window.api.onBakeStdout(appendLog);
+window.api.onBakeStderr(appendLog);
+
+bakeGs101Btn.addEventListener("click", async () => {
+  bakeGs101Btn.disabled = true;
+  runBtn.disabled = true;
+  clearLog();
+  clearViolations();
+  setStatus("baking GS-101 demo (docker)…", "running");
+  const result = await window.api.bakeGs101Demo();
+  if (!result.ok) {
+    setStatus(`bake failed (exit ${result.exitCode})`, "error");
+    if (result.violations) showViolations(result.violations);
+  } else {
+    setStatus(`bake done — frames in ${result.scratchDir}`, "success");
+    openradiossRootInput.value = result.scratchDir;
+    rootnameInput.value = result.rootname;
+    if (!outputInput.value) {
+      outputInput.value = `${result.scratchDir}/${result.rootname}_ballistic.docx`;
+    }
+    // Switch the kind dropdown to ballistic so updateFormState reveals
+    // the right fieldset and Run becomes clickable.
+    kindSelect.value = "ballistic";
+  }
+  bakeGs101Btn.disabled = false;
+  updateFormState();
+});
+
+void window.api.getDemoGs101Deck().then((deckDir) => {
+  // The deck path itself is not needed by the renderer (main.ts
+  // re-resolves it on each bake); we only use the existence check
+  // to decide whether to advertise the bake button.
+  if (!deckDir) return;
+  bakeGs101Btn.hidden = false;
 });
 
 // --- material dropdown population (Codex R1 LOW PR #91 fix) --------------
