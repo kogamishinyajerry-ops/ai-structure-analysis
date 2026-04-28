@@ -65,7 +65,7 @@ from typing import NoReturn
 __all__ = ["main", "build_parser"]
 
 
-_REPORT_KINDS = ("static", "lifting-lug", "pressure-vessel")
+_REPORT_KINDS = ("static", "lifting-lug", "pressure-vessel", "ballistic")
 # String keys only — argparse needs them at module load. We resolve to
 # the ``UnitSystem`` enum inside ``main()`` after the lazy import, so
 # this constant is safe even when ``app.core.types`` is broken.
@@ -95,7 +95,29 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Which report template to produce. 'pressure-vessel' "
             "additionally requires --scl-nodes and --scl-distances. "
-            "Required for a report run; ignored under --doctor."
+            "'ballistic' uses --openradioss-root + --rootname instead "
+            "of --frd. Required for a report run; ignored under --doctor."
+        ),
+    )
+    # OpenRadioss reader inputs — used by 'ballistic' kind. Mutually
+    # exclusive with --frd at flag-validation time below.
+    p.add_argument(
+        "--openradioss-root",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the OpenRadioss run directory containing the "
+            "<rootname>A### animation frames. Required for "
+            "--kind=ballistic; mutually exclusive with --frd."
+        ),
+    )
+    p.add_argument(
+        "--rootname",
+        default=None,
+        help=(
+            "OpenRadioss run rootname (the prefix of the .A### frames; "
+            "e.g. 'BOULE1V5' for files BOULE1V5A001 / BOULE1V5A002). "
+            "Required for --kind=ballistic."
         ),
     )
     p.add_argument(
@@ -395,22 +417,25 @@ def _parse_float_csv(label: str, raw: str) -> list[float]:
 
 def _produce(
     args: argparse.Namespace,
-    reader: CalculiXReader,
+    reader: "ReaderHandle",
 ) -> tuple[ReportSpec, EvidenceBundle, TemplateSpec]:
     """Dispatch to the matching producer + return the template that
-    the report should validate against. Annotation names are bound
-    by the lazy import inside this function and resolve as forward
-    refs under ``from __future__ import annotations`` (the file-top
-    pragma)."""
+    the report should validate against. ``reader`` is typed as a
+    Layer-2 ``ReaderHandle`` because the ballistic kind takes an
+    ``OpenRadiossReader`` (not a ``CalculiXReader``); the type is a
+    forward ref under ``from __future__ import annotations`` so the
+    lazy import inside this function still resolves it."""
     # Lazy imports — see the module-top comment. These names are bound
     # only here so a broken submodule surfaces in --doctor instead of
     # the import-time crash.
     from app.services.report.draft import (
+        generate_ballistic_penetration_summary,
         generate_lifting_lug_summary,
         generate_pressure_vessel_local_stress_summary,
         generate_static_strength_summary,
     )
     from app.services.report.templates import (
+        BALLISTIC_PENETRATION_SUMMARY,
         EQUIPMENT_FOUNDATION_STATIC,
         LIFTING_LUG,
         PRESSURE_VESSEL_LOCAL_STRESS,
@@ -426,6 +451,30 @@ def _produce(
             f"--resample is only meaningful with --kind=pressure-vessel "
             f"(got --kind={args.kind!r}); remove --resample or change kind."
         )
+
+    # ``--step-id`` is meaningful for static / lifting-lug / pressure-vessel
+    # — they pick a single solution state. The ballistic generator
+    # consumes the WHOLE time history; passing --step-id with --kind=ballistic
+    # would be silently ignored, which is the foot-gun --resample dodged.
+    if args.step_id is not None and args.kind == "ballistic":
+        _input_error(
+            "--step-id is not meaningful with --kind=ballistic — the "
+            "ballistic generator iterates every solution state. "
+            "Remove --step-id or pick a different --kind."
+        )
+
+    if args.kind == "ballistic":
+        # Ballistic generator accepts no step_id (whole history).
+        ballistic_kwargs = dict(
+            project_id=args.project_id,
+            task_id=args.task_id,
+            report_id=args.report_id,
+            bundle_id=args.bundle_id,
+        )
+        report, bundle = generate_ballistic_penetration_summary(
+            reader, **ballistic_kwargs
+        )
+        return report, bundle, BALLISTIC_PENETRATION_SUMMARY
 
     common_kwargs = dict(
         project_id=args.project_id,
@@ -517,19 +566,66 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_materials:
         return _run_list_materials()
 
-    # --frd and --kind are not argparse-required so --doctor can run
-    # without them; enforce the report-run contract here instead.
-    if args.frd is None:
-        _input_error("--frd is required (or pass --doctor for diagnostics).")
+    # --frd / --openradioss-root and --kind are not argparse-required
+    # so --doctor can run without them; enforce the report-run contract
+    # here. Exactly one solver-input mode must be selected.
     if args.kind is None:
         _input_error("--kind is required (or pass --doctor for diagnostics).")
 
-    if not args.frd.is_file():
-        print(
-            f"error: --frd path {args.frd} is not a file",
-            file=sys.stderr,
+    using_openradioss = args.openradioss_root is not None or args.rootname is not None
+    using_calculix = args.frd is not None
+    if using_calculix and using_openradioss:
+        _input_error(
+            "--frd and --openradioss-root are mutually exclusive — pick "
+            "exactly one solver input mode."
         )
-        return 2
+    if args.kind == "ballistic":
+        if args.figures:
+            # The W5f figure renderer takes an FRDParseResult and walks
+            # element connectivity directly — that path is CalculiX-only
+            # right now (W7c-v2 will lift it to ReaderHandle once Mesh
+            # Protocol exposes cell connectivity). The W7c animation
+            # manifest is the supported visualization route for
+            # ballistic runs.
+            _input_error(
+                "--figures is not yet wired for --kind=ballistic — the "
+                "W5f renderer is CalculiX-FRD-only. Use the W7c "
+                "animation manifest instead (or omit --figures)."
+            )
+        if not using_openradioss:
+            _input_error(
+                "--kind=ballistic requires --openradioss-root + --rootname."
+            )
+        if args.openradioss_root is None or args.rootname is None:
+            _input_error(
+                "--kind=ballistic requires BOTH --openradioss-root AND "
+                "--rootname; got "
+                f"--openradioss-root={args.openradioss_root!r} "
+                f"--rootname={args.rootname!r}."
+            )
+        if not args.openradioss_root.is_dir():
+            print(
+                f"error: --openradioss-root path {args.openradioss_root} "
+                "is not a directory",
+                file=sys.stderr,
+            )
+            return 2
+    else:
+        if using_openradioss:
+            _input_error(
+                f"--openradioss-root / --rootname are only valid with "
+                f"--kind=ballistic (got --kind={args.kind!r})."
+            )
+        if not using_calculix:
+            _input_error(
+                "--frd is required (or pass --doctor for diagnostics)."
+            )
+        if not args.frd.is_file():
+            print(
+                f"error: --frd path {args.frd} is not a file",
+                file=sys.stderr,
+            )
+            return 2
 
     _resolve_identity_defaults(args)
 
@@ -622,12 +718,42 @@ def main(argv: list[str] | None = None) -> int:
         # (Codex R1 MEDIUM, 2026-04-28; verbatim fix.)
         print(f"      -> {msg}", file=sys.stderr, flush=True)
 
-    _stage(1, f"reading CalculiX .frd: {args.frd}")
-    try:
-        reader = CalculiXReader(args.frd, unit_system=unit_system)
-    except Exception as exc:
-        print(f"error: failed to open {args.frd}: {exc}", file=sys.stderr)
-        return 3
+    if args.kind == "ballistic":
+        _stage(
+            1,
+            f"reading OpenRadioss frames from {args.openradioss_root} "
+            f"(rootname={args.rootname})",
+        )
+        try:
+            from app.adapters.openradioss import OpenRadiossReader
+        except Exception as exc:
+            print(
+                f"error: --kind=ballistic requires the optional "
+                f"'openradioss' extra; install with `pip install "
+                f"'.[openradioss]'`. Underlying ImportError: {exc}",
+                file=sys.stderr,
+            )
+            return 3
+        try:
+            reader = OpenRadiossReader(
+                root_dir=args.openradioss_root,
+                rootname=args.rootname,
+                unit_system=unit_system,
+            )
+        except Exception as exc:
+            print(
+                f"error: failed to open OpenRadioss run at "
+                f"{args.openradioss_root} / {args.rootname}: {exc}",
+                file=sys.stderr,
+            )
+            return 3
+    else:
+        _stage(1, f"reading CalculiX .frd: {args.frd}")
+        try:
+            reader = CalculiXReader(args.frd, unit_system=unit_system)
+        except Exception as exc:
+            print(f"error: failed to open {args.frd}: {exc}", file=sys.stderr)
+            return 3
     _detail(f"opened (unit_system={args.unit_system})")
 
     _stage(2, f"producing report: kind={args.kind}")

@@ -821,18 +821,30 @@ def generate_ballistic_penetration_summary(
     peak_step_id = max(disp_by_step, key=lambda sid: disp_by_step[sid])
     peak_disp_value = float(disp_by_step[peak_step_id])
 
-    # Pull the field metadata of the peak frame for the evidence
-    # provenance trail; if for some reason the field is None at that
-    # step (shouldn't happen — DISPLACEMENT is universal per ADR-021)
-    # we surface a clear contract violation rather than fabricate.
-    peak_field = reader.get_field(CanonicalField.DISPLACEMENT, peak_step_id)
-    if peak_field is None:
-        raise ValueError(
-            f"reader has no DISPLACEMENT at peak step {peak_step_id!r}; "
-            "ballistic summary requires displacement evidence per ADR-012"
-        )
+    # Codex R1 HIGH: each evidence item must bind to its OWN step's
+    # FieldMetadata so source_file in the audit trail points to the
+    # actual file the value came from — earlier code reused
+    # peak_field metadata for duration / final-erosion / perforation
+    # evidence, which produced the wrong .Axxx path when peak
+    # displacement and the final state were different frames. We pull
+    # one DISPLACEMENT field per relevant step (ADR-021 makes
+    # DISPLACEMENT universal across OpenRadioss frames; for adapters
+    # that some day gate it, the contract failure surfaces here as a
+    # clear ValueError, not a silent metadata leak).
+    def _field_at(step_id: int) -> FieldData:
+        fd = reader.get_field(CanonicalField.DISPLACEMENT, step_id)
+        if fd is None:
+            raise ValueError(
+                f"reader has no DISPLACEMENT at step {step_id!r}; "
+                "ballistic summary requires per-step displacement "
+                "evidence for the audit trail (ADR-012)"
+            )
+        return fd
+
+    peak_field = _field_at(peak_step_id)
 
     final_state = state_lookup[step_ids[-1]]
+    final_field = _field_at(final_state.step_id)
     final_time = (
         float(final_state.time) if final_state.time is not None else 0.0
     )
@@ -849,7 +861,8 @@ def generate_ballistic_penetration_summary(
 
     section_lines: list[str] = []
 
-    # 1) Run duration
+    # 1) Run duration — bind to the FINAL state's metadata since that
+    # is the file the ``time`` value originated from.
     bundle.add_evidence(
         EvidenceItem(
             evidence_id="EV-BALLISTIC-DURATION",
@@ -861,10 +874,10 @@ def generate_ballistic_penetration_summary(
                 unit=time_unit,
                 location=f"final state step_id={final_state.step_id}",
             ),
-            field_metadata=peak_field.metadata,
+            field_metadata=final_field.metadata,
             derivation=None,
-            source=peak_field.metadata.source_solver,
-            source_file=str(peak_field.metadata.source_file),
+            source=final_field.metadata.source_solver,
+            source_file=str(final_field.metadata.source_file),
         )
     )
     section_lines.append(
@@ -898,7 +911,8 @@ def generate_ballistic_penetration_summary(
     )
 
     # 3) Eroded facet count (final state) — only when the reader
-    #    supports element deletion.
+    #    supports element deletion. Bind to the FINAL state's metadata
+    #    so source_file points to the file the count came from.
     if has_erosion:
         final_eroded = erosion_by_step[final_state.step_id]
         bundle.add_evidence(
@@ -912,10 +926,10 @@ def generate_ballistic_penetration_summary(
                     unit="facets",
                     location=f"final state step_id={final_state.step_id}",
                 ),
-                field_metadata=peak_field.metadata,
+                field_metadata=final_field.metadata,
                 derivation=None,
-                source=peak_field.metadata.source_solver,
-                source_file=str(peak_field.metadata.source_file),
+                source=final_field.metadata.source_solver,
+                source_file=str(final_field.metadata.source_file),
             )
         )
         section_lines.append(
@@ -923,7 +937,9 @@ def generate_ballistic_penetration_summary(
             f"**{final_eroded} facets**  *(EV-BALLISTIC-EROSION-FINAL)*"
         )
 
-    # 4) Perforation event — only when actually observed.
+    # 4) Perforation event — only when actually observed. Bind to the
+    #    perforation-step's metadata so source_file points to the file
+    #    where the first erosion was observed.
     if has_erosion:
         if perforation_step is not None:
             perforation_time = (
@@ -931,6 +947,7 @@ def generate_ballistic_penetration_summary(
                 if state_lookup[perforation_step].time is not None
                 else 0.0
             )
+            perforation_field = _field_at(perforation_step)
             bundle.add_evidence(
                 EvidenceItem(
                     evidence_id="EV-BALLISTIC-PERFORATION-EVENT",
@@ -942,10 +959,10 @@ def generate_ballistic_penetration_summary(
                         unit=time_unit,
                         location=f"step_id={perforation_step}",
                     ),
-                    field_metadata=peak_field.metadata,
+                    field_metadata=perforation_field.metadata,
                     derivation=["EV-BALLISTIC-EROSION-FINAL"],
-                    source=peak_field.metadata.source_solver,
-                    source_file=str(peak_field.metadata.source_file),
+                    source=perforation_field.metadata.source_solver,
+                    source_file=str(perforation_field.metadata.source_file),
                 )
             )
             section_lines.append(

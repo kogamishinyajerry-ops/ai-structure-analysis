@@ -52,10 +52,16 @@ class _StubMesh:
         self.unit_system = unit_system
 
 
-def _stub_metadata(unit_system: UnitSystem) -> FieldMetadata:
-    """Plausible metadata for the synthetic stub's DISPLACEMENT field —
-    every required field populated so the EvidenceItem persistence
-    path is exercised fully."""
+def _stub_metadata(
+    unit_system: UnitSystem, *, step_id: int = 1
+) -> FieldMetadata:
+    """Plausible metadata for the synthetic stub's DISPLACEMENT field.
+
+    ``source_file`` is parameterised by ``step_id`` so the per-step
+    audit-trail contract introduced after Codex R1 (HIGH) can be
+    pinned: each evidence item must inherit metadata from the file
+    its value actually came from, not from an arbitrary peer frame.
+    """
     return FieldMetadata(
         name=CanonicalField.DISPLACEMENT,
         location=FieldLocation.NODE,
@@ -63,7 +69,7 @@ def _stub_metadata(unit_system: UnitSystem) -> FieldMetadata:
         unit_system=unit_system,
         source_solver="StubSolver",
         source_field_name="coorA(step)-coorA(0)",
-        source_file=Path("/tmp/stub.A001"),
+        source_file=Path(f"/tmp/stub.A{step_id:03d}"),
         coordinate_system=CoordinateSystemKind.GLOBAL.value,
         was_averaged=False,
     )
@@ -91,7 +97,7 @@ class _NoErosionReader:
         n = max(arr.shape[0] for _, arr in frames.values())
         self.mesh = _StubMesh(n, unit_system)
         self._frames = frames
-        self._meta = _stub_metadata(unit_system)
+        self._unit_system = unit_system
         self.solution_states = [
             _StubSolutionState(sid, t) for sid, (t, _) in sorted(frames.items())
         ]
@@ -103,7 +109,12 @@ class _NoErosionReader:
             return None
         if step_id not in self._frames:
             return None
-        return _StubFieldData(self._frames[step_id][1], self._meta)
+        # Per-step metadata so source_file actually varies across
+        # frames — the audit-trail regression test depends on this.
+        return _StubFieldData(
+            self._frames[step_id][1],
+            _stub_metadata(self._unit_system, step_id=step_id),
+        )
 
     def close(self) -> None:
         pass
@@ -329,6 +340,48 @@ def test_empty_solution_states_raises_valueerror() -> None:
             report_id="R1",
             bundle_id="B1",
         )
+
+
+def test_evidence_source_file_binds_to_owning_step() -> None:
+    """Codex R1 HIGH: each evidence item's source_file must point to
+    the file the value actually came from. Earlier code reused
+    peak_field metadata for DURATION / EROSION-FINAL / PERFORATION-EVENT,
+    so when peak displacement was at a non-final / non-perforation
+    step the audit trail leaked the wrong .Axxx path.
+
+    Repro: 3 frames where peak displacement is at step 2 but the
+    final state is step 3 and erosion first appears at step 2.
+    Expected source_file mapping after the fix:
+        EV-BALLISTIC-DURATION       → step_3 file
+        EV-BALLISTIC-MAX-DISP       → step_2 file (peak)
+        EV-BALLISTIC-EROSION-FINAL  → step_3 file (final)
+        EV-BALLISTIC-PERFORATION-EVENT → step_2 file (first eroded)
+    """
+    rdr = _ErosionReader(
+        unit_system=UnitSystem.SI_MM,
+        frames={
+            1: (0.0, _disp([[0, 0, 0]])),
+            2: (0.25, _disp([[10, 0, 0]])),  # peak displacement here
+            3: (0.5, _disp([[3, 0, 0]])),    # rebound; final state
+        },
+        erosion={
+            1: np.ones(10, dtype=np.int8),
+            2: np.array([1] * 9 + [0], dtype=np.int8),  # first eroded
+            3: np.array([1] * 8 + [0, 0], dtype=np.int8),  # 2 eroded final
+        },
+    )
+    _, bundle = generate_ballistic_penetration_summary(
+        rdr,
+        project_id="P1",
+        task_id="T1",
+        report_id="R1",
+        bundle_id="B1",
+    )
+    by_id = {ev.evidence_id: ev for ev in bundle.evidence_items}
+    assert by_id["EV-BALLISTIC-DURATION"].source_file == "/tmp/stub.A003"
+    assert by_id["EV-BALLISTIC-MAX-DISP"].source_file == "/tmp/stub.A002"
+    assert by_id["EV-BALLISTIC-EROSION-FINAL"].source_file == "/tmp/stub.A003"
+    assert by_id["EV-BALLISTIC-PERFORATION-EVENT"].source_file == "/tmp/stub.A002"
 
 
 def test_template_id_override_changes_report_id_only() -> None:
