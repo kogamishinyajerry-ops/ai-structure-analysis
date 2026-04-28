@@ -257,8 +257,11 @@ class OpenRadiossReader:
             self._mesh = _ORMesh(coor0, node_ids, unit_system)
         except BaseException:
             # Eager cleanup so the caller doesn't have to wait for GC.
-            # The finalizer is best-effort — if eager cleanup itself
-            # raises, the GC finalizer remains armed as a fallback.
+            # ``self._finalizer()`` invokes the underlying callable and
+            # detaches it in one step (weakref.finalize semantics), so
+            # by the time we re-raise the dir is gone (or the
+            # ``_rmtree_safely`` suppress(...) swallowed the failure
+            # path). No GC fallback after this point.
             if self._finalizer is not None:
                 with suppress(Exception):
                     self._finalizer()
