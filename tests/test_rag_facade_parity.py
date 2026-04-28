@@ -521,13 +521,21 @@ def _rag_module_aliases(tree: ast.AST) -> set[str]:
     bypasses (`KB.MyKB()` flagged where KB is a class re-export).
 
     Known limitations (acceptable conservative bias for a discipline
-    test — these are rare shapes in real facade code, and Codex review
-    provides post-hoc catches):
+    test — rare shapes in real facade code, and Codex review provides
+    post-hoc catches). All three apply equally to ALL Attribute-form
+    branches (annotation, ctor call, subclass base):
       - `from app.rag import kb; kb.KnowledgeBase()` — literal class
-        name still flags via the canonical-name branch (provenance-free).
+        name still flags via canonical-name branch (provenance-free).
       - `from app.rag import kb; kb.KB()` (alias attribute via member
         import) — does NOT flag because `kb` was never trusted.
+      - `def f(x: kb.KB)` (annotation via member-imported kb) — same.
+      - `class MyKB(kb.KB): pass; MyKB()` (subclass base via member
+        import) — same.
       - `from . import kb; kb.X()` — same.
+
+    Workaround for facade authors who need the alias form caught: use
+    `import rag.kb` (unambiguous module import) instead of `from . import
+    kb` / `from app.rag import kb`. Then `rag.kb.KB()` flags correctly.
 
     R7-fix3.2 (post Codex R4 MEDIUM, 2026-04-28).
     """
