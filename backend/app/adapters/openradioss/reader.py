@@ -18,9 +18,23 @@ The W7b smoke fixture (GS-100) ships only mesh data; the full mapping is
 exercised by GS-101 in W7e once a full-output `.rad` deck lands.
 
 Element-deletion data (`delEltA`) is exposed via ``deleted_facets_for(state)``
-— a non-Protocol method, since ``CanonicalField`` is a closed enum that
-cannot be expanded without an RFC. Layer-3 ballistic derivations (W7d) read
-it directly off ``OpenRadiossReader``.
+plus the runtime-checked ``SupportsElementDeletion`` sub-Protocol, since
+``CanonicalField`` is a closed enum that cannot be expanded without an RFC.
+Layer-3 ballistic derivations (W7d) check the Protocol and read it off the
+reader without depending on the concrete adapter type.
+
+ADR-001 narrow carve-out for DISPLACEMENT
+-----------------------------------------
+ADR-001 forbids Layer-1 adapters from emitting *derived* quantities
+(von Mises, principal stress, safety factor, etc.). The OpenRadioss
+animation files do not write a DISPLACEMENT field directly — they
+write the *deformed* coordinates per frame in ``coorA``. We surface
+DISPLACEMENT as ``coorA(step) - coorA(0)``, which is **not** a
+derivation in the ADR-001 sense (no constitutive law, no failure
+criterion, no calibration). It is a coordinate-frame re-expression of
+the same data the file already contains. ADR-021 §Decision pins this
+narrow carve-out so future readers don't mistake it for a precedent
+for emitting von Mises here.
 """
 
 from __future__ import annotations
@@ -29,6 +43,7 @@ import gzip
 import re
 import shutil
 import tempfile
+import weakref
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Optional
@@ -52,6 +67,15 @@ from ...core.types import (
 
 
 _FRAME_RE = re.compile(r"^(?P<root>.+)A(?P<idx>\d{3})(?P<gz>\.gz)?$")
+
+
+def _rmtree_safely(path: Path) -> None:
+    """Module-level helper so :func:`weakref.finalize` keeps no
+    reference to the ``OpenRadiossReader`` instance — if the closure
+    captured ``self`` the finalizer would be unable to run on GC.
+    """
+    with suppress(FileNotFoundError, OSError):
+        shutil.rmtree(path)
 
 
 # ---------------------------------------------------------------------------
@@ -210,33 +234,19 @@ class OpenRadiossReader:
         h0, a0 = self._read_frame(first_idx)
         self._first_idx = first_idx
         coor0 = np.asarray(a0["coorA"], dtype=np.float64)
-        # ``a0.get("nodNumA") or np.arange(...)`` would evaluate the
-        # ndarray's truthiness — ValueError on len>1. Test the array
-        # explicitly for None/empty instead.
-        #
-        # Empirically (verified W7b GS-100): `nodNumA` length matches
-        # nbNodes but the tail is padded with 0s, and the array can
-        # therefore contain duplicate IDs (multiple 0s). Falling back
-        # to a 1..N synthetic ID range when duplicates are present is
-        # safer than exposing a non-unique node_index dict and silently
-        # losing nodes downstream. We log nothing — the source_field
-        # metadata records the synthesis on the fields we actually
-        # surface.
-        nod_num = a0.get("nodNumA")
-        node_ids: "npt.NDArray[np.int64]"
-        if nod_num is None or len(nod_num) == 0:
-            node_ids = np.arange(1, int(h0["nbNodes"]) + 1, dtype=np.int64)
-        else:
-            candidate = np.asarray(nod_num, dtype=np.int64)
-            has_zeros = bool(np.any(candidate == 0))
-            has_dups = candidate.size != np.unique(candidate).size
-            if has_zeros or has_dups:
-                node_ids = np.arange(
-                    1, int(h0["nbNodes"]) + 1, dtype=np.int64
-                )
-            else:
-                node_ids = candidate
+        node_ids, n_synth = self._resolve_node_ids(a0.get("nodNumA"), int(h0["nbNodes"]))
+        self._n_synthesized_ids = n_synth
         self._mesh = _ORMesh(coor0, node_ids, unit_system)
+
+        # Tmpdir cleanup safety net: if close() never runs (caller drops
+        # the reference without using the context-manager or calling
+        # close() explicitly), weakref.finalize still wipes the scratch
+        # dir. The finalizer is detached on close() to avoid double-free.
+        self._finalizer: Optional[weakref.finalize]
+        if self._tmpdir is not None:
+            self._finalizer = weakref.finalize(self, _rmtree_safely, self._tmpdir)
+        else:
+            self._finalizer = None
 
         # Build SolutionState list. ``time`` from header — meaningful
         # for transient runs; ``load_factor`` is None (OpenRadioss is
@@ -326,10 +336,12 @@ class OpenRadiossReader:
     def close(self) -> None:
         if self._closed:
             return
-        if self._tmpdir is not None:
-            with suppress(FileNotFoundError, OSError):
-                shutil.rmtree(self._tmpdir)
-            self._tmpdir = None
+        if self._finalizer is not None:
+            # Detach + invoke under our control so we both clean up
+            # eagerly *and* prevent the GC finalizer from running again.
+            self._finalizer()
+            self._finalizer = None
+        self._tmpdir = None
         self._closed = True
 
     # ------------------------------------------------------------------
@@ -364,6 +376,58 @@ class OpenRadiossReader:
     # Internals
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resolve_node_ids(
+        nod_num_raw: Any,
+        n_nodes: int,
+    ) -> tuple["npt.NDArray[np.int64]", int]:
+        """Materialise the node-ID array, repairing only the bad slots.
+
+        OpenRadioss legacy decks pad ``nodNumA`` past ``nbNodes`` with
+        zeros (and, occasionally, a duplicate of an earlier slot).
+        Earlier W7b iterations replaced the *whole* array with
+        ``arange(1, N+1)`` if any slot was bad — Codex R1 (HIGH)
+        flagged this as data loss because a perfectly fine partial
+        array (e.g. ``[1, 2, 0, 4, 5]``) would be clobbered to
+        ``[1, 2, 3, 4, 5]``, silently rewriting valid IDs.
+
+        New behaviour: keep every slot whose ID is non-zero AND has
+        not appeared earlier in the array; for each *bad* slot, mint
+        a fresh ID strictly greater than ``max(valid_ids)`` + the
+        running synth counter, guaranteeing no collision with valid
+        IDs even if they were sparse to begin with.
+
+        Returns ``(ids, n_synthesized)``. ``n_synthesized`` is recorded
+        on the reader and surfaced in field metadata so a downstream
+        consumer can tell synthesised IDs from solver-emitted ones.
+        """
+        if nod_num_raw is None or len(nod_num_raw) == 0:
+            return np.arange(1, n_nodes + 1, dtype=np.int64), n_nodes
+        candidate = np.asarray(nod_num_raw, dtype=np.int64)
+        # Truncate / extend to nbNodes; pad with zeros (treated as bad).
+        if candidate.size < n_nodes:
+            pad = np.zeros(n_nodes - candidate.size, dtype=np.int64)
+            candidate = np.concatenate([candidate, pad])
+        elif candidate.size > n_nodes:
+            candidate = candidate[:n_nodes]
+
+        bad = np.zeros(candidate.shape, dtype=bool)
+        seen: set[int] = set()
+        for i, nid in enumerate(candidate.tolist()):
+            if nid == 0 or nid in seen:
+                bad[i] = True
+            else:
+                seen.add(int(nid))
+        if not bad.any():
+            return candidate.copy(), 0
+        valid_max = int(candidate[~bad].max()) if (~bad).any() else 0
+        repaired = candidate.copy()
+        next_id = valid_max + 1
+        for i in np.flatnonzero(bad):
+            repaired[i] = next_id
+            next_id += 1
+        return repaired, int(bad.sum())
+
     def _check_open(self) -> None:
         if self._closed:
             raise RuntimeError(
@@ -389,13 +453,25 @@ class OpenRadiossReader:
         _, a_ref = self._read_frame(self._first_idx)
         coor_now = np.asarray(a_now["coorA"], dtype=np.float64)
         coor_ref = np.asarray(a_ref["coorA"], dtype=np.float64)
+        # Surface ID-synthesis provenance: if any node IDs were minted
+        # by the adapter (zeros / duplicates in nodNumA) the field's
+        # source_field_name records how many. Codex R1 MEDIUM #5 fix —
+        # don't pretend synthesised IDs came from the solver.
+        if self._n_synthesized_ids:
+            field_name = (
+                f"coorA(step)-coorA(0) "
+                f"[adapter-synthesised {self._n_synthesized_ids} of "
+                f"{self._mesh.node_id_array.size} node IDs]"
+            )
+        else:
+            field_name = "coorA(step)-coorA(0)"
         meta = FieldMetadata(
             name=CanonicalField.DISPLACEMENT,
             location=FieldLocation.NODE,
             component_type=ComponentType.VECTOR_3D,
             unit_system=self._unit_system,
             source_solver=self.SOURCE_SOLVER,
-            source_field_name="coorA(step)-coorA(0)",
+            source_field_name=field_name,
             source_file=self._frame_paths[step_id],
             coordinate_system=CoordinateSystemKind.GLOBAL.value,
             was_averaged=False,

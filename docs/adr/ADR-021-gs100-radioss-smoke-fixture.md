@@ -75,6 +75,23 @@ audit):
 - `delEltA` element-deletion array shape + alive count (74/74 alive in
   this contact-only test).
 
+### ADR-001 narrow carve-out: DISPLACEMENT reconstruction
+ADR-001 forbids Layer-1 adapters from emitting derived quantities
+(von Mises, principal stress, safety factor, etc.). The OpenRadioss
+animation file does NOT write a DISPLACEMENT field — it writes
+*deformed coordinates* per frame in `coorA`. The adapter surfaces
+DISPLACEMENT as `coorA(step) - coorA(0)`, which is **not** a derived
+quantity in the ADR-001 sense (no constitutive law, no failure
+criterion, no calibration constant). It is a coordinate-frame
+re-expression of the same data the file contains. This carve-out is
+narrow and does NOT generalise: no other Layer-1 derivation is
+permitted in the OpenRadioss adapter, and von Mises / principal
+stress / safety factor remain Layer-3-only. Adapters that emit
+synthesised node IDs (when `nodNumA` has zeros or duplicates — see
+`reader.py:_resolve_node_ids`) record the synthesis count in the
+field's `source_field_name` so consumers can distinguish synthesised
+from solver-emitted IDs.
+
 ### What this fixture explicitly does NOT exercise
 - Element erosion under failure criteria (none in contact test).
 - Stress / strain / velocity field extraction (legacy deck syntax
@@ -104,20 +121,55 @@ These all land in **GS-101** (W7e) via a fresh deck written from scratch.
 
 ## Licensing
 
-- Upstream model © Altair Engineering Inc., **CC BY-NC 4.0**. Re-
-  distribution permitted with attribution; non-commercial qualifier
-  honored — this repo is open-source research / engineering tooling,
-  not a commercial product.
-- Modifications (run-time + dump dt extensions) are minor parametric
-  changes that don't constitute a derivative work in any material
-  sense. Original deck preserved for verification.
-- Animation outputs (`.A###.gz`) are produced by running the modified
-  deck through OpenRadioss (AGPL-3.0) on the host. The output files
-  themselves are not subject to AGPL because they are pure data, not
-  copyrighted code.
+This fixture mixes three licensing regimes; downstream consumers must
+honour all three.
 
-W7g RFC-002 will formalize the multi-license boundary across the
-workbench. For W7b, this fixture's redistribution is uncontroversial.
+### 1. Altair model — CC BY-NC 4.0
+The simulation deck (`BOULE1V5_0000.rad`,
+`BOULE1V5_0001.rad.orig`), the geometry / material / interface
+definitions, plus `readme.txt` and `ref.extract` are © **Altair
+Engineering Inc.** and redistributed under
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) per
+the upstream OpenRadioss QA test bundle. The
+**non-commercial** qualifier governs *redistribution of this fixture*
+specifically. The CC BY-NC 4.0 boundary does **not** propagate to:
+  - the adapter source code (`backend/app/adapters/openradioss/`)
+  - the test suite (`tests/test_openradioss_adapter.py`)
+  - the `OpenRadiossReader` Protocol implementation
+  - any other code in this repository that does not redistribute the
+    Altair-authored bytes verbatim.
+
+If a downstream user wants to redistribute the fixture commercially
+(e.g. embedding it in a commercial DOCX template demo), the fixture
+must be replaced with a non-Altair-derived equivalent. **GS-101**
+(W7e) will be authored from scratch precisely to remove the NC
+qualifier from the bullet-vs-plate demo path.
+
+### 2. Engine-deck modifications — CC BY-NC 4.0
+The two-parameter delta in `BOULE1V5_0001.rad` (run-time and dump
+cadence; see "Modifications from upstream" above) is released under
+the same CC BY-NC 4.0 terms as the original. Whether such a small
+parametric change rises to the level of a "derivative work" under
+US/EU copyright is unsettled, but we publish the modifications under
+the same licence as a precaution and to keep attribution unambiguous.
+**This is not legal advice** — consult counsel before commercial
+redistribution.
+
+### 3. Animation outputs — fixture data, AGPL-disjoint
+The animation files (`BOULE1V5A001.gz`, `BOULE1V5A011.gz`,
+`BOULE1V5A021.gz`) are produced by running OpenRadioss (AGPL-3.0)
+out-of-process. The output bytes are pure simulation data — not
+copyrightable code — and are therefore distributed alongside the deck
+under CC BY-NC 4.0 with the same NC qualifier. The AGPL covers the
+solver binary, **not** files the binary writes.
+
+### Mixed-license notice
+A repo-root `LICENSE-NOTICES.md` (W7g RFC-002 boundary work) will
+formalize the cross-component licence map (MIT for code, AGPL for the
+out-of-process solver binary, CC BY-NC 4.0 for the fixture, MPL for
+vortex-radioss). For W7b the fixture's redistribution is on solid
+ground given the explicit Altair attribution and CC BY-NC 4.0 carve-out
+above; commercial redistribution of GS-100 verbatim is not.
 
 ---
 

@@ -6,11 +6,21 @@ RFC-001 §4.3 + §4.2 layer rules:
     concrete adapter type.
   * Layer 4 (``app.services.report.*``) goes through Layer 3 and never
     sees ``ReaderHandle`` directly.
+
+Sub-protocols (e.g. ``SupportsElementDeletion``) declare optional
+capabilities for non-canonical data — element erosion, contact-pair
+state, etc. Adding such data to ``CanonicalField`` would expand the
+closed enum and require an RFC; a runtime-checkable sub-protocol lets
+Layer 3 feature-detect the capability without leaking the concrete
+adapter type.
 """
 
 from __future__ import annotations
 
 from typing import Optional, Protocol, runtime_checkable
+
+import numpy as np
+import numpy.typing as npt
 
 from .enums import CanonicalField
 from .field_data import FieldData
@@ -53,3 +63,21 @@ class ReaderHandle(Protocol):
         ...
 
     def close(self) -> None: ...
+
+
+@runtime_checkable
+class SupportsElementDeletion(Protocol):
+    """Optional Layer-2 capability: per-step element-alive flags.
+
+    Adapters that read solvers with element erosion (OpenRadioss
+    Johnson-Cook failure, LS-DYNA *MAT_ADD_EROSION, etc.) implement
+    this. Layer-3 ballistic derivations feature-detect it via
+    ``isinstance(reader, SupportsElementDeletion)`` rather than
+    importing the concrete adapter type — keeps the Layer-3 → Layer-1
+    arrow forbidden by RFC-001 §4.2.
+
+    Returns: int8 array of shape ``(n_facets,)``; 1 = alive, 0 =
+    deleted/eroded. Raises ``KeyError`` for unknown step IDs.
+    """
+
+    def deleted_facets_for(self, step_id: int) -> "npt.NDArray[np.int8]": ...

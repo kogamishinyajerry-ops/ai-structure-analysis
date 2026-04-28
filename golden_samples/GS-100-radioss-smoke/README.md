@@ -1,5 +1,17 @@
 # GS-100 — OpenRadioss adapter smoke fixture
 
+> **Attribution.** The simulation deck (`BOULE1V5_0000.rad`,
+> `BOULE1V5_0001.rad.orig`), the unmodified text artefacts (`readme.txt`,
+> `ref.extract`) and the geometry / material / interface definitions are
+> derived from
+> `OpenRadioss/qa-tests/miniqa/INTERF/INT_7/igsti/small_boule_igsti/dtmin_02/`
+> (model © **Altair Engineering Inc.**), redistributed under
+> [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
+> See `LICENSE-NOTICES.md` at the repo root for the project-wide mixed-
+> license boundary. Engine-deck modifications (`BOULE1V5_0001.rad` —
+> two scalar parameters changed, see "Origin" below) are released
+> alongside the original under the same CC BY-NC 4.0 terms.
+
 **Purpose**: smallest possible OpenRadioss output set sufficient to validate
 that `app.adapters.openradioss.OpenRadiossReader` implements the Layer-2
 `ReaderHandle` Protocol correctly. **Not** a ballistic-penetration demo — that
@@ -45,9 +57,16 @@ The diff is preserved as `BOULE1V5_0001.rad` (modified) vs.
   in this case — no element erosion in a contact-only test. **The W7d
   ballistic derivations (penetration / element-kill) are not validated by
   this fixture; they need GS-101.**
-- ✅ Empty field-data path (`vTextA`/`tTextA`/`fTextA` all empty): adapter
-  must return an empty `available_fields` tuple per `SolutionState`, NOT
-  fabricate zero-valued fields (ADR-003).
+- ✅ DISPLACEMENT reconstruction (`coorA(t) - coorA(0)`): the adapter
+  surfaces `CanonicalField.DISPLACEMENT` for every state because every
+  OpenRadioss animation frame ships `coorA`. This is a coordinate-frame
+  re-expression, not a derived quantity (see ADR-021 §Decision —
+  ADR-001 carve-out).
+- ✅ Empty native-field path (`vTextA`/`tTextA`/`fTextA` all empty in
+  this legacy contact-test deck): adapter must NOT advertise
+  `STRESS_TENSOR` / `STRAIN_TENSOR` (no `tTextA` entry) and must NOT
+  fabricate zero-valued tensors (ADR-003). DISPLACEMENT is the only
+  field on `available_fields` in this fixture.
 
 ## What this fixture does NOT exercise
 

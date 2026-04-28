@@ -28,7 +28,7 @@ from .field_metadata import FieldMetadata
 from .field_data import FieldData
 from .solution_state import SolutionState
 from .domain import BoundaryCondition, Material, Mesh
-from .reader_handle import ReaderHandle
+from .reader_handle import ReaderHandle, SupportsElementDeletion
 
 __all__ = [
     "BoundaryCondition",
@@ -44,5 +44,6 @@ __all__ = [
     "Quantity",
     "ReaderHandle",
     "SolutionState",
+    "SupportsElementDeletion",
     "UnitSystem",
 ]

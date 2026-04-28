@@ -1,25 +1,22 @@
 """Tests for the OpenRadioss Layer-1 adapter — RFC-001 W7b.
 
-Skipped if ``vortex_radioss`` / ``lasso-python`` aren't importable in
-the test environment (declared optional under
-``[project.optional-dependencies] openradioss``). The adapter package
-itself imports them lazily, so module load works without them — but
-running an actual frame requires the parser.
+Tests that drive a real animation frame are skipped if
+``vortex_radioss`` / ``lasso-python`` aren't importable (declared
+optional under ``[project.optional-dependencies] openradioss``). Static
+helpers (e.g. ``_resolve_node_ids``) are exercised unconditionally —
+the adapter package imports the parser lazily inside ``_read_frame``,
+so the class itself is importable without the extra installed.
 """
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pytest
-
-# Skip the whole module if the optional parser isn't installed.
-pytest.importorskip("vortex_radioss")
-pytest.importorskip("lasso")
-
-from app.adapters.openradioss import OpenRadiossReader  # noqa: E402
-from app.core.types import (  # noqa: E402
+from app.adapters.openradioss import OpenRadiossReader
+from app.core.types import (
     CanonicalField,
     ComponentType,
     FieldLocation,
@@ -29,10 +26,21 @@ from app.core.types import (  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GS100_DIR = REPO_ROOT / "golden_samples" / "GS-100-radioss-smoke"
 
+_HAS_PARSER = (
+    importlib.util.find_spec("vortex_radioss") is not None
+    and importlib.util.find_spec("lasso") is not None
+)
+needs_parser = pytest.mark.skipif(
+    not _HAS_PARSER,
+    reason="vortex_radioss / lasso-python not installed (optional 'openradioss' extra)",
+)
+
 
 @pytest.fixture()
 def gs100_reader() -> OpenRadiossReader:
     """Open the GS-100 smoke fixture in si-mm and yield the reader."""
+    if not _HAS_PARSER:
+        pytest.skip("vortex_radioss / lasso-python not installed (optional extra)")
     if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
         pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
     rdr = OpenRadiossReader(
@@ -253,6 +261,7 @@ def test_deleted_facets_unknown_step_raises(
 # ---------------------------------------------------------------------------
 
 
+@needs_parser
 def test_close_releases_decompressed_tmpdir(tmp_path: Path) -> None:
     """The adapter decompresses .gz frames into a /tmp scratch dir.
     close() must remove it. We verify by sniffing the private state —
@@ -278,6 +287,7 @@ def test_close_then_read_raises(gs100_reader: OpenRadiossReader) -> None:
         _ = gs100_reader.mesh
 
 
+@needs_parser
 def test_context_manager_closes_on_exit() -> None:
     if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
         pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
@@ -305,3 +315,144 @@ def test_unknown_rootname_raises(tmp_path: Path) -> None:
             rootname="NOPE",
             unit_system=UnitSystem.SI_MM,
         )
+
+
+# ---------------------------------------------------------------------------
+# Codex R1 follow-ups: reopen, decompressed-sibling, partial-invalid IDs,
+# gap indices, SupportsElementDeletion Protocol
+# ---------------------------------------------------------------------------
+
+
+@needs_parser
+def test_reopen_yields_equivalent_mesh_and_states() -> None:
+    """ADR-004 forbids hidden caches: closing + reopening the same
+    fixture must produce equivalent mesh + states. Catches stateful
+    bugs (e.g. tmpdir name leaking into metadata, frame iteration
+    order drifting) without needing a second fixture."""
+    if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
+        pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
+    rdr_a = OpenRadiossReader(root_dir=GS100_DIR, rootname="BOULE1V5", unit_system=UnitSystem.SI_MM)
+    try:
+        ids_a = rdr_a.mesh.node_id_array.copy()
+        coords_a = rdr_a.mesh.coordinates.copy()
+        steps_a = [s.step_id for s in rdr_a.solution_states]
+        times_a = [s.time for s in rdr_a.solution_states]
+    finally:
+        rdr_a.close()
+    rdr_b = OpenRadiossReader(root_dir=GS100_DIR, rootname="BOULE1V5", unit_system=UnitSystem.SI_MM)
+    try:
+        np.testing.assert_array_equal(rdr_b.mesh.node_id_array, ids_a)
+        np.testing.assert_allclose(rdr_b.mesh.coordinates, coords_a)
+        assert [s.step_id for s in rdr_b.solution_states] == steps_a
+        assert [s.time for s in rdr_b.solution_states] == times_a
+    finally:
+        rdr_b.close()
+
+
+@needs_parser
+def test_decompressed_sibling_preferred_over_gz(tmp_path: Path) -> None:
+    """Both BOULE1V5A001 and BOULE1V5A001.gz on disk → reader keeps
+    the decompressed one (avoids re-decompressing on every restart in
+    the dev loop)."""
+    if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
+        pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
+    import gzip
+    import shutil as _sh
+
+    # Copy the fixture into tmp + materialise decompressed siblings
+    # alongside the .gz files for exactly one frame.
+    for src in GS100_DIR.iterdir():
+        _sh.copy(src, tmp_path / src.name)
+    decomp = tmp_path / "BOULE1V5A001"
+    with gzip.open(tmp_path / "BOULE1V5A001.gz", "rb") as fin, open(decomp, "wb") as fout:
+        _sh.copyfileobj(fin, fout)
+    assert decomp.is_file() and (tmp_path / "BOULE1V5A001.gz").is_file()
+
+    rdr = OpenRadiossReader(root_dir=tmp_path, rootname="BOULE1V5", unit_system=UnitSystem.SI_MM)
+    try:
+        # The frame_paths dict must reference the decompressed file
+        # for index 1 — sibling-preference rule.
+        first_idx = sorted(rdr._frame_paths)[0]  # type: ignore[attr-defined]
+        chosen = rdr._frame_paths[first_idx]  # type: ignore[attr-defined]
+        assert chosen.suffix != ".gz", f"expected decompressed sibling preference, got {chosen}"
+    finally:
+        rdr.close()
+
+
+def test_resolve_node_ids_partial_invalid() -> None:
+    """Codex R1 HIGH: partial-invalid nodNumA must preserve valid IDs
+    and synthesize *only* the bad slots above max(valid). The earlier
+    implementation clobbered the whole array."""
+    # Bad slots: index 2 (zero), index 4 (duplicate of 1).
+    raw = np.array([10, 11, 0, 12, 11, 13], dtype=np.int64)
+    ids, n_synth = OpenRadiossReader._resolve_node_ids(raw, 6)
+    assert n_synth == 2
+    # Valid IDs preserved in their slots.
+    assert int(ids[0]) == 10
+    assert int(ids[1]) == 11
+    assert int(ids[3]) == 12
+    assert int(ids[5]) == 13
+    # Bad slots got fresh IDs strictly greater than max(valid)=13.
+    assert int(ids[2]) > 13
+    assert int(ids[4]) > 13
+    # No collisions, no duplicates anywhere.
+    assert len(set(ids.tolist())) == 6
+
+
+def test_resolve_node_ids_all_valid_passthrough() -> None:
+    raw = np.array([7, 9, 11, 13], dtype=np.int64)
+    ids, n_synth = OpenRadiossReader._resolve_node_ids(raw, 4)
+    assert n_synth == 0
+    np.testing.assert_array_equal(ids, raw)
+
+
+def test_resolve_node_ids_absent_falls_back_to_arange() -> None:
+    ids, n_synth = OpenRadiossReader._resolve_node_ids(None, 5)
+    assert n_synth == 5
+    np.testing.assert_array_equal(ids, np.array([1, 2, 3, 4, 5]))
+
+
+def test_displacement_metadata_records_id_synthesis(
+    gs100_reader: OpenRadiossReader,
+) -> None:
+    """If the GS-100 nodNumA had any zeros/dups, the field metadata's
+    source_field_name must say so. If it didn't, plain string. Either
+    way the metadata is consistent with reader state."""
+    states = gs100_reader.solution_states
+    f = gs100_reader.get_field(CanonicalField.DISPLACEMENT, states[1].step_id)
+    assert f is not None
+    name = f.metadata.source_field_name
+    n_synth = gs100_reader._n_synthesized_ids  # type: ignore[attr-defined]
+    if n_synth:
+        assert "adapter-synthesised" in name and str(n_synth) in name
+    else:
+        assert name == "coorA(step)-coorA(0)"
+
+
+@needs_parser
+def test_gap_indices_supported() -> None:
+    """Frames at non-contiguous indices (e.g. A001, A011, A021 — what
+    GS-100 actually ships) must surface as 3 states with the original
+    step_ids preserved, not renumbered to 1/2/3."""
+    if not (GS100_DIR / "BOULE1V5A001.gz").is_file():
+        pytest.skip(f"GS-100 fixture missing at {GS100_DIR}")
+    with OpenRadiossReader(
+        root_dir=GS100_DIR,
+        rootname="BOULE1V5",
+        unit_system=UnitSystem.SI_MM,
+    ) as rdr:
+        step_ids = [s.step_id for s in rdr.solution_states]
+        assert step_ids == [1, 11, 21], f"step_ids must equal frame index suffix; got {step_ids}"
+
+
+def test_supports_element_deletion_protocol(
+    gs100_reader: OpenRadiossReader,
+) -> None:
+    """Layer 3 feature-detects element-erosion via the runtime-checked
+    sub-Protocol. Concrete adapter must satisfy it."""
+    from app.core.types import SupportsElementDeletion
+
+    assert isinstance(gs100_reader, SupportsElementDeletion), (
+        "OpenRadiossReader must satisfy the SupportsElementDeletion "
+        "sub-Protocol (deleted_facets_for(step_id) -> int8 array)."
+    )
