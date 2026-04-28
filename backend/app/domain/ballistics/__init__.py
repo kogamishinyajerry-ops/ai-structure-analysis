@@ -232,11 +232,22 @@ def perforation_event_step(
     perforation observed".
 
     Unknown ``step_id``s raise ``KeyError`` via
-    ``deleted_facets_for`` (Protocol contract); see ``eroded_history``
-    for why we don't pre-validate against ``solution_states``.
+    ``deleted_facets_for`` (Protocol contract). Codex R3 finding: a
+    naive early-return search (``return sid`` on first erosion)
+    silently masked trailing invalid IDs — e.g. ``[1, 2, 999]`` with
+    step 2 eroded returned ``2`` instead of raising on ``999``. We
+    therefore pre-fetch all flags via ``deleted_facets_for`` before
+    searching, so the KeyError on any unknown ``step_id`` fires
+    regardless of where it sits in the list.
     """
-    for sid in step_ids:
-        flags = reader.deleted_facets_for(sid)
+    # Pre-fetch all flags (validates every step_id via the
+    # deleted_facets_for KeyError contract) before searching for the
+    # first erosion, so a trailing unknown id cannot be silently
+    # masked by an early return.
+    flags_per_step = [
+        (sid, reader.deleted_facets_for(sid)) for sid in step_ids
+    ]
+    for sid, flags in flags_per_step:
         if count_eroded(flags) > 0:
             return sid
     return None

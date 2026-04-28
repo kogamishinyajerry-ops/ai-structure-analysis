@@ -233,6 +233,19 @@ def test_perforation_event_step_accepts_supports_element_deletion_only() -> None
     assert perforation_event_step(rdr, [1, 2]) == 2
 
 
+def test_perforation_event_step_validates_all_step_ids_not_just_until_first_erosion() -> None:
+    """Codex R3 repro: a naive early-return search would return ``2``
+    for step_ids ``[1, 2, 999]`` (step 2 erodes), silently masking
+    the trailing invalid id 999. We must validate every step_id via
+    the deleted_facets_for KeyError contract regardless of where
+    erosion first appears."""
+    rdr = _DeletionOnlyReader(
+        {1: np.ones(3, dtype=np.int8), 2: np.array([1, 0, 1], dtype=np.int8)}
+    )
+    with pytest.raises(KeyError, match="999"):
+        perforation_event_step(rdr, [1, 2, 999])
+
+
 # ---------------------------------------------------------------------------
 # Tier 2 — synthetic Reader stubs for displacement_history validation
 # ---------------------------------------------------------------------------
