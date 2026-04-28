@@ -266,12 +266,25 @@ def test_simplified_vs_table4_conservative_gap_is_pinned() -> None:
     """ADR-020 §6 anchor: Q345R room-T simplified [σ] must land in
     [150, 170] MPa.
 
-    The simplified formula returns 156.67 MPa; GB 150.3-2011 Table 4
-    publishes ≈ 170 MPa for Q345R. The simplified path is **safe
-    (conservative)** — it never returns higher than Table 4 — but the
-    ~8% gap is acknowledged in DOCX disclaimers and ADR-020 §3. This
-    test fails if a future change drifts Q345R outside [150, 170],
-    forcing an ADR update rather than a silent merge.
+    For Q345R (σ_y=345, σ_u=510, per materials.json):
+      simplified = min(345/1.5, 510/3.0) = min(230, 170) = **170.0** MPa.
+
+    Note: ADR-020 §3 cites "156.7 MPa" for Q345R simplified, but
+    that calculation in §3 mixed Q345R's σ_y (345) with Q345B's
+    σ_u (470); the correct Q345R simplified value is 170.0 MPa.
+    Per GB 150.3-2011 Table 4, Q345R published [σ] at room T is
+    also ≈170 MPa, so the simplified formula and Table 4 happen to
+    agree for this grade — there is *no* meaningful conservative
+    gap at room T for Q345R. The "[150, 170] MPa" band still pins
+    the value (a future drift outside this band signals either a
+    materials.json change or a formula change, both of which need
+    ADR review).
+
+    Filed as a follow-up: ADR-020 §3 should be edited to either
+    pick a different example material that genuinely shows a gap
+    (e.g. 16MnR if its Table 4 value differs from simplified) or
+    drop the "8-10%" wording since Q345R doesn't substantiate it.
+    Out of scope for this W6b PR — no code change here would fix it.
     """
     mat = lookup_builtin("Q345R")
     assert mat is not None
@@ -282,6 +295,9 @@ def test_simplified_vs_table4_conservative_gap_is_pinned() -> None:
         f"outside the [150, 170] band pinned in ADR-020 §6. Update the "
         f"ADR before changing this test."
     )
+    # Sub-pin the actual computed value so a future formula tweak that
+    # still lands in [150, 170] but moves Q345R can't slip silently.
+    assert math.isclose(res.sigma_allow, 170.0, rel_tol=1e-9)
 
 
 # ---------------------------------------------------------------------------
