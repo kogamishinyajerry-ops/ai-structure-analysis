@@ -28,6 +28,7 @@ yet — the workbench facade lands in Phase 2.1 follow-up; the RAG track
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -410,18 +411,33 @@ def _annotation_mentions_knowledgebase(
                 slc = sub.slice
                 for inner in ast.walk(slc):
                     skip_nodes.add(id(inner))
+    # R7-fix2 (post Codex R1 MEDIUM, 2026-04-28): forward-ref strings
+    # must also match alias names. Pre-fix the string branch only matched
+    # substrings of the literal "KnowledgeBase", so `def advise(kb: "KB")`
+    # where KB is an aliased import slipped through. Use word-boundary
+    # matching so `"KBConfig"` does not false-flag.
+    string_pattern: re.Pattern[str] | None = None
+    if name_set:
+        # `re.escape` so alias names containing regex metachars are safe.
+        # Alternation is anchored with \b on both sides.
+        string_pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in name_set) + r")\b")
     for sub in ast.walk(node):
         if id(sub) in skip_nodes:
             continue
         if isinstance(sub, ast.Name) and sub.id in name_set:
             return True
-        if isinstance(sub, ast.Attribute) and sub.attr == "KnowledgeBase":
+        # R7-fix2: attribute access whose .attr is in the alias set also
+        # counts. Pre-fix only the literal `attr == "KnowledgeBase"` was
+        # caught, so `class MyKB(rag.kb.KB)` and `def advise(kb: rag.kb.KB)`
+        # (where `KB` is an aliased re-export) evaded.
+        if isinstance(sub, ast.Attribute) and sub.attr in name_set:
             return True
-        # forward-ref strings: `kb: "KnowledgeBase"` or `"Optional[KnowledgeBase]"`
+        # forward-ref strings: `kb: "KnowledgeBase"` or `"Optional[KB]"`
         if (
             isinstance(sub, ast.Constant)
             and isinstance(sub.value, str)
-            and "KnowledgeBase" in sub.value
+            and string_pattern is not None
+            and string_pattern.search(sub.value)
         ):
             return True
     return False
@@ -523,8 +539,11 @@ def _knowledgebase_local_aliases(tree: ast.AST) -> set[str]:
             if isinstance(base, ast.Name) and base.id in seen_aliases:
                 return True
             # `class X(kb.KnowledgeBase)` — attribute base on the rag.kb
-            # module alias. Use the literal class name as the anchor.
-            if isinstance(base, ast.Attribute) and base.attr == "KnowledgeBase":
+            # module alias. R7-fix2 (post Codex R1 MEDIUM, 2026-04-28):
+            # also accept attribute bases whose .attr is in the alias
+            # set, so `class X(rag.kb.KB)` after `from x import KB`
+            # is recognised even when KB is a re-exported alias.
+            if isinstance(base, ast.Attribute) and base.attr in seen_aliases:
                 return True
         return False
 
@@ -574,9 +593,12 @@ def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
         func = node.func
         if isinstance(func, ast.Name) and func.id in aliases:
             return True
-        # `kb.KnowledgeBase()` style — attribute always pinned to the
-        # class name itself, regardless of the parent module's binding.
-        if isinstance(func, ast.Attribute) and func.attr == "KnowledgeBase":
+        # `kb.KnowledgeBase()` style — attribute access. R7-fix2 (post
+        # Codex R1 MEDIUM, 2026-04-28): also accept any attr that's in
+        # the alias set so `rag.kb.KB()` (where KB is an aliased
+        # re-export) is also flagged. Pre-fix only literal "KnowledgeBase"
+        # was caught.
+        if isinstance(func, ast.Attribute) and func.attr in aliases:
             return True
         # R6 (post Codex R5 LOW): `(KB := KnowledgeBase)()` — Call.func
         # is a NamedExpr whose value resolves to a KB alias. The walrus
@@ -586,7 +608,8 @@ def _calls_knowledgebase_constructor(tree: ast.AST) -> bool:
             inner = func.value
             if isinstance(inner, ast.Name) and inner.id in aliases:
                 return True
-            if isinstance(inner, ast.Attribute) and inner.attr == "KnowledgeBase":
+            # R7-fix2: same alias-set widening as the direct Attribute branch.
+            if isinstance(inner, ast.Attribute) and inner.attr in aliases:
                 return True
     return False
 
@@ -1332,3 +1355,83 @@ class TestR7AliasAnnotationAndSubclass:
         # Without aliases, alias annotation is missed (this is the gap the
         # R7 fix closes when callers do pass aliases).
         assert not _function_takes_knowledgebase_param(fn)
+
+
+class TestR7Fix2AliasForwardRefAndAttributeAlias:
+    """Codex R1 verification on PR #104 found two open bypasses post-R7:
+
+    MEDIUM-1: alias forward-ref string. `def advise(kb: "KB")` where
+      KB is an aliased import — string-annotation branch only matched
+      substrings of literal "KnowledgeBase".
+
+    MEDIUM-2: subclass / ctor via attribute alias. `class MyKB(rag.kb.KB)`
+      and `rag.kb.KB()` (where KB is an aliased re-export) evaded
+      because the Attribute branch only matched literal
+      `attr == "KnowledgeBase"`.
+
+    Fix: string-annotation matches alias names with word boundaries;
+    Attribute branches in `_calls_knowledgebase_constructor` and
+    `_bases_reference_alias` widen to any attr in the alias set.
+    """
+
+    def test_r7fix2_alias_forward_ref_string_is_caught(self):
+        """`def advise(kb: "KB")` after `import KnowledgeBase as KB`."""
+        tree = _parse(
+            'from app.rag.kb import KnowledgeBase as KB\ndef advise(query, kb: "KB"): ...\n'
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "KB" in aliases
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7fix2_alias_forward_ref_string_word_boundary(self):
+        """`KBConfig` is NOT KB — must not false-flag despite alias=`KB`."""
+        tree = _parse(
+            'from app.rag.kb import KnowledgeBase as KB\ndef advise(query, cfg: "KBConfig"): ...\n'  # noqa: F722
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        # KB is in aliases but "KBConfig" is a different identifier;
+        # word-boundary regex must not match.
+        assert not _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7fix2_subclass_via_attribute_alias_is_caught(self):
+        """`class MyKB(rag.kb.KB): pass` after `from x.y import KB`."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "class MyKB(rag.kb.KB): pass\n"
+            "def build(): return MyKB()\n"
+        )
+        aliases = _knowledgebase_local_aliases(tree)
+        assert "MyKB" in aliases
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix2_attribute_alias_constructor_call_is_caught(self):
+        """`return rag.kb.KB()` directly — Attribute call to aliased re-export."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "def build(): return rag.kb.KB()\n"
+        )
+        assert _calls_knowledgebase_constructor(tree)
+
+    def test_r7fix2_attribute_alias_in_annotation_is_caught(self):
+        """`def advise(kb: rag.kb.KB)` — Attribute annotation via alias."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase as KB\n"
+            "import rag.kb\n"
+            "def advise(query, kb: rag.kb.KB): ...\n"
+        )
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef))
+        aliases = _knowledgebase_local_aliases(tree)
+        assert _function_takes_knowledgebase_param(fn, aliases)
+
+    def test_r7fix2_unrelated_attribute_attr_is_not_flagged(self):
+        """`some.module.OtherThing()` — must NOT be flagged as KB ctor."""
+        tree = _parse(
+            "from app.rag.kb import KnowledgeBase\n"
+            "import some.module\n"
+            "def build(): return some.module.OtherThing()\n"
+        )
+        assert not _calls_knowledgebase_constructor(tree)
