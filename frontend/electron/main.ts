@@ -535,8 +535,14 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   // bundling Python is the customer-demo scope (W5+, separate PR).
   const child = spawn("report-cli", args, { stdio: ["ignore", "pipe", "pipe"] });
 
+  // Codex R3 MEDIUM: route every send through ``_safeSend`` so a
+  // window-close mid-report does not throw on a destroyed
+  // webContents (R2 fixed this for bake; R3 closes the inconsistency
+  // for run-report. On macOS the app stays alive after the only
+  // window closes — see app.on("window-all-closed") above — so this
+  // is a real lifecycle bug, not a theoretical one.)
   child.stdout.on("data", (chunk: Buffer) => {
-    evt.sender.send("report:stdout", chunk.toString("utf-8"));
+    _safeSend(evt, "report:stdout", chunk.toString("utf-8"));
   });
   // Buffer stderr by line so a "figure: <path>" announcement isn't
   // split across two chunks. The CLI flushes after each line so the
@@ -545,7 +551,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   let stderrBuf = "";
   child.stderr.on("data", (chunk: Buffer) => {
     const text = chunk.toString("utf-8");
-    evt.sender.send("report:stderr", text);
+    _safeSend(evt, "report:stderr", text);
     stderrBuf += text;
     let nl: number;
     while ((nl = stderrBuf.indexOf("\n")) >= 0) {
@@ -561,7 +567,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
           candidate.toLowerCase().endsWith(".png") &&
           insideFigsDir
         ) {
-          evt.sender.send("report:figure", candidate);
+          _safeSend(evt, "report:figure", candidate);
         }
       }
     }
@@ -570,11 +576,12 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {
     child.on("close", (code) => {
       const exitCode = code ?? -1;
-      evt.sender.send("report:exit", exitCode);
+      _safeSend(evt, "report:exit", exitCode);
       resolve({ ok: exitCode === 0, exitCode, outputPath: req.output });
     });
     child.on("error", (err) => {
-      evt.sender.send(
+      _safeSend(
+        evt,
         "report:stderr",
         `failed to spawn report-cli: ${err.message}\n` +
           `Hint: pip install -e . from the repo root, then make sure ` +
@@ -583,7 +590,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
           `from the same shell that launches this app to verify the ` +
           `install is healthy.\n`
       );
-      evt.sender.send("report:exit", -1);
+      _safeSend(evt, "report:exit", -1);
       resolve({ ok: false, exitCode: -1, outputPath: req.output });
     });
   });

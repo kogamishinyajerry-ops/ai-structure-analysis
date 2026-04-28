@@ -297,6 +297,10 @@ window.api.onStderr(appendLog);
 window.api.onFigure(addFigure);
 
 runBtn.addEventListener("click", async () => {
+  // Symmetric re-entry guard with the bake handler — see Codex R3
+  // MEDIUM. Cheap check at the top closes any race window where
+  // updateFormState briefly enabled Run between in-flight ops.
+  if (inFlight !== "none") return;
   inFlight = "report";
   runBtn.disabled = true;
   revealBtn.disabled = true;
@@ -405,6 +409,12 @@ window.api.onBakeStdout(appendLog);
 window.api.onBakeStderr(appendLog);
 
 bakeGs101Btn.addEventListener("click", async () => {
+  // Codex R3 MEDIUM: getDemoGs101Deck()'s `.then` resolves
+  // asynchronously and can unhide the button after a report run has
+  // already started. Without an early re-entry guard, a user could
+  // race a bake against an in-flight report and re-create the
+  // cross-operation race the inFlight gate was supposed to prevent.
+  if (inFlight !== "none") return;
   inFlight = "bake";
   bakeGs101Btn.disabled = true;
   runBtn.disabled = true;
