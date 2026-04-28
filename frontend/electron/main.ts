@@ -318,10 +318,23 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
 
   // Stage decks into a scratch dir under the OS temp root so docker can
   // mount it read-write without touching golden_samples/.
-  const stamp = Date.now();
-  const scratch = path.join(os.tmpdir(), `gs101-demo-bake-${stamp}`);
+  //
+  // Use ``fs.mkdtempSync`` (not ``mkdirSync(predictable_path, recursive:
+  // true)``) to atomically create a uniquely-named dir owned by the
+  // current user — closes the same-user TOCTOU window where another
+  // local process could pre-create or symlink the predictable
+  // ``gs101-demo-bake-<timestamp>`` path before docker mounts it
+  // (Codex R1 LOW).
+  let scratch: string;
   try {
-    fs.mkdirSync(scratch, { recursive: true });
+    scratch = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-demo-bake-"));
+  } catch (err) {
+    return {
+      ok: false as const,
+      violations: [`Failed to allocate bake scratch dir: ${(err as Error).message}`],
+    };
+  }
+  try {
     fs.copyFileSync(
       path.join(resolvedDeckDir, "model_00_0000.rad"),
       path.join(scratch, "model_00_0000.rad"),
@@ -435,6 +448,14 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   if (req.kind === "ballistic") {
     args.push("--openradioss-root", req.openradiossRoot!.trim());
     args.push("--rootname", req.rootname!.trim());
+    // The CLI's W5f figure renderer is CalculiX-FRD-only and
+    // ``cli.py`` hard-errors on ``--kind=ballistic`` with figures
+    // enabled (services/report/cli.py:612-622). The default of
+    // ``--figures`` is True, so we must explicitly opt out — every
+    // UI-driven ballistic run would otherwise fail at CLI validation
+    // before any A-frame is read. The DOCX still embeds the W7c
+    // animation montage for ballistic visualization. (Codex R1 HIGH.)
+    args.push("--no-figures");
   } else {
     args.push("--frd", req.frd);
   }

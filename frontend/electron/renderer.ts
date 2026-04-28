@@ -383,23 +383,32 @@ bakeGs101Btn.addEventListener("click", async () => {
   clearLog();
   clearViolations();
   setStatus("baking GS-101 demo (docker)…", "running");
-  const result = await window.api.bakeGs101Demo();
-  if (!result.ok) {
-    setStatus(`bake failed (exit ${result.exitCode})`, "error");
-    if (result.violations) showViolations(result.violations);
-  } else {
-    setStatus(`bake done — frames in ${result.scratchDir}`, "success");
-    openradiossRootInput.value = result.scratchDir;
-    rootnameInput.value = result.rootname;
-    if (!outputInput.value) {
-      outputInput.value = `${result.scratchDir}/${result.rootname}_ballistic.docx`;
+  // Codex R1 LOW: wrap the IPC invoke so an unexpected rejection
+  // (main throwing, IPC channel disappearing mid-bake, etc.) doesn't
+  // strand both buttons in disabled state with no user-visible error.
+  try {
+    const result = await window.api.bakeGs101Demo();
+    if (!result.ok) {
+      setStatus(`bake failed (exit ${result.exitCode})`, "error");
+      if (result.violations) showViolations(result.violations);
+    } else {
+      setStatus(`bake done — frames in ${result.scratchDir}`, "success");
+      openradiossRootInput.value = result.scratchDir;
+      rootnameInput.value = result.rootname;
+      if (!outputInput.value) {
+        outputInput.value = `${result.scratchDir}/${result.rootname}_ballistic.docx`;
+      }
+      // Switch the kind dropdown to ballistic so updateFormState
+      // reveals the right fieldset and Run becomes clickable.
+      kindSelect.value = "ballistic";
     }
-    // Switch the kind dropdown to ballistic so updateFormState reveals
-    // the right fieldset and Run becomes clickable.
-    kindSelect.value = "ballistic";
+  } catch (err) {
+    setStatus("bake failed (IPC error)", "error");
+    showViolations([`bake IPC error: ${err instanceof Error ? err.message : String(err)}`]);
+  } finally {
+    bakeGs101Btn.disabled = false;
+    updateFormState();
   }
-  bakeGs101Btn.disabled = false;
-  updateFormState();
 });
 
 void window.api.getDemoGs101Deck().then((deckDir) => {
