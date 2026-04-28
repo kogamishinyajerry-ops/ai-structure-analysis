@@ -73,8 +73,15 @@ def test_summary_evidence_bundle_has_disp_and_stress(
     ids = {item.evidence_id for item in bundle.evidence_items}
     assert "EV-DISP-MAX" in ids
     assert "EV-VM-MAX" in ids
-    # Type / data.kind must be consistent (W1 R2 invariant).
-    for item in bundle.evidence_items:
+    # Type / data.kind must be consistent (W1 R2 invariant). The
+    # W6e.2 model-overview evidence is REFERENCE (upstream context),
+    # not SIMULATION — exclude it from this assertion.
+    sim_items = [
+        item
+        for item in bundle.evidence_items
+        if item.evidence_id != "EV-MODEL-OVERVIEW-001"
+    ]
+    for item in sim_items:
         assert item.evidence_type is EvidenceType.SIMULATION
         assert item.data.kind == "simulation"
 
@@ -123,11 +130,16 @@ def test_summary_section_references_evidence_ids(
         gs001_reader,
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
-    assert len(report.sections) == 1
-    content = report.sections[0].content or ""
+    # W6e.2 added § 模型概览 as a second section with its own evidence.
+    # The strength-summary section (sections[0]) cites strength evidence;
+    # the model-overview section (sections[1]) cites EV-MODEL-OVERVIEW-001.
+    # ADR-012 holds for the union — every evidence_id must appear in
+    # SOME section content.
+    assert len(report.sections) == 2
+    all_content = "\n".join(s.content or "" for s in report.sections)
     bundle_ids = {item.evidence_id for item in bundle.evidence_items}
     for ev_id in bundle_ids:
-        assert ev_id in content, f"section content must cite {ev_id}"
+        assert ev_id in all_content, f"section content must cite {ev_id}"
 
 
 def test_summary_max_vm_matches_inline_computation(
@@ -353,7 +365,15 @@ def test_summary_default_step_is_final_state() -> None:
         rdr,  # type: ignore[arg-type]
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
-    assert {item.evidence_id for item in bundle.evidence_items} == {"EV-DISP-MAX"}
+    # W6e.2 also adds EV-MODEL-OVERVIEW-001 unconditionally; filter it
+    # out so this assertion still pins the specific simulation-evidence
+    # set the test is about.
+    sim_ids = {
+        item.evidence_id
+        for item in bundle.evidence_items
+        if item.evidence_id != "EV-MODEL-OVERVIEW-001"
+    }
+    assert sim_ids == {"EV-DISP-MAX"}
 
 
 def test_summary_explicit_step_id_selects_state() -> None:
@@ -370,7 +390,14 @@ def test_summary_explicit_step_id_selects_state() -> None:
         project_id="P", task_id="T", report_id="R", bundle_id="B",
         step_id=2,
     )
-    assert len(bundle.evidence_items) == 1
+    # W6e.2 also adds EV-MODEL-OVERVIEW-001; filter out before
+    # checking the simulation-evidence count this test is about.
+    sim_count = sum(
+        1
+        for item in bundle.evidence_items
+        if item.evidence_id != "EV-MODEL-OVERVIEW-001"
+    )
+    assert sim_count == 1
 
 
 def test_summary_unknown_step_id_raises() -> None:
@@ -485,7 +512,10 @@ def test_lifting_lug_summary_uses_lug_specific_evidence_ids(
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
     ids = {item.evidence_id for item in bundle.evidence_items}
-    assert ids == {"EV-LUG-DISP-MAX", "EV-LUG-VM-MAX"}
+    # Filter out the unconditional W6e.2 model-overview evidence;
+    # this test pins the lug-specific simulation IDs.
+    lug_ids = ids - {"EV-MODEL-OVERVIEW-001"}
+    assert lug_ids == {"EV-LUG-DISP-MAX", "EV-LUG-VM-MAX"}
     # Equipment-foundation IDs must not appear.
     assert "EV-DISP-MAX" not in ids
     assert "EV-VM-MAX" not in ids
@@ -565,7 +595,9 @@ def test_lifting_lug_summary_section_title_is_bilingual_lug() -> None:
         _OneFieldReader(),  # type: ignore[arg-type]
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
-    assert len(report.sections) == 1
+    # W6e.2 added § 模型概览 as a second section. The lug-strength
+    # section is still sections[0]; the new model-overview is sections[1].
+    assert len(report.sections) == 2
     assert (
         report.sections[0].title
         == "吊耳强度评估 (Lifting-lug strength assessment)"
@@ -786,10 +818,12 @@ def test_w6c2_with_material_pass_appends_two_sections() -> None:
         code="GB",
     )
 
-    assert len(report.sections) == 3
+    # W6e.2 unconditionally adds § 模型概览 → 4 sections total.
+    assert len(report.sections) == 4
     titles = [s.title for s in report.sections]
     assert "许用应力 (Allowable stress)" in titles
     assert "评定结论 (Strength verdict)" in titles
+    assert "模型概览 (Model overview)" in titles
 
     ids = {item.evidence_id for item in bundle.evidence_items}
     assert {"EV-VM-MAX", "EV-ALLOWABLE-001", "EV-VERDICT-001"} <= ids
@@ -888,15 +922,19 @@ def test_w6c2_verdict_derivation_lists_sigma_max_and_allowable() -> None:
 
 
 def test_w6c2_no_material_falls_through_to_old_behavior() -> None:
-    """Backwards compat: omitting material+code yields the same
-    1-section summary the W4 path always produced — no extra evidence,
-    no extra sections."""
+    """Backwards compat: omitting material+code yields the W4 1-section
+    summary plus the W6e.2 model-overview section (now unconditional)
+    — no allowable / verdict sections."""
     rdr = _make_synthetic_stress_reader(50.0)
     report, bundle = generate_static_strength_summary(
         rdr,  # type: ignore[arg-type]
         project_id="P", task_id="T", report_id="R", bundle_id="B",
     )
-    assert len(report.sections) == 1
+    # 1 strength + 1 model-overview = 2. W6c.2 sections (allowable /
+    # verdict) only land when material+code provided.
+    assert len(report.sections) == 2
+    titles = [s.title for s in report.sections]
+    assert "模型概览 (Model overview)" in titles
     ids = {item.evidence_id for item in bundle.evidence_items}
     assert "EV-ALLOWABLE-001" not in ids
     assert "EV-VERDICT-001" not in ids
@@ -963,7 +1001,8 @@ def test_w6c2_lifting_lug_accepts_same_kwargs() -> None:
         code="GB",
     )
     assert report.template_id == "lifting_lug"
-    assert len(report.sections) == 3
+    # 1 strength + 1 allowable + 1 verdict + 1 model-overview (W6e.2) = 4.
+    assert len(report.sections) == 4
     ids = {item.evidence_id for item in bundle.evidence_items}
     # The lug uses LUG-prefixed simulation evidence_ids, but the
     # allowable / verdict IDs are stable across templates.
@@ -1329,9 +1368,10 @@ def test_w6d2_lifting_lug_accepts_bc_yaml(
 def test_w6d2_bc_section_coexists_with_w6c2_verdict_sections(
     gs001_reader: CalculiXReader, tmp_path: Path
 ) -> None:
-    """Stacking the two W6 wedges: verdict + BC sections appear
-    alongside the max-field summary. Total = 4 sections (max-field +
-    许用应力 + 评定结论 + 边界条件)."""
+    """Stacking the W6c.2 + W6d.2 + W6e.2 wedges: verdict + model-
+    overview + BC sections appear alongside the max-field summary.
+    Total = 5 sections (max-field + 许用应力 + 评定结论 + 模型概览
+    + 边界条件)."""
     p = _write_bc_yaml(
         tmp_path,
         """
@@ -1360,11 +1400,18 @@ def test_w6d2_bc_section_coexists_with_w6c2_verdict_sections(
         ("结构强度摘要 (Static-strength summary)", 1),
         ("许用应力 (Allowable stress)", 2),
         ("评定结论 (Strength verdict)", 2),
+        ("模型概览 (Model overview)", 1),
         ("边界条件 (Boundary conditions)", 1),
     ]
 
     ids = {item.evidence_id for item in bundle.evidence_items}
-    assert {"EV-VM-MAX", "EV-ALLOWABLE-001", "EV-VERDICT-001", "EV-BC-001"} <= ids
+    assert {
+        "EV-VM-MAX",
+        "EV-ALLOWABLE-001",
+        "EV-VERDICT-001",
+        "EV-MODEL-OVERVIEW-001",
+        "EV-BC-001",
+    } <= ids
 
 
 def test_w6c2_allowable_section_shows_substituted_formula() -> None:

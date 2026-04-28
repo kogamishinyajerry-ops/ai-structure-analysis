@@ -92,6 +92,12 @@ from app.services.report.boundary_summary import (
     load_boundary_conditions_yaml,
     summarize_boundary_conditions,
 )
+from app.services.report.model_overview import (
+    ELEMENT_TYPE_GROUPS,
+    GROUP_OTHER,
+    ModelOverview,
+    summarize_model,
+)
 from app.services.report.verdict import (
     DEFAULT_THRESHOLD,
     Verdict,
@@ -404,6 +410,18 @@ def _build_max_field_summary(
         sections.append(_build_allowable_section(allowable, sigma_max_unit))
         sections.append(_build_verdict_section(verdict, sigma_max_unit))
 
+    # W6e.2 — § 模型概览. Always emitted (counts come straight from
+    # the reader — no user action required). Self-contained: not
+    # derived from σ_max or [σ]; the section is upstream context the
+    # signing engineer cross-checks against the FE deck. Inserted
+    # AFTER the strength / allowable / verdict trio (headlines-first
+    # convention, matches W6c.2 / W6d.2) and BEFORE § 边界条件
+    # because model topology is deck context that comes before the
+    # loading the engineer applied.
+    ev_model, model_section = _build_model_overview_evidence_and_section(reader)
+    bundle.add_evidence(ev_model)
+    sections.append(model_section)
+
     # W6d.2 — § 边界条件. Optional and self-contained (no derivation
     # link from / to other evidence): the BC list is upstream context,
     # not derived from σ_max or [σ]. ``BCSummaryError`` propagates
@@ -645,7 +663,181 @@ def _build_verdict_section(
     )
 
 
+_MODEL_OVERVIEW_EVIDENCE_ID: Final[str] = "EV-MODEL-OVERVIEW-001"
 _BC_EVIDENCE_ID: Final[str] = "EV-BC-001"
+
+
+def _build_model_overview_evidence_and_section(
+    reader: ReaderHandle,
+) -> Tuple[EvidenceItem, ReportSection]:
+    """Summarize mesh-level statistics and emit the § 模型概览 pair.
+
+    Returns ``(evidence_item, section)`` ready for the caller to
+    append in DAG-safe order (model overview is leaf — it has no
+    derivation link to or from other evidence; the table is upstream
+    context the engineer cross-checks against the FE deck).
+
+    The evidence is a single ``ReferenceEvidence`` whose ``value`` is
+    the total element count (or 0 when the adapter does not declare
+    the W6e capability) and whose ``citation_anchor`` carries the
+    canonical "node count + element count" string. Per-type detail
+    lives in the section content; the evidence carries the audit
+    pointer back to the solver result file.
+
+    When the adapter does not declare ``SupportsElementInventory``,
+    or declares it but reports ``None`` (e.g. CalculiX FRD with no
+    -3 block — Codex R1 HIGH on PR #109's three-state contract),
+    the section renders the "无单元清单 [需工程师确认]" placeholder.
+    The evidence is still emitted so the auditor sees that the
+    pipeline TRIED to populate the section rather than that the
+    section was forgotten.
+    """
+    overview = summarize_model(reader)
+
+    # Codex R2 LOW on PR #110: keep the human-readable ``description``
+    # symmetric with ``citation_anchor`` so a UI / log that surfaces
+    # description verbatim doesn't leak the synthetic ``elements=0``
+    # sentinel from the unavailable branch.
+    elements_text = (
+        str(overview.total_elements) if overview.has_inventory else "unknown"
+    )
+    description = (
+        f"Reader-derived mesh statistics: nodes={overview.total_nodes}, "
+        f"elements={elements_text}, "
+        f"has_inventory={overview.has_inventory}"
+    )
+
+    # ADR-003 (do-not-fabricate) — Codex R1 HIGH on PR #110:
+    # when ``has_inventory`` is False the element count is unknown, not
+    # zero. The library encodes the unknown state as ``total_elements=0``
+    # but that 0 must not leak into a downstream consumer's evidence
+    # payload. Anchor the evidence to the always-known node count
+    # (Mesh Protocol guarantees node coordinates) and spell the missing
+    # element count out as text in the citation_anchor.
+    if overview.has_inventory:
+        ev_value = float(overview.total_elements)
+        ev_unit = "elements"
+        anchor = (
+            f"nodes={overview.total_nodes}, "
+            f"elements={overview.total_elements}"
+        )
+    else:
+        ev_value = float(overview.total_nodes)
+        ev_unit = "nodes"
+        anchor = (
+            f"nodes={overview.total_nodes}, "
+            f"elements=unknown (inventory unavailable)"
+        )
+
+    ev = EvidenceItem(
+        evidence_id=_MODEL_OVERVIEW_EVIDENCE_ID,
+        evidence_type=EvidenceType.REFERENCE,
+        title="模型概览 (model overview)",
+        description=description,
+        data=ReferenceEvidence(
+            value=ev_value,
+            unit=ev_unit,
+            source_document="solver result file",
+            citation_anchor=anchor,
+        ),
+        derivation=None,
+        source="reader.mesh + SupportsElementInventory",
+        source_file=None,
+    )
+
+    section = _build_model_overview_section(overview)
+    return ev, section
+
+
+def _build_model_overview_section(overview: ModelOverview) -> ReportSection:
+    """Render the § 模型概览 section content.
+
+    Layout when inventory is available:
+
+    1. Summary line: ``节点数 / 单元数 N (按类型: 四面体 X, 壳 Y, ...)``.
+    2. One bullet per group label, sorted by count descending so the
+       dominant element family is visible first.
+    3. Citation footer: ``({_MODEL_OVERVIEW_EVIDENCE_ID})``.
+
+    When inventory is unavailable (capability absent or returned
+    ``None``), a single ``[需工程师确认] 无单元清单...`` line is
+    emitted instead of the breakdown, and the engineer signing the
+    DOCX must explicitly confirm the FE topology matches the model
+    they ran.
+    """
+    lines: list[str] = []
+
+    if not overview.has_inventory:
+        lines.append(
+            f"- 节点数 / Total nodes: **{overview.total_nodes}**  "
+            f"*({_MODEL_OVERVIEW_EVIDENCE_ID})*"
+        )
+        lines.append(
+            "- **[需工程师确认]** 无单元清单数据 — adapter does not "
+            "expose SupportsElementInventory (or reported the "
+            "underlying file did not include element data)."
+        )
+        return ReportSection(
+            title="模型概览 (Model overview)",
+            level=1,
+            content="\n".join(lines),
+        )
+
+    lines.append(
+        f"- 节点数 / Total nodes: **{overview.total_nodes}**  "
+        f"*({_MODEL_OVERVIEW_EVIDENCE_ID})*"
+    )
+    lines.append(
+        f"- 单元数 / Total elements: **{overview.total_elements}**  "
+        f"*({_MODEL_OVERVIEW_EVIDENCE_ID})*"
+    )
+
+    if overview.total_elements == 0:
+        # Capable adapter that confirmed zero elements — degenerate
+        # but valid (e.g. node-only mesh used for coordinate-frame
+        # checks). Distinguish from the "inventory unknown" branch
+        # above by NOT showing the [需工程师确认] flag.
+        return ReportSection(
+            title="模型概览 (Model overview)",
+            level=1,
+            content="\n".join(lines),
+        )
+
+    # Sort by count descending so the dominant family leads. Ties
+    # break by group-label sort order (already stable from
+    # ``summarize_model``).
+    sorted_groups = sorted(
+        overview.group_counts.items(), key=lambda kv: (-kv[1], kv[0])
+    )
+    group_summary = ", ".join(f"{g}: {c}" for g, c in sorted_groups)
+    lines.append(
+        f"- 按类型分布 / Distribution by family: {group_summary}  "
+        f"*({_MODEL_OVERVIEW_EVIDENCE_ID})*"
+    )
+
+    # If anything fell into GROUP_OTHER, surface the underlying
+    # solver-native types so the engineer can decide whether to
+    # extend ``ELEMENT_TYPE_GROUPS`` (W6e library) — silent bucketing
+    # of unfamiliar types into "其他" would mask a real category
+    # error in the FE deck.
+    if GROUP_OTHER in overview.group_counts:
+        other_types = sorted(
+            t
+            for t in overview.type_counts
+            if ELEMENT_TYPE_GROUPS.get(t, GROUP_OTHER) == GROUP_OTHER
+        )
+        if other_types:
+            lines.append(
+                f"- ℹ 其他 / GROUP_OTHER includes solver-native types: "
+                f"{', '.join(other_types)}  "
+                f"*({_MODEL_OVERVIEW_EVIDENCE_ID})*"
+            )
+
+    return ReportSection(
+        title="模型概览 (Model overview)",
+        level=1,
+        content="\n".join(lines),
+    )
 
 
 def _build_boundary_conditions_evidence_and_section(
