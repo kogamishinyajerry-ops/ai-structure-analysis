@@ -30,6 +30,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
 
@@ -37,10 +38,17 @@ import * as url from "node:url";
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const REPORT_KINDS = ["static", "lifting-lug", "pressure-vessel"] as const;
+const REPORT_KINDS = [
+  "static",
+  "lifting-lug",
+  "pressure-vessel",
+  "ballistic",
+] as const;
 type ReportKind = (typeof REPORT_KINDS)[number];
 
 interface RunReportRequest {
+  // .frd is required for static / lifting-lug / pressure-vessel; ignored
+  // for ballistic (which feeds OpenRadioss A-frames instead).
   frd: string;
   kind: ReportKind;
   output: string;
@@ -51,6 +59,10 @@ interface RunReportRequest {
   // W6a — built-in material code_grade (e.g. "Q345B"). Empty/undefined
   // means no § 材料属性 section in the DOCX.
   material?: string;
+  // ballistic only — directory containing OpenRadioss A-frames
+  // (<rootname>A001.gz, ...) and rootname prefix.
+  openradiossRoot?: string;
+  rootname?: string;
 }
 
 // Conservative whitelist for --material values. Only forward strings
@@ -59,6 +71,12 @@ interface RunReportRequest {
 // safe values, but main.ts is the trust boundary, so re-validate here.
 // Codex R1 LOW-style defense (cf. PR #90 R1 #3): never trust IPC payload.
 const MATERIAL_GRADE_RE = /^[A-Za-z0-9][A-Za-z0-9_\-./#+]{0,63}$/;
+
+// Whitelist for OpenRadioss --rootname values. Mirrors the upstream
+// convention of letters/digits/underscore/dash; refuses path separators
+// and shell metacharacters since this string ends up on the report-cli
+// argv vector (and via report-cli into the adapter's frame globber).
+const ROOTNAME_RE = /^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$/;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -208,6 +226,227 @@ ipcMain.handle("list-materials", async (): Promise<unknown[]> => {
   });
 });
 
+// --- IPC: ballistic / OpenRadioss helpers ----------------------------------
+
+/**
+ * Guarded ``evt.sender.send`` that no-ops when the renderer's
+ * ``webContents`` has been destroyed (window closed, navigated, etc.).
+ *
+ * Codex R2 MEDIUM (main.ts:353): the bake handler streams events
+ * across multiple async callbacks long after the IPC invoke handler
+ * returned. If the user closes the window mid-bake, a later ``send``
+ * on a destroyed ``webContents`` throws an unhandled exception in
+ * the main process. This helper centralizes the guard.
+ */
+function _safeSend(
+  evt: Electron.IpcMainInvokeEvent,
+  channel: string,
+  payload: unknown,
+): void {
+  if (!evt.sender.isDestroyed()) {
+    evt.sender.send(channel, payload);
+  }
+}
+
+/**
+ * Native folder picker for the OpenRadioss --openradioss-root argument.
+ * Returns the absolute path of the chosen directory, or null if the
+ * user canceled. The renderer never touches fs directly — main.ts is
+ * the trust boundary.
+ */
+ipcMain.handle("open-openradioss-root", async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "Select OpenRadioss output directory (containing A###.gz frames)",
+    properties: ["openDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+/**
+ * Resolve the bundled GS-101-demo-unsigned data dir if discoverable.
+ *
+ * Returns the absolute path to ``golden_samples/GS-101-demo-unsigned/data/``
+ * (which holds the upstream-derived ``model_00_0000.rad`` /
+ * ``model_00_0001.rad`` deck files), or null on packaged builds without
+ * the bundled fixture. The renderer hides the GS-101 demo button on null.
+ *
+ * NOTE: this returns the *deck* dir, not a baked-frames dir. The bake
+ * step (see ``bake-gs101-demo`` below) copies these decks to a scratch
+ * directory and runs the OpenRadioss starter+engine inside Docker; the
+ * resulting A###.gz frames land in the scratch dir, not in golden_samples
+ * (per ADR-011 §HF1.7 forbidden-zone protection).
+ */
+/**
+ * Locate the bundled GS-101-demo-unsigned deck dir on disk by probing
+ * a fixed list of candidates relative to the Electron bundle. This is
+ * the *only* function allowed to mint a deck path used by the bake
+ * handler — see ``_resolveDemoGs101Deck`` consumers below.
+ */
+function _resolveDemoGs101Deck(): string | null {
+  const rel = path.join("golden_samples", "GS-101-demo-unsigned", "data");
+  const candidates = [
+    path.resolve(__dirname, "..", "..", rel),
+    path.resolve(process.cwd(), rel),
+    path.resolve(process.cwd(), "..", rel),
+  ];
+  for (const candidate of candidates) {
+    const starter = path.join(candidate, "model_00_0000.rad");
+    const engine = path.join(candidate, "model_00_0001.rad");
+    if (fs.existsSync(starter) && fs.existsSync(engine)) return candidate;
+  }
+  return null;
+}
+
+ipcMain.handle("get-demo-gs101-deck", () => _resolveDemoGs101Deck());
+
+/**
+ * Bake the GS-101-demo-unsigned deck via the ``openradioss:arm64`` Docker
+ * image. Produces the A001.gz..A011.gz animation frames in a scratch
+ * directory under ``os.tmpdir()/gs101-demo-bake-<timestamp>/`` so the
+ * golden_samples/ tree is not modified (ADR-011 §HF1.7 forbidden-zone).
+ *
+ * Streams docker stdout/stderr back to the renderer over the
+ * ``bake:stdout`` / ``bake:stderr`` events. On success, returns the
+ * scratch path so the renderer can pre-fill --openradioss-root.
+ *
+ * NOTE: this assumes the engineer has already built the
+ * ``openradioss:arm64`` image per ``tools/openradioss/README.md``.
+ * If the image is missing, docker exits non-zero and the renderer
+ * surfaces the stderr to the user.
+ */
+ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
+  // Trust boundary: the renderer is not allowed to nominate the deck
+  // dir. We re-resolve it on the main side from the same fixed
+  // candidate list as ``get-demo-gs101-deck`` so a compromised
+  // renderer can't redirect docker at an attacker-controlled path
+  // (the bake handler will end up reading and copying whatever lives
+  // under that path into a scratch dir).
+  const deckDir = _resolveDemoGs101Deck();
+  const violations: string[] = [];
+  if (!deckDir) {
+    violations.push("GS-101-demo-unsigned deck not found in bundled fixtures.");
+  } else if (!fs.existsSync(path.join(deckDir, "model_00_0000.rad"))) {
+    violations.push(`Missing model_00_0000.rad in ${deckDir}`);
+  } else if (!fs.existsSync(path.join(deckDir, "model_00_0001.rad"))) {
+    violations.push(`Missing model_00_0001.rad in ${deckDir}`);
+  }
+  if (violations.length > 0 || !deckDir) {
+    return { ok: false as const, violations };
+  }
+  const resolvedDeckDir: string = deckDir;
+
+  // Stage decks into a scratch dir under the OS temp root so docker can
+  // mount it read-write without touching golden_samples/.
+  //
+  // Use ``fs.mkdtempSync`` (not ``mkdirSync(predictable_path, recursive:
+  // true)``) to atomically create a uniquely-named dir owned by the
+  // current user — closes the same-user TOCTOU window where another
+  // local process could pre-create or symlink the predictable
+  // ``gs101-demo-bake-<timestamp>`` path before docker mounts it
+  // (Codex R1 LOW).
+  let scratch: string;
+  try {
+    scratch = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-demo-bake-"));
+  } catch (err) {
+    return {
+      ok: false as const,
+      violations: [`Failed to allocate bake scratch dir: ${(err as Error).message}`],
+    };
+  }
+  try {
+    fs.copyFileSync(
+      path.join(resolvedDeckDir, "model_00_0000.rad"),
+      path.join(scratch, "model_00_0000.rad"),
+    );
+    fs.copyFileSync(
+      path.join(resolvedDeckDir, "model_00_0001.rad"),
+      path.join(scratch, "model_00_0001.rad"),
+    );
+  } catch (err) {
+    // Codex R2 LOW: clean up the freshly-allocated scratch dir on
+    // partial-stage failure so we don't leak under os.tmpdir().
+    try {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    } catch {
+      // Best-effort; if rmSync also fails (permissions, weird state)
+      // we'd rather surface the original copy error than mask it.
+    }
+    return {
+      ok: false as const,
+      violations: [`Failed to stage decks: ${(err as Error).message}`],
+    };
+  }
+
+  _safeSend(
+    evt,
+    "bake:stdout",
+    `[bake] staged decks into ${scratch}\n[bake] launching docker run openradioss:arm64 …\n`,
+  );
+
+  const dockerArgs = [
+    "run", "--rm",
+    "-v", `${scratch}:/work`,
+    "openradioss:arm64",
+    "bash", "-c",
+    "cd /work && starter_linuxa64 -i model_00_0000.rad -np 1 && " +
+      "engine_linuxa64 -i model_00_0001.rad",
+  ];
+  const child = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
+  child.stdout.on("data", (chunk: Buffer) => {
+    _safeSend(evt, "bake:stdout", chunk.toString("utf-8"));
+  });
+  child.stderr.on("data", (chunk: Buffer) => {
+    _safeSend(evt, "bake:stderr", chunk.toString("utf-8"));
+  });
+
+  return new Promise<{
+    ok: boolean;
+    exitCode: number;
+    scratchDir: string;
+    rootname: string;
+    violations?: string[];
+  }>((resolve) => {
+    child.on("close", (code) => {
+      const exitCode = code ?? -1;
+      _safeSend(evt, "bake:exit", exitCode);
+      resolve({
+        ok: exitCode === 0,
+        exitCode,
+        scratchDir: scratch,
+        rootname: "model_00",
+      });
+    });
+    child.on("error", (err) => {
+      _safeSend(
+        evt,
+        "bake:stderr",
+        `failed to spawn docker: ${err.message}\n` +
+          `Hint: build the image first per tools/openradioss/README.md\n`,
+      );
+      _safeSend(evt, "bake:exit", -1);
+      // Codex R2 LOW: docker never started, so no useful artifacts
+      // landed in scratch — clean it up rather than leak under
+      // os.tmpdir(). On a successful or partial-failure docker run
+      // we KEEP the scratch dir intact so the engineer can inspect
+      // engine logs / diagnose. Only the "spawn never happened"
+      // path is purely a leak.
+      try {
+        fs.rmSync(scratch, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup.
+      }
+      resolve({
+        ok: false,
+        exitCode: -1,
+        scratchDir: scratch,
+        rootname: "model_00",
+        violations: [`docker spawn failed: ${err.message}`],
+      });
+    });
+  });
+});
+
 // --- IPC: report-cli subprocess --------------------------------------------
 
 ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunReportRequest) => {
@@ -215,28 +454,52 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   // streaming subprocess flow. Each violation surfaces as one
   // structured error the renderer can render in the violations panel.
   const violations: string[] = [];
-  if (!req.frd) violations.push("No .frd file selected.");
   if (!REPORT_KINDS.includes(req.kind)) {
     violations.push(`Unknown report kind: ${String(req.kind)}`);
   }
   if (!req.output) violations.push("No output .docx path chosen.");
-  if (req.kind === "pressure-vessel") {
-    if (!req.sclNodes?.trim()) {
-      violations.push("--scl-nodes required for pressure-vessel.");
+  if (req.kind === "ballistic") {
+    if (!req.openradiossRoot?.trim()) {
+      violations.push("--openradioss-root required for ballistic.");
     }
-    if (!req.sclDistances?.trim()) {
-      violations.push("--scl-distances required for pressure-vessel.");
+    if (!req.rootname?.trim()) {
+      violations.push("--rootname required for ballistic.");
+    } else if (!ROOTNAME_RE.test(req.rootname.trim())) {
+      violations.push(
+        `Invalid --rootname: ${req.rootname.slice(0, 60)} ` +
+          `(letters/digits/_- only, ≤64 chars).`,
+      );
+    }
+  } else {
+    if (!req.frd) violations.push("No .frd file selected.");
+    if (req.kind === "pressure-vessel") {
+      if (!req.sclNodes?.trim()) {
+        violations.push("--scl-nodes required for pressure-vessel.");
+      }
+      if (!req.sclDistances?.trim()) {
+        violations.push("--scl-distances required for pressure-vessel.");
+      }
     }
   }
   if (violations.length > 0) {
     return { ok: false as const, violations };
   }
 
-  const args = [
-    "--frd", req.frd,
-    "--kind", req.kind,
-    "--output", req.output,
-  ];
+  const args = ["--kind", req.kind, "--output", req.output];
+  if (req.kind === "ballistic") {
+    args.push("--openradioss-root", req.openradiossRoot!.trim());
+    args.push("--rootname", req.rootname!.trim());
+    // The CLI's W5f figure renderer is CalculiX-FRD-only and
+    // ``cli.py`` hard-errors on ``--kind=ballistic`` with figures
+    // enabled (services/report/cli.py:612-622). The default of
+    // ``--figures`` is True, so we must explicitly opt out — every
+    // UI-driven ballistic run would otherwise fail at CLI validation
+    // before any A-frame is read. The DOCX still embeds the W7c
+    // animation montage for ballistic visualization. (Codex R1 HIGH.)
+    args.push("--no-figures");
+  } else {
+    args.push("--frd", req.frd);
+  }
   if (req.kind === "pressure-vessel") {
     args.push("--scl-nodes", req.sclNodes!);
     args.push("--scl-distances", req.sclDistances!);
@@ -272,8 +535,14 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   // bundling Python is the customer-demo scope (W5+, separate PR).
   const child = spawn("report-cli", args, { stdio: ["ignore", "pipe", "pipe"] });
 
+  // Codex R3 MEDIUM: route every send through ``_safeSend`` so a
+  // window-close mid-report does not throw on a destroyed
+  // webContents (R2 fixed this for bake; R3 closes the inconsistency
+  // for run-report. On macOS the app stays alive after the only
+  // window closes — see app.on("window-all-closed") above — so this
+  // is a real lifecycle bug, not a theoretical one.)
   child.stdout.on("data", (chunk: Buffer) => {
-    evt.sender.send("report:stdout", chunk.toString("utf-8"));
+    _safeSend(evt, "report:stdout", chunk.toString("utf-8"));
   });
   // Buffer stderr by line so a "figure: <path>" announcement isn't
   // split across two chunks. The CLI flushes after each line so the
@@ -282,7 +551,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   let stderrBuf = "";
   child.stderr.on("data", (chunk: Buffer) => {
     const text = chunk.toString("utf-8");
-    evt.sender.send("report:stderr", text);
+    _safeSend(evt, "report:stderr", text);
     stderrBuf += text;
     let nl: number;
     while ((nl = stderrBuf.indexOf("\n")) >= 0) {
@@ -298,7 +567,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
           candidate.toLowerCase().endsWith(".png") &&
           insideFigsDir
         ) {
-          evt.sender.send("report:figure", candidate);
+          _safeSend(evt, "report:figure", candidate);
         }
       }
     }
@@ -307,11 +576,12 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
   return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {
     child.on("close", (code) => {
       const exitCode = code ?? -1;
-      evt.sender.send("report:exit", exitCode);
+      _safeSend(evt, "report:exit", exitCode);
       resolve({ ok: exitCode === 0, exitCode, outputPath: req.output });
     });
     child.on("error", (err) => {
-      evt.sender.send(
+      _safeSend(
+        evt,
         "report:stderr",
         `failed to spawn report-cli: ${err.message}\n` +
           `Hint: pip install -e . from the repo root, then make sure ` +
@@ -320,7 +590,7 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
           `from the same shell that launches this app to verify the ` +
           `install is healthy.\n`
       );
-      evt.sender.send("report:exit", -1);
+      _safeSend(evt, "report:exit", -1);
       resolve({ ok: false, exitCode: -1, outputPath: req.output });
     });
   });

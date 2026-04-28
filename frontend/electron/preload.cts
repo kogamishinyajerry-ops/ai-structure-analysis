@@ -16,7 +16,7 @@
 
 import { contextBridge, ipcRenderer } from "electron";
 
-type ReportKind = "static" | "lifting-lug" | "pressure-vessel";
+type ReportKind = "static" | "lifting-lug" | "pressure-vessel" | "ballistic";
 
 interface RunReportRequest {
   frd: string;
@@ -26,6 +26,20 @@ interface RunReportRequest {
   sclDistances?: string;
   resample?: number | null;
   material?: string;
+  openradiossRoot?: string;
+  rootname?: string;
+}
+
+interface BakeGs101Result {
+  ok: boolean;
+  // Optional because early-failure paths (missing deck, mkdtempSync /
+  // copyFileSync errors) return before docker spawns — there is no
+  // process exit code to report. The renderer renders these as
+  // "bake refused (input violations)".
+  exitCode?: number;
+  scratchDir?: string;
+  rootname?: string;
+  violations?: string[];
 }
 
 interface MaterialOption {
@@ -63,6 +77,39 @@ contextBridge.exposeInMainWorld("api", {
   // else null (the renderer hides the demo button on null).
   getDemoFrd: (): Promise<string | null> =>
     ipcRenderer.invoke("get-demo-frd"),
+
+  // Native folder picker for --openradioss-root (ballistic kind).
+  openOpenradiossRoot: (): Promise<string | null> =>
+    ipcRenderer.invoke("open-openradioss-root"),
+
+  // Returns the bundled GS-101-demo-unsigned deck dir if discoverable,
+  // else null. The renderer hides the GS-101 bake button on null.
+  getDemoGs101Deck: (): Promise<string | null> =>
+    ipcRenderer.invoke("get-demo-gs101-deck"),
+
+  // Run the OpenRadioss starter+engine inside the openradioss:arm64
+  // Docker image against the GS-101-demo-unsigned deck. The deck path
+  // is resolved by the main process from a fixed candidate list — the
+  // renderer cannot redirect the bake at an attacker-controlled dir.
+  // Resolves with the scratch dir holding the baked A###.gz frames.
+  bakeGs101Demo: (): Promise<BakeGs101Result> =>
+    ipcRenderer.invoke("bake-gs101-demo"),
+
+  // Streaming events from the docker bake subprocess.
+  onBakeStdout: (cb: (text: string) => void): (() => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on("bake:stdout", handler);
+    return () => ipcRenderer.removeListener("bake:stdout", handler);
+  },
+  onBakeStderr: (cb: (text: string) => void): (() => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on("bake:stderr", handler);
+    return () => ipcRenderer.removeListener("bake:stderr", handler);
+  },
+  // No onBakeExit — the bake handler resolves the IPC promise with
+  // {ok, exitCode, ...} so the renderer reads exit through the await,
+  // not a separate event subscription. The "bake:exit" channel is
+  // still emitted by main.ts in case a future feature needs it.
 
   // W6a / Codex R1 PR #91 LOW: single source of truth is
   // backend/app/data/materials.json. The renderer pulls the dropdown

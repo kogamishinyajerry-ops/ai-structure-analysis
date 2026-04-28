@@ -32,6 +32,7 @@
             <option value="static">static — equipment foundation</option>
             <option value="lifting-lug">lifting-lug</option>
             <option value="pressure-vessel">pressure-vessel</option>
+            <option value="ballistic">ballistic — bullet vs plate (OpenRadioss)</option>
           </select>
         </div>
 
@@ -57,6 +58,36 @@
             <button id="output-pick" type="button">Choose…</button>
           </div>
         </div>
+
+        <fieldset class="ballistic-only hidden" id="ballistic-fieldset">
+          <legend>Ballistic — OpenRadioss frames</legend>
+          <div class="field">
+            <label for="openradioss-root">--openradioss-root (folder with A###.gz frames)</label>
+            <div class="row">
+              <input id="openradioss-root" type="text" readonly placeholder="—" />
+              <button id="openradioss-root-pick" type="button">Choose…</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="rootname">--rootname (frame prefix, e.g. <code>model_00</code>)</label>
+            <input id="rootname" type="text" placeholder="e.g. model_00" />
+            <span class="hint">
+              The reader globs <code>&lt;root&gt;/&lt;rootname&gt;A*.gz</code>. Letters / digits / _ / -
+              only. For the GS-101 demo this is <code>model_00</code>.
+            </span>
+          </div>
+          <div class="field">
+            <button id="bake-gs101" type="button" class="secondary" hidden>
+              Bake GS-101 demo (docker)
+            </button>
+            <span class="hint">
+              Runs <code>openradioss:arm64</code> against the bundled
+              GS-101-demo-unsigned deck and pre-fills the inputs above.
+              Requires the docker image built per
+              <code>tools/openradioss/README.md</code>.
+            </span>
+          </div>
+        </fieldset>
 
         <fieldset class="pv-only" id="pv-fieldset">
           <legend>Pressure-vessel SCL inputs</legend>
