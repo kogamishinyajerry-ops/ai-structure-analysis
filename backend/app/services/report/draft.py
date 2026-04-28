@@ -1414,9 +1414,14 @@ def generate_ballistic_penetration_summary(
                 "*(EV-BALLISTIC-PERFORATION-EVENT)*"
             )
         else:
+            # No erosion observed → cite the EV-BALLISTIC-EROSION-FINAL
+            # evidence already added to the bundle (final_eroded == 0).
+            # ADR-012 / RFC-001 §2.4 rule 1: every claim must reference
+            # an EV-* evidence_id, including a "did not happen" claim.
             section_lines.append(
                 "- 穿透事件 (Perforation event): "
-                "**未观察到 / no perforation observed**"
+                "**未观察到 / no perforation observed**  "
+                "*(EV-BALLISTIC-EROSION-FINAL)*"
             )
 
     summary = ReportSection(

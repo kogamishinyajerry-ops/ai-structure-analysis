@@ -223,7 +223,20 @@ def test_erosion_reader_no_perforation_records_observation_text() -> None:
     ev_ids = {ev.evidence_id for ev in bundle.evidence_items}
     assert "EV-BALLISTIC-EROSION-FINAL" in ev_ids
     assert "EV-BALLISTIC-PERFORATION-EVENT" not in ev_ids
-    assert "no perforation observed" in report.sections[0].content
+    section_content = report.sections[0].content
+    assert "no perforation observed" in section_content
+    # ADR-012 / RFC-001 §2.4 rule 1: every claim line must reference an
+    # EV-* evidence_id, including the "did not happen" claim. Pre-fix
+    # the no-perforation line emitted no cite and the DOCX exporter
+    # refused the report. Verify the perforation-event line ends with
+    # the EV-BALLISTIC-EROSION-FINAL cite (the same evidence already
+    # used by the eroded-facets-final claim).
+    perforation_line = next(
+        line
+        for line in section_content.splitlines()
+        if "Perforation event" in line
+    )
+    assert "(EV-BALLISTIC-EROSION-FINAL)" in perforation_line
     # GS-100-shaped baseline: 0 eroded at final.
     eroded_ev = next(
         ev for ev in bundle.evidence_items
