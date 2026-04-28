@@ -207,7 +207,10 @@ def test_report_run_emits_progress_stages_to_stderr(
     # unicode arrow — the Chinese-locale Windows (CP936) wedge target
     # would otherwise see mojibake; see cli._detail().
     assert "      -> opened (unit_system=si-mm)" in captured.err
-    assert "      -> 2 evidence items, template=equipment_foundation_static" in captured.err
+    # W6e.2 added EV-MODEL-OVERVIEW-001 unconditionally on top of the
+    # existing EV-DISP-MAX + EV-VM-MAX; static reports now ship with
+    # 3 evidence items.
+    assert "      -> 3 evidence items, template=equipment_foundation_static" in captured.err
 
     # stdout still single-line summary — engineers script around this.
     stdout_lines = [ln for ln in captured.out.splitlines() if ln.strip()]
