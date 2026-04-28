@@ -233,6 +233,152 @@ def test_summary_refuses_node_count_coord_count_mismatch() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bucket 3b — Codex R1 (PR #103) protocol-spoof refusals
+# ---------------------------------------------------------------------------
+
+
+def test_summary_handles_capability_present_empty_inventory() -> None:
+    """Codex R1 MEDIUM: capability-present-empty ``{}`` is documented
+    but was never tested. Distinguishes from ``None`` (capability
+    absent) — the renderer must show "0 elements" rather than
+    [需工程师确认]."""
+    rdr = _SyntheticReaderWithElements(
+        node_ids=[1, 2],
+        coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+        elements_by_type={},
+    )
+    mo = summarize_model_overview(rdr)  # type: ignore[arg-type]
+    assert mo.element_inventory is not None
+    assert dict(mo.element_inventory) == {}
+    assert mo.element_count == 0
+
+
+class _BadAritySpoofReader(_SyntheticReader):
+    """Codex R1 HIGH-a: ``element_inventory(required_arg)`` passes
+    ``isinstance(SupportsElementInventory)`` (only checks presence)
+    but raises TypeError at call time. The validator must surface
+    a clean ModelOverviewError with the adapter class name."""
+
+    def element_inventory(self, required_bucket: str) -> dict[str, int]:  # type: ignore[override]
+        return {required_bucket: 1}
+
+
+def test_summary_refuses_protocol_spoof_with_required_arg() -> None:
+    rdr = _BadAritySpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    assert isinstance(rdr, SupportsElementInventory)  # protocol passes ✗
+    with pytest.raises(ModelOverviewError, match="zero-arg method"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _BadKeyTypeSpoofReader(_SyntheticReader):
+    """Codex R1 HIGH-b1: keys must be canonical element-type strings."""
+
+    def element_inventory(self) -> dict:  # type: ignore[override]
+        return {1: 5}  # int key
+
+
+def test_summary_refuses_protocol_spoof_with_int_key() -> None:
+    rdr = _BadKeyTypeSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="keys must be strings"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _FloatCountSpoofReader(_SyntheticReader):
+    """Codex R1 HIGH-b2: counts must be int. Float would corrupt
+    ``element_count = 2.5`` in the audit trail."""
+
+    def element_inventory(self) -> dict:  # type: ignore[override]
+        return {"HEX8": 2.5}
+
+
+def test_summary_refuses_protocol_spoof_with_float_count() -> None:
+    rdr = _FloatCountSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="must be a real int"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _BoolCountSpoofReader(_SyntheticReader):
+    """``bool`` ⊂ ``int`` would silently coerce ``True``/``False`` to
+    1/0 — explicit guard required."""
+
+    def element_inventory(self) -> dict:  # type: ignore[override]
+        return {"HEX8": True}
+
+
+def test_summary_refuses_protocol_spoof_with_bool_count() -> None:
+    rdr = _BoolCountSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="must be a real int"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _NegativeCountSpoofReader(_SyntheticReader):
+    def element_inventory(self) -> dict[str, int]:
+        return {"HEX8": -3}
+
+
+def test_summary_refuses_negative_count() -> None:
+    rdr = _NegativeCountSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="non-negative"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _NonMappingSpoofReader(_SyntheticReader):
+    """Returning a list instead of Mapping passes the runtime_checkable
+    method-presence check but breaks the contract."""
+
+    def element_inventory(self) -> list:  # type: ignore[override]
+        return [("HEX8", 5)]
+
+
+def test_summary_refuses_non_mapping_return() -> None:
+    rdr = _NonMappingSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="must return a Mapping"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+class _MutableCount:
+    """Stand-in for an adapter that wraps counts in a mutable
+    object. Validates that the normaliser refuses non-int-typed
+    values rather than letting the wrapper survive the snapshot
+    and corrupt it later (Codex R1 HIGH-c POC)."""
+
+    def __init__(self, n: int) -> None:
+        self.n = n
+
+    def __index__(self) -> int:
+        return self.n
+
+
+class _MutableCountSpoofReader(_SyntheticReader):
+    def element_inventory(self) -> dict:  # type: ignore[override]
+        return {"HEX8": _MutableCount(5)}
+
+
+def test_summary_refuses_mutable_count_wrapper() -> None:
+    """Even ``__index__``-supporting wrappers are rejected — the
+    contract is ``int`` exactly. A mutable wrapper that survived
+    would let an adversary mutate the published snapshot via the
+    wrapper reference."""
+    rdr = _MutableCountSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(ModelOverviewError, match="must be a real int"):
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
 # Bucket 4 — characteristic-length math
 # ---------------------------------------------------------------------------
 

@@ -27,10 +27,11 @@ engineer's sanity check.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Optional
+from typing import Any, Final, Optional
 
 import numpy as np
 from app.core.types import (
@@ -54,6 +55,99 @@ _LENGTH_UNIT_BY_SYSTEM: Final[Mapping[UnitSystem, str]] = MappingProxyType(
         UnitSystem.UNKNOWN: "unknown",
     }
 )
+
+
+def _invoke_element_inventory(reader: object) -> Any:
+    """Call ``reader.element_inventory()`` after checking arity.
+
+    ``runtime_checkable`` Protocols only verify method PRESENCE, not
+    signature. A reader with ``element_inventory(self, bucket)`` would
+    pass ``isinstance(SupportsElementInventory)`` and raise an
+    uncaught TypeError here. Validate at the call boundary so the
+    Layer-4 service surfaces a clean ``ModelOverviewError`` with the
+    misimplementing class name in the message.
+    """
+    method = getattr(reader, "element_inventory", None)
+    if not callable(method):
+        raise ModelOverviewError(
+            f"reader of type {type(reader).__name__!r} satisfies "
+            f"SupportsElementInventory protocol but element_inventory "
+            f"is not callable"
+        )
+    try:
+        sig = inspect.signature(method)
+    except (TypeError, ValueError):
+        # Built-in / C-implemented method — trust it and let the call
+        # itself surface signature mismatches as TypeError.
+        return method()
+    # Allow *args / **kwargs (the protocol contract leaves room for
+    # future kwargs); reject only methods with one or more REQUIRED
+    # positional / keyword parameters.
+    required = [
+        p
+        for p in sig.parameters.values()
+        if p.default is inspect.Parameter.empty
+        and p.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    ]
+    if required:
+        raise ModelOverviewError(
+            f"reader of type {type(reader).__name__!r} has "
+            f"element_inventory({', '.join(p.name for p in required)}, "
+            f"...) — the SupportsElementInventory protocol requires a "
+            f"zero-arg method. Adapter contract violation."
+        )
+    return method()
+
+
+def _normalise_element_inventory(raw: Any) -> dict[str, int]:
+    """Validate-and-normalise a raw ``element_inventory()`` return.
+
+    Codex R1 PR #103 demonstrated three audit-corruption paths:
+    non-string keys, float / bool counts, and mutable count objects
+    that survive ``dict(...)``. Reject all three at the boundary;
+    accept only ``Mapping[str, int]`` with non-negative counts.
+    Bool is rejected explicitly even though ``bool`` ⊂ ``int``.
+    """
+    if not isinstance(raw, Mapping):
+        raise ModelOverviewError(
+            f"element_inventory() must return a Mapping, got "
+            f"{type(raw).__name__}"
+        )
+    normalised: dict[str, int] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str):
+            raise ModelOverviewError(
+                f"element_inventory() keys must be strings (canonical "
+                f"element-type labels), got {type(key).__name__} for "
+                f"key {key!r}"
+            )
+        if not key:
+            raise ModelOverviewError(
+                "element_inventory() keys must be non-empty strings"
+            )
+        # bool first — bool ⊂ int silently coerces ``True``/``False`` to
+        # 1/0, hiding adapter bugs in the audit count.
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ModelOverviewError(
+                f"element_inventory()[{key!r}] must be a real int "
+                f"(non-negative element count), got {value!r} "
+                f"({type(value).__name__})"
+            )
+        if value < 0:
+            raise ModelOverviewError(
+                f"element_inventory()[{key!r}] must be non-negative, "
+                f"got {value!r}"
+            )
+        # Coerce to plain Python int (defensively handles numpy
+        # int subtypes that satisfy ``isinstance(int)``); the
+        # snapshot is ``dict[str, int]`` after this.
+        normalised[key] = int(value)
+    return normalised
 
 
 class ModelOverviewError(ValueError):
@@ -181,15 +275,25 @@ def summarize_model_overview(reader: ReaderHandle) -> ModelOverview:
     # Element inventory is OPTIONAL per the protocol design; a reader
     # that doesn't implement ``SupportsElementInventory`` produces
     # ``None`` here, and the renderer flags it with [需工程师确认].
+    #
+    # Codex R1 PR #103 HIGH: ``runtime_checkable`` only proves method
+    # PRESENCE, not signature or return shape. Three demonstrated
+    # protocol-spoof paths:
+    #   a. wrong arity → ``element_inventory(required_bucket)`` passes
+    #      isinstance, raises TypeError at call time
+    #   b. wrong types → ``{1: 2.5}`` passes silently, produces
+    #      ``element_count = 2.5`` (audit corruption)
+    #   c. mutable values → ``{"HEX8": MutableCount(5)}`` survives
+    #      ``dict(raw_inventory)`` and can mutate the snapshot
+    # Fix: validate the bound method is zero-arg, require a real
+    # Mapping, normalise to ``dict[str, int]`` with non-negative ints
+    # rejected for bool/non-finite, then wrap in MappingProxyType.
     element_inventory: Optional[Mapping[str, int]]
     element_count: Optional[int]
     if isinstance(reader, SupportsElementInventory):
-        raw_inventory = reader.element_inventory()
-        # Defensive copy + freeze: the adapter promised a fresh
-        # mapping, but the dataclass holds the canonical view, so
-        # we wrap explicitly. Iteration order from the adapter is
-        # preserved (Python dicts are ordered since 3.7).
-        element_inventory = MappingProxyType(dict(raw_inventory))
+        raw_inventory = _invoke_element_inventory(reader)
+        normalised = _normalise_element_inventory(raw_inventory)
+        element_inventory = MappingProxyType(normalised)
         element_count = sum(element_inventory.values())
     else:
         element_inventory = None
