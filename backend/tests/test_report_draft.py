@@ -1350,11 +1350,18 @@ def test_w6d2_bc_section_coexists_with_w6c2_verdict_sections(
         code="GB",
         bc_yaml_path=p,
     )
-    assert len(report.sections) == 4
-    titles = [s.title for s in report.sections]
-    assert any(t.startswith("许用应力") for t in titles)
-    assert any(t.startswith("评定结论") for t in titles)
-    assert any(t.startswith("边界条件") for t in titles)
+    # Codex R1 PR #102 MEDIUM: pin the exact ordered sequence + level
+    # contract, not just membership. Order matters because the DOCX
+    # renderer iterates sections sequentially; level matters because
+    # 许用应力 / 评定结论 are sub-sections of the max-field summary
+    # while 边界条件 is its own top-level chapter.
+    sequence = [(s.title, s.level) for s in report.sections]
+    assert sequence == [
+        ("结构强度摘要 (Static-strength summary)", 1),
+        ("许用应力 (Allowable stress)", 2),
+        ("评定结论 (Strength verdict)", 2),
+        ("边界条件 (Boundary conditions)", 1),
+    ]
 
     ids = {item.evidence_id for item in bundle.evidence_items}
     assert {"EV-VM-MAX", "EV-ALLOWABLE-001", "EV-VERDICT-001", "EV-BC-001"} <= ids
