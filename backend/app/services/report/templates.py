@@ -56,6 +56,7 @@ __all__ = [
     "EQUIPMENT_FOUNDATION_STATIC",
     "LIFTING_LUG",
     "PRESSURE_VESSEL_LOCAL_STRESS",
+    "BALLISTIC_PENETRATION_SUMMARY",
     "get_template",
     "supported_template_ids",
     "validate_report",
@@ -172,12 +173,36 @@ PRESSURE_VESSEL_LOCAL_STRESS = TemplateSpec(
 )
 
 
+BALLISTIC_PENETRATION_SUMMARY = TemplateSpec(
+    template_id="ballistic_penetration_summary",
+    name="弹道穿透时程摘要 / Ballistic-penetration time-history summary",
+    description=(
+        "Multi-state report for explicit-dynamics impact / penetration "
+        "runs. Emits the run duration, the peak nodal displacement across "
+        "the time axis, the eroded element count (when the adapter "
+        "supports element deletion — OpenRadioss does, CalculiX does "
+        "not), and a perforation-event step when erosion was actually "
+        "observed. The signing engineer reviews the time-history table "
+        "+ embedded manifest against the design-load case in the "
+        "structural-strength file."
+    ),
+    required_sections=(
+        SectionRequirement(
+            title="弹道穿透时程摘要 (Ballistic-penetration time-history summary)",
+            level=1,
+            minimum_evidence_citations=2,
+        ),
+    ),
+)
+
+
 _REGISTRY: Dict[str, TemplateSpec] = {
     t.template_id: t
     for t in (
         EQUIPMENT_FOUNDATION_STATIC,
         LIFTING_LUG,
         PRESSURE_VESSEL_LOCAL_STRESS,
+        BALLISTIC_PENETRATION_SUMMARY,
     )
 }
 
