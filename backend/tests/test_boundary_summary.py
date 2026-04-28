@@ -309,6 +309,35 @@ def test_loader_refuses_whitespace_only_target(tmp_path: Path) -> None:
         load_boundary_conditions_yaml(p)
 
 
+def test_loader_refuses_post_strip_component_key_collision(tmp_path: Path) -> None:
+    """Codex R2 PR #101 HIGH (regression in R1 fix): stripping
+    component keys without a collision check silently overwrites
+    the earlier value when two keys normalise to the same identifier.
+    POC: ``fx: 1.0`` then ``" fx ": 2.0`` previously loaded as
+    ``{'fx': 2.0}``. Refuse loudly — same class as the BC-name
+    collision rule.
+
+    YAML mappings preserve insertion order under PyYAML, so this
+    test produces a deterministic ``fx`` first, ``" fx "`` second
+    sequence the loader sees.
+    """
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: collide
+            kind: force
+            target: NSET=x
+            components:
+              fx: 1.0
+              " fx ": 2.0
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="duplicate key 'fx'"):
+        load_boundary_conditions_yaml(p)
+
+
 def test_loader_refuses_whitespace_only_component_key(tmp_path: Path) -> None:
     p = _write_yaml(
         tmp_path,

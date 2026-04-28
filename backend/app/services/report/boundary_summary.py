@@ -280,6 +280,7 @@ def _validate_bc_dict(idx: int, raw: Any) -> _ValidatedBC:
             f"bc[{idx}].components must be a non-empty mapping, got {comps!r}"
         )
     coerced_components: dict[str, float] = {}
+    seen_component_keys: set[str] = set()
     for ck, cv in comps.items():
         if not isinstance(ck, str):
             raise BCSummaryError(
@@ -290,6 +291,18 @@ def _validate_bc_dict(idx: int, raw: Any) -> _ValidatedBC:
             raise BCSummaryError(
                 f"bc[{idx}].components has empty / whitespace-only key {ck!r}"
             )
+        # Codex R2 PR #101 HIGH: stripping a component key without
+        # checking for post-strip collisions silently overwrites the
+        # earlier value (``fx: 1.0`` then ``" fx ": 2.0`` would land
+        # as ``{'fx': 2.0}``). Refuse loudly — same class as the
+        # name-collision rule.
+        if ck_stripped in seen_component_keys:
+            raise BCSummaryError(
+                f"bc[{idx}].components: duplicate key {ck_stripped!r} "
+                f"after stripping whitespace; YAML had multiple keys "
+                f"that normalised to the same identifier"
+            )
+        seen_component_keys.add(ck_stripped)
         coerced_components[ck_stripped] = _check_finite_component(idx, ck_stripped, cv)
 
     return _ValidatedBC(
