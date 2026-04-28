@@ -81,3 +81,47 @@ class SupportsElementDeletion(Protocol):
     """
 
     def deleted_facets_for(self, step_id: int) -> "npt.NDArray[np.int8]": ...
+
+
+@runtime_checkable
+class SupportsElementInventory(Protocol):
+    """Optional Layer-2 capability: per-element type strings (RFC-001 W6e).
+
+    Adapters that can enumerate element types (CalculiX FRD's
+    ``-3``-block ``element_type`` field, OpenRadioss A-frame mesh
+    metadata, Abaqus .inp ``*ELEMENT, TYPE=`` keywords, etc.)
+    implement this. The W6e ``model_overview`` library feature-
+    detects it via ``isinstance(reader, SupportsElementInventory)``
+    so the § 模型概览 section gracefully degrades to "node count
+    only" on adapters that haven't yet wired the capability.
+
+    Returns:
+        * ``tuple[str, ...]`` of solver-native element-type identifiers
+          (e.g. ``("C3D10", "C3D10", "S4R", ...)``) when the adapter
+          has fully-parsed element-inventory data. One entry per
+          element, in the adapter's natural enumeration order. The
+          string vocabulary is solver-native — no cross-solver
+          normalization happens at Layer 2.
+        * ``None`` when the underlying solver result file is missing
+          the element block (e.g. CalculiX ``.frd`` written with
+          ``--no-element``, partial FRD parse, or any case where the
+          adapter cannot reliably enumerate element types). The
+          ``ModelOverview`` consumer treats this as "inventory
+          unknown" rather than fabricating "0 elements".
+
+    The contract is intentionally three-state — adapter declares the
+    capability AND returns either real data OR explicit ``None`` —
+    rather than two-state (declares + always returns a tuple). The
+    three-state form is what lets the W6e.2 DOCX renderer
+    distinguish "really zero elements (confirmed)" from "inventory
+    not parsed for this run". A capable adapter returning the empty
+    tuple ``()`` means the mesh genuinely has no elements (degenerate
+    but valid). A capable adapter returning ``None`` means the
+    inventory could not be determined.
+
+    The library that consumes this (``model_overview.summarize_model``)
+    is responsible for human-readable grouping in the DOCX (e.g.
+    ``"C3D10"`` → ``"四面体 (C3D10)"``).
+    """
+
+    def element_types(self) -> tuple[str, ...] | None: ...

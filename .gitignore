@@ -53,3 +53,7 @@ spooles.out
 
 # Environment secrets
 .env
+
+# Local GH status token (do NOT commit)
+.gh_status_token
+status_data.json
