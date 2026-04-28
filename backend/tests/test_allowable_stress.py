@@ -16,17 +16,15 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from app.core.types import Material, UnitSystem
 from app.services.report.allowable_stress import (
-    AllowableStress,
-    AllowableStressError,
     ASME_FACTOR_TABLE,
     GB_FACTOR_TABLE,
+    AllowableStress,
+    AllowableStressError,
     compute_allowable_stress,
 )
 from app.services.report.materials_lib import lookup_builtin
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -120,8 +118,14 @@ def test_gb_all_builtin_materials_compute() -> None:
     formula (e.g. via a non-positive σ_y typo in the JSON)."""
     # All GB grades currently in materials.json (per data file).
     gb_grades = (
-        "Q235B", "Q345B", "Q345R", "Q370R", "16MnR",
-        "15CrMoR", "14Cr1MoR", "20#",
+        "Q235B",
+        "Q345B",
+        "Q345R",
+        "Q370R",
+        "16MnR",
+        "15CrMoR",
+        "14Cr1MoR",
+        "20#",
     )
     for grade in gb_grades:
         mat = lookup_builtin(grade)
@@ -394,3 +398,129 @@ def test_loader_rejects_inverted_temperature_range(tmp_path) -> None:
     )
     with pytest.raises(AllowableStressError, match="min < max"):
         _load_factor_table(p, code_label="TEST")
+
+
+def test_loader_rejects_non_mapping_formula(tmp_path) -> None:
+    """`formula` must itself be a mapping; a list / scalar must be
+    rejected so the formula-key validator never tries to subscript a
+    non-mapping."""
+    p = tmp_path / "bad.yaml"
+    p.write_text(
+        "formula:\n"
+        "  - expression\n"
+        "  - 1.5\n"
+        "  - 3.0\n"
+        "temperature_range_celsius:\n"
+        "  min: 0\n"
+        "  max: 50\n"
+        "clause_citation: x\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AllowableStressError, match="'formula' must be a mapping"):
+        _load_factor_table(p, code_label="TEST")
+
+
+def test_loader_rejects_missing_formula_keys(tmp_path) -> None:
+    p = tmp_path / "bad.yaml"
+    p.write_text(
+        "formula:\n"
+        "  expression: 'min(...)'\n"  # missing yield/ultimate factors
+        "temperature_range_celsius:\n"
+        "  min: 0\n"
+        "  max: 50\n"
+        "clause_citation: x\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AllowableStressError, match="missing required 'formula'"):
+        _load_factor_table(p, code_label="TEST")
+
+
+def test_loader_rejects_temperature_range_non_mapping(tmp_path) -> None:
+    """`temperature_range_celsius` must be a mapping (not a list /
+    string) so the min/max validator never crashes on an unexpected
+    type."""
+    p = tmp_path / "bad.yaml"
+    p.write_text(
+        "formula:\n"
+        "  expression: 'min(...)'\n"
+        "  yield_safety_factor: 1.5\n"
+        "  ultimate_safety_factor: 3.0\n"
+        "temperature_range_celsius: '0..50'\n"
+        "clause_citation: x\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AllowableStressError, match="temperature_range_celsius"):
+        _load_factor_table(p, code_label="TEST")
+
+
+def test_loader_rejects_temperature_range_non_numeric(tmp_path) -> None:
+    """min/max must be numeric — strings or None must reject before
+    the min < max comparison runs."""
+    p = tmp_path / "bad.yaml"
+    p.write_text(
+        "formula:\n"
+        "  expression: 'min(...)'\n"
+        "  yield_safety_factor: 1.5\n"
+        "  ultimate_safety_factor: 3.0\n"
+        "temperature_range_celsius:\n"
+        "  min: 'cold'\n"
+        "  max: 50\n"
+        "clause_citation: x\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(AllowableStressError, match="temperature_range_celsius"):
+        _load_factor_table(p, code_label="TEST")
+
+
+# ---------------------------------------------------------------------------
+# Deep-immutability regression — Codex R1 MEDIUM
+# ---------------------------------------------------------------------------
+
+
+def test_factor_tables_are_deep_frozen() -> None:
+    """Codex R1 (gpt-5.4 xhigh) demonstrated that wrapping only the
+    top-level YAML object in MappingProxyType left
+    ``GB_FACTOR_TABLE['formula']`` mutable, so an attacker / buggy
+    caller could change ``yield_safety_factor`` mid-process and
+    silently corrupt every subsequent allowable-stress computation
+    (Q345B dropped from 156.67 MPa to 38.33 MPa in their POC).
+
+    Pin: nested dicts under both factor tables MUST raise TypeError
+    when mutated. If a future change reverts to shallow proxying
+    this test will fail loudly.
+    """
+    for _name, table in (("GB", GB_FACTOR_TABLE), ("ASME", ASME_FACTOR_TABLE)):
+        # Top level frozen
+        with pytest.raises(TypeError):
+            table["formula"] = {}  # type: ignore[index]
+        # Nested 'formula' sub-mapping frozen
+        with pytest.raises(TypeError):
+            table["formula"]["yield_safety_factor"] = 0.001  # type: ignore[index]
+        # Nested 'temperature_range_celsius' sub-mapping frozen
+        with pytest.raises(TypeError):
+            table["temperature_range_celsius"]["max"] = 9999  # type: ignore[index]
+
+
+def test_factor_tables_compute_unchanged_after_attempted_mutation() -> None:
+    """Even if a caller catches the TypeError from the mutation
+    attempt, the factor tables and derived [σ] must remain at their
+    YAML-pinned values. Belt-and-braces against a future regression
+    that lets mutation through silently."""
+    mat = _material(
+        code_standard="GB",
+        code_grade="Q345B",
+        yield_strength=345.0,
+        ultimate_strength=470.0,
+    )
+    expected = compute_allowable_stress(mat, "GB").sigma_allow
+
+    # Try every plausible mutation; each must raise. We assert through
+    # `pytest.raises` so the test fails loudly if any mutation slips
+    # through (which would mean the deep-freeze regressed).
+    with pytest.raises(TypeError):
+        GB_FACTOR_TABLE["formula"] = {}  # type: ignore[index]
+    with pytest.raises(TypeError):
+        GB_FACTOR_TABLE["formula"]["yield_safety_factor"] = 0.001  # type: ignore[index]
+
+    again = compute_allowable_stress(mat, "GB").sigma_allow
+    assert math.isclose(again, expected, rel_tol=1e-12)

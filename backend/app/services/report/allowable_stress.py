@@ -31,15 +31,14 @@ disallows it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, Literal, Mapping
+from typing import Any, Final, Literal
 
 import yaml
-
 from app.core.types import Material
-
 
 __all__ = [
     "AllowableStress",
@@ -52,9 +51,7 @@ __all__ = [
 
 # Anchored at the package data dir, same convention as
 # ``materials_lib.BUILTIN_LIBRARY_PATH``.
-_DATA_DIR: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "data"
-)
+_DATA_DIR: Final[Path] = Path(__file__).resolve().parents[2] / "data"
 
 _GB_YAML_PATH: Final[Path] = _DATA_DIR / "allowable_stress_gb.yaml"
 _ASME_YAML_PATH: Final[Path] = _DATA_DIR / "allowable_stress_asme.yaml"
@@ -130,6 +127,31 @@ _REQUIRED_FORMULA_KEYS: Final[tuple[str, ...]] = (
 )
 
 
+def _deep_freeze(obj: Any) -> Any:
+    """Recursively wrap dicts in MappingProxyType and lists in tuples.
+
+    Codex R1 (gpt-5.4 xhigh) demonstrated that wrapping only the top
+    level was insufficient — `GB_FACTOR_TABLE["formula"]` remained a
+    plain dict and was therefore mutable, so a malicious or buggy
+    caller could change `yield_safety_factor` mid-process and silently
+    corrupt every subsequent allowable-stress computation. This
+    helper walks the loaded YAML tree once at import and freezes
+    every nested mapping; lists become tuples; primitives pass
+    through unchanged.
+
+    Sets are not expected in this YAML (yaml.safe_load doesn't emit
+    them by default) but are converted to ``frozenset`` defensively
+    in case a future schema introduces them.
+    """
+    if isinstance(obj, dict):
+        return MappingProxyType({k: _deep_freeze(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return tuple(_deep_freeze(v) for v in obj)
+    if isinstance(obj, set):
+        return frozenset(_deep_freeze(v) for v in obj)
+    return obj
+
+
 def _load_factor_table(path: Path, *, code_label: str) -> Mapping[str, Any]:
     """Read one allowable-stress YAML and validate the schema fields
     this module actually consumes.
@@ -138,6 +160,10 @@ def _load_factor_table(path: Path, *, code_label: str) -> Mapping[str, Any]:
     etc.) that the DOCX layer reads directly; this function does NOT
     enforce their presence — only the keys the formula evaluator
     needs are required here.
+
+    The returned mapping is **deep-frozen** so callers (including the
+    DOCX layer) cannot mutate nested formula factors and silently
+    corrupt downstream computations.
     """
     if not path.is_file():
         raise AllowableStressError(
@@ -151,35 +177,29 @@ def _load_factor_table(path: Path, *, code_label: str) -> Mapping[str, Any]:
 
     if not isinstance(raw, dict):
         raise AllowableStressError(
-            f"{code_label}: top-level YAML must be a mapping, got "
-            f"{type(raw).__name__}"
+            f"{code_label}: top-level YAML must be a mapping, got {type(raw).__name__}"
         )
 
     missing = [k for k in _REQUIRED_TOP_KEYS if k not in raw]
     if missing:
         raise AllowableStressError(
-            f"{code_label}: missing required top-level key(s) {missing!r} "
-            f"in {path.name}"
+            f"{code_label}: missing required top-level key(s) {missing!r} in {path.name}"
         )
 
     formula = raw["formula"]
     if not isinstance(formula, dict):
         raise AllowableStressError(
-            f"{code_label}: 'formula' must be a mapping, got "
-            f"{type(formula).__name__}"
+            f"{code_label}: 'formula' must be a mapping, got {type(formula).__name__}"
         )
     f_missing = [k for k in _REQUIRED_FORMULA_KEYS if k not in formula]
     if f_missing:
-        raise AllowableStressError(
-            f"{code_label}: missing required 'formula' key(s) {f_missing!r}"
-        )
+        raise AllowableStressError(f"{code_label}: missing required 'formula' key(s) {f_missing!r}")
 
     for fld in ("yield_safety_factor", "ultimate_safety_factor"):
         v = formula[fld]
         if not isinstance(v, (int, float)) or v <= 0:
             raise AllowableStressError(
-                f"{code_label}: formula.{fld} must be a positive number, "
-                f"got {v!r}"
+                f"{code_label}: formula.{fld} must be a positive number, got {v!r}"
             )
 
     temp = raw["temperature_range_celsius"]
@@ -195,15 +215,11 @@ def _load_factor_table(path: Path, *, code_label: str) -> Mapping[str, Any]:
             f"{{'min': float, 'max': float}} with min < max, got {temp!r}"
         )
 
-    return MappingProxyType(raw)
+    return _deep_freeze(raw)
 
 
-GB_FACTOR_TABLE: Final[Mapping[str, Any]] = _load_factor_table(
-    _GB_YAML_PATH, code_label="GB"
-)
-ASME_FACTOR_TABLE: Final[Mapping[str, Any]] = _load_factor_table(
-    _ASME_YAML_PATH, code_label="ASME"
-)
+GB_FACTOR_TABLE: Final[Mapping[str, Any]] = _load_factor_table(_GB_YAML_PATH, code_label="GB")
+ASME_FACTOR_TABLE: Final[Mapping[str, Any]] = _load_factor_table(_ASME_YAML_PATH, code_label="ASME")
 
 _CODE_TABLES: Final[Mapping[str, Mapping[str, Any]]] = MappingProxyType(
     {
@@ -241,8 +257,7 @@ def compute_allowable_stress(
     """
     if code not in _CODE_TABLES:
         raise AllowableStressError(
-            f"unknown code standard {code!r}; expected one of "
-            f"{tuple(_CODE_TABLES.keys())!r}"
+            f"unknown code standard {code!r}; expected one of {tuple(_CODE_TABLES.keys())!r}"
         )
 
     if material.code_standard != code:
@@ -264,7 +279,7 @@ def compute_allowable_stress(
             f"[{temp_range['min']}, {temp_range['max']}] °C for {code}; "
             f"high-temperature allowable stress requires Table 4 / "
             f"Table 5A lookup, which is M4+ work (per ADR-020 §"
-            f"\"What this does NOT decide\")."
+            f'"What this does NOT decide").'
         )
 
     formula = table["formula"]
