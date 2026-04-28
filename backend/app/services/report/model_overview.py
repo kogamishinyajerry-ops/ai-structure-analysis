@@ -78,20 +78,22 @@ def _invoke_element_inventory(reader: object) -> Any:
         sig = inspect.signature(method)
     except (TypeError, ValueError):
         # Built-in / C-implemented method — ``inspect.signature`` can't
-        # introspect it, so we fall back to calling and translating any
-        # arity-mismatch TypeError into ``ModelOverviewError``. Codex R2
-        # PR #103 MEDIUM POC: ``sqlite3.Connection.execute`` (a bound
-        # C-extension callable) attached as ``element_inventory`` would
-        # leak a raw ``TypeError: execute expected at least 1 argument,
-        # got 0`` instead of the promised clean refusal.
+        # introspect it, so we fall back to calling and translating
+        # ANY exception into ``ModelOverviewError``. Codex R2 PR #103
+        # MEDIUM POC: ``sqlite3.Connection.execute`` raised TypeError;
+        # Codex R3 PR #103 MEDIUM POC: a broken callable whose body
+        # raises RuntimeError. Both must surface uniformly as a
+        # ``ModelOverviewError`` so the service refusal contract holds
+        # regardless of how the spoofed callable misbehaves.
         try:
             return method()
-        except TypeError as exc:
+        except Exception as exc:
             raise ModelOverviewError(
                 f"reader of type {type(reader).__name__!r} has a "
                 f"non-introspectable element_inventory (likely a "
-                f"C-extension or built-in callable) that rejected the "
-                f"zero-arg call required by SupportsElementInventory: "
+                f"C-extension, built-in, or broken callable) that "
+                f"failed the zero-arg call required by "
+                f"SupportsElementInventory: {type(exc).__name__}: "
                 f"{exc}. Adapter contract violation."
             ) from exc
     # Allow *args / **kwargs (the protocol contract leaves room for

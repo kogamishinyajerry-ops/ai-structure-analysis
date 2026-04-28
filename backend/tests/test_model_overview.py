@@ -386,6 +386,51 @@ def test_summary_refuses_c_extension_callable_with_required_args() -> None:
         summarize_model_overview(rdr)  # type: ignore[arg-type]
 
 
+class _BrokenSignatureSpoofReader(_SyntheticReader):
+    """Codex R3 PR #103 MEDIUM POC: a callable whose ``__signature__``
+    descriptor raises ValueError (so ``inspect.signature`` falls into
+    the non-introspectable branch) AND whose zero-arg call raises a
+    non-TypeError (RuntimeError here). The R2 fix only caught
+    TypeError; the R3 fix broadens to any Exception.
+    """
+
+    class _OddCallable:
+        @property
+        def __signature__(self):  # type: ignore[no-untyped-def]
+            raise ValueError("broken signature metadata")
+
+        def __call__(self) -> dict:
+            raise RuntimeError("call body exploded")
+
+    def __init__(
+        self,
+        node_ids: list[int],
+        coords: np.ndarray,
+        unit_system: UnitSystem = UnitSystem.SI_MM,
+    ) -> None:
+        super().__init__(node_ids, coords, unit_system)
+        self.element_inventory = (
+            _BrokenSignatureSpoofReader._OddCallable()  # type: ignore[assignment]
+        )
+
+
+def test_summary_refuses_non_introspectable_callable_with_runtime_error() -> None:
+    """Any exception class from the zero-arg call must translate to
+    ModelOverviewError — not just TypeError. Codex R3's exact POC."""
+    rdr = _BrokenSignatureSpoofReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    assert isinstance(rdr, SupportsElementInventory)
+    with pytest.raises(
+        ModelOverviewError, match="non-introspectable element_inventory"
+    ) as exc_info:
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+    # The original RuntimeError must be preserved as ``__cause__`` so
+    # debugging chains still see the underlying failure.
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert "call body exploded" in str(exc_info.value.__cause__)
+
+
 class _MutableCount:
     """Stand-in for an adapter that wraps counts in a mutable
     object. Validates that the normaliser refuses non-int-typed
