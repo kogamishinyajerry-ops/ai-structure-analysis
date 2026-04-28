@@ -1,0 +1,7 @@
+# Solver binary tree — pulled at build time from the OpenRadioss
+# release channel (see README.md for the recipe). 137-200 MB; would
+# bloat the repo for no incremental value, and the AGPL distribution
+# channel is upstream's own GitHub releases, not ours.
+OpenRadioss/
+OpenRadioss_linuxa64.zip
+OpenRadioss_linuxa64.tar.gz
