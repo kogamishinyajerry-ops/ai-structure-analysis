@@ -32,9 +32,13 @@ interface RunReportRequest {
 
 interface BakeGs101Result {
   ok: boolean;
-  exitCode: number;
-  scratchDir: string;
-  rootname: string;
+  // Optional because early-failure paths (missing deck, mkdtempSync /
+  // copyFileSync errors) return before docker spawns — there is no
+  // process exit code to report. The renderer renders these as
+  // "bake refused (input violations)".
+  exitCode?: number;
+  scratchDir?: string;
+  rootname?: string;
   violations?: string[];
 }
 

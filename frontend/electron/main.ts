@@ -229,6 +229,26 @@ ipcMain.handle("list-materials", async (): Promise<unknown[]> => {
 // --- IPC: ballistic / OpenRadioss helpers ----------------------------------
 
 /**
+ * Guarded ``evt.sender.send`` that no-ops when the renderer's
+ * ``webContents`` has been destroyed (window closed, navigated, etc.).
+ *
+ * Codex R2 MEDIUM (main.ts:353): the bake handler streams events
+ * across multiple async callbacks long after the IPC invoke handler
+ * returned. If the user closes the window mid-bake, a later ``send``
+ * on a destroyed ``webContents`` throws an unhandled exception in
+ * the main process. This helper centralizes the guard.
+ */
+function _safeSend(
+  evt: Electron.IpcMainInvokeEvent,
+  channel: string,
+  payload: unknown,
+): void {
+  if (!evt.sender.isDestroyed()) {
+    evt.sender.send(channel, payload);
+  }
+}
+
+/**
  * Native folder picker for the OpenRadioss --openradioss-root argument.
  * Returns the absolute path of the chosen directory, or null if the
  * user canceled. The renderer never touches fs directly — main.ts is
@@ -344,13 +364,22 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
       path.join(scratch, "model_00_0001.rad"),
     );
   } catch (err) {
+    // Codex R2 LOW: clean up the freshly-allocated scratch dir on
+    // partial-stage failure so we don't leak under os.tmpdir().
+    try {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    } catch {
+      // Best-effort; if rmSync also fails (permissions, weird state)
+      // we'd rather surface the original copy error than mask it.
+    }
     return {
       ok: false as const,
-      violations: [`Failed to stage decks into ${scratch}: ${(err as Error).message}`],
+      violations: [`Failed to stage decks: ${(err as Error).message}`],
     };
   }
 
-  evt.sender.send(
+  _safeSend(
+    evt,
     "bake:stdout",
     `[bake] staged decks into ${scratch}\n[bake] launching docker run openradioss:arm64 …\n`,
   );
@@ -365,10 +394,10 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
   ];
   const child = spawn("docker", dockerArgs, { stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.on("data", (chunk: Buffer) => {
-    evt.sender.send("bake:stdout", chunk.toString("utf-8"));
+    _safeSend(evt, "bake:stdout", chunk.toString("utf-8"));
   });
   child.stderr.on("data", (chunk: Buffer) => {
-    evt.sender.send("bake:stderr", chunk.toString("utf-8"));
+    _safeSend(evt, "bake:stderr", chunk.toString("utf-8"));
   });
 
   return new Promise<{
@@ -380,7 +409,7 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
   }>((resolve) => {
     child.on("close", (code) => {
       const exitCode = code ?? -1;
-      evt.sender.send("bake:exit", exitCode);
+      _safeSend(evt, "bake:exit", exitCode);
       resolve({
         ok: exitCode === 0,
         exitCode,
@@ -389,12 +418,24 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
       });
     });
     child.on("error", (err) => {
-      evt.sender.send(
+      _safeSend(
+        evt,
         "bake:stderr",
         `failed to spawn docker: ${err.message}\n` +
           `Hint: build the image first per tools/openradioss/README.md\n`,
       );
-      evt.sender.send("bake:exit", -1);
+      _safeSend(evt, "bake:exit", -1);
+      // Codex R2 LOW: docker never started, so no useful artifacts
+      // landed in scratch — clean it up rather than leak under
+      // os.tmpdir(). On a successful or partial-failure docker run
+      // we KEEP the scratch dir intact so the engineer can inspect
+      // engine logs / diagnose. Only the "spawn never happened"
+      // path is purely a leak.
+      try {
+        fs.rmSync(scratch, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup.
+      }
       resolve({
         ok: false,
         exitCode: -1,

@@ -25,9 +25,9 @@ interface RunReportRequest {
 
 interface BakeGs101Result {
   ok: boolean;
-  exitCode: number;
-  scratchDir: string;
-  rootname: string;
+  exitCode?: number;
+  scratchDir?: string;
+  rootname?: string;
   violations?: string[];
 }
 
@@ -211,6 +211,17 @@ const clearFigures = () => {
   figuresBox.hidden = true;
 };
 
+// Global in-flight gate so updateFormState doesn't re-enable buttons
+// while a long-running subprocess (report-cli or docker bake) owns
+// the status/log surface. Set at the start of each operation and
+// cleared in the corresponding finally block.
+//
+// Codex R2 MEDIUM (renderer.ts:283): without this, the Run handler
+// re-enables Run on report-cli completion even if a bake is still
+// streaming, producing two subprocesses fighting over one log pane.
+type InFlight = "none" | "report" | "bake";
+let inFlight: InFlight = "none";
+
 const updateFormState = () => {
   const isPv = kindSelect.value === "pressure-vessel";
   const isBallistic = kindSelect.value === "ballistic";
@@ -225,7 +236,12 @@ const updateFormState = () => {
         (Boolean(sclNodesInput.value.trim()) &&
           Boolean(sclDistancesInput.value.trim())));
   const ready = inputReady && Boolean(outputInput.value);
-  runBtn.disabled = !ready;
+  runBtn.disabled = !ready || inFlight !== "none";
+  // The bake button is gated on the GS-101 fixture being present
+  // (see getDemoGs101Deck below); we only need the in-flight gate.
+  if (!bakeGs101Btn.hidden) {
+    bakeGs101Btn.disabled = inFlight !== "none";
+  }
 };
 
 // --- file pickers ----------------------------------------------------------
@@ -281,8 +297,13 @@ window.api.onStderr(appendLog);
 window.api.onFigure(addFigure);
 
 runBtn.addEventListener("click", async () => {
+  inFlight = "report";
   runBtn.disabled = true;
   revealBtn.disabled = true;
+  // The bake button is gated through updateFormState's inFlight check;
+  // disable it eagerly here too so a user clicking it during a long
+  // report run doesn't even briefly see it as enabled.
+  if (!bakeGs101Btn.hidden) bakeGs101Btn.disabled = true;
   clearLog();
   clearViolations();
   clearFigures();
@@ -309,24 +330,30 @@ runBtn.addEventListener("click", async () => {
     req.material = materialSelect.value;
   }
 
-  const result = await window.api.runReport(req);
+  try {
+    const result = await window.api.runReport(req);
 
-  if (!result.ok && result.violations) {
-    setStatus(
-      `refused (${result.violations.length} violation${
-        result.violations.length === 1 ? "" : "s"
-      })`,
-      "error"
-    );
-    showViolations(result.violations);
-  } else if (!result.ok) {
-    setStatus(`exited ${result.exitCode}`, "error");
-  } else {
-    setStatus(`done (exit ${result.exitCode})`, "success");
-    revealBtn.disabled = false;
+    if (!result.ok && result.violations) {
+      setStatus(
+        `refused (${result.violations.length} violation${
+          result.violations.length === 1 ? "" : "s"
+        })`,
+        "error"
+      );
+      showViolations(result.violations);
+    } else if (!result.ok) {
+      setStatus(`exited ${result.exitCode}`, "error");
+    } else {
+      setStatus(`done (exit ${result.exitCode})`, "success");
+      revealBtn.disabled = false;
+    }
+  } catch (err) {
+    setStatus("run failed (IPC error)", "error");
+    showViolations([`run IPC error: ${err instanceof Error ? err.message : String(err)}`]);
+  } finally {
+    inFlight = "none";
+    updateFormState();
   }
-  runBtn.disabled = false;
-  updateFormState();
 });
 
 // --- GS-001 demo button ----------------------------------------------------
@@ -378,6 +405,7 @@ window.api.onBakeStdout(appendLog);
 window.api.onBakeStderr(appendLog);
 
 bakeGs101Btn.addEventListener("click", async () => {
+  inFlight = "bake";
   bakeGs101Btn.disabled = true;
   runBtn.disabled = true;
   clearLog();
@@ -389,14 +417,26 @@ bakeGs101Btn.addEventListener("click", async () => {
   try {
     const result = await window.api.bakeGs101Demo();
     if (!result.ok) {
-      setStatus(`bake failed (exit ${result.exitCode})`, "error");
+      // Codex R2 LOW: early-failure paths in main.ts return without
+      // exitCode (mkdtempSync / copyFile / missing-deck violations).
+      // Render those as "refused" instead of "exit undefined".
+      if (result.exitCode === undefined) {
+        setStatus("bake refused (input violations)", "error");
+      } else {
+        setStatus(`bake failed (exit ${result.exitCode})`, "error");
+      }
       if (result.violations) showViolations(result.violations);
     } else {
-      setStatus(`bake done — frames in ${result.scratchDir}`, "success");
-      openradiossRootInput.value = result.scratchDir;
-      rootnameInput.value = result.rootname;
+      // ok-branch: main.ts guarantees scratchDir + rootname are set.
+      // Defaults are only here for type-narrowing; never observed
+      // at runtime.
+      const scratchDir = result.scratchDir ?? "";
+      const rootname = result.rootname ?? "model_00";
+      setStatus(`bake done — frames in ${scratchDir}`, "success");
+      openradiossRootInput.value = scratchDir;
+      rootnameInput.value = rootname;
       if (!outputInput.value) {
-        outputInput.value = `${result.scratchDir}/${result.rootname}_ballistic.docx`;
+        outputInput.value = `${scratchDir}/${rootname}_ballistic.docx`;
       }
       // Switch the kind dropdown to ballistic so updateFormState
       // reveals the right fieldset and Run becomes clickable.
@@ -406,7 +446,7 @@ bakeGs101Btn.addEventListener("click", async () => {
     setStatus("bake failed (IPC error)", "error");
     showViolations([`bake IPC error: ${err instanceof Error ? err.message : String(err)}`]);
   } finally {
-    bakeGs101Btn.disabled = false;
+    inFlight = "none";
     updateFormState();
   }
 });
