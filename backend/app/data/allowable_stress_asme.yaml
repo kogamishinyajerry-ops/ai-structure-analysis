@@ -1,0 +1,66 @@
+# Allowable-stress simplified factors for ASME VIII Div 2 §5.5 / Table 5A
+#
+# ADR-020. Read-only. Adding rows: data-only PR.
+#
+# Scope: room temperature only (T <= 100°F ≈ 38°C). High-T factors deferred to M4+.
+# The simplified formula matches ASME II Part D Table 5A entries to within ±2 MPa
+# at room temperature for the carbon and low-alloy steels listed in materials.json.
+#
+# Citation: ASME BPVC.II.D Section II Part D, paragraph 4.100 / Table 5A,
+#           combined with ASME BPVC.VIII.2 §5.5.1 Pm (general primary membrane).
+
+revision_date: 2026-04-27
+
+formula:
+  expression: "min(sigma_y / 1.5, sigma_u / 2.4)"
+  rationale: |
+    Per ASME II Part D §4.100 / Table 5A, carbon and low-alloy steel allowable
+    stress at room temperature for the general primary membrane (Pm) category
+    is min(σ_y/n_s, σ_u/n_b) where the simplified room-temperature safety
+    factors are n_s = 1.5 (yield) and n_b = 2.4 (ultimate).
+  yield_safety_factor: 1.5
+  ultimate_safety_factor: 2.4
+
+# Validity range. The wedge refuses to compute outside this band.
+# ASME publishes separate factors at higher T; deferred to M4+.
+temperature_range_celsius:
+  min: -29   # -20 °F per ASME II Part D Table 5A note B
+  max: 38    # 100 °F room temperature
+
+clause_citation: "ASME BPVC.II.D §4.100 / Table 5A · BPVC.VIII.2 §5.5.1 Pm (room temperature)"
+
+# Stress category this formula returns. Per §5.5.6, the engineer multiplies:
+#   Pm  category : 1.0 × [σ]   (general primary membrane — what we return)
+#   PL  category : 1.5 × [σ]   (local primary membrane)
+#   PL+Pb        : 1.5 × [σ]   (local membrane + primary bending)
+#   Q   category : 3.0 × [σ]   (secondary stresses)
+# The wedge returns the BASE Pm allowable; W6c verdict step (ADR-021) decides
+# the multiplier based on the engineer's load-category selection.
+returned_category: "Pm"
+category_multipliers:
+  Pm: 1.0
+  PL: 1.5
+  Pb: 1.5
+  PL_plus_Pb: 1.5
+  Q: 3.0
+
+applicable_categories:
+  - carbon_steel
+  - low_alloy_steel
+  - pressure_vessel_steel
+
+# Categories needing a different simplified formula in M4+. Austenitic stainless
+# and nickel alloys use different factors (e.g. n_b = 3.0 instead of 2.4) per
+# Table 5A Note (b1-2). Currently empty; added when those grades land.
+not_yet_supported_categories: []
+
+# Welded-joint efficiency (E_j). ASME VIII Div 2 §6.1.5.1 applies E_j to
+# weldments. The wedge does NOT apply E_j here; E_j is applied at W6c verdict
+# step (ADR-021).
+applies_weld_efficiency: false
+
+# Notes rendered in the DOCX § 许用应力 section when this code path is used.
+docx_disclaimers:
+  - "Computed per ASME BPVC.II.D §4.100 / Table 5A simplified formula, room-temperature only (≤ 38°C / 100°F)."
+  - "Returned [σ] is the Pm category. Engineer applies §5.5.6 category multipliers (PL, Pb, Q) at the verdict step."
+  - "Weld-joint efficiency E_j (§6.1.5.1) must be applied explicitly in the verdict section."

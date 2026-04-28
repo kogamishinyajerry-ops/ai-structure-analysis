@@ -46,6 +46,7 @@ from app.models import (
 )
 
 if TYPE_CHECKING:
+    from app.core.types import Material
     from app.services.report.templates import TemplateSpec
 
 
@@ -213,6 +214,66 @@ def _render_evidence_appendix(
                 run.italic = True
 
 
+def _render_material_section(
+    doc: _DocxDocument, material: "Material"
+) -> None:
+    """W6a / ADR-019 § 材料属性 section.
+
+    Renders a 2-column table: 字段 (Chinese label) | 值 (numeric +
+    unit). The table is the visible auditing surface — every value
+    here is what the engineer compares against the design code at
+    sign-off time.
+
+    ``is_user_supplied=True`` adds a red-ink-equivalent caveat below
+    the table (RFC-001 §2.4 rule 4 — low-confidence outputs must
+    surface a flag the engineer must explicitly clear). The DOCX
+    style uses Intense Quote + italic so the caveat stands apart from
+    body text.
+
+    si-mm convention: E / σ_y / σ_u in MPa. Density (if present) in
+    tonne/mm³. Older / non-si-mm material cards come with
+    ``unit_system`` other than SI_MM and the caller is responsible
+    for unit conversion (out of scope for W6a).
+    """
+    doc.add_heading("材料属性 / Material Properties", level=1)
+
+    # Two-column "label / value" table mirroring the GB / ASME row
+    # layout common in 化工/电力 design-institute reports.
+    table = doc.add_table(rows=0, cols=2)
+    table.style = "Light Grid Accent 1"
+
+    rows: list[tuple[str, str]] = [
+        ("牌号 / Grade", f"{material.code_grade} ({material.code_standard})"),
+        ("名称 / Name", material.name),
+        ("弹性模量 E", f"{material.youngs_modulus:.6g} MPa"),
+        ("泊松比 ν", f"{material.poissons_ratio:.3f}"),
+        (
+            "屈服强度 σ_y",
+            f"{material.yield_strength:.6g} MPa",
+        ),
+        (
+            "抗拉强度 σ_u",
+            f"{material.ultimate_strength:.6g} MPa",
+        ),
+    ]
+    if material.density is not None:
+        rows.append(("密度 ρ", f"{material.density:.6g} tonne/mm³"))
+    rows.append(("标准引用 / Citation", material.source_citation))
+
+    for label, value in rows:
+        cells = table.add_row().cells
+        cells[0].text = label
+        cells[1].text = value
+
+    if material.is_user_supplied:
+        caveat = doc.add_paragraph(
+            "⚠ [需工程师确认] 本材料数据由工程师自录入，请与设计依据规范交叉核对后再签字。",
+            style="Intense Quote",
+        )
+        for run in caveat.runs:
+            run.italic = True
+
+
 def _render_figures_appendix(
     doc: _DocxDocument, figures: "Dict[str, Path]"
 ) -> None:
@@ -249,6 +310,7 @@ def export_docx(
     output_path: Path,
     template: "Optional[TemplateSpec]" = None,
     figures: "Optional[Dict[str, Path]]" = None,
+    material: "Optional[Material]" = None,
 ) -> Path:
     """Materialise ``(report, bundle)`` to a DOCX at ``output_path``.
 
@@ -322,6 +384,12 @@ def export_docx(
         doc.add_paragraph(ln)
 
     _render_section_tree(doc, report.sections)
+    if material is not None:
+        # W6a: § 材料属性 sits between the body sections and the
+        # appendices so an engineer sweeping the document top-to-bottom
+        # sees the material context before the evidence audit trail.
+        # Order will be reshaped if W6e (模型概况) lands above it.
+        _render_material_section(doc, material)
     _render_evidence_appendix(doc, bundle)
     if figures:
         _render_figures_appendix(doc, figures)

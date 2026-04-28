@@ -197,6 +197,46 @@ def build_parser() -> argparse.ArgumentParser:
             "--no-figures is set."
         ),
     )
+    # W6a / ADR-019 — material data. The two flags are mutually
+    # exclusive; argparse enforces that automatically. When neither
+    # is supplied no § 材料属性 section is rendered (W5f-compatible).
+    mat_group = p.add_mutually_exclusive_group()
+    mat_group.add_argument(
+        "--material",
+        type=str,
+        default=None,
+        metavar="CODE_GRADE",
+        help=(
+            "Pick a built-in material by its standards-grade code "
+            "(e.g. Q345B, SA-516-70). The DOCX gets a § 材料属性 "
+            "section keyed to this material. Use --no-figures only "
+            "if you have a reason to omit material data — without it "
+            "the W6b allowable-stress / W6c PASS-FAIL chain is "
+            "structurally impossible. List built-ins with "
+            "--list-materials."
+        ),
+    )
+    mat_group.add_argument(
+        "--material-json",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Free-input material JSON file. Bypasses the built-in "
+            "library; the resulting material is flagged "
+            "[需工程师确认] in the DOCX (RFC-001 §2.4 rule 4). "
+            "Schema: see ADR-019 §6 — bare entry or {'materials': [<entry>]} "
+            "wrapper accepted."
+        ),
+    )
+    p.add_argument(
+        "--list-materials",
+        action="store_true",
+        help=(
+            "Print the built-in material library code grades + standards "
+            "and exit. Useful when scripting --material from another tool."
+        ),
+    )
     return p
 
 
@@ -422,6 +462,37 @@ def _produce(
     return report, bundle, PRESSURE_VESSEL_LOCAL_STRESS
 
 
+def _run_list_materials() -> int:
+    """Print the built-in material library and exit. One row per
+    material on stdout in a stable, scriptable format:
+
+        <code_grade>\\t<code_standard>\\t<sigma_y MPa>\\t<sigma_u MPa>\\t<citation>
+
+    Tab-separated so engineers can pipe into ``awk`` / spreadsheet
+    columns. Returns 0 on success and 3 if the bundled JSON is
+    missing or malformed (matches --doctor's broken-install class).
+    """
+    from app.services.report.materials_lib import (
+        MaterialLookupError,
+        load_builtin_library,
+    )
+
+    try:
+        lib = load_builtin_library()
+    except MaterialLookupError as exc:
+        print(f"error: built-in material library is broken: {exc}", file=sys.stderr)
+        return 3
+    print("# code_grade\tstandard\tsigma_y_MPa\tsigma_u_MPa\tcitation")
+    for grade in sorted(lib.keys()):
+        m = lib[grade]
+        print(
+            f"{m.code_grade}\t{m.code_standard}\t"
+            f"{m.yield_strength:g}\t{m.ultimate_strength:g}\t"
+            f"{m.source_citation}"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Programmatic entry point.
 
@@ -440,6 +511,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.doctor:
         return _run_doctor()
+
+    # --list-materials runs without --frd / --kind for the same reason
+    # --doctor does (an introspection mode shouldn't require a real run).
+    if args.list_materials:
+        return _run_list_materials()
 
     # --frd and --kind are not argparse-required so --doctor can run
     # without them; enforce the report-run contract here instead.
@@ -583,6 +659,43 @@ def main(argv: list[str] | None = None) -> int:
             )
             figures = {}
 
+    # W6a / ADR-019 — resolve material AFTER report production so
+    # any malformed --material-json error appears in the audit trail
+    # right before export, not at parser time. The two flags are
+    # mutually exclusive (argparse-enforced); when neither is set,
+    # ``material`` stays None and the exporter skips § 材料属性.
+    material = None
+    if args.material is not None or args.material_json is not None:
+        from app.services.report.materials_lib import (
+            MaterialLookupError,
+            load_user_supplied_json,
+            lookup_builtin,
+        )
+        try:
+            if args.material is not None:
+                material = lookup_builtin(args.material)
+                if material is None:
+                    print(
+                        f"error: --material {args.material!r} is not in the "
+                        f"built-in library. Run `report-cli --list-materials` "
+                        f"to see available code grades.",
+                        file=sys.stderr,
+                    )
+                    return 3
+                _detail(
+                    f"material: {material.code_grade} ({material.code_standard}) "
+                    f"sigma_y={material.yield_strength:g} sigma_u={material.ultimate_strength:g}"
+                )
+            else:
+                material = load_user_supplied_json(args.material_json)
+                _detail(
+                    f"material: USER-SUPPLIED {material.code_grade} "
+                    f"({material.code_standard}) — flagged in DOCX"
+                )
+        except MaterialLookupError as exc:
+            print(f"error: material refused: {exc}", file=sys.stderr)
+            return 3
+
     # Lazy-import the exporter + its refusal classes for the same
     # broken-submodule-survives-doctor reason as in _produce.
     from app.services.report.exporter import ExportError, export_docx
@@ -599,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
             output_path=args.output,
             template=template if args.validate_template else None,
             figures=figures or None,
+            material=material,
         )
     except (ExportError, TemplateValidationError) as exc:
         print(f"error: export refused: {exc}", file=sys.stderr)

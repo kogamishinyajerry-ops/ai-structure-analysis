@@ -48,7 +48,17 @@ interface RunReportRequest {
   sclNodes?: string;
   sclDistances?: string;
   resample?: number | null;
+  // W6a — built-in material code_grade (e.g. "Q345B"). Empty/undefined
+  // means no § 材料属性 section in the DOCX.
+  material?: string;
 }
+
+// Conservative whitelist for --material values. Only forward strings
+// that match standard CalculiX/ASME grade designations — letters,
+// digits, dash, hash, slash. The renderer's <select> already produces
+// safe values, but main.ts is the trust boundary, so re-validate here.
+// Codex R1 LOW-style defense (cf. PR #90 R1 #3): never trust IPC payload.
+const MATERIAL_GRADE_RE = /^[A-Za-z0-9][A-Za-z0-9_\-./#+]{0,63}$/;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -184,6 +194,18 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     if (req.resample != null) {
       args.push("--resample", String(req.resample));
     }
+  }
+  if (req.material) {
+    if (!MATERIAL_GRADE_RE.test(req.material)) {
+      return {
+        ok: false as const,
+        violations: [
+          `Invalid material code grade: ${req.material!.slice(0, 60)} ` +
+            `(expected built-in code like Q345B / SA-516-70).`,
+        ],
+      };
+    }
+    args.push("--material", req.material);
   }
 
   // Mirror the CLI's default figs_dir derivation: <output>.figs/.
