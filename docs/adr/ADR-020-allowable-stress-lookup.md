@@ -82,16 +82,25 @@ Local-membrane (PL) and bending (Pb) categories use **2× and 3×** [σ] respect
 
 ### 3. Why these formulas, and why simplified
 
-**GB 150.3-2011 §4.1.5 Table 4** lists [σ] directly per grade per temperature. The simplified `min(σ_y/1.5, σ_u/3.0)` formula is the **conservative lower-bound** generator — Table 4's published values for low-alloy pressure-vessel grades (Q345R, 16MnR) sit roughly **8–10% above** the simplified formula at room temperature (Table 4 effectively uses `σ_u/2.7` for those grades, per the standard's own footnote). Concretely: Q345R simplified = `min(345/1.5, 510/3.0) = min(230.0, 170.0) = 170.0 MPa`; Table 4 publishes ≈ 170 MPa for Q345R at room T, so the simplified formula and Table 4 happen to agree for *this* grade. For 16MnR (σ_y=345, σ_u=470 — same yield as Q345R but lower ultimate) the simplified formula returns `min(230.0, 156.7) = 156.7 MPa`; Table 4 publishes ≈ 170 MPa, exposing the ~8% gap. The simplified path is **safe (conservative)** — it never returns an [σ] higher than Table 4 — but it is **not** identical.
+**GB 150.3-2011 §4.1.5 Table 4** lists [σ] directly per grade per temperature. The simplified `min(σ_y/1.5, σ_u/3.0)` formula is **bounded above by Table 4** by construction (Table 4's footnote allows `σ_u/2.7` for low-alloy pressure-vessel grades, which is structurally larger than the simplified `σ_u/3.0`). Concretely:
 
-(Earlier revisions of this ADR cited "Q345R simplified = 156.7 MPa" — that calculation mixed Q345R's σ_y with Q345B's σ_u; the correct Q345R simplified value is 170.0 MPa as shown above. Corrected during W6c lib drafting; the W6b regression test `test_simplified_vs_table4_conservative_gap_is_pinned` already pins the right number.)
+| Material | σ_y | σ_u | Simplified `min(σ_y/1.5, σ_u/3.0)` | Table 4 (room T, approx.) | Gap |
+|---|---|---|---|---|---|
+| Q345B | 345 | 470 | `min(230.0, 156.7) = 156.7 MPa` | ~170 MPa | ~8% lower |
+| Q345R | 345 | 510 | `min(230.0, 170.0) = 170.0 MPa` | ~170 MPa | none (yields drives) |
+| 16MnR | 345 | 510 | `min(230.0, 170.0) = 170.0 MPa` | ~170 MPa | none (legacy = Q345R) |
+| 20# | 245 | 410 | `min(163.3, 136.7) = 136.7 MPa` | ~140 MPa | small |
+
+The gap shows up only when the **σ_u/3.0 leg dominates**, i.e. when Table 4 is using the more permissive `σ_u/2.7`. For grades where the σ_y/1.5 leg dominates (Q345R / 16MnR — high σ_u relative to σ_y), the simplified formula and Table 4 happen to coincide. The simplified path is **safe (conservative or equal)** — it never returns an [σ] higher than Table 4 — but it is **not** uniformly conservative-with-margin across every grade.
+
+(Earlier revisions of this ADR cited "Q345R simplified = 156.7 MPa" — that calculation mixed Q345R's σ_y with Q345B's σ_u; the correct Q345R simplified value is 170.0 MPa as shown above. Codex R1 on PR #99 (W6c) caught a follow-up error: 16MnR has σ_u=510 in `materials.json` (legacy designation for Q345R, same chemistry), so 16MnR also produces 170.0 MPa — not a separate gap example. The table above reflects the actual seed data.)
 
 We compute (and accept the conservative gap) rather than table-look-up because:
 
 - a tabulated [σ] hides the formula; the auditor wants to see `σ_y / 1.5 = 230` not just "230 from Table 4"
 - temperature interpolation (M4) is a different formula; bolting tabulated values into the API now means re-architecting later
 - a conservative gap is **the right wedge default**: the engineer can override with a manual Table 4 value at the DOCX edit stage if they want to recover the 8–10%
-- a regression test will pin the gap (`Q345R room-T simplified must be in [150, 170] MPa`) so future changes can't silently move it
+- a regression test pins the value (`Q345R room-T simplified must be in [150, 170] MPa` — actual = 170.0 MPa, hits inclusive upper bound; the band catches future drift in either direction) so future changes can't silently move it
 
 The DOCX renderer **must** flag `is_simplified=True` and explicitly state "本算式对低合金钢偏保守 ~8%；如需精确值请查 Table 4"。
 
@@ -135,7 +144,7 @@ Four unit-test buckets:
 - `test_allowable_stress_cross_standard_refuses.py` — `compute_allowable_stress(Q345B, "ASME", ...)` raises `ValueError` (no auto cross-reference).
 - `test_allowable_stress_high_T_refuses.py` — `temperature_C > 50` raises `NotImplementedError` with a clear "M4+ feature" message.
 
-Plus one regression test pinning the **conservative gap** vs GB 150.3-2011 Table 4: Q345R room-T simplified [σ] must land in `[150, 170] MPa` (the simplified value 156.7 MPa is the lower bound; Table 4's 170 MPa is the upper bound). Test name: `test_simplified_vs_table4_conservative_gap_is_pinned`. Future changes that drift outside this band must be ADR-updated, not silently merged.
+Plus one regression test pinning the **value** of Q345R simplified vs GB 150.3-2011 Table 4: Q345R room-T simplified [σ] must land in `[150, 170] MPa` (actual = 170.0 MPa, hits inclusive upper bound; the [150, 170] band catches drift in either direction — a yield-strength regression toward 220 MPa or an ultimate-strength regression toward 450 MPa would both trip). Test name: `test_simplified_vs_table4_conservative_gap_is_pinned`. Future changes that drift outside this band must be ADR-updated, not silently merged.
 
 ---
 

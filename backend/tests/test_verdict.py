@@ -152,15 +152,39 @@ def test_sigma_allow_refuses_non_positive_or_non_finite(
     [
         0.0,
         -1.0,
+        0.5,  # below regulatory floor — Codex R1 HIGH on PR #99
+        0.999,  # one ulp below 1.0
         float("nan"),
         float("inf"),
     ],
 )
-def test_threshold_refuses_non_positive_or_non_finite(
+def test_threshold_refuses_below_regulatory_floor_or_non_finite(
     bad_value: float,
 ) -> None:
+    """The contract floor is 1.0 (GB 150 / ASME VIII Div 2 already
+    build SF into [σ]). Codex R1 on PR #99 demonstrated that an
+    earlier `> 0` guard let `threshold=0.5` slip through and return
+    PASS for SF=0.6 — the stricter `>= 1.0` validator closes that
+    audit hole."""
     with pytest.raises(ValueError, match="threshold"):
         compute_verdict(sigma_max=100.0, sigma_allow=200.0, threshold=bad_value)
+
+
+def test_threshold_at_exactly_one_succeeds() -> None:
+    """The boundary is inclusive at 1.0 — exactly the regulatory
+    floor. Off-by-one guard."""
+    res = compute_verdict(sigma_max=100.0, sigma_allow=200.0, threshold=1.0)
+    assert res.kind == "PASS"
+
+
+def test_threshold_above_one_for_institute_margin_succeeds() -> None:
+    """Engineers can pass threshold=1.5 (institute-internal margin).
+    No upper bound — a 5x threshold is allowed in principle though
+    physically unusual."""
+    res_15 = compute_verdict(sigma_max=100.0, sigma_allow=200.0, threshold=1.5)
+    res_5 = compute_verdict(sigma_max=100.0, sigma_allow=600.0, threshold=5.0)
+    assert res_15.kind == "PASS"
+    assert res_5.kind == "PASS"
 
 
 def test_string_input_refuses() -> None:

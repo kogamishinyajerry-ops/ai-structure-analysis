@@ -25,9 +25,12 @@ Refusal contract:
   not positive, or NaN. A non-positive σ_max is structurally
   meaningless (Mises is non-negative; zero means "no stress
   state extracted" which is a Layer-3 bug, not a PASS).
-* ``ValueError`` if ``threshold`` is non-positive or non-finite.
-  The roadmap default is 1.0; users may set higher (e.g. 1.5
-  for institute-internal margin), never lower.
+* ``ValueError`` if ``threshold`` is ``< 1.0`` or non-finite. The
+  roadmap default is 1.0 (regulatory floor — GB 150 / ASME VIII
+  Div 2 build SF into [σ]); users may set higher (e.g. 1.5 for
+  institute-internal margin), never lower. Codex R1 on PR #99
+  caught an earlier `> 0` guard that let ``threshold=0.5`` slip
+  through and return PASS for SF=0.6.
 """
 
 from __future__ import annotations
@@ -94,9 +97,9 @@ class Verdict:
 def _check_positive_finite(name: str, value: float) -> None:
     """Reject NaN / inf / non-positive at the boundary.
 
-    Reused for σ_max, σ_allow, and threshold. The error message
-    quotes the offending value and name so the caller's stack
-    trace points at the bad input directly.
+    Reused for σ_max and σ_allow. ``threshold`` has its own
+    validator (:func:`_check_threshold`) because it has a stricter
+    floor of 1.0, not just ``> 0``.
     """
     if not isinstance(value, (int, float)):
         raise ValueError(f"{name} must be a real number, got {type(value).__name__}")
@@ -107,6 +110,32 @@ def _check_positive_finite(name: str, value: float) -> None:
             f"{name} must be positive, got {value!r} "
             f"(non-positive values have no physical meaning here — "
             f"σ_max=0 means no stress was extracted, not a PASS)"
+        )
+
+
+def _check_threshold(value: float) -> None:
+    """Reject non-finite, non-numeric, or `< 1.0` thresholds.
+
+    The contract floor is 1.0: GB 150 / ASME VIII Div 2 already
+    build their safety factors into [σ], so a threshold below the
+    regulatory floor of SF=1.0 has no physical meaning. Codex R1
+    on PR #99 demonstrated that an earlier `> 0` guard accepted
+    `threshold=0.5` and returned PASS for SF=0.6, undermining the
+    audit-floor semantics — hence this stricter validator.
+
+    Engineers wanting institute-internal extra margin can pass any
+    threshold ≥ 1.0; the upper bound is open.
+    """
+    if not isinstance(value, (int, float)):
+        raise ValueError(f"threshold must be a real number, got {type(value).__name__}")
+    if math.isnan(value) or math.isinf(value):
+        raise ValueError(f"threshold must be finite, got {value!r}")
+    if value < 1.0:
+        raise ValueError(
+            f"threshold must be >= 1.0 (regulatory-floor semantics — "
+            f"GB 150 / ASME VIII Div 2 already build SF into [σ]; "
+            f"a threshold below 1.0 has no physical meaning), got "
+            f"{value!r}"
         )
 
 
@@ -133,14 +162,14 @@ def compute_verdict(
 
     Refusals:
 
-    * any input non-finite / non-positive → ``ValueError``
-    * threshold non-finite / non-positive → ``ValueError``
+    * sigma_max / sigma_allow non-finite / non-positive → ``ValueError``
+    * threshold < 1.0 (regulatory floor) or non-finite → ``ValueError``
 
     Returns a frozen :class:`Verdict` ready for DOCX rendering.
     """
     _check_positive_finite("sigma_max", sigma_max)
     _check_positive_finite("sigma_allow", sigma_allow)
-    _check_positive_finite("threshold", threshold)
+    _check_threshold(threshold)
 
     safety_factor = sigma_allow / sigma_max
     kind: VerdictKind = "PASS" if safety_factor >= threshold else "FAIL"
