@@ -238,6 +238,229 @@ def test_loader_refuses_unknown_unit_system(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bucket 2b — Codex R1 (PR #101) silent-acceptance refusals
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "yaml_quoted",
+    [
+        '"   "',         # 3 spaces in double quotes
+        '"\\t"',        # YAML double-quoted \t → tab character
+        '"\\n"',        # YAML double-quoted \n → newline character
+        '"  \\t  "',    # mixed whitespace
+    ],
+)
+def test_loader_refuses_whitespace_only_name(
+    tmp_path: Path, yaml_quoted: str
+) -> None:
+    """Codex R1 HIGH-1 (PR #101): ``not v`` accepted whitespace-only
+    name/kind/target and produced a silently-corrupt
+    BoundaryCondition. Strip-then-validate closes the hole.
+
+    The parametrized values are YAML literals (double-quoted so
+    ``\\t`` / ``\\n`` are interpreted as control characters by the
+    YAML parser, matching what an engineer might paste from a
+    spreadsheet copy)."""
+    p = _write_yaml(
+        tmp_path,
+        f"""
+        boundary_conditions:
+          - name: {yaml_quoted}
+            kind: fixed
+            target: NSET=foo
+            components: {{ux: 0.0}}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="must be a non-empty string"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_refuses_whitespace_only_kind(tmp_path: Path) -> None:
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: x
+            kind: "   "
+            target: NSET=foo
+            components: {ux: 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="must be a non-empty string"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_refuses_whitespace_only_target(tmp_path: Path) -> None:
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: x
+            kind: fixed
+            target: "  \t  "
+            components: {ux: 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="must be a non-empty string"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_refuses_whitespace_only_component_key(tmp_path: Path) -> None:
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: x
+            kind: fixed
+            target: NSET=foo
+            components: {"   ": 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="empty / whitespace-only key"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_strips_name_for_duplicate_detection(tmp_path: Path) -> None:
+    """Codex R1 HIGH-1 follow-on: duplicate-detection used to operate
+    on unnormalised names. After strip, ``"dup"`` and ``"dup "`` are
+    the same name and must collide."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: "dup"
+            kind: fixed
+            target: NSET=a
+            components: {ux: 0.0}
+            unit_system: SI_mm
+          - name: "dup  "
+            kind: pressure
+            target: ELSET=b
+            components: {pressure: 1.0}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="duplicate bc.name 'dup'"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_strips_name_into_boundary_condition(tmp_path: Path) -> None:
+    """The stripped name flows through into ``BoundaryCondition.name``
+    so the DOCX renderer never sees stray whitespace."""
+    p = _write_yaml(
+        tmp_path,
+        """
+        boundary_conditions:
+          - name: "  fixed_bottom  "
+            kind: fixed
+            target: NSET=bottom
+            components: {ux: 0.0}
+            unit_system: SI_mm
+        """,
+    )
+    bcs = load_boundary_conditions_yaml(p)
+    assert bcs[0].name == "fixed_bottom"
+
+
+@pytest.mark.parametrize(
+    "yaml_value,doc_label",
+    [
+        (".nan", "NaN"),
+        (".inf", "+inf"),
+        ("-.inf", "-inf"),
+    ],
+)
+def test_loader_refuses_non_finite_component(
+    tmp_path: Path, yaml_value: str, doc_label: str
+) -> None:
+    """Codex R1 HIGH-2 (PR #101): non-finite scalars silently rendered
+    as ``fx=nan`` / ``fx=inf`` / ``fx=-inf`` in the DOCX. NaN / ±inf
+    have no engineering meaning in a BC magnitude — refuse at the
+    boundary, never let them reach the audit line."""
+    _ = doc_label  # parametrize id only
+    p = _write_yaml(
+        tmp_path,
+        f"""
+        boundary_conditions:
+          - name: bad_num
+            kind: force
+            target: NSET=x
+            components: {{fx: {yaml_value}}}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="must be finite"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_refuses_int_beyond_exact_float_range(tmp_path: Path) -> None:
+    """Codex R1 HIGH-2 (PR #101) POC: ``2**53 + 1 = 9007199254740993``
+    silently coerces to ``9007199254740992.0`` because the IEEE-754
+    binary64 mantissa can't represent it exactly. Reject before
+    coercion so an engineer typing a 17-digit force value sees the
+    error rather than discovering the silent rounding in the DOCX."""
+    big = 2**53 + 1
+    p = _write_yaml(
+        tmp_path,
+        f"""
+        boundary_conditions:
+          - name: too_big
+            kind: force
+            target: NSET=x
+            components: {{fx: {big}}}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="exceeds the exact-float range"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_refuses_negative_int_beyond_exact_float_range(
+    tmp_path: Path,
+) -> None:
+    """Symmetric to the positive case — the bound is ``±2**53``."""
+    big_neg = -(2**53 + 1)
+    p = _write_yaml(
+        tmp_path,
+        f"""
+        boundary_conditions:
+          - name: too_neg
+            kind: force
+            target: NSET=x
+            components: {{fx: {big_neg}}}
+            unit_system: SI_mm
+        """,
+    )
+    with pytest.raises(BCSummaryError, match="exceeds the exact-float range"):
+        load_boundary_conditions_yaml(p)
+
+
+def test_loader_accepts_int_at_exact_float_boundary(tmp_path: Path) -> None:
+    """``2**53`` itself IS exactly representable; the bound is
+    inclusive. Pin this so a future fix doesn't accidentally tighten
+    the threshold to ``< 2**53``."""
+    boundary = 2**53
+    p = _write_yaml(
+        tmp_path,
+        f"""
+        boundary_conditions:
+          - name: at_bound
+            kind: force
+            target: NSET=x
+            components: {{fx: {boundary}}}
+            unit_system: SI_mm
+        """,
+    )
+    bcs = load_boundary_conditions_yaml(p)
+    assert dict(bcs[0].components) == {"fx": float(boundary)}
+
+
+# ---------------------------------------------------------------------------
 # Bucket 4 — unit_system parsing case-insensitivity
 # ---------------------------------------------------------------------------
 

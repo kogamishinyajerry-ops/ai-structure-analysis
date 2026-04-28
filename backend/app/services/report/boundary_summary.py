@@ -35,6 +35,7 @@ Refusal contract (per ADR-019 / ADR-020 §1):
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -133,6 +134,79 @@ _REQUIRED_BC_KEYS: Final[tuple[str, ...]] = (
 )
 
 
+# IEEE-754 binary64 represents every integer in ``[-2**53, +2**53]``
+# exactly; integers outside that range round to the nearest even
+# representable double when coerced to ``float``. Codex R1 (PR #101)
+# demonstrated ``9007199254740993`` (= 2**53 + 1) silently loading as
+# ``9007199254740992.0`` — exactly the audit-trail corruption ADR-012
+# forbids. We refuse such inputs at the boundary rather than letting
+# them slip through ``float(int_value)``.
+_INT_FLOAT_SAFE_MAX: Final[int] = 2**53
+
+
+def _strip_required_str(idx: int, key: str, raw: Any) -> str:
+    """Validate-and-strip a required string field.
+
+    Codex R1 PR #101 demonstrated that ``not v`` accepted whitespace-
+    only values (``name: "   "``), letting a corrupt BoundaryCondition
+    through. Strip first, then refuse blank — and use the stripped
+    value everywhere downstream (duplicate-name check, BC.name).
+    """
+    if not isinstance(raw, str):
+        raise BCSummaryError(
+            f"bc[{idx}].{key} must be a string, got {type(raw).__name__}"
+        )
+    stripped = raw.strip()
+    if not stripped:
+        raise BCSummaryError(
+            f"bc[{idx}].{key} must be a non-empty string (got {raw!r}, "
+            f"empty after stripping whitespace)"
+        )
+    return stripped
+
+
+def _check_finite_component(
+    idx: int, comp_key: str, raw: Any
+) -> float:
+    """Validate-and-coerce one component value.
+
+    Codex R1 PR #101 demonstrated three silent-acceptance paths
+    through ``float(cv)``:
+
+    * ``.nan`` loaded and rendered as ``fx=nan``
+    * ``.inf`` / ``-.inf`` loaded and rendered as ``fx=inf`` / ``fx=-inf``
+    * ``2**53 + 1 = 9007199254740993`` loaded as ``9007199254740992.0``
+      due to IEEE-754 rounding
+
+    All three are audit-trail corruption — the engineer signs a DOCX
+    that quotes a load value materially different from what they
+    typed. Refuse all three at the boundary.
+    """
+    # bool is a subclass of int — explicit guard, since ``True`` would
+    # otherwise become ``1.0`` and silently corrupt the BC.
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise BCSummaryError(
+            f"bc[{idx}].components[{comp_key!r}] must be a real number, "
+            f"got {raw!r} ({type(raw).__name__})"
+        )
+    # Reject ints beyond the exact-float range *before* coercion.
+    if isinstance(raw, int) and abs(raw) > _INT_FLOAT_SAFE_MAX:
+        raise BCSummaryError(
+            f"bc[{idx}].components[{comp_key!r}]: integer {raw!r} exceeds "
+            f"the exact-float range (±2**53 = ±{_INT_FLOAT_SAFE_MAX}); "
+            f"coercion would silently lose precision. Provide the value "
+            f"as a string-quoted decimal or a smaller magnitude."
+        )
+    coerced = float(raw)
+    if not math.isfinite(coerced):
+        raise BCSummaryError(
+            f"bc[{idx}].components[{comp_key!r}] must be finite, got {raw!r} "
+            f"(rendered as {coerced!r}); NaN / ±inf have no engineering meaning "
+            f"in a boundary-condition magnitude"
+        )
+    return coerced
+
+
 def _parse_unit_system(label: object) -> UnitSystem:
     """Normalise a yaml string to a ``UnitSystem`` enum member.
 
@@ -156,13 +230,34 @@ def _parse_unit_system(label: object) -> UnitSystem:
     )
 
 
-def _validate_bc_dict(idx: int, raw: Any) -> Mapping[str, Any]:
-    """Schema-check one entry of the ``boundary_conditions`` list.
+@dataclass(frozen=True)
+class _ValidatedBC:
+    """Internal record produced by :func:`_validate_bc_dict`.
+
+    Holds the *stripped* string fields and the *finite-checked,
+    coerced* component values. The caller turns this into a
+    ``BoundaryCondition`` without re-parsing — duplicate-name
+    detection runs on the stripped name (Codex R1 PR #101 HIGH-1).
+    """
+
+    name: str
+    kind: str
+    target: str
+    components: Mapping[str, float]
+    unit_system: UnitSystem
+
+
+def _validate_bc_dict(idx: int, raw: Any) -> _ValidatedBC:
+    """Schema-check one entry of the ``boundary_conditions`` list and
+    return a fully-validated, coerced record.
 
     Validates type + presence of every required key and raises
     ``BCSummaryError`` with the offending index + key on any failure.
-    Returns the raw dict unchanged for the caller to coerce into a
-    ``BoundaryCondition``.
+    String fields are stripped (Codex R1 PR #101 HIGH-1: whitespace-
+    only ``name``/``kind``/``target`` was previously accepted) and
+    component values are checked for finiteness + exact-float
+    representability (Codex R1 PR #101 HIGH-2: NaN, ±inf, and
+    ``2**53 + 1`` were previously accepted with silent corruption).
     """
     if not isinstance(raw, dict):
         raise BCSummaryError(
@@ -174,30 +269,36 @@ def _validate_bc_dict(idx: int, raw: Any) -> Mapping[str, Any]:
             f"bc[{idx}] missing required key(s) {missing!r}; "
             f"required: {list(_REQUIRED_BC_KEYS)!r}"
         )
-    for str_key in ("name", "kind", "target"):
-        v = raw[str_key]
-        if not isinstance(v, str) or not v:
-            raise BCSummaryError(
-                f"bc[{idx}].{str_key} must be a non-empty string, got {v!r}"
-            )
+
+    name = _strip_required_str(idx, "name", raw["name"])
+    kind = _strip_required_str(idx, "kind", raw["kind"])
+    target = _strip_required_str(idx, "target", raw["target"])
+
     comps = raw["components"]
     if not isinstance(comps, dict) or not comps:
         raise BCSummaryError(
             f"bc[{idx}].components must be a non-empty mapping, got {comps!r}"
         )
+    coerced_components: dict[str, float] = {}
     for ck, cv in comps.items():
-        if not isinstance(ck, str) or not ck:
+        if not isinstance(ck, str):
             raise BCSummaryError(
-                f"bc[{idx}].components has non-string / empty key {ck!r}"
+                f"bc[{idx}].components has non-string key {ck!r}"
             )
-        # bool is a subclass of int — reject explicitly, otherwise
-        # ``True`` would silently become ``1.0`` and corrupt the BC.
-        if isinstance(cv, bool) or not isinstance(cv, (int, float)):
+        ck_stripped = ck.strip()
+        if not ck_stripped:
             raise BCSummaryError(
-                f"bc[{idx}].components[{ck!r}] must be a real number, "
-                f"got {cv!r} ({type(cv).__name__})"
+                f"bc[{idx}].components has empty / whitespace-only key {ck!r}"
             )
-    return raw
+        coerced_components[ck_stripped] = _check_finite_component(idx, ck_stripped, cv)
+
+    return _ValidatedBC(
+        name=name,
+        kind=kind,
+        target=target,
+        components=coerced_components,
+        unit_system=_parse_unit_system(raw["unit_system"]),
+    )
 
 
 def load_boundary_conditions_yaml(path: Path) -> list[BoundaryCondition]:
@@ -256,22 +357,23 @@ def load_boundary_conditions_yaml(path: Path) -> list[BoundaryCondition]:
     bcs: list[BoundaryCondition] = []
     seen_names: set[str] = set()
     for idx, raw_bc in enumerate(bcs_raw):
-        d = _validate_bc_dict(idx, raw_bc)
-        name = str(d["name"])
-        if name in seen_names:
+        v = _validate_bc_dict(idx, raw_bc)
+        # Duplicate detection runs on the *stripped* name so
+        # ``"dup"`` and ``"dup "`` are caught as collisions
+        # (Codex R1 PR #101 HIGH-1 — duplicate-check used to operate
+        # on unnormalised names).
+        if v.name in seen_names:
             raise BCSummaryError(
-                f"duplicate bc.name {name!r} at bc[{idx}]; names must be unique"
+                f"duplicate bc.name {v.name!r} at bc[{idx}]; names must be unique"
             )
-        seen_names.add(name)
+        seen_names.add(v.name)
         bcs.append(
             BoundaryCondition(
-                name=name,
-                kind=str(d["kind"]),
-                target=str(d["target"]),
-                components={
-                    str(ck): float(cv) for ck, cv in d["components"].items()
-                },
-                unit_system=_parse_unit_system(d["unit_system"]),
+                name=v.name,
+                kind=v.kind,
+                target=v.target,
+                components=dict(v.components),
+                unit_system=v.unit_system,
             )
         )
     return bcs
