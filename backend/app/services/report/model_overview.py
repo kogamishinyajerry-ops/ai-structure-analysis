@@ -57,6 +57,32 @@ _LENGTH_UNIT_BY_SYSTEM: Final[Mapping[UnitSystem, str]] = MappingProxyType(
 )
 
 
+def _has_element_inventory_capability(reader: object) -> bool:
+    """Static-only capability probe — never triggers descriptors.
+
+    Codex R4 PR #103 MEDIUM-2 POC: a reader whose ``element_inventory``
+    is a property whose getter raises ``RuntimeError("descriptor boom")``
+    explodes during ``isinstance(reader, SupportsElementInventory)``,
+    bypassing the call-boundary refusal contract. ``inspect.getattr_static``
+    looks the attribute up via class MRO without invoking any
+    descriptor, so a misbehaving getter can't escape the refusal
+    contract — :func:`_invoke_element_inventory` then translates any
+    descriptor failure into ``ModelOverviewError`` at the actual call
+    boundary.
+
+    A caller that returns ``True`` here MUST go through
+    :func:`_invoke_element_inventory` rather than calling the method
+    directly, since this function does not actually verify
+    callability — only that an attribute named ``element_inventory``
+    exists somewhere in the class hierarchy.
+    """
+    try:
+        inspect.getattr_static(reader, "element_inventory")
+    except AttributeError:
+        return False
+    return True
+
+
 def _invoke_element_inventory(reader: object) -> Any:
     """Call ``reader.element_inventory()`` after checking arity.
 
@@ -67,7 +93,19 @@ def _invoke_element_inventory(reader: object) -> Any:
     Layer-4 service surfaces a clean ``ModelOverviewError`` with the
     misimplementing class name in the message.
     """
-    method = getattr(reader, "element_inventory", None)
+    # Use ``getattr`` (not ``inspect.getattr_static``) only AFTER
+    # ``capability_present`` has been verified statically by the
+    # caller. ``getattr`` here can still trigger a descriptor that
+    # raises (Codex R4 PR #103 MEDIUM-2 POC); translate any exception
+    # into ModelOverviewError uniformly.
+    try:
+        method = getattr(reader, "element_inventory", None)
+    except Exception as exc:
+        raise ModelOverviewError(
+            f"reader of type {type(reader).__name__!r} has an "
+            f"element_inventory descriptor that raised on access: "
+            f"{type(exc).__name__}: {exc}. Adapter contract violation."
+        ) from exc
     if not callable(method):
         raise ModelOverviewError(
             f"reader of type {type(reader).__name__!r} satisfies "
@@ -76,7 +114,7 @@ def _invoke_element_inventory(reader: object) -> Any:
         )
     try:
         sig = inspect.signature(method)
-    except (TypeError, ValueError):
+    except Exception:
         # Built-in / C-implemented method — ``inspect.signature`` can't
         # introspect it, so we fall back to calling and translating
         # ANY exception into ``ModelOverviewError``. Codex R2 PR #103
@@ -306,7 +344,7 @@ def summarize_model_overview(reader: ReaderHandle) -> ModelOverview:
     # rejected for bool/non-finite, then wrap in MappingProxyType.
     element_inventory: Optional[Mapping[str, int]]
     element_count: Optional[int]
-    if isinstance(reader, SupportsElementInventory):
+    if _has_element_inventory_capability(reader):
         raw_inventory = _invoke_element_inventory(reader)
         normalised = _normalise_element_inventory(raw_inventory)
         element_inventory = MappingProxyType(normalised)

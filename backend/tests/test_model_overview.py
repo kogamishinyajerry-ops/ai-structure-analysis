@@ -431,6 +431,83 @@ def test_summary_refuses_non_introspectable_callable_with_runtime_error() -> Non
     assert "call body exploded" in str(exc_info.value.__cause__)
 
 
+class _SignatureRaisesRuntimeErrorReader(_SyntheticReader):
+    """Codex R4 PR #103 MEDIUM-1 POC: a callable whose signature
+    introspection raises a non-(TypeError|ValueError) exception.
+    The R3 fix only caught those two; broaden to ``except Exception``
+    in the signature-inspection guard.
+    """
+
+    class _OddSig:
+        @property
+        def __signature__(self):  # type: ignore[no-untyped-def]
+            raise RuntimeError("signature metadata exploded")
+
+        def __call__(self) -> dict[str, int]:
+            return {"HEX8": 1}
+
+    def __init__(
+        self,
+        node_ids: list[int],
+        coords: np.ndarray,
+        unit_system: UnitSystem = UnitSystem.SI_MM,
+    ) -> None:
+        super().__init__(node_ids, coords, unit_system)
+        self.element_inventory = (
+            _SignatureRaisesRuntimeErrorReader._OddSig()  # type: ignore[assignment]
+        )
+
+
+def test_summary_refuses_signature_inspection_runtime_error() -> None:
+    """Codex R4 MEDIUM-1: when ``inspect.signature`` raises any
+    exception (not just TypeError / ValueError), the loader must
+    treat the callable as non-introspectable and proceed to the
+    sanitised fallback rather than leak the raw exception.
+
+    In this POC ``__signature__`` raises RuntimeError, then the
+    fallback ``__call__`` happens to succeed (returns ``{"HEX8": 1}``),
+    so the overall summary should produce a clean ModelOverview
+    with the inventory present."""
+    rdr = _SignatureRaisesRuntimeErrorReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    assert isinstance(rdr, SupportsElementInventory)
+    mo = summarize_model_overview(rdr)  # type: ignore[arg-type]
+    assert mo.element_inventory is not None
+    assert dict(mo.element_inventory) == {"HEX8": 1}
+    assert mo.element_count == 1
+
+
+class _DescriptorBoomReader(_SyntheticReader):
+    """Codex R4 PR #103 MEDIUM-2 POC: a reader whose
+    ``element_inventory`` is a property whose getter raises
+    RuntimeError. The earlier ``isinstance(reader, ...)`` capability
+    probe triggered the descriptor and exploded before the
+    sanitiser could catch it.
+    """
+
+    @property
+    def element_inventory(self) -> dict[str, int]:  # type: ignore[override]
+        raise RuntimeError("descriptor boom")
+
+
+def test_summary_refuses_descriptor_that_raises_on_access() -> None:
+    """Codex R4 MEDIUM-2: descriptor failures during the capability
+    probe must stay inside the refusal contract. The static probe
+    (``inspect.getattr_static``) confirms attribute presence without
+    triggering the getter; the actual call boundary translates the
+    descriptor failure into ModelOverviewError."""
+    rdr = _DescriptorBoomReader(
+        node_ids=[1, 2], coords=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    )
+    with pytest.raises(
+        ModelOverviewError, match="descriptor that raised on access"
+    ) as exc_info:
+        summarize_model_overview(rdr)  # type: ignore[arg-type]
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert "descriptor boom" in str(exc_info.value.__cause__)
+
+
 class _MutableCount:
     """Stand-in for an adapter that wraps counts in a mutable
     object. Validates that the normaliser refuses non-int-typed
