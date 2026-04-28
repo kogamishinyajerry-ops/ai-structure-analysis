@@ -976,6 +976,53 @@ def test_w6c2_lifting_lug_accepts_same_kwargs() -> None:
     assert "EV-LUG-VM-MAX" in derivation
 
 
+def test_w6c2_material_without_code_raises() -> None:
+    """Codex R1 MEDIUM (PR #100): partial-kwargs must hard-fail. A
+    caller passing only ``material`` is a configuration bug — silently
+    falling through to the legacy 1-section summary would hide it.
+    """
+    rdr = _make_synthetic_stress_reader(50.0)
+    with pytest.raises(ValueError, match="requires BOTH material\\+code"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            material=_make_q345b(),
+            # no code
+        )
+
+
+def test_w6c2_code_without_material_raises() -> None:
+    """Codex R1 MEDIUM (PR #100), symmetric: caller passing only
+    ``code`` is also a bug; the verdict needs σ_y/σ_u from material."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    with pytest.raises(ValueError, match="requires BOTH material\\+code"):
+        generate_static_strength_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            code="GB",
+            # no material
+        )
+
+
+def test_w6c2_lifting_lug_partial_kwargs_also_raises() -> None:
+    """The XOR guard must apply to both producers — otherwise an
+    engineer using the lug template could slip the same bug past it."""
+    rdr = _make_synthetic_stress_reader(50.0)
+    with pytest.raises(ValueError, match="requires BOTH material\\+code"):
+        generate_lifting_lug_summary(
+            rdr,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            material=_make_q345b(),
+        )
+    rdr2 = _make_synthetic_stress_reader(50.0)
+    with pytest.raises(ValueError, match="requires BOTH material\\+code"):
+        generate_lifting_lug_summary(
+            rdr2,  # type: ignore[arg-type]
+            project_id="P", task_id="T", report_id="R", bundle_id="B",
+            code="GB",
+        )
+
+
 def test_w6c2_verdict_relation_truthful_when_threshold_above_floor_and_fail() -> None:
     """With threshold=1.5 and σ_max=140 MPa < [σ]=156.67 MPa, the SF
     is 1.119 — FAIL against the institute-internal margin, but σ_max

@@ -353,9 +353,21 @@ def _build_max_field_summary(
     sections: list[ReportSection] = [summary]
 
     # W6c.2 — § 许用应力 + § 评定结论. Both kwargs must be provided
-    # together; passing only one is a caller bug. Without σ_max there's
-    # nothing to assess against [σ], so a stress-less report falls back
-    # to the W4 max-field summary cleanly.
+    # together; passing only one is a caller bug. The W6c.2 verdict
+    # needs both σ_y/σ_u (from material) AND the design code's safety
+    # factors (from code) — silently falling through to the legacy
+    # 1-section summary on partial input would hide a configuration
+    # bug, exactly the silent-acceptance failure mode Codex R1 on
+    # PR #100 flagged as MEDIUM.
+    if (material is None) != (code is None):
+        provided, missing = (
+            ("material", "code") if material is not None else ("code", "material")
+        )
+        raise ValueError(
+            f"W6c.2 verdict requires BOTH material+code; got {provided!r} "
+            f"without {missing!r}. Pass both, or omit both to fall back "
+            f"to the legacy 1-section summary."
+        )
     if material is not None and code is not None:
         if stress_summary is None:
             raise ValueError(
