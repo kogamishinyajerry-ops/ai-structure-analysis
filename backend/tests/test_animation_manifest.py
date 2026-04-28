@@ -218,6 +218,66 @@ def test_animation_manifest_roundtrip_preserves_frames() -> None:
     assert parsed["frames"][1]["max_displacement_magnitude"] == 3.5
 
 
+def test_manifest_json_schema_is_pinned() -> None:
+    """Codex R1 nit: ``to_json`` advertises ``sort_keys=True`` which
+    makes JSON key ordering part of the emitted contract. Pin the
+    exact top-level + per-frame key sets so a silent schema drift
+    (added/renamed/removed field) is a hard-failing diff for
+    downstream Electron / DOCX / W7c-v2 consumers."""
+    rdr = _ErosionReader(
+        frames={1: (0.0, _disp([[1, 0, 0]]))},
+        erosion={1: np.ones(3, dtype=np.int8)},
+    )
+    parsed = json.loads(build_manifest(rdr, solver_name="X").to_json())
+
+    expected_top_keys = ["frames", "has_erosion_data", "solver", "unit_system"]
+    assert list(parsed.keys()) == expected_top_keys, (
+        f"top-level JSON key list / order changed; got {list(parsed.keys())}"
+    )
+
+    expected_frame_keys = [
+        "eroded_facet_count",
+        "frame_index",
+        "max_displacement_magnitude",
+        "png_path",
+        "step_id",
+        "time",
+    ]
+    assert list(parsed["frames"][0].keys()) == expected_frame_keys, (
+        f"frame JSON key list / order changed; got "
+        f"{list(parsed['frames'][0].keys())}"
+    )
+
+
+def test_manifest_empty_step_ids_returns_empty_frames() -> None:
+    """Codex R1 nit: empty step_ids subset returns an empty frames
+    list (not e.g. all states). Pin so downstream compare-frame
+    consumers can rely on the contract."""
+    rdr = _NoErosionReader(
+        frames={1: (0.0, _disp([[0, 0, 0]]))}
+    )
+    mf = build_manifest(rdr, solver_name="X", step_ids=[])
+    assert mf.frames == []
+    assert mf.solver == "X"  # rest of the manifest still populated
+
+
+def test_manifest_duplicate_step_ids_preserved() -> None:
+    """Codex R1 nit: caller-supplied duplicate step_ids appear once
+    per supplied entry — pinned because compare-frame plots may
+    legitimately repeat a baseline state for visual reference."""
+    rdr = _NoErosionReader(
+        frames={
+            1: (0.0, _disp([[0, 0, 0]])),
+            2: (0.5, _disp([[1, 0, 0]])),
+        }
+    )
+    mf = build_manifest(rdr, solver_name="X", step_ids=[1, 2, 1])
+    assert [f.step_id for f in mf.frames] == [1, 2, 1]
+    assert mf.frames[0].max_displacement_magnitude == pytest.approx(0.0)
+    assert mf.frames[1].max_displacement_magnitude == pytest.approx(1.0)
+    assert mf.frames[2].max_displacement_magnitude == pytest.approx(0.0)
+
+
 # ---------------------------------------------------------------------------
 # Tier-2 — GS-100 integration
 # ---------------------------------------------------------------------------
