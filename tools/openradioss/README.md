@@ -10,6 +10,21 @@ Docker recipe for the out-of-process OpenRadioss solver. Used by:
 
 OpenRadioss itself is **AGPL-3.0**. We run it out-of-process inside the container; the Python adapter (`backend/app/adapters/openradioss/`) imports `vortex_radioss` (MPL-2.0) only, never the AGPL solver code. See `docs/adr/ADR-021-gs100-radioss-smoke-fixture.md` §Licensing for the full mixed-license map; W7g RFC-002 will lift it to a repo-root `LICENSE-NOTICES.md` once more adapters land.
 
+## Python-side install (`vortex_radioss` parser)
+
+`vortex-radioss` is **not on PyPI** (verified 2026-04-28). It lives at <https://github.com/Vortex-CAE/Vortex-Radioss>. Choose by package manager:
+
+```bash
+# uv (preferred — pyproject.toml already pins the git source):
+uv sync --extra openradioss
+
+# pip (manual git source needed):
+pip install -e ".[openradioss]" \
+            git+https://github.com/Vortex-CAE/Vortex-Radioss.git
+```
+
+Without the extra installed, the adapter still imports — `vortex_radioss` is loaded lazily inside `_read_frame`, and parser-required tests skip via the `_HAS_PARSER` guard in `tests/test_openradioss_adapter.py`.
+
 ## Build
 
 The Dockerfile expects a sibling `OpenRadioss/` directory containing the unzipped prebuilt binaries:
