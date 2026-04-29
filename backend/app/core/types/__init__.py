@@ -32,6 +32,8 @@ from .reader_handle import (
     ReaderHandle,
     SupportsElementDeletion,
     SupportsElementInventory,
+    SupportsElementPartIds,
+    SupportsNodalVelocity,
 )
 
 __all__ = [
@@ -50,5 +52,7 @@ __all__ = [
     "SolutionState",
     "SupportsElementDeletion",
     "SupportsElementInventory",
+    "SupportsElementPartIds",
+    "SupportsNodalVelocity",
     "UnitSystem",
 ]

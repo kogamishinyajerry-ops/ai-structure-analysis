@@ -20,6 +20,8 @@ from app.core.types import (
     CanonicalField,
     ComponentType,
     FieldLocation,
+    SupportsElementPartIds,
+    SupportsNodalVelocity,
     UnitSystem,
 )
 
@@ -503,3 +505,148 @@ def test_supports_element_deletion_protocol(
         "OpenRadiossReader must satisfy the SupportsElementDeletion "
         "sub-Protocol (deleted_facets_for(step_id) -> int8 array)."
     )
+
+
+def _write_synthetic_frame_files(tmp_path: Path, rootname: str) -> None:
+    for idx in (1, 2):
+        (tmp_path / f"{rootname}A{idx:03d}").write_bytes(b"synthetic")
+
+
+def test_synthetic_native_tensor_fields_are_exposed(tmp_path: Path) -> None:
+    """Pre-gate GS-101 tooling: native stress/strain can be surfaced
+    when the OpenRadioss arrays explicitly contain them. This uses a
+    synthetic parser stub, not a signed fixture."""
+    from unittest import mock
+
+    rootname = "model_00"
+    _write_synthetic_frame_files(tmp_path, rootname)
+    frames = {
+        1: (
+            {"nbNodes": 2, "time": 0.0},
+            {
+                "coorA": np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+                "nodNumA": np.array([101, 102], dtype=np.int64),
+                "tTextA": np.array(["Stress", "Strain"], dtype=object),
+                "tensValA": np.array(
+                    [
+                        [[1, 2, 3, 4, 5, 6], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]],
+                        [[7, 8, 9, 10, 11, 12], [0.7, 0.8, 0.9, 1.0, 1.1, 1.2]],
+                    ],
+                    dtype=np.float64,
+                ),
+            },
+        ),
+        2: (
+            {"nbNodes": 2, "time": 1.0},
+            {
+                "coorA": np.array([[0.5, 0.0, 0.0], [1.5, 0.0, 0.0]]),
+                "nodNumA": np.array([101, 102], dtype=np.int64),
+                "tTextA": np.array(["Stress", "Strain"], dtype=object),
+                "tensValA": np.array(
+                    [
+                        [[2, 3, 4, 5, 6, 7], [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]],
+                        [[8, 9, 10, 11, 12, 13], [0.8, 0.9, 1.0, 1.1, 1.2, 1.3]],
+                    ],
+                    dtype=np.float64,
+                ),
+            },
+        ),
+    }
+
+    def fake_read(self, idx: int):  # type: ignore[no-untyped-def]
+        return frames[idx]
+
+    with mock.patch.object(OpenRadiossReader, "_read_frame", fake_read):
+        rdr = OpenRadiossReader(
+            root_dir=tmp_path,
+            rootname=rootname,
+            unit_system=UnitSystem.SI_MM,
+        )
+        try:
+            state = rdr.solution_states[0]
+            assert CanonicalField.STRESS_TENSOR in state.available_fields
+            assert CanonicalField.STRAIN_TENSOR in state.available_fields
+            stress = rdr.get_field(CanonicalField.STRESS_TENSOR, step_id=1)
+            strain = rdr.get_field(CanonicalField.STRAIN_TENSOR, step_id=1)
+            assert stress is not None
+            assert strain is not None
+            assert stress.metadata.location == FieldLocation.ELEMENT
+            assert stress.metadata.component_type == ComponentType.TENSOR_SYM_3D
+            np.testing.assert_allclose(
+                stress.values(),
+                np.array([[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]], dtype=np.float64),
+            )
+            np.testing.assert_allclose(
+                strain.values(),
+                np.array(
+                    [
+                        [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+                        [0.7, 0.8, 0.9, 1.0, 1.1, 1.2],
+                    ],
+                    dtype=np.float64,
+                ),
+            )
+        finally:
+            rdr.close()
+
+
+def test_synthetic_velocity_and_part_capabilities(tmp_path: Path) -> None:
+    """Velocity and part IDs are raw optional capabilities, not signed
+    ballistic truth. They support future Layer-3 candidate metrics."""
+    from unittest import mock
+
+    rootname = "model_00"
+    _write_synthetic_frame_files(tmp_path, rootname)
+    frames = {
+        1: (
+            {"nbNodes": 2, "time": 0.0},
+            {
+                "coorA": np.zeros((2, 3), dtype=np.float64),
+                "nodNumA": np.array([1, 2], dtype=np.int64),
+                "vTextA": np.array(["Velocity"], dtype=object),
+                "vectValA": np.array(
+                    [[[10.0, 0.0, 0.0]], [[20.0, 0.0, 0.0]]],
+                    dtype=np.float64,
+                ),
+                "materialTypeA": np.array([9001, 9002], dtype=np.int64),
+            },
+        ),
+        2: (
+            {"nbNodes": 2, "time": 1.0},
+            {
+                "coorA": np.ones((2, 3), dtype=np.float64),
+                "nodNumA": np.array([1, 2], dtype=np.int64),
+                "vTextA": np.array(["Velocity"], dtype=object),
+                "vectValA": np.array(
+                    [[[30.0, 0.0, 0.0]], [[40.0, 0.0, 0.0]]],
+                    dtype=np.float64,
+                ),
+                "materialTypeA": np.array([9001, 9002], dtype=np.int64),
+            },
+        ),
+    }
+
+    def fake_read(self, idx: int):  # type: ignore[no-untyped-def]
+        return frames[idx]
+
+    with mock.patch.object(OpenRadiossReader, "_read_frame", fake_read):
+        rdr = OpenRadiossReader(
+            root_dir=tmp_path,
+            rootname=rootname,
+            unit_system=UnitSystem.SI_MM,
+        )
+        try:
+            assert isinstance(rdr, SupportsNodalVelocity)
+            assert isinstance(rdr, SupportsElementPartIds)
+            np.testing.assert_allclose(
+                rdr.nodal_velocity_for(2),
+                np.array([[30.0, 0.0, 0.0], [40.0, 0.0, 0.0]], dtype=np.float64),
+            )
+            np.testing.assert_array_equal(
+                rdr.element_part_ids_for(1),
+                np.array([9001, 9002], dtype=np.int64),
+            )
+            with pytest.raises(KeyError):
+                rdr.nodal_velocity_for(999)
+        finally:
+            rdr.close()

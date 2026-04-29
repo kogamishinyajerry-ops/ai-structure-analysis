@@ -33,14 +33,20 @@ Scope of v1 (W7d):
     * displacement-magnitude history (max |u| per step, optionally
       restricted to a node subset — e.g. plate-only)
 
-Out of scope (deferred to W7d-v2 once GS-101 lands):
-    * residual velocity (needs projectile node tagging)
-    * crater geometry (needs facet-connectivity analysis)
-    * full-perforation verdict (needs through-thickness erosion path)
+Pre-gate candidate helpers (ENG-23):
+    * residual velocity from explicit projectile node partitions
+    * kinetic-energy history from caller-supplied nodal masses
+    * exit-plane perforation candidate verdict
+
+These helpers intentionally require explicit arrays / partitions from
+the caller. They do not turn the current GS-101-demo-unsigned fixture
+into a signed benchmark and they do not infer projectile/plate identity
+from solver metadata.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -60,7 +66,29 @@ __all__ = [
     "eroded_history",
     "perforation_event_step",
     "displacement_history",
+    "mean_velocity",
+    "residual_velocity_magnitude",
+    "kinetic_energy",
+    "kinetic_energy_history",
+    "PerforationVerdict",
+    "perforation_verdict_from_exit_plane",
 ]
+
+
+@dataclass(frozen=True)
+class PerforationVerdict:
+    """Candidate true-perforation verdict from explicit geometry inputs.
+
+    ``perforated`` is deliberately conservative: the projectile must be
+    fully past the exit plane and, if a residual velocity is supplied,
+    still moving out of the plate. This is not a signed GS claim; it is
+    a reusable pure helper for future validated decks.
+    """
+
+    perforated: bool
+    mode: str
+    reason: str
+    residual_speed: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +154,26 @@ def _validate_node_indices(
         )
 
 
+def _validate_vec3_array(
+    values: npt.NDArray[np.float64], name: str
+) -> None:
+    if values.ndim != 2 or values.shape[1] != 3:
+        raise ValueError(f"{name} must have shape (N, 3); got {values.shape}")
+    if not bool(np.isfinite(values).all()):
+        raise ValueError(f"{name} contains non-finite values")
+
+
+def _coerce_node_indices(
+    node_indices: Optional[npt.NDArray[np.int64]],
+    n_nodes: int,
+) -> Optional[npt.NDArray[np.int64]]:
+    if node_indices is None:
+        return None
+    idx = np.asarray(node_indices)
+    _validate_node_indices(idx, n_nodes)
+    return idx.astype(np.int64, copy=False)
+
+
 # ---------------------------------------------------------------------------
 # Tier 1 — pure-array helpers
 # ---------------------------------------------------------------------------
@@ -189,6 +237,157 @@ def max_displacement_magnitude(disp: npt.NDArray[np.float64]) -> float:
     if disp.shape[0] == 0:
         return 0.0
     return float(np.max(np.linalg.norm(disp, axis=1)))
+
+
+def mean_velocity(
+    velocities: npt.NDArray[np.float64],
+    *,
+    node_indices: Optional[npt.NDArray[np.int64]] = None,
+) -> "npt.NDArray[np.float64]":
+    """Mean velocity vector for an explicit node partition.
+
+    Empty partitions return ``[0, 0, 0]``. The caller must supply the
+    projectile partition; this helper does not infer it from element IDs.
+    """
+    arr = np.asarray(velocities, dtype=np.float64)
+    _validate_vec3_array(arr, "velocities")
+    idx = _coerce_node_indices(node_indices, arr.shape[0])
+    if idx is not None:
+        arr = arr[idx]
+    if arr.shape[0] == 0:
+        return np.zeros(3, dtype=np.float64)
+    return np.mean(arr, axis=0)
+
+
+def residual_velocity_magnitude(
+    velocities: npt.NDArray[np.float64],
+    *,
+    projectile_node_indices: npt.NDArray[np.int64],
+) -> float:
+    """Magnitude of the projectile partition's mean residual velocity."""
+    mean_v = mean_velocity(
+        velocities, node_indices=np.asarray(projectile_node_indices)
+    )
+    return float(np.linalg.norm(mean_v))
+
+
+def kinetic_energy(
+    masses: npt.NDArray[np.float64],
+    velocities: npt.NDArray[np.float64],
+    *,
+    node_indices: Optional[npt.NDArray[np.int64]] = None,
+) -> float:
+    """Nodal kinetic energy ``0.5 * Σ m_i |v_i|²`` for a partition.
+
+    ``masses`` are caller-supplied nodal masses in the same unit system
+    as the velocity field. Negative or non-finite masses are refused so
+    a bad partition cannot masquerade as low energy.
+    """
+    vel = np.asarray(velocities, dtype=np.float64)
+    _validate_vec3_array(vel, "velocities")
+    mass = np.asarray(masses, dtype=np.float64)
+    if mass.ndim != 1:
+        raise ValueError(f"masses must be 1-D; got shape {mass.shape}")
+    if mass.shape[0] != vel.shape[0]:
+        raise ValueError(
+            f"masses length {mass.shape[0]} does not match velocity rows {vel.shape[0]}"
+        )
+    if not bool(np.isfinite(mass).all()):
+        raise ValueError("masses contains non-finite values")
+    if bool((mass < 0.0).any()):
+        raise ValueError("masses must be non-negative")
+    idx = _coerce_node_indices(node_indices, vel.shape[0])
+    if idx is not None:
+        vel = vel[idx]
+        mass = mass[idx]
+    if vel.shape[0] == 0:
+        return 0.0
+    speed2 = np.sum(vel * vel, axis=1)
+    return float(0.5 * np.sum(mass * speed2))
+
+
+def kinetic_energy_history(
+    masses: npt.NDArray[np.float64],
+    velocities_by_step: dict[int, npt.NDArray[np.float64]],
+    *,
+    node_indices: Optional[npt.NDArray[np.int64]] = None,
+) -> dict[int, float]:
+    """Per-step kinetic-energy history for explicit velocity arrays."""
+    return {
+        sid: kinetic_energy(masses, vel, node_indices=node_indices)
+        for sid, vel in sorted(velocities_by_step.items())
+    }
+
+
+def perforation_verdict_from_exit_plane(
+    projectile_coordinates: npt.NDArray[np.float64],
+    *,
+    exit_plane_coordinate: float,
+    travel_axis: int = 2,
+    direction: int = 1,
+    residual_velocity: Optional[npt.NDArray[np.float64]] = None,
+    min_residual_speed: float = 0.0,
+) -> PerforationVerdict:
+    """Candidate true-perforation verdict from projectile exit geometry.
+
+    For ``direction=+1`` the projectile is fully out only when its
+    trailing coordinate is beyond the exit plane. For ``direction=-1``
+    the leading/trailing test is mirrored. If ``residual_velocity`` is
+    provided, the mean velocity along the travel direction must be
+    greater than ``min_residual_speed``.
+    """
+    coords = np.asarray(projectile_coordinates, dtype=np.float64)
+    _validate_vec3_array(coords, "projectile_coordinates")
+    if travel_axis not in (0, 1, 2):
+        raise ValueError(f"travel_axis must be 0, 1, or 2; got {travel_axis}")
+    if direction not in (-1, 1):
+        raise ValueError(f"direction must be -1 or +1; got {direction}")
+    if not np.isfinite(float(exit_plane_coordinate)):
+        raise ValueError("exit_plane_coordinate must be finite")
+    if min_residual_speed < 0.0 or not np.isfinite(float(min_residual_speed)):
+        raise ValueError("min_residual_speed must be finite and non-negative")
+    if coords.shape[0] == 0:
+        return PerforationVerdict(
+            False, "exit_plane", "empty projectile partition", None
+        )
+
+    axis_values = coords[:, travel_axis]
+    if direction > 0:
+        exited = bool(np.min(axis_values) >= float(exit_plane_coordinate))
+    else:
+        exited = bool(np.max(axis_values) <= float(exit_plane_coordinate))
+    if not exited:
+        return PerforationVerdict(
+            False,
+            "exit_plane",
+            "projectile partition has not fully crossed the exit plane",
+            None,
+        )
+
+    residual_speed: Optional[float] = None
+    if residual_velocity is not None:
+        vel = np.asarray(residual_velocity, dtype=np.float64)
+        _validate_vec3_array(vel, "residual_velocity")
+        if vel.shape[0] != coords.shape[0]:
+            raise ValueError(
+                "residual_velocity row count must match projectile_coordinates"
+            )
+        mean_axis_velocity = float(np.mean(vel[:, travel_axis]) * direction)
+        residual_speed = mean_axis_velocity
+        if mean_axis_velocity <= min_residual_speed:
+            return PerforationVerdict(
+                False,
+                "exit_plane",
+                "projectile crossed the exit plane but lacks outward residual velocity",
+                residual_speed,
+            )
+
+    return PerforationVerdict(
+        True,
+        "exit_plane",
+        "projectile partition fully crossed the exit plane",
+        residual_speed,
+    )
 
 
 # ---------------------------------------------------------------------------

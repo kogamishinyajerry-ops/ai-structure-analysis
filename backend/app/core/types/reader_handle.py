@@ -84,6 +84,45 @@ class SupportsElementDeletion(Protocol):
 
 
 @runtime_checkable
+class SupportsNodalVelocity(Protocol):
+    """Optional Layer-2 capability: raw nodal velocity vectors.
+
+    CanonicalField is intentionally closed, so velocity remains a
+    capability instead of a new enum member. Explicit-dynamics adapters
+    such as OpenRadioss may implement this when the result file writes
+    a native velocity array. Layer 3 owns residual-velocity and kinetic-
+    energy derivations.
+
+    Returns: float64 array of shape ``(n_nodes, 3)`` when the data is on
+    disk, ``None`` when the adapter declares the capability but this
+    run did not write velocity. Raises ``KeyError`` for unknown step IDs.
+    """
+
+    def nodal_velocity_for(
+        self, step_id: int
+    ) -> "npt.NDArray[np.float64] | None": ...
+
+
+@runtime_checkable
+class SupportsElementPartIds(Protocol):
+    """Optional Layer-2 capability: solver-native element part/material IDs.
+
+    This is intentionally raw metadata. The adapter must not translate
+    IDs into material cards or fabricate material properties; consumers
+    can use the IDs to define projectile/target partitions once a deck
+    supplies the authoritative mapping.
+
+    Returns: int64 array in the adapter's natural element/facet order,
+    or ``None`` when the result file does not carry part metadata.
+    Raises ``KeyError`` for unknown step IDs.
+    """
+
+    def element_part_ids_for(
+        self, step_id: int
+    ) -> "npt.NDArray[np.int64] | None": ...
+
+
+@runtime_checkable
 class SupportsElementInventory(Protocol):
     """Optional Layer-2 capability: per-element type strings (RFC-001 W6e).
 
