@@ -35,6 +35,13 @@ interface RunReportSuccess {
   ok: true;
   exitCode: number;
   outputPath: string;
+  viewportManifestPath?: string;
+}
+
+interface OpenViewportResult {
+  ok: boolean;
+  pid?: number;
+  error?: string;
 }
 
 interface RunReportFailure {
@@ -64,6 +71,7 @@ interface ElectronApi {
   bakeGs101Demo: () => Promise<BakeGs101Result>;
   listMaterials: () => Promise<MaterialOption[]>;
   runReport: (req: RunReportRequest) => Promise<RunReportResult>;
+  openViewport: (manifestPath: string) => Promise<OpenViewportResult>;
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
   onExit: (cb: (exitCode: number) => void) => () => void;
@@ -103,7 +111,10 @@ const rootnameInput = $<HTMLInputElement>("rootname");
 const bakeGs101Btn = $<HTMLButtonElement>("bake-gs101");
 const runBtn = $<HTMLButtonElement>("run");
 const revealBtn = $<HTMLButtonElement>("reveal");
+const openViewportBtn = $<HTMLButtonElement>("open-viewport");
 const demoBtn = $<HTMLButtonElement>("demo-gs001");
+
+let lastViewportManifest: string | null = null;
 const statusEl = $<HTMLDivElement>("statusEl");
 const violationsBox = $<HTMLDivElement>("violations");
 const violationsList = $<HTMLUListElement>("violations-list");
@@ -271,6 +282,28 @@ revealBtn.addEventListener("click", () => {
   if (outputInput.value) void window.api.revealInFolder(outputInput.value);
 });
 
+openViewportBtn.addEventListener("click", async () => {
+  if (!lastViewportManifest) return;
+  openViewportBtn.disabled = true;
+  setStatus("opening 3D viewport…", "running");
+  try {
+    const result = await window.api.openViewport(lastViewportManifest);
+    if (result.ok) {
+      setStatus(`3D viewport open (PID ${result.pid ?? "?"})`, "success");
+    } else {
+      setStatus("viewport failed to open", "error");
+      showViolations([result.error ?? "unknown viewport error"]);
+    }
+  } catch (err) {
+    setStatus("viewport IPC error", "error");
+    showViolations([
+      `viewport IPC error: ${err instanceof Error ? err.message : String(err)}`,
+    ]);
+  } finally {
+    openViewportBtn.disabled = false;
+  }
+});
+
 kindSelect.addEventListener("change", updateFormState);
 sclNodesInput.addEventListener("input", updateFormState);
 sclDistancesInput.addEventListener("input", updateFormState);
@@ -303,6 +336,7 @@ runBtn.addEventListener("click", async () => {
   inFlight = "report";
   runBtn.disabled = true;
   revealBtn.disabled = true;
+  openViewportBtn.disabled = true;
   // The bake button is gated through updateFormState's inFlight check;
   // disable it eagerly here too so a user clicking it during a long
   // report run doesn't even briefly see it as enabled.
@@ -349,6 +383,17 @@ runBtn.addEventListener("click", async () => {
     } else {
       setStatus(`done (exit ${result.exitCode})`, "success");
       revealBtn.disabled = false;
+      // W8b — surface "Open viewport" when the report-cli's
+      // viewport-export stage produced a manifest (ballistic kind only
+      // for now; other kinds resolve viewportManifestPath as undefined
+      // and the button stays disabled).
+      if (result.viewportManifestPath) {
+        lastViewportManifest = result.viewportManifestPath;
+        openViewportBtn.disabled = false;
+      } else {
+        lastViewportManifest = null;
+        openViewportBtn.disabled = true;
+      }
     }
   } catch (err) {
     setStatus("run failed (IPC error)", "error");

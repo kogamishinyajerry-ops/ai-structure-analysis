@@ -530,6 +530,19 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     path.basename(req.output, path.extname(req.output)) + ".figs",
   );
 
+  // W8a — auto-derive the viewport output dir for ballistic runs so
+  // the renderer can spawn the W8b native viewport without an extra
+  // path picker. The directory is sibling to the DOCX, named
+  // <output>.viewport/. Other kinds skip the flag entirely.
+  let viewportDir: string | undefined;
+  if (req.kind === "ballistic") {
+    viewportDir = path.resolve(
+      path.dirname(req.output),
+      path.basename(req.output, path.extname(req.output)) + ".viewport",
+    );
+    args.push("--viewport-out", viewportDir);
+  }
+
   // ``report-cli`` is the console_script registered by
   // pyproject.toml [project.scripts]. We assume it's on PATH —
   // bundling Python is the customer-demo scope (W5+, separate PR).
@@ -573,11 +586,33 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     }
   });
 
-  return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {
+  return new Promise<{
+    ok: boolean;
+    exitCode: number;
+    outputPath: string;
+    viewportManifestPath?: string;
+  }>((resolve) => {
     child.on("close", (code) => {
       const exitCode = code ?? -1;
       _safeSend(evt, "report:exit", exitCode);
-      resolve({ ok: exitCode === 0, exitCode, outputPath: req.output });
+      // W8a — surface the viewport manifest path on success so the
+      // renderer can offer "Open viewport" without re-deriving the
+      // path. We check existence rather than assuming the export
+      // succeeded: viewport-export failures degrade to warning-only
+      // per cli.py and the manifest may be absent.
+      let viewportManifestPath: string | undefined;
+      if (exitCode === 0 && viewportDir) {
+        const candidate = path.join(viewportDir, "viewport_manifest.json");
+        if (fs.existsSync(candidate)) {
+          viewportManifestPath = candidate;
+        }
+      }
+      resolve({
+        ok: exitCode === 0,
+        exitCode,
+        outputPath: req.output,
+        viewportManifestPath,
+      });
     });
     child.on("error", (err) => {
       _safeSend(
@@ -595,3 +630,86 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     });
   });
 });
+
+
+// W8b — spawn the PyVista native viewport against a viewport manifest.
+// The handler validates the manifest path is absolute and points at a
+// file named ``viewport_manifest.json`` to defend the python module
+// invocation against a renderer-side spoof. The viewport runs in its
+// own process so closing it does NOT affect the report-cli stream.
+ipcMain.handle(
+  "open-viewport",
+  async (
+    _evt: Electron.IpcMainInvokeEvent,
+    manifestPath: string,
+  ): Promise<{ ok: boolean; pid?: number; error?: string }> => {
+    if (typeof manifestPath !== "string" || !manifestPath) {
+      return { ok: false, error: "manifest path missing" };
+    }
+    if (!path.isAbsolute(manifestPath)) {
+      return { ok: false, error: "manifest path must be absolute" };
+    }
+    if (path.basename(manifestPath) !== "viewport_manifest.json") {
+      return {
+        ok: false,
+        error:
+          "manifest path must end in viewport_manifest.json (renderer-side spoof guard)",
+      };
+    }
+    if (!fs.existsSync(manifestPath)) {
+      return { ok: false, error: `manifest not found: ${manifestPath}` };
+    }
+    // python -m app.viz.viewport_native <manifest>. Detached so the
+    // viewport can outlive the Electron renderer if the engineer
+    // closes the workbench while still inspecting the run.
+    const child = spawn(
+      "python",
+      ["-m", "app.viz.viewport_native", manifestPath],
+      {
+        stdio: ["ignore", "ignore", "pipe"],
+        detached: true,
+      },
+    );
+    let stderrBuf = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBuf += chunk.toString("utf-8");
+      // Cap accumulator — do not buffer indefinitely.
+      if (stderrBuf.length > 4096) {
+        stderrBuf = stderrBuf.slice(-2048);
+      }
+    });
+    return new Promise((resolve) => {
+      let resolved = false;
+      child.on("error", (err) => {
+        if (resolved) return;
+        resolved = true;
+        resolve({
+          ok: false,
+          error:
+            `failed to spawn python viewport: ${err.message}. ` +
+            `Hint: pip install -e .[viz] from the repo root.`,
+        });
+      });
+      // Give the python module ~600ms to crash on bad manifest /
+      // missing pyvista. If it's still running by then, we resolve
+      // with success and let the user interact with the window.
+      setTimeout(() => {
+        if (resolved) return;
+        if (child.exitCode !== null && child.exitCode !== 0) {
+          resolved = true;
+          resolve({
+            ok: false,
+            error:
+              `viewport exited ${child.exitCode}: ` +
+              (stderrBuf.trim().split("\n").pop() ?? "see python stderr"),
+          });
+          return;
+        }
+        // Detach so node can exit without waiting on the viewport.
+        child.unref();
+        resolved = true;
+        resolve({ ok: true, pid: child.pid });
+      }, 600);
+    });
+  },
+);
