@@ -1,13 +1,12 @@
-import React from 'react';
-import { Activity, Hash, Layers } from 'lucide-react';
+import { Layers } from 'lucide-react';
 
 interface IncrementData {
-  index: int;
-  step: int;
+  index: number;
+  step: number;
   type: string;
-  value: float;
-  max_displacement: float;
-  max_von_mises: float;
+  value: number;
+  max_displacement: number;
+  max_von_mises: number;
 }
 
 interface ModeSelectorProps {
