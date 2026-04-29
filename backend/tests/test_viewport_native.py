@@ -481,6 +481,58 @@ def test_field_requires_value(
     assert "--field requires" in capsys.readouterr().err
 
 
+def test_poll_interval_requires_value(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """W8c — --poll-interval-ms requires a value."""
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text("{}")
+    rc = main([str(m), "--poll-interval-ms"])
+    assert rc == 2
+    assert "--poll-interval-ms requires" in capsys.readouterr().err
+
+
+def test_poll_interval_must_be_int(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """W8c — --poll-interval-ms must parse as an int."""
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text("{}")
+    rc = main([str(m), "--poll-interval-ms", "not-a-number"])
+    assert rc == 2
+    assert "must be an integer" in capsys.readouterr().err
+
+
+def test_poll_interval_must_be_positive(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """W8c — --poll-interval-ms must be > 0."""
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text("{}")
+    rc = main([str(m), "--poll-interval-ms", "0"])
+    assert rc == 2
+    assert "must be positive" in capsys.readouterr().err
+
+
+def test_live_and_snapshots_mutually_exclusive(
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """W8c — --live and --snapshots are contradictory (snapshots are a
+    one-shot render, live polls a growing manifest). Refuse rather
+    than silently picking one."""
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text("{}")
+    rc = main(
+        [str(m), "--live", "--snapshots", str(tmp_path / "out")]  # type: ignore[attr-defined]
+    )
+    assert rc == 2
+    assert "mutually exclusive" in capsys.readouterr().err
+
+
 def test_main_returns_three_on_viewport_error(
     capsys: pytest.CaptureFixture[str],
     tmp_path: pytest.TempPathFactory,
