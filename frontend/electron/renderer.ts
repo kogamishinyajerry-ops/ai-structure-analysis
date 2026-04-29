@@ -61,6 +61,23 @@ interface MaterialOption {
   citation: string;
 }
 
+interface OpenViewportOptions {
+  live?: boolean;
+  pollIntervalMs?: number;
+}
+
+interface StartLiveBakeResult {
+  ok: boolean;
+  scratchDir?: string;
+  viewportDir?: string;
+  manifestPath?: string;
+  rootname?: string;
+  bakePid?: number;
+  watchPid?: number;
+  violations?: string[];
+  error?: string;
+}
+
 interface ElectronApi {
   openFrd: () => Promise<string | null>;
   saveDocx: (suggested: string) => Promise<string | null>;
@@ -71,13 +88,19 @@ interface ElectronApi {
   bakeGs101Demo: () => Promise<BakeGs101Result>;
   listMaterials: () => Promise<MaterialOption[]>;
   runReport: (req: RunReportRequest) => Promise<RunReportResult>;
-  openViewport: (manifestPath: string) => Promise<OpenViewportResult>;
+  openViewport: (
+    manifestPath: string,
+    options?: OpenViewportOptions,
+  ) => Promise<OpenViewportResult>;
+  startLiveGs101Bake: () => Promise<StartLiveBakeResult>;
   onStdout: (cb: (text: string) => void) => () => void;
   onStderr: (cb: (text: string) => void) => () => void;
   onExit: (cb: (exitCode: number) => void) => () => void;
   onFigure: (cb: (path: string) => void) => () => void;
   onBakeStdout: (cb: (text: string) => void) => () => void;
   onBakeStderr: (cb: (text: string) => void) => () => void;
+  onWatchStdout: (cb: (text: string) => void) => () => void;
+  onWatchStderr: (cb: (text: string) => void) => () => void;
 }
 
 declare global {
@@ -109,6 +132,11 @@ const openradiossRootInput = $<HTMLInputElement>("openradioss-root");
 const openradiossRootPick = $<HTMLButtonElement>("openradioss-root-pick");
 const rootnameInput = $<HTMLInputElement>("rootname");
 const bakeGs101Btn = $<HTMLButtonElement>("bake-gs101");
+// W8d — declared up top so updateFormState() can gate it alongside
+// the other inFlight-sensitive buttons. The click handler + its
+// onWatchStdout/Stderr wiring live further down with the rest of the
+// GS-101 demo block.
+const liveBakeBtn = $<HTMLButtonElement>("live-bake");
 const runBtn = $<HTMLButtonElement>("run");
 const revealBtn = $<HTMLButtonElement>("reveal");
 const openViewportBtn = $<HTMLButtonElement>("open-viewport");
@@ -252,6 +280,12 @@ const updateFormState = () => {
   if (!bakeGs101Btn.hidden) {
     bakeGs101Btn.disabled = inFlight !== "none";
   }
+  // W8d — live-bake button shares the same in-flight gate as the
+  // regular bake (and is also hidden until getDemoGs101Deck resolves
+  // with a deck path).
+  if (!liveBakeBtn.hidden) {
+    liveBakeBtn.disabled = inFlight !== "none";
+  }
 };
 
 // --- file pickers ----------------------------------------------------------
@@ -341,6 +375,7 @@ runBtn.addEventListener("click", async () => {
   // disable it eagerly here too so a user clicking it during a long
   // report run doesn't even briefly see it as enabled.
   if (!bakeGs101Btn.hidden) bakeGs101Btn.disabled = true;
+  if (!liveBakeBtn.hidden) liveBakeBtn.disabled = true;
   clearLog();
   clearViolations();
   clearFigures();
@@ -511,12 +546,95 @@ void window.api.getDemoGs101Deck().then((deckDir) => {
   // to decide whether to advertise the bake button.
   if (!deckDir) return;
   bakeGs101Btn.hidden = false;
+  liveBakeBtn.hidden = false;
   // Re-run the form state so the inFlight gate is applied if a
   // run/bake is already in progress when this late-resolving promise
   // settles (Codex R4 NIT — without this, the button briefly appears
   // enabled even though the click would be a no-op via the top-of-
   // handler re-entry guard).
   updateFormState();
+});
+
+// --- W8d live ballistic demo (one click → bake + live viewport) -----------
+
+/**
+ * Live demo button. Single click composes:
+ *   1. ``startLiveGs101Bake`` IPC — main spawns docker engine and
+ *      ``viewport-watch-cli`` against a fresh scratch dir, polls until
+ *      the manifest has its first state, returns the manifest path.
+ *   2. ``openViewport(manifestPath, { live: true })`` IPC — main
+ *      spawns ``viewport-cli --live`` against that manifest. The
+ *      viewport's slider grows as the watcher writes new states; the
+ *      engineer sees the bullet-vs-plate event unfold in 3D.
+ *
+ * Both children outlive this handler — the bake takes ~1-2 minutes,
+ * the watcher rides alongside it, and the viewport is the GUI window
+ * the engineer scrubs through. The handler resolves immediately after
+ * the first frame lands so the engineer doesn't sit on a spinner.
+ */
+window.api.onWatchStdout(appendLog);
+window.api.onWatchStderr(appendLog);
+
+liveBakeBtn.addEventListener("click", async () => {
+  if (inFlight !== "none") return;
+  inFlight = "bake";
+  liveBakeBtn.disabled = true;
+  bakeGs101Btn.disabled = true;
+  runBtn.disabled = true;
+  clearLog();
+  clearViolations();
+  setStatus("starting live GS-101 bake (docker + watcher)…", "running");
+  try {
+    const result = await window.api.startLiveGs101Bake();
+    if (!result.ok) {
+      if (result.violations && result.violations.length > 0) {
+        setStatus("live bake refused (input violations)", "error");
+        showViolations(result.violations);
+      } else {
+        setStatus(
+          `live bake failed${result.error ? ` — ${result.error}` : ""}`,
+          "error",
+        );
+        if (result.error) showViolations([result.error]);
+      }
+      return;
+    }
+    const manifestPath = result.manifestPath ?? "";
+    if (!manifestPath) {
+      setStatus("live bake produced no manifest path", "error");
+      return;
+    }
+    // Pre-fill the ballistic fieldset so the engineer can also run
+    // the static DOCX flow against the same scratch when the bake
+    // finishes (the streamed manifest is parallel to that path).
+    openradiossRootInput.value = result.scratchDir ?? "";
+    rootnameInput.value = result.rootname ?? "model_00";
+    kindSelect.value = "ballistic";
+    setStatus(
+      `live viewport opening — first frame written to ${manifestPath}`,
+      "running",
+    );
+    const vp = await window.api.openViewport(manifestPath, { live: true });
+    if (vp.ok) {
+      setStatus(
+        `live viewport running (pid ${vp.pid ?? "?"}) — bake continues in background`,
+        "success",
+      );
+      lastViewportManifest = manifestPath;
+      openViewportBtn.disabled = false;
+    } else {
+      setStatus(`live viewport failed: ${vp.error ?? "unknown"}`, "error");
+      if (vp.error) showViolations([vp.error]);
+    }
+  } catch (err) {
+    setStatus("live bake failed (IPC error)", "error");
+    showViolations([
+      `live bake IPC error: ${err instanceof Error ? err.message : String(err)}`,
+    ]);
+  } finally {
+    inFlight = "none";
+    updateFormState();
+  }
 });
 
 // --- material dropdown population (Codex R1 LOW PR #91 fix) --------------
