@@ -665,6 +665,16 @@ def export_run_streaming(
             unresolved_gap = current_gap
 
             now = _now()
+            # Codex R3 PR #113 LOW — wall-clock timeout takes
+            # precedence over idle-gap refusal. The caller asked for a
+            # hard ceiling on wall-clock duration; honouring that even
+            # when an unresolved gap is observed lets tests / CI runs
+            # exit deterministically without forcing them to fill the
+            # gap. Idle-timeout WITH unresolved-gap still raises, since
+            # idle is the natural "engine done" signal and a gap there
+            # really does mean partial run.
+            if timeout_s is not None and (now - start) >= timeout_s:
+                break
             if now - last_progress >= max_idle_s:
                 if unresolved_gap is not None:
                     obs_step, obs_name = unresolved_gap
@@ -679,10 +689,6 @@ def export_run_streaming(
                         f"contiguous A001..A{next_expected - 1:03d} "
                         f"prefix."
                     )
-                break
-            if timeout_s is not None and (now - start) >= timeout_s:
-                # Hard timeout — let it through even with an
-                # unresolved gap (caller asked for a wall-clock cap).
                 break
             _sleep(poll_interval_s)
 

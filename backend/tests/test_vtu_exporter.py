@@ -842,6 +842,44 @@ def test_streaming_unresolved_gap_raises_at_idle_timeout(
     assert payload["states"][0]["step_id"] == 1
 
 
+def test_streaming_hard_timeout_wins_over_unresolved_gap(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """Codex R3 PR #113 LOW — when both ``timeout_s`` and ``max_idle_s``
+    fire on the same poll AND a gap is unresolved, the wall-clock
+    timeout takes precedence and the run exits cleanly. The caller
+    asked for the cap; honour it.
+
+    Idle-timeout-only with an unresolved gap still raises (covered by
+    test_streaming_unresolved_gap_raises_at_idle_timeout); this test
+    pins the OR-condition precedence.
+    """
+    src_frames = sorted(gs101_baked.glob("model_00A*.gz"))
+    watched = tmp_path / "watched"  # type: ignore[attr-defined]
+    out = tmp_path / "out"
+    watched.mkdir()
+    shutil.copy(src_frames[0], watched / src_frames[0].name)  # A001
+    shutil.copy(src_frames[4], watched / src_frames[4].name)  # A005
+
+    clock = _FakeClock()
+    # Set both to the same value so the precedence is observable on
+    # the same poll iteration.
+    manifest_path = export_run_streaming(
+        openradioss_root=watched,
+        rootname="model_00",
+        output_dir=out,
+        max_idle_s=2.0,
+        timeout_s=2.0,
+        poll_interval_s=0.5,
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # Hard timeout wins → no raise; manifest holds the contiguous
+    # prefix that was processed before the timeout.
+    assert payload["n_states"] == 1
+
+
 def test_enumerate_frames_refuses_zero_step(
     tmp_path: pytest.TempPathFactory,
 ) -> None:
