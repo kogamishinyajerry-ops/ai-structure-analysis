@@ -521,11 +521,17 @@ def render_snapshots(
                 f"failed to read {vtu_path}: {type(exc).__name__}: {exc}"
             ) from exc
         # pyvista returns an empty grid (n_points == 0) on corrupt /
-        # truncated XML — it only emits a UserWarning. Catch that here
-        # so corrupt VTUs surface as ViewportError, not silent gray.
+        # truncated XML — it only emits a UserWarning. n_cells == 0
+        # (points-only) is also structurally empty (Codex R5 PR #112).
+        # Catch both so the snapshot path matches open_viewport.
         if getattr(grid, "n_points", 0) == 0:
             raise ViewportError(
                 f"failed to read {vtu_path}: empty grid (corrupt VTU?)"
+            )
+        if getattr(grid, "n_cells", 0) == 0:
+            raise ViewportError(
+                f"failed to read {vtu_path}: VTU has 0 cells "
+                f"(structurally empty grid)"
             )
         states_grids.append((s, grid))
         if field in grid.point_data:

@@ -12,10 +12,12 @@ Covers:
 4. ``main()`` exit codes match the CLI contract: 2 on argparse
    errors, 3 on ViewportError, 0 on snapshot success.
 
-The interactive ``open_viewport`` path itself is NOT tested here —
-opening a real GUI window in CI is fragile / blocked. ``open_viewport``
-shares its load path with ``render_snapshots`` so the manifest /
-state-loading branches are exercised by Bucket 1.
+The interactive ``open_viewport`` GUI loop itself is not tested
+(opening a real PyVista window in CI is fragile / blocked), but its
+manifest-load and refusal branches ARE exercised directly via
+the mixed-state and zero-cells regression tests added in R4 / R5.
+Both functions share the manifest validation path so corrupt-VTU
+and schema-violation buckets cover them together.
 """
 
 from __future__ import annotations
@@ -320,6 +322,51 @@ def test_open_viewport_mixed_state_field_refuses_run(
     )
     with pytest.raises(ViewportError, match="no selectable scalars"):
         open_viewport(m)
+
+
+def test_snapshot_zero_cells_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R5 PR #112 LOW — render_snapshots must refuse n_cells==0
+    alongside n_points==0 (R4 only landed on open_viewport)."""
+    pytest.importorskip("pyvista")
+    base = tmp_path  # type: ignore[attr-defined]
+    pts_only = """<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="1.0">
+  <UnstructuredGrid>
+    <Piece NumberOfPoints="1" NumberOfCells="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">
+          0 0 0
+        </DataArray>
+      </Points>
+      <Cells>
+        <DataArray type="Int64" Name="connectivity" format="ascii"></DataArray>
+        <DataArray type="Int64" Name="offsets" format="ascii"></DataArray>
+        <DataArray type="UInt8" Name="types" format="ascii"></DataArray>
+      </Cells>
+    </Piece>
+  </UnstructuredGrid>
+</VTKFile>
+"""
+    (base / "no_cells.vtu").write_text(pts_only)
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {"step_id": 0, "vtu_relpath": "no_cells.vtu",
+                     "time_ms": 0.0, "max_displacement_mm": 0.0,
+                     "n_solids_alive": 0, "n_solids_total": 0,
+                     "n_facets_alive": 0, "n_facets_total": 0}
+                ],
+                "available_fields": ["displacement_magnitude"],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="0 cells"):
+        render_snapshots(m, base / "out", field="displacement_magnitude")
 
 
 def test_open_viewport_zero_cells_refused(
