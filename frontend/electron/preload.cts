@@ -74,6 +74,32 @@ interface OpenViewportResult {
   error?: string;
 }
 
+interface OpenViewportOptions {
+  // W8d — when true, viewport-cli is invoked with --live so the slider
+  // grows as the streaming exporter appends new states.
+  live?: boolean;
+  // Optional override of the live-mode poll cadence. Must be a positive
+  // integer in milliseconds; main.ts ignores out-of-range values.
+  pollIntervalMs?: number;
+}
+
+interface StartLiveBakeResult {
+  ok: boolean;
+  // Absolute path to the OpenRadioss scratch dir holding the live
+  // A###.gz frames as docker writes them.
+  scratchDir?: string;
+  // Absolute path to the dir holding viewport_manifest.json + states/.
+  viewportDir?: string;
+  // Convenience — same as ``<viewportDir>/viewport_manifest.json``,
+  // ready to feed to ``openViewport``.
+  manifestPath?: string;
+  rootname?: string;
+  bakePid?: number;
+  watchPid?: number;
+  violations?: string[];
+  error?: string;
+}
+
 contextBridge.exposeInMainWorld("api", {
   // Native dialogs
   openFrd: (): Promise<string | null> => ipcRenderer.invoke("open-frd"),
@@ -138,10 +164,37 @@ contextBridge.exposeInMainWorld("api", {
   // W8b — spawn the PyVista native viewport against a manifest path
   // (returned in RunReportResult.viewportManifestPath). Resolves with
   // {ok, pid?, error?}. The viewport window outlives the call.
+  //
+  // W8d — pass ``{ live: true }`` to start the viewport in
+  // live-polling mode (slider grows as new states append). Used after
+  // ``startLiveGs101Bake`` when the manifest path returned from that
+  // call has at least one state.
   openViewport: (
     manifestPath: string,
+    options?: OpenViewportOptions,
   ): Promise<OpenViewportResult> =>
-    ipcRenderer.invoke("open-viewport", manifestPath),
+    ipcRenderer.invoke("open-viewport", manifestPath, options),
+
+  // W8d — single-click live ballistic demo. Spawns docker (engine) +
+  // viewport-watch-cli (manifest writer) in parallel, waits for the
+  // first frame to land, then resolves with the manifest path so the
+  // renderer can call openViewport(manifestPath, { live: true }).
+  // The renderer also subscribes to ``onWatchStdout`` /
+  // ``onWatchStderr`` for live output from the watcher process.
+  startLiveGs101Bake: (): Promise<StartLiveBakeResult> =>
+    ipcRenderer.invoke("start-live-gs101-bake"),
+
+  // Streaming events from the W8d viewport-watch-cli subprocess.
+  onWatchStdout: (cb: (text: string) => void): (() => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on("watch:stdout", handler);
+    return () => ipcRenderer.removeListener("watch:stdout", handler);
+  },
+  onWatchStderr: (cb: (text: string) => void): (() => void) => {
+    const handler = (_e: unknown, text: string) => cb(text);
+    ipcRenderer.on("watch:stderr", handler);
+    return () => ipcRenderer.removeListener("watch:stderr", handler);
+  },
 
   // Streaming events from the running report-cli subprocess.
   onStdout: (cb: (text: string) => void): (() => void) => {

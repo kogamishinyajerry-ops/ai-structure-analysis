@@ -80,9 +80,15 @@
             <button id="bake-gs101" type="button" class="secondary" hidden>
               Bake GS-101 demo (docker)
             </button>
+            <button id="live-bake" type="button" class="primary" hidden>
+              Live ballistic demo — bake + 3D viewport
+            </button>
             <span class="hint">
-              Runs <code>openradioss:arm64</code> against the bundled
-              GS-101-demo-unsigned deck and pre-fills the inputs above.
+              <strong>Bake</strong> runs the docker engine to completion
+              then pre-fills the inputs above for a static DOCX run.
+              <strong>Live</strong> spawns the engine + the W8c streaming
+              writer + the W8b 3D viewport in parallel — you watch the
+              bullet-vs-plate event unfold in real time.
               Requires the docker image built per
               <code>tools/openradioss/README.md</code>.
             </span>

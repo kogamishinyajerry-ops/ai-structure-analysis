@@ -115,7 +115,33 @@ app.whenReady().then(() => {
   });
 });
 
+// Codex R1 PR #114 — track all live-bake children (docker engine +
+// viewport-watch-cli) so the app-level lifecycle hooks below can
+// SIGTERM them on quit / window-close. ``detached: false`` does NOT
+// guarantee cleanup on Electron quit — particularly on macOS, the app
+// can outlive its only window. Without explicit teardown the docker
+// container and the watcher process orphan under launchd / systemd.
+import type { ChildProcess } from "node:child_process";
+const _liveBakeChildren = new Set<ChildProcess>();
+function _killLiveBakeChildren(): void {
+  for (const child of _liveBakeChildren) {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // Best-effort. Child may already be dead, in which case SIGTERM
+      // is a no-op; we still want to clear the set.
+    }
+  }
+  _liveBakeChildren.clear();
+}
+
+app.on("before-quit", _killLiveBakeChildren);
+
 app.on("window-all-closed", () => {
+  // Always kill live-bake children before potentially quitting; on
+  // macOS the app stays alive after its window closes but a
+  // long-running docker container should not.
+  _killLiveBakeChildren();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -447,6 +473,297 @@ ipcMain.handle("bake-gs101-demo", async (evt: Electron.IpcMainInvokeEvent) => {
   });
 });
 
+// --- IPC: W8d live ballistic demo orchestration ----------------------------
+
+/**
+ * RFC-001 W8d — single-click live ballistic demo.
+ *
+ * Composes three concurrent processes so the engineer sees the bake
+ * unfold inside the viewport in real time:
+ *
+ *   1. ``docker run openradioss:arm64`` — engine writes A###.gz frames
+ *      into a fresh scratch dir under ``os.tmpdir()`` (same staging as
+ *      the regular ``bake-gs101-demo`` flow).
+ *   2. ``viewport-watch-cli --root <scratch> --rootname model_00
+ *      --output <viewport-dir>`` — picks up frames as they appear and
+ *      atomically rewrites ``viewport_manifest.json``.
+ *   3. The handler polls the manifest until ``n_states >= 1`` (or the
+ *      readiness timeout fires) and resolves with the manifest path
+ *      so the renderer can call ``open-viewport`` in live mode.
+ *
+ * Trust boundary mirrors ``bake-gs101-demo``: the renderer cannot
+ * nominate the deck dir; it is re-resolved from a fixed candidate
+ * list. The renderer also cannot redirect the watcher at an
+ * attacker-controlled path — both ``scratch`` and ``viewportDir``
+ * are minted on the main side and only their absolute paths are
+ * returned to the renderer.
+ */
+ipcMain.handle(
+  "start-live-gs101-bake",
+  async (
+    evt: Electron.IpcMainInvokeEvent,
+  ): Promise<{
+    ok: boolean;
+    scratchDir?: string;
+    viewportDir?: string;
+    manifestPath?: string;
+    rootname?: string;
+    bakePid?: number;
+    watchPid?: number;
+    violations?: string[];
+    error?: string;
+  }> => {
+    const deckDir = _resolveDemoGs101Deck();
+    const violations: string[] = [];
+    if (!deckDir) {
+      violations.push("GS-101-demo-unsigned deck not found in bundled fixtures.");
+    } else if (!fs.existsSync(path.join(deckDir, "model_00_0000.rad"))) {
+      violations.push(`Missing model_00_0000.rad in ${deckDir}`);
+    } else if (!fs.existsSync(path.join(deckDir, "model_00_0001.rad"))) {
+      violations.push(`Missing model_00_0001.rad in ${deckDir}`);
+    }
+    if (violations.length > 0 || !deckDir) {
+      return { ok: false, violations };
+    }
+    const resolvedDeckDir: string = deckDir;
+
+    // Stage decks into a unique scratch dir owned by the current user
+    // (same TOCTOU mitigation as bake-gs101-demo). Codex R1 PR #114
+    // nit: split the two mkdtempSync calls into separate try-blocks so
+    // a failure on the second one cleans up the first instead of
+    // leaking it.
+    let scratch: string;
+    try {
+      scratch = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-bake-"));
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Failed to allocate bake scratch: ${(err as Error).message}`,
+      };
+    }
+    let viewportDir: string;
+    try {
+      viewportDir = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-viewport-"));
+    } catch (err) {
+      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+      return {
+        ok: false,
+        error: `Failed to allocate viewport dir: ${(err as Error).message}`,
+      };
+    }
+    try {
+      fs.copyFileSync(
+        path.join(resolvedDeckDir, "model_00_0000.rad"),
+        path.join(scratch, "model_00_0000.rad"),
+      );
+      fs.copyFileSync(
+        path.join(resolvedDeckDir, "model_00_0001.rad"),
+        path.join(scratch, "model_00_0001.rad"),
+      );
+    } catch (err) {
+      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(viewportDir, { recursive: true, force: true }); } catch {}
+      return {
+        ok: false,
+        error: `Failed to stage decks: ${(err as Error).message}`,
+      };
+    }
+
+    _safeSend(
+      evt,
+      "bake:stdout",
+      `[live-bake] staged decks → ${scratch}\n` +
+        `[live-bake] viewport manifest dir → ${viewportDir}\n` +
+        `[live-bake] launching docker (engine) + viewport-watch-cli (writer)\n`,
+    );
+
+    // 1) Spawn docker engine — writes A###.gz into scratch over time.
+    const dockerArgs = [
+      "run", "--rm",
+      "-v", `${scratch}:/work`,
+      "openradioss:arm64",
+      "bash", "-c",
+      "cd /work && starter_linuxa64 -i model_00_0000.rad -np 1 && " +
+        "engine_linuxa64 -i model_00_0001.rad",
+    ];
+    const bakeChild = spawn("docker", dockerArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
+    _liveBakeChildren.add(bakeChild);
+    // Track child exit/error state so the polling loop can fast-fail
+    // (Codex R1 HIGH PR #114). Without this a missing docker image or
+    // a viewport-watch-cli ENOENT degrades to the 15s readiness
+    // deadline before the renderer learns about the failure.
+    let bakeFailure: string | null = null;
+    bakeChild.stdout.on("data", (chunk: Buffer) => {
+      _safeSend(evt, "bake:stdout", chunk.toString("utf-8"));
+    });
+    bakeChild.stderr.on("data", (chunk: Buffer) => {
+      _safeSend(evt, "bake:stderr", chunk.toString("utf-8"));
+    });
+    bakeChild.on("close", (code) => {
+      _liveBakeChildren.delete(bakeChild);
+      _safeSend(evt, "bake:exit", code ?? -1);
+      if (code !== null && code !== 0) {
+        bakeFailure = `docker engine exited ${code} before first frame landed`;
+      }
+    });
+    bakeChild.on("error", (err) => {
+      _liveBakeChildren.delete(bakeChild);
+      _safeSend(
+        evt,
+        "bake:stderr",
+        `failed to spawn docker: ${err.message}\n` +
+          `Hint: build the image first per tools/openradioss/README.md\n`,
+      );
+      _safeSend(evt, "bake:exit", -1);
+      bakeFailure = `failed to spawn docker: ${err.message}`;
+    });
+
+    // 2) Spawn viewport-watch-cli — reads frames, writes manifest.
+    // Idle timeout 60s (long enough for the engine pause between
+    // frames) + hard wall-clock cap 600s (full GS-101 bake fits well
+    // under this).
+    const watchArgs = [
+      "--root", scratch,
+      "--rootname", "model_00",
+      "--output", viewportDir,
+      "--max-idle-s", "60",
+      "--poll-interval-s", "0.5",
+      "--timeout-s", "600",
+    ];
+    const watchChild = spawn("viewport-watch-cli", watchArgs, {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
+    _liveBakeChildren.add(watchChild);
+    let watchFailure: string | null = null;
+    watchChild.stdout.on("data", (chunk: Buffer) => {
+      _safeSend(evt, "watch:stdout", chunk.toString("utf-8"));
+    });
+    watchChild.stderr.on("data", (chunk: Buffer) => {
+      _safeSend(evt, "watch:stderr", chunk.toString("utf-8"));
+    });
+    watchChild.on("close", (code) => {
+      _liveBakeChildren.delete(watchChild);
+      _safeSend(evt, "watch:exit", code ?? -1);
+      if (code !== null && code !== 0) {
+        watchFailure =
+          `viewport-watch-cli exited ${code} before first frame landed`;
+      }
+    });
+    watchChild.on("error", (err) => {
+      _liveBakeChildren.delete(watchChild);
+      _safeSend(
+        evt,
+        "watch:stderr",
+        `failed to spawn viewport-watch-cli: ${err.message}\n` +
+          `Hint: pip install -e . to register the console_script\n`,
+      );
+      _safeSend(evt, "watch:exit", -1);
+      watchFailure = `failed to spawn viewport-watch-cli: ${err.message}`;
+    });
+
+    // 3) Poll the manifest until n_states >= 1, then resolve so the
+    // renderer can open the viewport. Codex R1 PR #114 fixes:
+    //  - HIGH: fast-fail on bake/watch error or non-zero exit instead
+    //    of waiting out the readiness deadline.
+    //  - MEDIUM: when settling with failure, SIGTERM both children
+    //    AND await their close events with a grace before resolving
+    //    so the renderer's inFlight clear doesn't overlap with
+    //    children still emitting log output.
+    const manifestPath = path.join(viewportDir, "viewport_manifest.json");
+    const readyDeadline = Date.now() + 15_000;
+    return new Promise((resolve) => {
+      let settled = false;
+      // Resolve only AFTER both children are fully torn down. The
+      // renderer's inFlight=none clear runs after this resolve, so
+      // by that point no zombie log output can race a retry.
+      const settleWithFailure = (error: string): void => {
+        if (settled) return;
+        settled = true;
+        const pending = new Set<ChildProcess>();
+        if (!bakeChild.killed && bakeChild.exitCode === null) {
+          pending.add(bakeChild);
+        }
+        if (!watchChild.killed && watchChild.exitCode === null) {
+          pending.add(watchChild);
+        }
+        try { bakeChild.kill("SIGTERM"); } catch {}
+        try { watchChild.kill("SIGTERM"); } catch {}
+        if (pending.size === 0) {
+          resolve({ ok: false, error });
+          return;
+        }
+        const finishOne = (child: ChildProcess) => {
+          pending.delete(child);
+          if (pending.size === 0) {
+            resolve({ ok: false, error });
+          }
+        };
+        bakeChild.once("close", () => finishOne(bakeChild));
+        watchChild.once("close", () => finishOne(watchChild));
+        // Fallback grace timer: if a child somehow doesn't emit close
+        // (kernel quirks, unrefenced pipes), resolve after 2s anyway
+        // rather than wedge the IPC.
+        setTimeout(() => {
+          if (settled && pending.size > 0) {
+            // Children may still be alive but we can't wait forever.
+            resolve({ ok: false, error });
+          }
+        }, 2000);
+      };
+      const tick = () => {
+        if (settled) return;
+        // Codex R1 HIGH — fast-fail on early child failure.
+        const earlyFailure = bakeFailure ?? watchFailure;
+        if (earlyFailure !== null) {
+          settleWithFailure(earlyFailure);
+          return;
+        }
+        try {
+          if (fs.existsSync(manifestPath)) {
+            const raw = fs.readFileSync(manifestPath, "utf-8");
+            const payload = JSON.parse(raw);
+            if (
+              typeof payload?.n_states === "number" &&
+              payload.n_states >= 1
+            ) {
+              settled = true;
+              resolve({
+                ok: true,
+                scratchDir: scratch,
+                viewportDir,
+                manifestPath,
+                rootname: "model_00",
+                bakePid: bakeChild.pid,
+                watchPid: watchChild.pid,
+              });
+              return;
+            }
+          }
+        } catch {
+          // Mid-write, missing, or malformed JSON — try again.
+        }
+        if (Date.now() >= readyDeadline) {
+          settleWithFailure(
+            "live bake did not produce its first frame within 15s. " +
+              "Either docker / openradioss:arm64 is unavailable, the " +
+              "deck is broken, or viewport-watch-cli is not on PATH " +
+              "(pip install -e .).",
+          );
+          return;
+        }
+        setTimeout(tick, 250);
+      };
+      // Start polling shortly after spawn so docker has a chance to
+      // attach its first frame.
+      setTimeout(tick, 500);
+    });
+  },
+);
+
 // --- IPC: report-cli subprocess --------------------------------------------
 
 ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunReportRequest) => {
@@ -659,6 +976,7 @@ ipcMain.handle(
   async (
     _evt: Electron.IpcMainInvokeEvent,
     manifestPath: string,
+    options?: { live?: boolean; pollIntervalMs?: number },
   ): Promise<{ ok: boolean; pid?: number; error?: string }> => {
     if (typeof manifestPath !== "string" || !manifestPath) {
       return { ok: false, error: "manifest path missing" };
@@ -708,7 +1026,26 @@ ipcMain.handle(
     // ``pip install -e .``). Detached so the viewport can outlive
     // the Electron renderer if the engineer closes the workbench
     // while still inspecting the run.
-    const child = spawn("viewport-cli", [resolved], {
+    //
+    // W8d — when ``options.live`` is true the viewport polls the
+    // manifest mtime and grows its slider as the streaming exporter
+    // appends states. ``--poll-interval-ms`` is plumbed through so
+    // tests / power users can tune the cadence; renderer must pass
+    // a positive integer (validated upstream by --poll-interval-ms
+    // arg parser inside viewport-cli).
+    const cliArgs = [resolved];
+    if (options?.live) {
+      cliArgs.push("--live");
+      const pollMs = options?.pollIntervalMs;
+      if (
+        typeof pollMs === "number" &&
+        Number.isInteger(pollMs) &&
+        pollMs > 0
+      ) {
+        cliArgs.push("--poll-interval-ms", String(pollMs));
+      }
+    }
+    const child = spawn("viewport-cli", cliArgs, {
       stdio: ["ignore", "ignore", "pipe"],
       detached: true,
     });
