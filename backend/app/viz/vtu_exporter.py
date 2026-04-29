@@ -241,6 +241,21 @@ def export_run(
             # 2D facets — vtk.js can read mixed cell types in one VTU.
             connect_3d = np.asarray(arrays["connect3DA"], dtype=np.int64)
             connect_2d = np.asarray(arrays["connectA"], dtype=np.int64)
+
+            # Codex R2 HIGH on PR #111 — validate the deletion arrays
+            # carry only the documented {0, 1} values BEFORE casting
+            # to bool. Direct ``dtype=bool`` coercion silently treats
+            # any non-zero (e.g. 2, -1 from a corrupt parse) as "alive",
+            # which would let parser drift contaminate the manifest's
+            # alive counts and the VTU's per-cell ``alive`` array
+            # without raising. Layer-3 ballistics already uses the same
+            # contract (app/domain/ballistics/__init__.py:_validate_flags).
+            _validate_deletion_flags(
+                arrays["delElt3DA"], "delElt3DA", frame_path.name
+            )
+            _validate_deletion_flags(
+                arrays["delEltA"], "delEltA", frame_path.name
+            )
             del_3d = np.asarray(arrays["delElt3DA"], dtype=bool)
             del_2d = np.asarray(arrays["delEltA"], dtype=bool)
 
@@ -434,6 +449,42 @@ def _decompress_frames_to(scratch: Path, frames: list[Path]) -> list[Path]:
             shutil.copyfile(frame, dest)
         out.append(dest)
     return out
+
+
+def _validate_deletion_flags(
+    arr: Any, array_name: str, frame_name: str
+) -> None:
+    """Codex R2 HIGH on PR #111 — assert ``arr`` contains only the
+    documented ``{0, 1}`` values.
+
+    OpenRadioss writes ``delEltA`` / ``delElt3DA`` as alive-flags
+    where 1 = alive and 0 = deleted. A bare ``np.asarray(..., dtype=bool)``
+    would silently coerce any non-zero (e.g. ``2`` from a corrupt
+    parse, or ``-1`` from an int-flow-through) to True, which would
+    contaminate the manifest's alive counts and the VTU's per-cell
+    ``alive`` array without raising. This helper raises
+    :class:`VTUExportError` on any value outside ``{0, 1}`` so the
+    bug class surfaces at export time rather than as a misleading
+    viewport.
+    """
+    raw = np.asarray(arr)
+    # Already-bool arrays are by definition in {0,1}.
+    if raw.dtype == bool:
+        return
+    # Numeric arrays: every entry must be exactly 0 or 1.
+    finite = np.isfinite(raw)
+    if not bool(finite.all()):
+        raise VTUExportError(
+            f"frame {frame_name} {array_name} contains non-finite values; "
+            f"expected alive-flags in {{0, 1}}"
+        )
+    bad = raw[(raw != 0) & (raw != 1)]
+    if bad.size > 0:
+        raise VTUExportError(
+            f"frame {frame_name} {array_name} contains values outside "
+            f"{{0, 1}}: {sorted({float(v) for v in bad[:5]})}; expected "
+            f"alive-flags only"
+        )
 
 
 def _von_mises_voigt6(tens: np.ndarray) -> np.ndarray:

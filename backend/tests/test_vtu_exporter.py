@@ -414,6 +414,48 @@ def test_non_si_mm_unit_system_refused(
         )
 
 
+def test_deletion_flag_outside_zero_one_refused_not_silently_coerced(
+    monkeypatch: pytest.MonkeyPatch,
+    gs101_baked: Path,
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R2 HIGH on PR #111 — bare ``np.asarray(..., dtype=bool)``
+    coerces 2 / -1 to True silently, contaminating the manifest's
+    alive counts and the VTU's ``alive`` array. The exporter must
+    validate the raw deletion arrays carry only ``{0, 1}`` and refuse
+    the frame otherwise.
+
+    Simulate parser drift by overwriting one entry of ``delElt3DA``
+    with ``2`` after the reference frame parses normally.
+    """
+    pv = pytest.importorskip("pyvista")  # noqa: F841
+    import numpy as np
+    from vortex_radioss.animtod3plot.RadiossReader import RadiossReader
+
+    real_init = RadiossReader.__init__
+    call_count = {"n": 0}
+
+    def patched_init(self: RadiossReader, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)
+        call_count["n"] += 1
+        # Reference frame parses cleanly; second-onwards we corrupt
+        # one entry to value 2 so the bare bool() coercion would
+        # silently treat it as True.
+        if call_count["n"] >= 2:
+            arr = np.asarray(self.raw_arrays["delElt3DA"]).astype(np.int8)
+            arr[0] = 2
+            self.raw_arrays["delElt3DA"] = arr
+
+    monkeypatch.setattr(RadiossReader, "__init__", patched_init)
+
+    with pytest.raises(VTUExportError, match="outside .*0, 1"):
+        export_run(
+            openradioss_root=gs101_baked,
+            rootname="model_00",
+            output_dir=tmp_path / "out",  # type: ignore[attr-defined]
+        )
+
+
 def test_connectivity_length_mismatch_refused_not_silently_truncated(
     monkeypatch: pytest.MonkeyPatch,
     gs101_baked: Path,
