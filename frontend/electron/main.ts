@@ -70,13 +70,13 @@ interface RunReportRequest {
 // digits, dash, hash, slash. The renderer's <select> already produces
 // safe values, but main.ts is the trust boundary, so re-validate here.
 // Codex R1 LOW-style defense (cf. PR #90 R1 #3): never trust IPC payload.
-const MATERIAL_GRADE_RE = /^[A-Za-z0-9][A-Za-z0-9_\-./#+]{0,63}$/;
+const MATERIAL_GRADE_RE = /^[A-Za-z0-9][A-Za-z0-9_./#+-]{0,63}$/;
 
 // Whitelist for OpenRadioss --rootname values. Mirrors the upstream
 // convention of letters/digits/underscore/dash; refuses path separators
 // and shell metacharacters since this string ends up on the report-cli
 // argv vector (and via report-cli into the adapter's frame globber).
-const ROOTNAME_RE = /^[A-Za-z0-9][A-Za-z0-9_\-]{0,63}$/;
+const ROOTNAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -545,7 +545,7 @@ ipcMain.handle(
     try {
       viewportDir = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-viewport-"));
     } catch (err) {
-      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch { /* Best-effort cleanup. */ }
       return {
         ok: false,
         error: `Failed to allocate viewport dir: ${(err as Error).message}`,
@@ -561,8 +561,8 @@ ipcMain.handle(
         path.join(scratch, "model_00_0001.rad"),
       );
     } catch (err) {
-      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
-      try { fs.rmSync(viewportDir, { recursive: true, force: true }); } catch {}
+      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch { /* Best-effort cleanup. */ }
+      try { fs.rmSync(viewportDir, { recursive: true, force: true }); } catch { /* Best-effort cleanup. */ }
       return {
         ok: false,
         error: `Failed to stage decks: ${(err as Error).message}`,
@@ -690,8 +690,8 @@ ipcMain.handle(
         if (!watchChild.killed && watchChild.exitCode === null) {
           pending.add(watchChild);
         }
-        try { bakeChild.kill("SIGTERM"); } catch {}
-        try { watchChild.kill("SIGTERM"); } catch {}
+        try { bakeChild.kill("SIGTERM"); } catch { /* Child may already be dead. */ }
+        try { watchChild.kill("SIGTERM"); } catch { /* Child may already be dead. */ }
         if (pending.size === 0) {
           resolve({ ok: false, error });
           return;

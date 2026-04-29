@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, FolderPlus, ChevronRight, Clock, Plus, Layout } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Folder, FolderPlus, Clock, Layout } from 'lucide-react';
 
 interface Project {
   id: number;
-  name: str;
+  name: string;
   description: string;
   created_at: string;
 }
