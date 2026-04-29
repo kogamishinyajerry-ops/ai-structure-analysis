@@ -115,7 +115,33 @@ app.whenReady().then(() => {
   });
 });
 
+// Codex R1 PR #114 — track all live-bake children (docker engine +
+// viewport-watch-cli) so the app-level lifecycle hooks below can
+// SIGTERM them on quit / window-close. ``detached: false`` does NOT
+// guarantee cleanup on Electron quit — particularly on macOS, the app
+// can outlive its only window. Without explicit teardown the docker
+// container and the watcher process orphan under launchd / systemd.
+import type { ChildProcess } from "node:child_process";
+const _liveBakeChildren = new Set<ChildProcess>();
+function _killLiveBakeChildren(): void {
+  for (const child of _liveBakeChildren) {
+    try {
+      child.kill("SIGTERM");
+    } catch {
+      // Best-effort. Child may already be dead, in which case SIGTERM
+      // is a no-op; we still want to clear the set.
+    }
+  }
+  _liveBakeChildren.clear();
+}
+
+app.on("before-quit", _killLiveBakeChildren);
+
 app.on("window-all-closed", () => {
+  // Always kill live-bake children before potentially quitting; on
+  // macOS the app stays alive after its window closes but a
+  // long-running docker container should not.
+  _killLiveBakeChildren();
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -502,16 +528,27 @@ ipcMain.handle(
     const resolvedDeckDir: string = deckDir;
 
     // Stage decks into a unique scratch dir owned by the current user
-    // (same TOCTOU mitigation as bake-gs101-demo).
+    // (same TOCTOU mitigation as bake-gs101-demo). Codex R1 PR #114
+    // nit: split the two mkdtempSync calls into separate try-blocks so
+    // a failure on the second one cleans up the first instead of
+    // leaking it.
     let scratch: string;
-    let viewportDir: string;
     try {
       scratch = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-bake-"));
-      viewportDir = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-viewport-"));
     } catch (err) {
       return {
         ok: false,
-        error: `Failed to allocate scratch dirs: ${(err as Error).message}`,
+        error: `Failed to allocate bake scratch: ${(err as Error).message}`,
+      };
+    }
+    let viewportDir: string;
+    try {
+      viewportDir = fs.mkdtempSync(path.join(os.tmpdir(), "gs101-live-viewport-"));
+    } catch (err) {
+      try { fs.rmSync(scratch, { recursive: true, force: true }); } catch {}
+      return {
+        ok: false,
+        error: `Failed to allocate viewport dir: ${(err as Error).message}`,
       };
     }
     try {
@@ -553,6 +590,12 @@ ipcMain.handle(
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
+    _liveBakeChildren.add(bakeChild);
+    // Track child exit/error state so the polling loop can fast-fail
+    // (Codex R1 HIGH PR #114). Without this a missing docker image or
+    // a viewport-watch-cli ENOENT degrades to the 15s readiness
+    // deadline before the renderer learns about the failure.
+    let bakeFailure: string | null = null;
     bakeChild.stdout.on("data", (chunk: Buffer) => {
       _safeSend(evt, "bake:stdout", chunk.toString("utf-8"));
     });
@@ -560,9 +603,14 @@ ipcMain.handle(
       _safeSend(evt, "bake:stderr", chunk.toString("utf-8"));
     });
     bakeChild.on("close", (code) => {
+      _liveBakeChildren.delete(bakeChild);
       _safeSend(evt, "bake:exit", code ?? -1);
+      if (code !== null && code !== 0) {
+        bakeFailure = `docker engine exited ${code} before first frame landed`;
+      }
     });
     bakeChild.on("error", (err) => {
+      _liveBakeChildren.delete(bakeChild);
       _safeSend(
         evt,
         "bake:stderr",
@@ -570,6 +618,7 @@ ipcMain.handle(
           `Hint: build the image first per tools/openradioss/README.md\n`,
       );
       _safeSend(evt, "bake:exit", -1);
+      bakeFailure = `failed to spawn docker: ${err.message}`;
     });
 
     // 2) Spawn viewport-watch-cli — reads frames, writes manifest.
@@ -588,6 +637,8 @@ ipcMain.handle(
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
+    _liveBakeChildren.add(watchChild);
+    let watchFailure: string | null = null;
     watchChild.stdout.on("data", (chunk: Buffer) => {
       _safeSend(evt, "watch:stdout", chunk.toString("utf-8"));
     });
@@ -595,9 +646,15 @@ ipcMain.handle(
       _safeSend(evt, "watch:stderr", chunk.toString("utf-8"));
     });
     watchChild.on("close", (code) => {
+      _liveBakeChildren.delete(watchChild);
       _safeSend(evt, "watch:exit", code ?? -1);
+      if (code !== null && code !== 0) {
+        watchFailure =
+          `viewport-watch-cli exited ${code} before first frame landed`;
+      }
     });
     watchChild.on("error", (err) => {
+      _liveBakeChildren.delete(watchChild);
       _safeSend(
         evt,
         "watch:stderr",
@@ -605,23 +662,66 @@ ipcMain.handle(
           `Hint: pip install -e . to register the console_script\n`,
       );
       _safeSend(evt, "watch:exit", -1);
+      watchFailure = `failed to spawn viewport-watch-cli: ${err.message}`;
     });
 
     // 3) Poll the manifest until n_states >= 1, then resolve so the
-    // renderer can open the viewport. If the manifest never reaches
-    // 1 state within the readiness timeout (15s — engine writes
-    // first frame within ~5s on a hot docker), kill both children
-    // and report the failure.
+    // renderer can open the viewport. Codex R1 PR #114 fixes:
+    //  - HIGH: fast-fail on bake/watch error or non-zero exit instead
+    //    of waiting out the readiness deadline.
+    //  - MEDIUM: when settling with failure, SIGTERM both children
+    //    AND await their close events with a grace before resolving
+    //    so the renderer's inFlight clear doesn't overlap with
+    //    children still emitting log output.
     const manifestPath = path.join(viewportDir, "viewport_manifest.json");
     const readyDeadline = Date.now() + 15_000;
     return new Promise((resolve) => {
       let settled = false;
-      const cleanup = () => {
+      // Resolve only AFTER both children are fully torn down. The
+      // renderer's inFlight=none clear runs after this resolve, so
+      // by that point no zombie log output can race a retry.
+      const settleWithFailure = (error: string): void => {
+        if (settled) return;
+        settled = true;
+        const pending = new Set<ChildProcess>();
+        if (!bakeChild.killed && bakeChild.exitCode === null) {
+          pending.add(bakeChild);
+        }
+        if (!watchChild.killed && watchChild.exitCode === null) {
+          pending.add(watchChild);
+        }
         try { bakeChild.kill("SIGTERM"); } catch {}
         try { watchChild.kill("SIGTERM"); } catch {}
+        if (pending.size === 0) {
+          resolve({ ok: false, error });
+          return;
+        }
+        const finishOne = (child: ChildProcess) => {
+          pending.delete(child);
+          if (pending.size === 0) {
+            resolve({ ok: false, error });
+          }
+        };
+        bakeChild.once("close", () => finishOne(bakeChild));
+        watchChild.once("close", () => finishOne(watchChild));
+        // Fallback grace timer: if a child somehow doesn't emit close
+        // (kernel quirks, unrefenced pipes), resolve after 2s anyway
+        // rather than wedge the IPC.
+        setTimeout(() => {
+          if (settled && pending.size > 0) {
+            // Children may still be alive but we can't wait forever.
+            resolve({ ok: false, error });
+          }
+        }, 2000);
       };
       const tick = () => {
         if (settled) return;
+        // Codex R1 HIGH — fast-fail on early child failure.
+        const earlyFailure = bakeFailure ?? watchFailure;
+        if (earlyFailure !== null) {
+          settleWithFailure(earlyFailure);
+          return;
+        }
         try {
           if (fs.existsSync(manifestPath)) {
             const raw = fs.readFileSync(manifestPath, "utf-8");
@@ -647,16 +747,12 @@ ipcMain.handle(
           // Mid-write, missing, or malformed JSON — try again.
         }
         if (Date.now() >= readyDeadline) {
-          settled = true;
-          cleanup();
-          resolve({
-            ok: false,
-            error:
-              "live bake did not produce its first frame within 15s. " +
+          settleWithFailure(
+            "live bake did not produce its first frame within 15s. " +
               "Either docker / openradioss:arm64 is unavailable, the " +
               "deck is broken, or viewport-watch-cli is not on PATH " +
               "(pip install -e .).",
-          });
+          );
           return;
         }
         setTimeout(tick, 250);
