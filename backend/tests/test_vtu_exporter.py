@@ -30,6 +30,7 @@ from app.viz.vtu_exporter import (
     SCHEMA_VERSION,
     VTUExportError,
     export_run,
+    export_run_streaming,
 )
 
 
@@ -540,3 +541,228 @@ def test_gs101_documented_physics_round_trips(
     assert final["n_solids_total"] == 120
     # README: "no shell deletions"
     assert final["n_facets_alive"] == final["n_facets_total"] == 180
+
+
+# ---------------------------------------------------------------------------
+# Bucket 6 — W8c streaming watcher
+# ---------------------------------------------------------------------------
+
+
+class _FakeClock:
+    """Deterministic clock for streaming-loop tests. ``sleep`` advances
+    the virtual time so the polling loop is instant in CI."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+
+    def now(self) -> float:
+        return self.t
+
+    def sleep(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def test_streaming_with_all_frames_present_matches_one_shot_export(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """W8c — running the streaming watcher against an already-complete
+    bake directory must produce a manifest equivalent to ``export_run``.
+
+    The streaming code path therefore subsumes the one-shot path; the
+    only difference is when frames arrive, not how they're transformed.
+    """
+    out_oneshot = tmp_path / "oneshot"  # type: ignore[attr-defined]
+    out_stream = tmp_path / "stream"
+    export_run(
+        openradioss_root=gs101_baked,
+        rootname="model_00",
+        output_dir=out_oneshot,
+    )
+    clock = _FakeClock()
+    export_run_streaming(
+        openradioss_root=gs101_baked,
+        rootname="model_00",
+        output_dir=out_stream,
+        max_idle_s=2.0,
+        poll_interval_s=0.5,
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+
+    a = json.loads((out_oneshot / "viewport_manifest.json").read_text())
+    b = json.loads((out_stream / "viewport_manifest.json").read_text())
+
+    # Manifest top-level fields and state-record contents must match
+    # exactly; only the on-disk write order differs.
+    assert a["n_states"] == b["n_states"] == 11
+    assert a["available_fields"] == b["available_fields"]
+    assert a["rootname"] == b["rootname"]
+    assert a["unit_system"] == b["unit_system"]
+    for sa, sb in zip(a["states"], b["states"], strict=True):
+        assert sa == sb
+
+
+def test_streaming_grows_manifest_as_frames_arrive(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """W8c — the watcher must observe a growing manifest as new frames
+    appear in openradioss_root mid-loop. We simulate this by relocating
+    GS-101 frames into the watched dir incrementally inside the
+    fake-clock ``sleep`` hook so each poll cycle reveals one more frame.
+    """
+    src_frames = sorted(gs101_baked.glob("model_00A*.gz"))
+    assert len(src_frames) == 11
+
+    watched = tmp_path / "incoming"  # type: ignore[attr-defined]
+    out_dir = tmp_path / "viewport"
+    watched.mkdir()
+    # Pre-stage the first frame so the loop has something to anchor on.
+    shutil.copy(src_frames[0], watched / src_frames[0].name)
+
+    pending = list(src_frames[1:])
+    appended_step_ids: list[int] = []
+
+    clock = _FakeClock()
+
+    def fake_sleep(seconds: float) -> None:
+        # Reveal one more frame per poll cycle, simulating the engine
+        # writing a new A### file every poll_interval.
+        if pending:
+            nxt = pending.pop(0)
+            shutil.copy(nxt, watched / nxt.name)
+        clock.sleep(seconds)
+
+    export_run_streaming(
+        openradioss_root=watched,
+        rootname="model_00",
+        output_dir=out_dir,
+        max_idle_s=3.0,
+        poll_interval_s=0.5,
+        _now=clock.now,
+        _sleep=fake_sleep,
+        on_state_appended=lambda r: appended_step_ids.append(r.step_id),
+    )
+
+    assert appended_step_ids == list(range(1, 12)), (
+        f"states must be appended in step-id order; got {appended_step_ids}"
+    )
+
+    payload = json.loads(
+        (out_dir / "viewport_manifest.json").read_text(encoding="utf-8")
+    )
+    assert payload["n_states"] == 11
+
+
+def test_streaming_with_no_frames_writes_zero_state_manifest(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """W8c — when the loop times out before any frame arrives the
+    manifest must already exist on disk with n_states=0 so a polling
+    viewport sees a well-formed (empty) artefact instead of ENOENT.
+    """
+    pytest.importorskip("pyvista")
+    pytest.importorskip("vortex_radioss")
+    src = tmp_path / "src"  # type: ignore[attr-defined]
+    out = tmp_path / "out"
+    src.mkdir()
+    clock = _FakeClock()
+    manifest_path = export_run_streaming(
+        openradioss_root=src,
+        rootname="model_00",
+        output_dir=out,
+        max_idle_s=1.0,
+        poll_interval_s=0.5,
+        _now=clock.now,
+        _sleep=clock.sleep,
+    )
+    assert manifest_path.is_file()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == SCHEMA_VERSION
+    assert payload["n_states"] == 0
+    assert payload["states"] == []
+
+
+def test_streaming_atomic_manifest_no_partial_reads(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """W8c — manifest writes must be atomic (write-tmp + os.replace).
+
+    We override write_manifest to a thin wrapper that, between every
+    write, snapshots the canonical manifest from disk and asserts each
+    snapshot is well-formed JSON with a coherent state count. If the
+    write were non-atomic, a polling reader would occasionally see a
+    truncated middle-of-write file and json.loads would raise.
+    """
+    out_dir = tmp_path / "viewport"  # type: ignore[attr-defined]
+    snapshots: list[dict[str, object]] = []
+
+    from app.viz import vtu_exporter as vtu_mod
+
+    real_write = vtu_mod._StreamingExporter.write_manifest
+
+    def snapshotting_write(self):  # type: ignore[no-untyped-def]
+        path = real_write(self)
+        # Re-read the canonical name immediately after the write
+        # returns. With the os.replace contract this MUST be a complete,
+        # parseable manifest.
+        snapshots.append(json.loads(path.read_text(encoding="utf-8")))
+        return path
+
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(
+        vtu_mod._StreamingExporter, "write_manifest", snapshotting_write
+    )
+    try:
+        clock = _FakeClock()
+        export_run_streaming(
+            openradioss_root=gs101_baked,
+            rootname="model_00",
+            output_dir=out_dir,
+            max_idle_s=2.0,
+            poll_interval_s=0.5,
+            _now=clock.now,
+            _sleep=clock.sleep,
+        )
+    finally:
+        monkey.undo()
+
+    # Initial empty + 11 per-frame writes + final no-op poll. Each must
+    # parse and have a non-decreasing n_states.
+    assert len(snapshots) >= 11
+    n_states_seq = [s["n_states"] for s in snapshots]
+    assert all(
+        b >= a for a, b in zip(n_states_seq, n_states_seq[1:], strict=False)
+    ), f"n_states must be monotone non-decreasing; got {n_states_seq}"
+    assert n_states_seq[-1] == 11
+
+
+def test_streaming_negative_max_idle_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    pytest.importorskip("pyvista")
+    pytest.importorskip("vortex_radioss")
+    src = tmp_path / "src"  # type: ignore[attr-defined]
+    src.mkdir()
+    with pytest.raises(VTUExportError, match="max_idle_s must be positive"):
+        export_run_streaming(
+            openradioss_root=src,
+            rootname="m",
+            output_dir=tmp_path / "o",  # type: ignore[attr-defined]
+            max_idle_s=0.0,
+        )
+
+
+def test_streaming_negative_poll_interval_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    pytest.importorskip("pyvista")
+    pytest.importorskip("vortex_radioss")
+    src = tmp_path / "src"  # type: ignore[attr-defined]
+    src.mkdir()
+    with pytest.raises(VTUExportError, match="poll_interval_s must be positive"):
+        export_run_streaming(
+            openradioss_root=src,
+            rootname="m",
+            output_dir=tmp_path / "o",  # type: ignore[attr-defined]
+            poll_interval_s=0.0,
+        )

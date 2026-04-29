@@ -125,12 +125,29 @@ class _LoadedState:
     n_solids_total: int
 
 
-def open_viewport(manifest_path: Path) -> int:
+def open_viewport(
+    manifest_path: Path,
+    *,
+    live: bool = False,
+    poll_interval_ms: int = 1500,
+) -> int:
     """Open the interactive viewport for the run described by ``manifest_path``.
 
     Returns the GUI exit code (0 when the window closes cleanly,
     non-zero on initialization failure). The function blocks until the
     user closes the window.
+
+    Parameters
+    ----------
+    live
+        When True (W8c), poll the manifest every ``poll_interval_ms``
+        for newly appended states; the slider range and field colormap
+        ranges grow as the streaming exporter writes new frames. The
+        viewport must still be opened against a manifest that already
+        has at least one state (no zero-state startup), so the caller
+        is responsible for waiting on the first frame before invoking.
+    poll_interval_ms
+        Polling cadence for live mode. Ignored when live is False.
 
     Raises
     ------
@@ -287,6 +304,11 @@ def open_viewport(manifest_path: Path) -> int:
     state_index = {"i": 0}
     active_field = {"name": initial_field}
     show_eroded = {"on": True}  # True = show all; False = hide alive==0
+    # W8c live mode shared state. Always declared (with static-mode
+    # defaults) so the slider callback closure works in both modes
+    # without conditional branches.
+    n_states_ref = {"v": n_states}
+    auto_follow_ref = {"on": True}
 
     def _refresh() -> None:
         """Rebuild the actor for the current state + field selection."""
@@ -364,10 +386,16 @@ def open_viewport(manifest_path: Path) -> int:
 
     def _on_slider(value: float) -> None:
         new_idx = int(round(value))
+        n = n_states_ref["v"]
         if new_idx < 0:
             new_idx = 0
-        elif new_idx >= n_states:
-            new_idx = n_states - 1
+        elif new_idx >= n:
+            new_idx = n - 1
+        # Auto-follow tracks whether the user is at the live edge.
+        # In static mode this is always True (n is constant) and has
+        # no observable effect; in live mode it gates whether new
+        # states yank the displayed frame forward.
+        auto_follow_ref["on"] = (new_idx == n - 1)
         if new_idx != state_index["i"]:
             state_index["i"] = new_idx
             _refresh()
@@ -394,11 +422,16 @@ def open_viewport(manifest_path: Path) -> int:
     _refresh()
     plotter.reset_camera()
 
-    # Time-history slider — only meaningful when n_states > 1.
-    if n_states > 1:
-        plotter.add_slider_widget(
+    # Time-history slider — only meaningful when n_states > 1 OR when
+    # live mode might add states. We always create the slider in live
+    # mode so the range can grow as the streaming exporter feeds new
+    # frames; the initial range collapses to [0, 0] if only one state
+    # has been written so far.
+    slider_widget_holder: dict[str, Any] = {"w": None}
+    if n_states > 1 or live:
+        slider_widget_holder["w"] = plotter.add_slider_widget(
             _on_slider,
-            rng=[0, n_states - 1],
+            rng=[0, max(n_states - 1, 0)],
             value=0,
             title="step_id",
             pointa=(0.20, 0.05),
@@ -418,6 +451,116 @@ def open_viewport(manifest_path: Path) -> int:
     plotter.add_key_event("E", _on_toggle_erosion)
     plotter.add_key_event("r", _on_reset_view)
     plotter.add_key_event("R", _on_reset_view)
+
+    # W8c — live mode: poll the manifest for newly appended states,
+    # load their VTUs, extend the slider range + field_clim. The
+    # polling callback is wired onto pyvista's render-loop timer so
+    # it does not need its own thread. We use add_callback because
+    # pyvista's lifecycle owns the iren timer; spawning a sidecar
+    # thread that mutates plotter state from outside the GUI loop is
+    # the documented recipe for crashes on close.
+    if live:
+        last_mtime_ref = {"v": manifest_path.stat().st_mtime}
+
+        def _poll_manifest() -> None:
+            try:
+                mtime = manifest_path.stat().st_mtime
+            except OSError:
+                return
+            if mtime <= last_mtime_ref["v"]:
+                return
+            try:
+                new_payload = json.loads(
+                    manifest_path.read_text(encoding="utf-8")
+                )
+            except (json.JSONDecodeError, OSError):
+                # Mid-write race or transient FS error. The atomic
+                # write contract should prevent this, but if it
+                # happens we just retry next tick.
+                return
+            new_states = new_payload.get("states") or []
+            current_n = n_states_ref["v"]
+            if len(new_states) <= current_n:
+                last_mtime_ref["v"] = mtime
+                return
+
+            # Load only the freshly appended states.
+            for s in new_states[current_n:]:
+                vtu_relpath = s.get("vtu_relpath")
+                if not vtu_relpath:
+                    continue
+                vtu_path = base_dir / vtu_relpath
+                if not vtu_path.is_file():
+                    continue
+                try:
+                    grid = pv.read(vtu_path)
+                except Exception:
+                    return  # try again next tick (vtu mid-write)
+                if (
+                    getattr(grid, "n_points", 0) == 0
+                    or getattr(grid, "n_cells", 0) == 0
+                ):
+                    return
+                loaded.append(
+                    _LoadedState(
+                        step_id=int(s["step_id"]),
+                        time_ms=float(s["time_ms"]),
+                        grid=grid,
+                        max_displacement_mm=float(s["max_displacement_mm"]),
+                        n_solids_alive=int(s["n_solids_alive"]),
+                        n_solids_total=int(s["n_solids_total"]),
+                    )
+                )
+
+            new_n = len(loaded)
+            if new_n == current_n:
+                last_mtime_ref["v"] = mtime
+                return
+
+            # Update field_clim with newly observed extrema. We only
+            # widen the range — never shrink — so per-frame normalisation
+            # remains stable for the user's perception.
+            for fname in available_fields:
+                arr_min = field_clim.get(fname, (float("inf"), float("-inf")))[0]
+                arr_max = field_clim.get(fname, (float("inf"), float("-inf")))[1]
+                for state in loaded[current_n:new_n]:
+                    arr = _read_array(state.grid, fname)
+                    if arr is None or arr.size == 0:
+                        continue
+                    valid = arr[np.isfinite(arr)]
+                    if valid.size == 0:
+                        continue
+                    arr_min = min(arr_min, float(valid.min()))
+                    arr_max = max(arr_max, float(valid.max()))
+                if arr_min < arr_max:
+                    field_clim[fname] = (arr_min, arr_max)
+
+            n_states_ref["v"] = new_n
+
+            # Grow the slider range. PyVista returns vtkSliderWidget;
+            # GetSliderRepresentation gives access to MinimumValue /
+            # MaximumValue.
+            sw = slider_widget_holder["w"]
+            if sw is not None:
+                rep = sw.GetSliderRepresentation()
+                rep.SetMaximumValue(new_n - 1)
+
+            # Auto-advance to the latest state IF the user is currently
+            # at the end of the (old) timeline; otherwise leave them
+            # where they are.
+            if auto_follow_ref["on"]:
+                state_index["i"] = new_n - 1
+                if sw is not None:
+                    sw.GetSliderRepresentation().SetValue(new_n - 1)
+                _refresh()
+            else:
+                # User has scrubbed back — just rerender the banner
+                # so the new total state count shows up.
+                _refresh()
+
+            last_mtime_ref["v"] = mtime
+
+        plotter.add_callback(_poll_manifest, interval=poll_interval_ms)
 
     plotter.show(auto_close=True)
     return 0
@@ -602,6 +745,8 @@ def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     snapshots_dir: Path | None = None
     field = _DEFAULT_FIELD
+    live = False
+    poll_interval_ms = 1500
     positional: list[str] = []
     i = 0
     while i < len(args):
@@ -621,6 +766,31 @@ def main(argv: list[str] | None = None) -> int:
                 print("error: --field requires a value", file=sys.stderr)
                 return 2
             field = args[i]
+        elif a == "--live":
+            live = True
+        elif a == "--poll-interval-ms":
+            i += 1
+            if i >= len(args):
+                print(
+                    "error: --poll-interval-ms requires a value",
+                    file=sys.stderr,
+                )
+                return 2
+            try:
+                poll_interval_ms = int(args[i])
+            except ValueError:
+                print(
+                    f"error: --poll-interval-ms must be an integer; "
+                    f"got {args[i]!r}",
+                    file=sys.stderr,
+                )
+                return 2
+            if poll_interval_ms <= 0:
+                print(
+                    "error: --poll-interval-ms must be positive",
+                    file=sys.stderr,
+                )
+                return 2
         else:
             positional.append(a)
         i += 1
@@ -628,7 +798,17 @@ def main(argv: list[str] | None = None) -> int:
     if len(positional) != 1:
         print(
             "usage: python -m app.viz.viewport_native MANIFEST_PATH "
-            "[--snapshots OUTPUT_DIR] [--field NAME]",
+            "[--snapshots OUTPUT_DIR] [--field NAME] "
+            "[--live] [--poll-interval-ms MS]",
+            file=sys.stderr,
+        )
+        return 2
+
+    if live and snapshots_dir is not None:
+        print(
+            "error: --live and --snapshots are mutually exclusive "
+            "(snapshots are a one-shot render, live polls a growing "
+            "manifest)",
             file=sys.stderr,
         )
         return 2
@@ -639,7 +819,9 @@ def main(argv: list[str] | None = None) -> int:
             paths = render_snapshots(manifest, snapshots_dir, field=field)
             print(f"wrote {len(paths)} PNG(s) to {snapshots_dir}")
             return 0
-        return open_viewport(manifest)
+        return open_viewport(
+            manifest, live=live, poll_interval_ms=poll_interval_ms
+        )
     except ViewportError as exc:
         print(f"viewport: {exc}", file=sys.stderr)
         return 3

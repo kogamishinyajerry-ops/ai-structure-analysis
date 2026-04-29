@@ -67,11 +67,13 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Callable, Final
 
 import numpy as np
 
@@ -113,6 +115,311 @@ class _StateRecord:
     n_facets_total: int
 
 
+class _StreamingExporter:
+    """Stateful frame-to-VTU exporter shared by ``export_run`` (one-shot)
+    and ``export_run_streaming`` (W8c watcher).
+
+    Owns:
+      - the persistent decompression scratch directory
+      - the lazy-loaded ``pyvista`` + ``RadiossReader`` modules
+      - the reference-frame state (anchored on the FIRST frame seen,
+        so streaming runs that start mid-bake still produce a stable
+        displacement reference; export_run feeds frames in step-id
+        order so the anchor is the true t=0 frame in the one-shot
+        case as well)
+      - the records / available_fields accumulators that feed the
+        manifest
+
+    Each ``export_one(frame_path)`` call decompresses the frame,
+    parses it, emits ``<output_dir>/states/<rootname>_state_NNN.vtu``,
+    and appends a ``_StateRecord``. ``write_manifest()`` atomically
+    rewrites ``viewport_manifest.json`` (write to ``.tmp``, fsync,
+    ``os.replace``) so a viewer reading the manifest never observes
+    a half-finished state list.
+    """
+
+    def __init__(
+        self,
+        *,
+        rootname: str,
+        output_dir: Path,
+        unit_system: UnitSystem,
+        pv: Any,
+        reader_cls: Any,
+    ) -> None:
+        self.rootname = rootname
+        self.output_dir = output_dir
+        self.unit_system = unit_system
+        self._pv = pv
+        self._reader_cls = reader_cls
+
+        self.states_dir = output_dir / "states"
+        self.states_dir.mkdir(parents=True, exist_ok=True)
+
+        # Reference frame state — populated on the first export_one call.
+        self.ref_coords: np.ndarray | None = None
+        self.n_solids_total: int | None = None
+        self.n_facets_total: int | None = None
+        self.n_nodes: int | None = None
+
+        self.records: list[_StateRecord] = []
+        self.available_fields: set[str] = set()
+
+        # Track which source frame paths have already been exported so
+        # streaming polls can be idempotent. Keyed by absolute path so
+        # that re-running against a renamed dir doesn't double-process.
+        self.processed: set[Path] = set()
+
+        # Persistent scratch directory for gz decompression. Closed by
+        # the context manager.
+        self._scratch_tmpdir = tempfile.TemporaryDirectory(
+            prefix="vtu-stream-"
+        )
+        self.scratch = Path(self._scratch_tmpdir.name)
+
+    def __enter__(self) -> _StreamingExporter:
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._scratch_tmpdir.cleanup()
+
+    def export_one(self, frame_path: Path) -> _StateRecord:
+        """Decompress + parse + render a single frame.
+
+        Returns the freshly appended ``_StateRecord``. Does NOT rewrite
+        the manifest — call ``write_manifest()`` after one or more
+        ``export_one`` calls so the on-disk JSON remains atomic.
+
+        Raises VTUExportError if the frame's mesh topology disagrees
+        with the reference (cell counts, node count). The exporter is
+        intentionally strict: a streaming run that observes a topology
+        change is almost certainly a misconfigured deck or a corrupt
+        partial frame, and the only honest response is to refuse.
+        """
+        if frame_path in self.processed:
+            raise VTUExportError(
+                f"frame already exported in this session: {frame_path}"
+            )
+        decompressed_paths = _decompress_frames_to(self.scratch, [frame_path])
+        decompressed = decompressed_paths[0]
+
+        reader = self._reader_cls(str(decompressed))
+        arrays = reader.raw_arrays
+        header = reader.raw_header
+        time_ms = float(header["time"])
+        coords = np.asarray(arrays["coorA"], dtype=np.float64)
+
+        if self.ref_coords is None:
+            # First frame ever — anchor the reference.
+            self.ref_coords = coords
+            self.n_solids_total = int(header["nbElts3D"])
+            self.n_facets_total = int(header["nbFacets"])
+            self.n_nodes = int(header["nbNodes"])
+        else:
+            if coords.shape != (self.n_nodes, 3):
+                raise VTUExportError(
+                    f"frame {frame_path.name} node count {coords.shape[0]} "
+                    f"differs from reference {self.n_nodes}; mesh topology "
+                    f"changed mid-run, which the viewport contract forbids"
+                )
+
+        n_solids_total = self.n_solids_total
+        n_facets_total = self.n_facets_total
+        assert n_solids_total is not None  # invariant: anchored above
+        assert n_facets_total is not None
+        assert self.ref_coords is not None
+
+        disp = coords - self.ref_coords
+        disp_mag = np.linalg.norm(disp, axis=1)
+
+        connect_3d = np.asarray(arrays["connect3DA"], dtype=np.int64)
+        connect_2d = np.asarray(arrays["connectA"], dtype=np.int64)
+
+        _validate_deletion_flags(
+            arrays["delElt3DA"], "delElt3DA", frame_path.name
+        )
+        _validate_deletion_flags(
+            arrays["delEltA"], "delEltA", frame_path.name
+        )
+        del_3d = np.asarray(arrays["delElt3DA"], dtype=bool)
+        del_2d = np.asarray(arrays["delEltA"], dtype=bool)
+
+        # Length asserts — same contract as the W8a reference frame.
+        if connect_3d.shape[0] != n_solids_total:
+            raise VTUExportError(
+                f"frame {frame_path.name} solid connectivity rows "
+                f"({connect_3d.shape[0]}) differ from reference "
+                f"nbElts3D ({n_solids_total}); mesh topology changed "
+                f"mid-run, viewport contract forbids."
+            )
+        if del_3d.shape[0] != n_solids_total:
+            raise VTUExportError(
+                f"frame {frame_path.name} solid delElt array length "
+                f"({del_3d.shape[0]}) differs from nbElts3D "
+                f"({n_solids_total})."
+            )
+        if connect_2d.shape[0] != n_facets_total:
+            raise VTUExportError(
+                f"frame {frame_path.name} facet connectivity rows "
+                f"({connect_2d.shape[0]}) differ from reference "
+                f"nbFacets ({n_facets_total}); mesh topology changed "
+                f"mid-run, viewport contract forbids."
+            )
+        if del_2d.shape[0] != n_facets_total:
+            raise VTUExportError(
+                f"frame {frame_path.name} facet delElt array length "
+                f"({del_2d.shape[0]}) differs from nbFacets "
+                f"({n_facets_total})."
+            )
+
+        cells_blocks: list[np.ndarray] = []
+        cell_types: list[int] = []
+        cell_alive: list[bool] = []
+        cell_kind: list[int] = []
+        for row, alive in zip(connect_3d, del_3d, strict=True):
+            cells_blocks.append(np.array([8, *row], dtype=np.int64))
+            cell_types.append(_VTK_HEXAHEDRON)
+            cell_alive.append(bool(alive))
+            cell_kind.append(0)
+        for row, alive in zip(connect_2d, del_2d, strict=True):
+            cells_blocks.append(np.array([4, *row], dtype=np.int64))
+            cell_types.append(_VTK_QUAD)
+            cell_alive.append(bool(alive))
+            cell_kind.append(1)
+
+        cells = np.concatenate(cells_blocks)
+        grid = self._pv.UnstructuredGrid(
+            cells, np.array(cell_types, dtype=np.uint8), coords
+        )
+
+        grid.point_data["displacement"] = disp.astype(np.float32)
+        grid.point_data["displacement_magnitude"] = disp_mag.astype(np.float32)
+        self.available_fields.update(["displacement", "displacement_magnitude"])
+
+        efunc_solid = np.asarray(arrays.get("eFunc3DA"), dtype=np.float32)
+        efunc_shell = np.asarray(arrays.get("eFuncA"), dtype=np.float32)
+        if (
+            efunc_solid.size == n_solids_total
+            and efunc_shell.size == n_facets_total
+        ):
+            grid.cell_data["plastic_strain"] = np.concatenate(
+                [efunc_solid, efunc_shell]
+            )
+            self.available_fields.add("plastic_strain")
+
+        tens_3d = np.asarray(arrays.get("tensVal3DA"), dtype=np.float32)
+        if tens_3d.shape == (n_solids_total, 6):
+            vm_solid = _von_mises_voigt6(tens_3d)
+            vm_full = np.full(
+                n_solids_total + n_facets_total, np.nan, dtype=np.float32
+            )
+            vm_full[:n_solids_total] = vm_solid
+            grid.cell_data["vmises_solid"] = vm_full
+            self.available_fields.add("vmises_solid")
+
+        grid.cell_data["alive"] = np.array(cell_alive, dtype=np.uint8)
+        grid.cell_data["cell_kind"] = np.array(cell_kind, dtype=np.uint8)
+        self.available_fields.update(["alive", "cell_kind"])
+
+        state_idx = len(self.records) + 1
+        vtu_path = self.states_dir / f"{self.rootname}_state_{state_idx:03d}.vtu"
+        # Atomic VTU write: write to a sibling ``*.tmp.vtu`` (pyvista
+        # validates extensions, so ``.tmp`` alone is rejected) then
+        # ``os.replace`` so a polling viewer never reads a half-written
+        # .vtu (W8c contract).
+        tmp_vtu = vtu_path.with_name(
+            f"{vtu_path.stem}.tmp{vtu_path.suffix}"
+        )
+        grid.save(str(tmp_vtu))
+        os.replace(tmp_vtu, vtu_path)
+
+        record = _StateRecord(
+            step_id=state_idx,
+            time_ms=time_ms,
+            vtu_relpath=f"states/{vtu_path.name}",
+            max_displacement_mm=float(disp_mag.max()),
+            n_solids_alive=int(del_3d.sum()),
+            n_solids_total=n_solids_total,
+            n_facets_alive=int(del_2d.sum()),
+            n_facets_total=n_facets_total,
+        )
+        self.records.append(record)
+        self.processed.add(frame_path)
+        return record
+
+    def write_manifest(self) -> Path:
+        """Atomically rewrite ``viewport_manifest.json``.
+
+        Writes to a sibling ``.tmp`` file, fsyncs, then ``os.replace``
+        onto the canonical name so a polling viewer either sees the
+        previous manifest or the new one — never a truncated middle
+        state.
+        """
+        manifest = {
+            "schema_version": SCHEMA_VERSION,
+            "rootname": self.rootname,
+            "unit_system": self.unit_system.value,
+            "n_states": len(self.records),
+            "available_fields": sorted(self.available_fields),
+            "states": [
+                {
+                    "step_id": r.step_id,
+                    "time_ms": r.time_ms,
+                    "vtu_relpath": r.vtu_relpath,
+                    "max_displacement_mm": r.max_displacement_mm,
+                    "n_solids_alive": r.n_solids_alive,
+                    "n_solids_total": r.n_solids_total,
+                    "n_facets_alive": r.n_facets_alive,
+                    "n_facets_total": r.n_facets_total,
+                }
+                for r in self.records
+            ],
+        }
+        manifest_path = self.output_dir / "viewport_manifest.json"
+        tmp = manifest_path.with_name(manifest_path.name + ".tmp")
+        body = json.dumps(manifest, indent=2, ensure_ascii=False)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(body)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, manifest_path)
+        return manifest_path
+
+
+def _resolve_pyvista_and_reader() -> tuple[Any, Any]:
+    """Lazy import of pyvista + vortex_radioss with VTUExportError on
+    missing deps. Shared by export_run and export_run_streaming so the
+    failure mode is identical between the two entry points.
+    """
+    try:
+        import pyvista as pv
+    except ImportError as exc:  # pragma: no cover — doctor surface
+        raise VTUExportError(
+            f"pyvista is required for VTU export but is not importable: {exc}"
+        ) from exc
+    try:
+        from vortex_radioss.animtod3plot.RadiossReader import RadiossReader
+    except ImportError as exc:  # pragma: no cover — doctor surface
+        raise VTUExportError(
+            f"vortex_radioss is required for VTU export but is not importable: {exc}"
+        ) from exc
+    return pv, RadiossReader
+
+
+def _check_unit_system(unit_system: UnitSystem) -> None:
+    """ADR-003 refusal: only SI_MM is honest until manifest grows
+    explicit per-key units. Shared by both export entrypoints."""
+    if unit_system is not UnitSystem.SI_MM:
+        raise VTUExportError(
+            f"viewport export currently only supports SI_MM; got "
+            f"{unit_system.value}. Multi-unit manifest schema is "
+            f"planned for W8a-units."
+        )
+
+
 def export_run(
     *,
     openradioss_root: Path,
@@ -151,38 +458,8 @@ def export_run(
         If no animation frames are found, the rootname does not match,
         or the frame parser fails.
     """
-    # Lazy imports — pyvista pulls vtk; vortex_radioss pulls lasso. We
-    # don't want either at module-import time so a ``--doctor`` probe
-    # can introspect this module without a graphics stack.
-    try:
-        import pyvista as pv
-    except ImportError as exc:  # pragma: no cover — doctor surface
-        raise VTUExportError(
-            f"pyvista is required for VTU export but is not importable: {exc}"
-        ) from exc
-    try:
-        from vortex_radioss.animtod3plot.RadiossReader import RadiossReader
-    except ImportError as exc:  # pragma: no cover — doctor surface
-        raise VTUExportError(
-            f"vortex_radioss is required for VTU export but is not importable: {exc}"
-        ) from exc
-
-    # Codex R1 HIGH on PR #111 — the manifest keys ``time_ms`` and
-    # ``max_displacement_mm`` are unit-bearing, but the parameter
-    # accepts arbitrary UnitSystem values. Until the schema grows
-    # explicit per-key units (e.g. via a ``units: {time: "ms", ...}``
-    # block, deferred to W8a-units), the only honest contract is to
-    # refuse non-si-mm runs rather than silently mislabel them. The
-    # OpenRadioss adapter in W7b is itself si-mm-only, so this is not
-    # a regression of any user flow today — it just locks the contract
-    # so a future ADR-003 violation cannot slip in via a different
-    # ``UnitSystem`` value.
-    if unit_system is not UnitSystem.SI_MM:
-        raise VTUExportError(
-            f"viewport export currently only supports SI_MM; got "
-            f"{unit_system.value}. Multi-unit manifest schema is "
-            f"planned for W8a-units."
-        )
+    pv, RadiossReader = _resolve_pyvista_and_reader()
+    _check_unit_system(unit_system)
 
     if not openradioss_root.is_dir():
         raise VTUExportError(
@@ -197,205 +474,133 @@ def export_run(
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    states_dir = output_dir / "states"
-    states_dir.mkdir(exist_ok=True)
 
-    # Decompress frames into a scratch dir so RadiossReader can mmap
-    # them. We do this once for the whole run rather than per-state to
-    # amortise the gzip cost.
-    with tempfile.TemporaryDirectory(prefix="vtu-export-") as scratch_str:
-        scratch = Path(scratch_str)
-        decompressed = _decompress_frames_to(scratch, frames)
+    with _StreamingExporter(
+        rootname=rootname,
+        output_dir=output_dir,
+        unit_system=unit_system,
+        pv=pv,
+        reader_cls=RadiossReader,
+    ) as exporter:
+        for frame_path in frames:
+            exporter.export_one(frame_path)
+        return exporter.write_manifest()
 
-        # First frame anchors the reference coordinates for displacement.
-        ref_reader = RadiossReader(str(decompressed[0]))
-        ref_coords = np.asarray(
-            ref_reader.raw_arrays["coorA"], dtype=np.float64
+
+def export_run_streaming(
+    *,
+    openradioss_root: Path,
+    rootname: str,
+    output_dir: Path,
+    unit_system: UnitSystem = UnitSystem.SI_MM,
+    poll_interval_s: float = 1.0,
+    max_idle_s: float = 30.0,
+    timeout_s: float | None = None,
+    on_state_appended: Callable[[_StateRecord], None] | None = None,
+    _now: Callable[[], float] = time.monotonic,
+    _sleep: Callable[[float], None] = time.sleep,
+) -> Path:
+    """RFC-001 W8c — watcher variant of ``export_run``.
+
+    Polls ``openradioss_root`` for ``<rootname>A###(.gz)?`` frames,
+    incrementally exports each new one, and atomically rewrites the
+    manifest after every state. A live viewport polling the manifest
+    sees state count grow as the solver writes frames.
+
+    Parameters
+    ----------
+    openradioss_root, rootname, output_dir, unit_system
+        Same as ``export_run``.
+    poll_interval_s
+        Seconds between ``_enumerate_frames`` calls. Default 1.0s — fast
+        enough for engineer-perceived liveness, slow enough not to hammer
+        a disk that's also being written by the engine.
+    max_idle_s
+        Exit cleanly when no new frame has appeared for this many
+        seconds — interpreted as "solver finished, no more frames
+        expected". Default 30s. Pass ``math.inf`` to never auto-exit.
+    timeout_s
+        Hard wall-clock cap. None = no cap. Useful for tests; in
+        production the idle-timeout is the natural exit.
+    on_state_appended
+        Optional callback fired after each successful ``export_one``
+        with the freshly written ``_StateRecord``. Tests use this to
+        verify ordering without reading manifest mid-loop.
+    _now, _sleep
+        Hooks for tests to inject fake time so the polling loop runs
+        instantly.
+
+    Returns
+    -------
+    Path
+        Absolute path to ``viewport_manifest.json`` after the loop
+        exits. May reference 0 states if the loop timed out before
+        any frame appeared (caller decides how to react).
+
+    Raises
+    ------
+    VTUExportError
+        If a frame fails the export contract (mesh topology change,
+        bad deletion flags, etc.). Streaming does NOT swallow these —
+        a corrupt frame is a fatal manifest event.
+    """
+    pv, RadiossReader = _resolve_pyvista_and_reader()
+    _check_unit_system(unit_system)
+
+    if not openradioss_root.is_dir():
+        raise VTUExportError(
+            f"OpenRadioss root is not a directory: {openradioss_root}"
         )
-        ref_header = ref_reader.raw_header
-        n_solids_total = int(ref_header["nbElts3D"])
-        n_facets_total = int(ref_header["nbFacets"])
-        n_nodes = int(ref_header["nbNodes"])
 
-        records: list[_StateRecord] = []
-        available_fields: set[str] = set()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if max_idle_s <= 0:
+        raise VTUExportError(
+            f"max_idle_s must be positive; got {max_idle_s}"
+        )
+    if poll_interval_s <= 0:
+        raise VTUExportError(
+            f"poll_interval_s must be positive; got {poll_interval_s}"
+        )
 
-        for state_idx, frame_path in enumerate(decompressed, start=1):
-            reader = RadiossReader(str(frame_path))
-            arrays = reader.raw_arrays
-            header = reader.raw_header
-            time_ms = float(header["time"])
+    with _StreamingExporter(
+        rootname=rootname,
+        output_dir=output_dir,
+        unit_system=unit_system,
+        pv=pv,
+        reader_cls=RadiossReader,
+    ) as exporter:
+        # Always emit an initial manifest so a polling viewer sees a
+        # well-formed (zero-state) manifest immediately. Otherwise
+        # viewport startup races with the first frame.
+        exporter.write_manifest()
 
-            coords = np.asarray(arrays["coorA"], dtype=np.float64)
-            if coords.shape != (n_nodes, 3):
-                raise VTUExportError(
-                    f"frame {frame_path.name} node count {coords.shape[0]} "
-                    f"differs from reference {n_nodes}; mesh topology "
-                    f"changed mid-run, which the viewport contract forbids"
-                )
+        start = _now()
+        last_progress = start
+        while True:
+            # Skip frames already exported.
+            try:
+                all_frames = _enumerate_frames(openradioss_root, rootname)
+            except VTUExportError:
+                # Ambiguous frame (plain + .gz both present) — let the
+                # error bubble; this is a deck/run misconfiguration the
+                # engineer must resolve.
+                raise
+            new_frames = [f for f in all_frames if f not in exporter.processed]
+            for frame_path in new_frames:
+                record = exporter.export_one(frame_path)
+                exporter.write_manifest()
+                last_progress = _now()
+                if on_state_appended is not None:
+                    on_state_appended(record)
 
-            disp = coords - ref_coords
-            disp_mag = np.linalg.norm(disp, axis=1)
+            now = _now()
+            if now - last_progress >= max_idle_s:
+                break
+            if timeout_s is not None and (now - start) >= timeout_s:
+                break
+            _sleep(poll_interval_s)
 
-            # Build a single UnstructuredGrid combining 3D bricks and
-            # 2D facets — vtk.js can read mixed cell types in one VTU.
-            connect_3d = np.asarray(arrays["connect3DA"], dtype=np.int64)
-            connect_2d = np.asarray(arrays["connectA"], dtype=np.int64)
-
-            # Codex R2 HIGH on PR #111 — validate the deletion arrays
-            # carry only the documented {0, 1} values BEFORE casting
-            # to bool. Direct ``dtype=bool`` coercion silently treats
-            # any non-zero (e.g. 2, -1 from a corrupt parse) as "alive",
-            # which would let parser drift contaminate the manifest's
-            # alive counts and the VTU's per-cell ``alive`` array
-            # without raising. Layer-3 ballistics already uses the same
-            # contract (app/domain/ballistics/__init__.py:_validate_flags).
-            _validate_deletion_flags(
-                arrays["delElt3DA"], "delElt3DA", frame_path.name
-            )
-            _validate_deletion_flags(
-                arrays["delEltA"], "delEltA", frame_path.name
-            )
-            del_3d = np.asarray(arrays["delElt3DA"], dtype=bool)
-            del_2d = np.asarray(arrays["delEltA"], dtype=bool)
-
-            # Codex R1 HIGH on PR #111 — assert connectivity / deletion
-            # array lengths agree with the header BEFORE assembling the
-            # grid. The previous ``zip(..., strict=False)`` silently
-            # truncated to the shorter array, so a length drift would
-            # drop cells from the VTU while the manifest still reported
-            # the full header counts. That is a data-integrity bug for
-            # the viewport — refuse the frame instead.
-            if connect_3d.shape[0] != n_solids_total:
-                raise VTUExportError(
-                    f"frame {frame_path.name} solid connectivity rows "
-                    f"({connect_3d.shape[0]}) differ from reference "
-                    f"nbElts3D ({n_solids_total}); mesh topology "
-                    f"changed mid-run, viewport contract forbids."
-                )
-            if del_3d.shape[0] != n_solids_total:
-                raise VTUExportError(
-                    f"frame {frame_path.name} solid delElt array length "
-                    f"({del_3d.shape[0]}) differs from nbElts3D "
-                    f"({n_solids_total})."
-                )
-            if connect_2d.shape[0] != n_facets_total:
-                raise VTUExportError(
-                    f"frame {frame_path.name} facet connectivity rows "
-                    f"({connect_2d.shape[0]}) differ from reference "
-                    f"nbFacets ({n_facets_total}); mesh topology "
-                    f"changed mid-run, viewport contract forbids."
-                )
-            if del_2d.shape[0] != n_facets_total:
-                raise VTUExportError(
-                    f"frame {frame_path.name} facet delElt array length "
-                    f"({del_2d.shape[0]}) differs from nbFacets "
-                    f"({n_facets_total})."
-                )
-
-            # pyvista cells layout: [n_pts_in_cell, p0, p1, ..., n_pts_in_cell, ...]
-            # Lengths are pinned by the asserts above; ``strict=True``
-            # makes the contract explicit and any future regression
-            # surfaces as a clean ValueError instead of a silent drop.
-            cells_blocks: list[np.ndarray] = []
-            cell_types: list[int] = []
-            cell_alive: list[bool] = []
-            cell_kind: list[int] = []  # 0 = solid (brick), 1 = facet (quad)
-
-            for row, alive in zip(connect_3d, del_3d, strict=True):
-                cells_blocks.append(np.array([8, *row], dtype=np.int64))
-                cell_types.append(_VTK_HEXAHEDRON)
-                cell_alive.append(bool(alive))
-                cell_kind.append(0)
-            for row, alive in zip(connect_2d, del_2d, strict=True):
-                cells_blocks.append(np.array([4, *row], dtype=np.int64))
-                cell_types.append(_VTK_QUAD)
-                cell_alive.append(bool(alive))
-                cell_kind.append(1)
-
-            cells = np.concatenate(cells_blocks)
-            grid = pv.UnstructuredGrid(
-                cells, np.array(cell_types, dtype=np.uint8), coords
-            )
-
-            # Per-point fields.
-            grid.point_data["displacement"] = disp.astype(np.float32)
-            grid.point_data["displacement_magnitude"] = disp_mag.astype(np.float32)
-            available_fields.update(["displacement", "displacement_magnitude"])
-
-            # Per-cell fields. Plastic strain is the only scalar
-            # OpenRadioss writes uniformly across solids and facets;
-            # we concatenate solid then facet to match cell ordering.
-            efunc_solid = np.asarray(arrays.get("eFunc3DA"), dtype=np.float32)
-            efunc_shell = np.asarray(arrays.get("eFuncA"), dtype=np.float32)
-            if efunc_solid.size == n_solids_total and efunc_shell.size == n_facets_total:
-                grid.cell_data["plastic_strain"] = np.concatenate(
-                    [efunc_solid, efunc_shell]
-                )
-                available_fields.add("plastic_strain")
-
-            # vmises_solid: Voigt-6 → von Mises for the brick cells.
-            tens_3d = np.asarray(arrays.get("tensVal3DA"), dtype=np.float32)
-            if tens_3d.shape == (n_solids_total, 6):
-                vm_solid = _von_mises_voigt6(tens_3d)
-                # Pad with NaN for the facet cells so the array length
-                # matches total cell count. NaN signals "not applicable
-                # for this cell kind"; vtk.js skips NaN in colormap.
-                vm_full = np.full(
-                    n_solids_total + n_facets_total, np.nan, dtype=np.float32
-                )
-                vm_full[:n_solids_total] = vm_solid
-                grid.cell_data["vmises_solid"] = vm_full
-                available_fields.add("vmises_solid")
-
-            # Always write alive + kind so the viewport can hide dead
-            # cells (element-deletion view) and colour by part type.
-            grid.cell_data["alive"] = np.array(cell_alive, dtype=np.uint8)
-            grid.cell_data["cell_kind"] = np.array(cell_kind, dtype=np.uint8)
-            available_fields.update(["alive", "cell_kind"])
-
-            vtu_path = states_dir / f"{rootname}_state_{state_idx:03d}.vtu"
-            grid.save(str(vtu_path))
-
-            records.append(
-                _StateRecord(
-                    step_id=state_idx,
-                    time_ms=time_ms,
-                    vtu_relpath=f"states/{vtu_path.name}",
-                    max_displacement_mm=float(disp_mag.max()),
-                    n_solids_alive=int(del_3d.sum()),
-                    n_solids_total=n_solids_total,
-                    n_facets_alive=int(del_2d.sum()),
-                    n_facets_total=n_facets_total,
-                )
-            )
-
-    manifest = {
-        "schema_version": SCHEMA_VERSION,
-        "rootname": rootname,
-        "unit_system": unit_system.value,
-        "n_states": len(records),
-        "available_fields": sorted(available_fields),
-        "states": [
-            {
-                "step_id": r.step_id,
-                "time_ms": r.time_ms,
-                "vtu_relpath": r.vtu_relpath,
-                "max_displacement_mm": r.max_displacement_mm,
-                "n_solids_alive": r.n_solids_alive,
-                "n_solids_total": r.n_solids_total,
-                "n_facets_alive": r.n_facets_alive,
-                "n_facets_total": r.n_facets_total,
-            }
-            for r in records
-        ],
-    }
-    manifest_path = output_dir / "viewport_manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return manifest_path
+        return exporter.output_dir / "viewport_manifest.json"
 
 
 # ---------------------------------------------------------------------------
