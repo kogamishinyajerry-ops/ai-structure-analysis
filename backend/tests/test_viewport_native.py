@@ -147,6 +147,57 @@ def test_unknown_field_refused(tmp_path: pytest.TempPathFactory) -> None:
         )
 
 
+def test_all_nan_field_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R2 PR #112 MEDIUM — field present but every sample is NaN
+    in every state must refuse, not silently render gray geometry.
+
+    We synthesise a 1-cell 1-state VTU with point_data['displacement_magnitude']
+    set entirely to NaN and assert render_snapshots refuses.
+    """
+    pyvista = pytest.importorskip("pyvista")
+    import numpy as np
+
+    base = tmp_path  # type: ignore[attr-defined]
+
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+         [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        dtype=float,
+    )
+    cells = np.array([8, 0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
+    grid = pyvista.UnstructuredGrid(cells, np.array([12], dtype=np.uint8), points)
+    nan_arr = np.full(grid.n_points, np.nan, dtype=float)
+    grid.point_data["displacement_magnitude"] = nan_arr
+    vtu_path = base / "all_nan.vtu"
+    grid.save(str(vtu_path))
+
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {
+                        "step_id": 0,
+                        "vtu_relpath": "all_nan.vtu",
+                        "time_ms": 0.0,
+                        "max_displacement_mm": 0.0,
+                        "n_solids_alive": 1,
+                        "n_solids_total": 1,
+                        "n_facets_alive": 0,
+                        "n_facets_total": 0,
+                    }
+                ],
+                "available_fields": ["displacement_magnitude"],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="no finite samples"):
+        render_snapshots(m, base / "out", field="displacement_magnitude")
+
+
 def test_corrupt_vtu_refused(tmp_path: pytest.TempPathFactory) -> None:
     """Codex R1 PR #112 MEDIUM — corrupt VTU bytes must surface as
     ViewportError, not raw pyvista IOError."""

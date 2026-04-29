@@ -94,6 +94,15 @@ _FIELD_LABEL: Final[dict[str, str]] = {
 }
 
 
+# Codex R2 PR #112 NIT — canonical "renderable field" predicate shared
+# by ``render_snapshots`` and the ``open_viewport`` keybind wiring. The
+# exporter's manifest ``available_fields`` advertises raw VTK arrays
+# (e.g. the 3-component ``displacement`` vector + ``cell_kind`` ints)
+# that the viewport does NOT know how to colour-map. Source of truth
+# for "what the viewport can show" is _FIELD_LABEL.
+RENDERABLE_FIELDS: Final[frozenset[str]] = frozenset(_FIELD_LABEL.keys())
+
+
 class ViewportError(RuntimeError):
     """Raised when the manifest / VTU files cannot be loaded.
 
@@ -429,11 +438,12 @@ def render_snapshots(
 
     # Codex R1 MEDIUM (PR #112): refuse early when the requested field
     # is unknown so the engineer is not lied to with gray geometry.
-    known_fields = set(_FIELD_LABEL.keys())
-    if field not in known_fields:
+    # Canonical predicate from RENDERABLE_FIELDS so both ``render_snapshots``
+    # and ``open_viewport`` agree on what's supported (Codex R2 NIT PR #112).
+    if field not in RENDERABLE_FIELDS:
         raise ViewportError(
             f"unknown field {field!r}; expected one of "
-            f"{sorted(known_fields)!r}"
+            f"{sorted(RENDERABLE_FIELDS)!r}"
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -445,7 +455,8 @@ def render_snapshots(
     # IO exceptions (Codex R1 MEDIUM PR #112).
     global_min, global_max = float("inf"), float("-inf")
     states_grids: list[Any] = []
-    field_present_anywhere = False
+    field_has_finite_anywhere = False
+    field_array_present_anywhere = False
     for s in states_raw:
         vtu_relpath = s.get("vtu_relpath")
         if not vtu_relpath:
@@ -471,21 +482,32 @@ def render_snapshots(
         states_grids.append((s, grid))
         if field in grid.point_data:
             arr = np.asarray(grid.point_data[field]).ravel()
-            field_present_anywhere = True
+            field_array_present_anywhere = True
         elif field in grid.cell_data:
             arr = np.asarray(grid.cell_data[field]).ravel()
-            field_present_anywhere = True
+            field_array_present_anywhere = True
         else:
             continue
         valid = arr[np.isfinite(arr)]
         if valid.size == 0:
             continue
+        field_has_finite_anywhere = True
         global_min = min(global_min, float(valid.min()))
         global_max = max(global_max, float(valid.max()))
-    if not field_present_anywhere:
+    # Codex R2 PR #112 MEDIUM — refuse when the field exists nowhere OR
+    # exists but is all-NaN in every state. Either way the engineer
+    # cannot read anything from the rendered PNGs, and silent
+    # success-with-gray-geometry is exactly the degradation ADR-003
+    # forbids.
+    if not field_array_present_anywhere:
         raise ViewportError(
             f"field {field!r} not present in any state's VTU "
             f"(point_data or cell_data); refusing to render gray geometry"
+        )
+    if not field_has_finite_anywhere:
+        raise ViewportError(
+            f"field {field!r} has no finite samples in any state "
+            f"(all values are NaN/Inf); refusing to render uncoloured geometry"
         )
     clim = (global_min, global_max) if global_min < global_max else None
 
