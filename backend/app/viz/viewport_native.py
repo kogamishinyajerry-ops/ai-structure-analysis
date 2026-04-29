@@ -74,8 +74,9 @@ _FIELD_KEYBINDS: Final[dict[str, str]] = {
     "4": "alive",
 }
 """Keyboard shortcuts that switch the active scalar. Only fields
-present in ``manifest.available_fields`` are wired; others print a
-console hint when pressed."""
+that survive the RENDERABLE_FIELDS filter AND are present-and-finite
+in every state (the open_viewport intersection) are wired; others
+are unbound — never the raw union from manifest.available_fields."""
 
 
 _FIELD_CMAP: Final[dict[str, str]] = {
@@ -198,12 +199,19 @@ def open_viewport(manifest_path: Path) -> int:
             raise ViewportError(
                 f"failed to read {vtu_path}: {type(exc).__name__}: {exc}"
             ) from exc
-        # Codex R3 PR #112 LOW — pyvista returns an empty grid
-        # (n_points=0) on corrupt/truncated XML rather than raising.
-        # Live viewport now matches the snapshot path's refusal.
+        # Codex R3 PR #112 LOW + R4 LOW — pyvista returns an empty
+        # grid (n_points=0) on corrupt/truncated XML rather than
+        # raising; a VTU with points but no cells (n_cells=0) is also
+        # structurally empty. Live viewport now matches the snapshot
+        # path's refusal for both.
         if getattr(grid, "n_points", 0) == 0:
             raise ViewportError(
                 f"failed to read {vtu_path}: empty grid (corrupt VTU?)"
+            )
+        if getattr(grid, "n_cells", 0) == 0:
+            raise ViewportError(
+                f"failed to read {vtu_path}: VTU has 0 cells "
+                f"(structurally empty grid)"
             )
         loaded.append(
             _LoadedState(
@@ -218,34 +226,56 @@ def open_viewport(manifest_path: Path) -> int:
 
     n_states = len(loaded)
 
-    # Compute global ranges per field across ALL states so the colormap
-    # doesn't jump as the user scrubs through time. The viewport feels
-    # broken otherwise — frame N's red is frame N+1's blue.
+    # Codex R4 PR #112 MEDIUM — narrow available_fields from
+    # union-across-frames (the exporter's manifest contract) to
+    # intersection-across-frames-with-finite-data. The interactive
+    # viewport must NOT silently render gray geometry when the user
+    # scrubs to a state where the active field is missing or all-NaN.
+    # Either every state carries a field's data, or that field is
+    # unselectable; no halfway "scrub-and-pray" UX.
+    import numpy as np
+
     field_clim: dict[str, tuple[float, float]] = {}
+    renderable_in_every_state: list[str] = []
     for fname in available_fields:
-        if fname not in _FIELD_LABEL:
-            continue  # unknown field — skip, can still be probed manually
         global_min = float("inf")
         global_max = float("-inf")
+        present_and_finite_in_all = True
         for state in loaded:
             arr = _read_array(state.grid, fname)
             if arr is None or arr.size == 0:
-                continue
-            import numpy as np
-
+                present_and_finite_in_all = False
+                break
             valid = arr[np.isfinite(arr)]
             if valid.size == 0:
-                continue
+                present_and_finite_in_all = False
+                break
             global_min = min(global_min, float(valid.min()))
             global_max = max(global_max, float(valid.max()))
+        if not present_and_finite_in_all:
+            continue
+        renderable_in_every_state.append(fname)
         if global_min < global_max:
             field_clim[fname] = (global_min, global_max)
+    available_fields = renderable_in_every_state
+
+    # Codex R4 PR #112 MEDIUM follow-up — if the intersection is empty,
+    # refuse rather than open a gray geometry-only window with no
+    # selectable fields. Engineer cannot read anything from such a
+    # viewport, and silently degrading is exactly the contract ADR-003
+    # forbids.
+    if not available_fields:
+        raise ViewportError(
+            "no field is present and finite in every state; refusing to "
+            "open a viewport with no selectable scalars. "
+            "Re-emit the manifest from a complete run."
+        )
 
     # Pick an initial field that's actually present.
     initial_field = (
         _DEFAULT_FIELD
         if _DEFAULT_FIELD in available_fields
-        else (available_fields[0] if available_fields else _DEFAULT_FIELD)
+        else available_fields[0]
     )
 
     # Plotter setup. Window is a single render view with a slider

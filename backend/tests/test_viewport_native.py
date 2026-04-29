@@ -28,7 +28,12 @@ from pathlib import Path
 import pytest
 
 from app.viz.vtu_exporter import SCHEMA_VERSION, export_run
-from app.viz.viewport_native import ViewportError, main, render_snapshots
+from app.viz.viewport_native import (
+    ViewportError,
+    main,
+    open_viewport,
+    render_snapshots,
+)
 
 
 _REPO_ROOT: Path = Path(__file__).resolve().parents[2]
@@ -260,6 +265,107 @@ def test_mixed_state_missing_field_refused(
     )
     with pytest.raises(ViewportError, match="missing in state step_id=1"):
         render_snapshots(m, base / "out", field="displacement_magnitude")
+
+
+def test_open_viewport_mixed_state_field_refuses_run(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R4 PR #112 MEDIUM — open_viewport must intersect across
+    frames, not union. A manifest where displacement_magnitude lives in
+    state 0 but is absent from state 1 must NOT open a viewport that
+    silently renders gray geometry on state 1.
+
+    We cannot render a real GUI in CI, so we assert that the intersection
+    drops the missing field and (since it was the only renderable one)
+    open_viewport refuses with the new "no selectable scalars" message.
+    """
+    pyvista = pytest.importorskip("pyvista")
+    import numpy as np
+
+    base = tmp_path  # type: ignore[attr-defined]
+
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+         [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        dtype=float,
+    )
+    cells = np.array([8, 0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
+    cell_types = np.array([12], dtype=np.uint8)
+
+    g0 = pyvista.UnstructuredGrid(cells, cell_types, points)
+    g0.point_data["displacement_magnitude"] = np.zeros(g0.n_points, dtype=float)
+    g0.save(str(base / "s0.vtu"))
+
+    g1 = pyvista.UnstructuredGrid(cells, cell_types, points)
+    g1.save(str(base / "s1.vtu"))
+
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {"step_id": 0, "vtu_relpath": "s0.vtu", "time_ms": 0.0,
+                     "max_displacement_mm": 0.0, "n_solids_alive": 1,
+                     "n_solids_total": 1, "n_facets_alive": 0,
+                     "n_facets_total": 0},
+                    {"step_id": 1, "vtu_relpath": "s1.vtu", "time_ms": 0.1,
+                     "max_displacement_mm": 0.0, "n_solids_alive": 1,
+                     "n_solids_total": 1, "n_facets_alive": 0,
+                     "n_facets_total": 0},
+                ],
+                "available_fields": ["displacement_magnitude"],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="no selectable scalars"):
+        open_viewport(m)
+
+
+def test_open_viewport_zero_cells_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R4 PR #112 LOW — n_cells==0 must refuse alongside
+    n_points==0. We synthesise a points-only grid via direct VTK XML.
+    """
+    pytest.importorskip("pyvista")
+    base = tmp_path  # type: ignore[attr-defined]
+    pts_only = """<?xml version="1.0"?>
+<VTKFile type="UnstructuredGrid" version="1.0">
+  <UnstructuredGrid>
+    <Piece NumberOfPoints="1" NumberOfCells="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">
+          0 0 0
+        </DataArray>
+      </Points>
+      <Cells>
+        <DataArray type="Int64" Name="connectivity" format="ascii"></DataArray>
+        <DataArray type="Int64" Name="offsets" format="ascii"></DataArray>
+        <DataArray type="UInt8" Name="types" format="ascii"></DataArray>
+      </Cells>
+    </Piece>
+  </UnstructuredGrid>
+</VTKFile>
+"""
+    (base / "no_cells.vtu").write_text(pts_only)
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {"step_id": 0, "vtu_relpath": "no_cells.vtu",
+                     "time_ms": 0.0, "max_displacement_mm": 0.0,
+                     "n_solids_alive": 0, "n_solids_total": 0,
+                     "n_facets_alive": 0, "n_facets_total": 0}
+                ],
+                "available_fields": [],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="0 cells"):
+        open_viewport(m)
 
 
 def test_corrupt_vtu_refused(tmp_path: pytest.TempPathFactory) -> None:
