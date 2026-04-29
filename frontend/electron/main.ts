@@ -633,10 +633,27 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
 
 
 // W8b — spawn the PyVista native viewport against a viewport manifest.
-// The handler validates the manifest path is absolute and points at a
-// file named ``viewport_manifest.json`` to defend the python module
-// invocation against a renderer-side spoof. The viewport runs in its
-// own process so closing it does NOT affect the report-cli stream.
+//
+// Codex R1 HIGH (PR #112): the viewport launcher MUST use the same
+// runtime contract as report-cli so the engineer's `pip install -e .`
+// (or wheel/pyinstaller bundle) maps both buttons to the same Python
+// interpreter. ``viewport-cli`` is a console_script registered in
+// pyproject.toml exactly like ``report-cli`` — find one, you've got
+// the other; ``python -m app.viz.viewport_native`` would just pick
+// up whichever python is first on PATH and is therefore wrong here.
+//
+// Codex R1 MEDIUM (PR #112): the viewport must actually detach. The
+// previous implementation kept a parent-owned stderr FD + listener
+// alive for the lifetime of the child, which is a lifecycle leak and
+// blocks clean Electron quit. We now read stderr only during the
+// 600ms grace window (so we can surface ENOENT / pyvista-missing)
+// and then explicitly close stderr + unref + remove listeners.
+//
+// The handler validates the manifest path is absolute, resolves to a
+// real file (no symlink dereference surprises), and points at a file
+// named ``viewport_manifest.json`` to defend the launcher against a
+// renderer-side spoof. The viewport runs in its own process so
+// closing it does NOT affect the report-cli stream.
 ipcMain.handle(
   "open-viewport",
   async (
@@ -656,58 +673,87 @@ ipcMain.handle(
           "manifest path must end in viewport_manifest.json (renderer-side spoof guard)",
       };
     }
-    if (!fs.existsSync(manifestPath)) {
-      return { ok: false, error: `manifest not found: ${manifestPath}` };
+    // realpathSync: collapse symlinks BEFORE the basename check would
+    // be useful (Codex R1 MEDIUM nit). After realpath we re-check the
+    // basename so a symlink named ``viewport_manifest.json`` pointing
+    // at /etc/passwd is rejected.
+    let resolved: string;
+    try {
+      resolved = fs.realpathSync(manifestPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `manifest not found: ${msg}` };
     }
-    // python -m app.viz.viewport_native <manifest>. Detached so the
-    // viewport can outlive the Electron renderer if the engineer
-    // closes the workbench while still inspecting the run.
-    const child = spawn(
-      "python",
-      ["-m", "app.viz.viewport_native", manifestPath],
-      {
-        stdio: ["ignore", "ignore", "pipe"],
-        detached: true,
-      },
-    );
+    if (path.basename(resolved) !== "viewport_manifest.json") {
+      return {
+        ok: false,
+        error:
+          "manifest realpath does not end in viewport_manifest.json " +
+          "(symlink target check)",
+      };
+    }
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `manifest not found: ${msg}` };
+    }
+    if (!stat.isFile()) {
+      return { ok: false, error: `manifest is not a regular file: ${resolved}` };
+    }
+    // viewport-cli is the console_script registered by
+    // pyproject.toml [project.scripts]. Same resolution rule as
+    // report-cli (resolved by the user's shell PATH after
+    // ``pip install -e .``). Detached so the viewport can outlive
+    // the Electron renderer if the engineer closes the workbench
+    // while still inspecting the run.
+    const child = spawn("viewport-cli", [resolved], {
+      stdio: ["ignore", "ignore", "pipe"],
+      detached: true,
+    });
     let stderrBuf = "";
-    child.stderr.on("data", (chunk: Buffer) => {
+    const onStderr = (chunk: Buffer) => {
       stderrBuf += chunk.toString("utf-8");
-      // Cap accumulator — do not buffer indefinitely.
       if (stderrBuf.length > 4096) {
         stderrBuf = stderrBuf.slice(-2048);
       }
-    });
+    };
+    child.stderr.on("data", onStderr);
     return new Promise((resolve) => {
-      let resolved = false;
+      let settled = false;
       child.on("error", (err) => {
-        if (resolved) return;
-        resolved = true;
+        if (settled) return;
+        settled = true;
         resolve({
           ok: false,
           error:
-            `failed to spawn python viewport: ${err.message}. ` +
-            `Hint: pip install -e .[viz] from the repo root.`,
+            `failed to spawn viewport-cli: ${err.message}. ` +
+            `Hint: pip install -e . from the repo root to register ` +
+            `the console_script (same as report-cli).`,
         });
       });
-      // Give the python module ~600ms to crash on bad manifest /
-      // missing pyvista. If it's still running by then, we resolve
-      // with success and let the user interact with the window.
+      // Give viewport-cli ~600ms to crash on bad manifest / missing
+      // pyvista. If it's still running by then, we close our parent
+      // FDs, drop the listener, and unref so node can exit cleanly.
       setTimeout(() => {
-        if (resolved) return;
+        if (settled) return;
         if (child.exitCode !== null && child.exitCode !== 0) {
-          resolved = true;
+          settled = true;
           resolve({
             ok: false,
             error:
               `viewport exited ${child.exitCode}: ` +
-              (stderrBuf.trim().split("\n").pop() ?? "see python stderr"),
+              (stderrBuf.trim().split("\n").pop() ?? "see viewport-cli stderr"),
           });
           return;
         }
-        // Detach so node can exit without waiting on the viewport.
+        // Tear down parent-owned plumbing so the viewport is truly
+        // detached from this process.
+        child.stderr.removeListener("data", onStderr);
+        child.stderr.destroy();
         child.unref();
-        resolved = true;
+        settled = true;
         resolve({ ok: true, pid: child.pid });
       }, 600);
     });

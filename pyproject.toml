@@ -77,6 +77,7 @@ Repository = "https://github.com/kogamishinyajerry-ops/ai-structure-analysis"
 [project.scripts]
 run-well-harness = "app.well_harness.cli:main"
 report-cli = "app.services.report.cli:main"
+viewport-cli = "app.viz.viewport_native:main"
 
 [tool.setuptools.packages.find]
 # Scan two roots so the repo's two parallel package trees both install

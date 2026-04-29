@@ -113,6 +113,70 @@ def test_wrong_schema_version_raises(tmp_path: pytest.TempPathFactory) -> None:
         render_snapshots(m, tmp_path / "out")  # type: ignore[attr-defined]
 
 
+def test_empty_states_list_refused(tmp_path: pytest.TempPathFactory) -> None:
+    """Codex R1 PR #112 MEDIUM — schema-valid empty states must refuse,
+    not return success with zero PNGs."""
+    pytest.importorskip("pyvista")
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text(json.dumps({"schema_version": SCHEMA_VERSION, "states": []}))
+    with pytest.raises(ViewportError, match="no states"):
+        render_snapshots(m, tmp_path / "out")  # type: ignore[attr-defined]
+
+
+def test_unknown_field_refused(tmp_path: pytest.TempPathFactory) -> None:
+    """Codex R1 PR #112 MEDIUM — unknown ``field`` must refuse rather
+    than silently render gray geometry."""
+    pytest.importorskip("pyvista")
+    m = tmp_path / "m.json"  # type: ignore[attr-defined]
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {"step_id": 0, "vtu_relpath": "x.vtu", "time_ms": 0.0,
+                     "max_displacement_mm": 0.0,
+                     "n_solids_alive": 0, "n_solids_total": 0,
+                     "n_facets_alive": 0, "n_facets_total": 0}
+                ],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="unknown field"):
+        render_snapshots(
+            m, tmp_path / "out", field="not_a_real_field"  # type: ignore[attr-defined]
+        )
+
+
+def test_corrupt_vtu_refused(tmp_path: pytest.TempPathFactory) -> None:
+    """Codex R1 PR #112 MEDIUM — corrupt VTU bytes must surface as
+    ViewportError, not raw pyvista IOError."""
+    pytest.importorskip("pyvista")
+    base = tmp_path  # type: ignore[attr-defined]
+    (base / "broken.vtu").write_bytes(b"this is not VTU XML")
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {
+                        "step_id": 0,
+                        "vtu_relpath": "broken.vtu",
+                        "time_ms": 0.0,
+                        "max_displacement_mm": 0.0,
+                        "n_solids_alive": 0,
+                        "n_solids_total": 0,
+                        "n_facets_alive": 0,
+                        "n_facets_total": 0,
+                    }
+                ],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="failed to read"):
+        render_snapshots(m, base / "out")
+
+
 # ---------------------------------------------------------------------------
 # Bucket 2 — CLI shape
 # ---------------------------------------------------------------------------

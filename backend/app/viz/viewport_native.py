@@ -418,20 +418,63 @@ def render_snapshots(
             f"{manifest.get('schema_version')!r} != {SCHEMA_VERSION!r}"
         )
 
+    # Codex R1 MEDIUM (PR #112): refuse silent zero-PNG success on
+    # empty states list. ADR-003 says don't fabricate / don't silently
+    # degrade — refusing is the only honest answer.
+    states_raw = manifest.get("states") or []
+    if not states_raw:
+        raise ViewportError(
+            f"manifest has no states (n_states=0): {manifest_path}"
+        )
+
+    # Codex R1 MEDIUM (PR #112): refuse early when the requested field
+    # is unknown so the engineer is not lied to with gray geometry.
+    known_fields = set(_FIELD_LABEL.keys())
+    if field not in known_fields:
+        raise ViewportError(
+            f"unknown field {field!r}; expected one of "
+            f"{sorted(known_fields)!r}"
+        )
+
     output_dir.mkdir(parents=True, exist_ok=True)
     base_dir = manifest_path.parent
 
     # Compute global colour range so the mosaic is comparable across
-    # states (matches the live viewport's behaviour).
+    # states (matches the live viewport's behaviour). Wrap pv.read so
+    # corrupt VTU files surface as ViewportError instead of pyvista
+    # IO exceptions (Codex R1 MEDIUM PR #112).
     global_min, global_max = float("inf"), float("-inf")
     states_grids: list[Any] = []
-    for s in manifest["states"]:
-        grid = pv.read(base_dir / s["vtu_relpath"])
+    field_present_anywhere = False
+    for s in states_raw:
+        vtu_relpath = s.get("vtu_relpath")
+        if not vtu_relpath:
+            raise ViewportError(
+                f"state step_id={s.get('step_id')} has no vtu_relpath"
+            )
+        vtu_path = base_dir / vtu_relpath
+        if not vtu_path.is_file():
+            raise ViewportError(f"vtu file missing: {vtu_path}")
+        try:
+            grid = pv.read(vtu_path)
+        except Exception as exc:
+            raise ViewportError(
+                f"failed to read {vtu_path}: {type(exc).__name__}: {exc}"
+            ) from exc
+        # pyvista returns an empty grid (n_points == 0) on corrupt /
+        # truncated XML — it only emits a UserWarning. Catch that here
+        # so corrupt VTUs surface as ViewportError, not silent gray.
+        if getattr(grid, "n_points", 0) == 0:
+            raise ViewportError(
+                f"failed to read {vtu_path}: empty grid (corrupt VTU?)"
+            )
         states_grids.append((s, grid))
         if field in grid.point_data:
             arr = np.asarray(grid.point_data[field]).ravel()
+            field_present_anywhere = True
         elif field in grid.cell_data:
             arr = np.asarray(grid.cell_data[field]).ravel()
+            field_present_anywhere = True
         else:
             continue
         valid = arr[np.isfinite(arr)]
@@ -439,6 +482,11 @@ def render_snapshots(
             continue
         global_min = min(global_min, float(valid.min()))
         global_max = max(global_max, float(valid.max()))
+    if not field_present_anywhere:
+        raise ViewportError(
+            f"field {field!r} not present in any state's VTU "
+            f"(point_data or cell_data); refusing to render gray geometry"
+        )
     clim = (global_min, global_max) if global_min < global_max else None
 
     written: list[Path] = []
