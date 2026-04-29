@@ -530,6 +530,19 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     path.basename(req.output, path.extname(req.output)) + ".figs",
   );
 
+  // W8a — auto-derive the viewport output dir for ballistic runs so
+  // the renderer can spawn the W8b native viewport without an extra
+  // path picker. The directory is sibling to the DOCX, named
+  // <output>.viewport/. Other kinds skip the flag entirely.
+  let viewportDir: string | undefined;
+  if (req.kind === "ballistic") {
+    viewportDir = path.resolve(
+      path.dirname(req.output),
+      path.basename(req.output, path.extname(req.output)) + ".viewport",
+    );
+    args.push("--viewport-out", viewportDir);
+  }
+
   // ``report-cli`` is the console_script registered by
   // pyproject.toml [project.scripts]. We assume it's on PATH —
   // bundling Python is the customer-demo scope (W5+, separate PR).
@@ -573,11 +586,33 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     }
   });
 
-  return new Promise<{ ok: boolean; exitCode: number; outputPath: string }>((resolve) => {
+  return new Promise<{
+    ok: boolean;
+    exitCode: number;
+    outputPath: string;
+    viewportManifestPath?: string;
+  }>((resolve) => {
     child.on("close", (code) => {
       const exitCode = code ?? -1;
       _safeSend(evt, "report:exit", exitCode);
-      resolve({ ok: exitCode === 0, exitCode, outputPath: req.output });
+      // W8a — surface the viewport manifest path on success so the
+      // renderer can offer "Open viewport" without re-deriving the
+      // path. We check existence rather than assuming the export
+      // succeeded: viewport-export failures degrade to warning-only
+      // per cli.py and the manifest may be absent.
+      let viewportManifestPath: string | undefined;
+      if (exitCode === 0 && viewportDir) {
+        const candidate = path.join(viewportDir, "viewport_manifest.json");
+        if (fs.existsSync(candidate)) {
+          viewportManifestPath = candidate;
+        }
+      }
+      resolve({
+        ok: exitCode === 0,
+        exitCode,
+        outputPath: req.output,
+        viewportManifestPath,
+      });
     });
     child.on("error", (err) => {
       _safeSend(
@@ -595,3 +630,132 @@ ipcMain.handle("run-report", async (evt: Electron.IpcMainInvokeEvent, req: RunRe
     });
   });
 });
+
+
+// W8b — spawn the PyVista native viewport against a viewport manifest.
+//
+// Codex R1 HIGH (PR #112): the viewport launcher MUST use the same
+// runtime contract as report-cli so the engineer's `pip install -e .`
+// (or wheel/pyinstaller bundle) maps both buttons to the same Python
+// interpreter. ``viewport-cli`` is a console_script registered in
+// pyproject.toml exactly like ``report-cli`` — find one, you've got
+// the other; ``python -m app.viz.viewport_native`` would just pick
+// up whichever python is first on PATH and is therefore wrong here.
+//
+// Codex R1 MEDIUM (PR #112): the viewport must actually detach. The
+// previous implementation kept a parent-owned stderr FD + listener
+// alive for the lifetime of the child, which is a lifecycle leak and
+// blocks clean Electron quit. We now read stderr only during the
+// 600ms grace window (so we can surface ENOENT / pyvista-missing)
+// and then explicitly close stderr + unref + remove listeners.
+//
+// The handler validates the manifest path is absolute, resolves to a
+// real file (no symlink dereference surprises), and points at a file
+// named ``viewport_manifest.json`` to defend the launcher against a
+// renderer-side spoof. The viewport runs in its own process so
+// closing it does NOT affect the report-cli stream.
+ipcMain.handle(
+  "open-viewport",
+  async (
+    _evt: Electron.IpcMainInvokeEvent,
+    manifestPath: string,
+  ): Promise<{ ok: boolean; pid?: number; error?: string }> => {
+    if (typeof manifestPath !== "string" || !manifestPath) {
+      return { ok: false, error: "manifest path missing" };
+    }
+    if (!path.isAbsolute(manifestPath)) {
+      return { ok: false, error: "manifest path must be absolute" };
+    }
+    if (path.basename(manifestPath) !== "viewport_manifest.json") {
+      return {
+        ok: false,
+        error:
+          "manifest path must end in viewport_manifest.json (renderer-side spoof guard)",
+      };
+    }
+    // realpathSync: collapse symlinks BEFORE the basename check would
+    // be useful (Codex R1 MEDIUM nit). After realpath we re-check the
+    // basename so a symlink named ``viewport_manifest.json`` pointing
+    // at /etc/passwd is rejected.
+    let resolved: string;
+    try {
+      resolved = fs.realpathSync(manifestPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `manifest not found: ${msg}` };
+    }
+    if (path.basename(resolved) !== "viewport_manifest.json") {
+      return {
+        ok: false,
+        error:
+          "manifest realpath does not end in viewport_manifest.json " +
+          "(symlink target check)",
+      };
+    }
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(resolved);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `manifest not found: ${msg}` };
+    }
+    if (!stat.isFile()) {
+      return { ok: false, error: `manifest is not a regular file: ${resolved}` };
+    }
+    // viewport-cli is the console_script registered by
+    // pyproject.toml [project.scripts]. Same resolution rule as
+    // report-cli (resolved by the user's shell PATH after
+    // ``pip install -e .``). Detached so the viewport can outlive
+    // the Electron renderer if the engineer closes the workbench
+    // while still inspecting the run.
+    const child = spawn("viewport-cli", [resolved], {
+      stdio: ["ignore", "ignore", "pipe"],
+      detached: true,
+    });
+    let stderrBuf = "";
+    const onStderr = (chunk: Buffer) => {
+      stderrBuf += chunk.toString("utf-8");
+      if (stderrBuf.length > 4096) {
+        stderrBuf = stderrBuf.slice(-2048);
+      }
+    };
+    child.stderr.on("data", onStderr);
+    return new Promise((resolve) => {
+      let settled = false;
+      child.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        resolve({
+          ok: false,
+          error:
+            `failed to spawn viewport-cli: ${err.message}. ` +
+            `Hint: pip install -e . from the repo root to register ` +
+            `the console_script (same as report-cli).`,
+        });
+      });
+      // Give viewport-cli ~600ms to crash on bad manifest / missing
+      // pyvista. If it's still running by then, we close our parent
+      // FDs, drop the listener, and unref so node can exit cleanly.
+      setTimeout(() => {
+        if (settled) return;
+        if (child.exitCode !== null && child.exitCode !== 0) {
+          settled = true;
+          resolve({
+            ok: false,
+            error:
+              `viewport exited ${child.exitCode}: ` +
+              (stderrBuf.trim().split("\n").pop() ?? "see viewport-cli stderr"),
+          });
+          return;
+        }
+        // Tear down parent-owned plumbing so the viewport is truly
+        // detached from this process.
+        child.stderr.removeListener("data", onStderr);
+        child.stderr.destroy();
+        child.unref();
+        settled = true;
+        resolve({ ok: true, pid: child.pid });
+      }, 600);
+    });
+  },
+);

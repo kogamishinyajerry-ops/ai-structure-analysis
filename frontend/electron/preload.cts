@@ -54,6 +54,9 @@ interface RunReportSuccess {
   ok: true;
   exitCode: number;
   outputPath: string;
+  // W8a — set on ballistic runs when the viewport export ran cleanly.
+  // Renderer offers an "Open viewport" button when this is present.
+  viewportManifestPath?: string;
 }
 
 interface RunReportFailure {
@@ -64,6 +67,12 @@ interface RunReportFailure {
 }
 
 type RunReportResult = RunReportSuccess | RunReportFailure;
+
+interface OpenViewportResult {
+  ok: boolean;
+  pid?: number;
+  error?: string;
+}
 
 contextBridge.exposeInMainWorld("api", {
   // Native dialogs
@@ -125,6 +134,14 @@ contextBridge.exposeInMainWorld("api", {
   // exits; intermediate stdout/stderr arrive as events.
   runReport: (req: RunReportRequest): Promise<RunReportResult> =>
     ipcRenderer.invoke("run-report", req),
+
+  // W8b — spawn the PyVista native viewport against a manifest path
+  // (returned in RunReportResult.viewportManifestPath). Resolves with
+  // {ok, pid?, error?}. The viewport window outlives the call.
+  openViewport: (
+    manifestPath: string,
+  ): Promise<OpenViewportResult> =>
+    ipcRenderer.invoke("open-viewport", manifestPath),
 
   // Streaming events from the running report-cli subprocess.
   onStdout: (cb: (text: string) => void): (() => void) => {
