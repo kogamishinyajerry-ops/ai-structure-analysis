@@ -148,9 +148,9 @@ def _disp(rows: list[list[float]]) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
-def test_no_erosion_reader_produces_two_evidence_items() -> None:
+def test_no_erosion_reader_produces_candidate_evidence_items() -> None:
     """CalculiX-shaped (no SupportsElementDeletion) → DURATION + MAX-DISP
-    only. Section content cites both EV-* tokens; template requires 2."""
+    plus governance validation status. Section content cites EV-* tokens."""
     rdr = _NoErosionReader(
         unit_system=UnitSystem.SI_MM,
         frames={
@@ -166,8 +166,14 @@ def test_no_erosion_reader_produces_two_evidence_items() -> None:
         bundle_id="B1",
     )
     ev_ids = {ev.evidence_id for ev in bundle.evidence_items}
-    assert ev_ids == {"EV-BALLISTIC-DURATION", "EV-BALLISTIC-MAX-DISP"}
+    assert ev_ids == {
+        "EV-BALLISTIC-VALIDATION-STATUS",
+        "EV-BALLISTIC-DURATION",
+        "EV-BALLISTIC-MAX-DISP",
+    }
     section = report.sections[0]
+    assert "validation-candidate / not signed GS-101" in section.content
+    assert "EV-BALLISTIC-VALIDATION-STATUS" in section.content
     assert "EV-BALLISTIC-DURATION" in section.content
     assert "EV-BALLISTIC-MAX-DISP" in section.content
     # No erosion citation should leak in.
@@ -226,7 +232,7 @@ def test_erosion_reader_no_perforation_records_observation_text() -> None:
     # Codex R1 nit (2): pin bundle size so a future duplicate-add of
     # EV-BALLISTIC-EROSION-FINAL (the cite reuses the existing entry,
     # not a fresh one) cannot evade the set-based ev_ids check above.
-    assert len(bundle.evidence_items) == 3
+    assert len(bundle.evidence_items) == 4
     section_content = report.sections[0].content
     assert "no perforation observed" in section_content
     # ADR-012 / RFC-001 §2.4 rule 1: every claim line must reference an
@@ -277,6 +283,7 @@ def test_erosion_reader_with_perforation_emits_event_evidence() -> None:
     )
     ev_ids = {ev.evidence_id for ev in bundle.evidence_items}
     assert ev_ids == {
+        "EV-BALLISTIC-VALIDATION-STATUS",
         "EV-BALLISTIC-DURATION",
         "EV-BALLISTIC-MAX-DISP",
         "EV-BALLISTIC-EROSION-FINAL",
@@ -471,8 +478,8 @@ def test_gs100_full_evidence_roster(gs100_reader) -> None:
     """OpenRadiossReader satisfies SupportsElementDeletion, so all
     erosion-related evidence is gated by 'has_erosion_data=True'.
     GS-100 is contact-only, so EV-BALLISTIC-PERFORATION-EVENT is
-    absent (no perforation observed). The 3 expected items are
-    DURATION, MAX-DISP, EROSION-FINAL=0."""
+    absent (no perforation observed). The expected items are validation
+    status, DURATION, MAX-DISP, EROSION-FINAL=0."""
     report, bundle = generate_ballistic_penetration_summary(
         gs100_reader,
         project_id="GS-100",
@@ -482,6 +489,7 @@ def test_gs100_full_evidence_roster(gs100_reader) -> None:
     )
     ev_ids = {ev.evidence_id for ev in bundle.evidence_items}
     assert ev_ids == {
+        "EV-BALLISTIC-VALIDATION-STATUS",
         "EV-BALLISTIC-DURATION",
         "EV-BALLISTIC-MAX-DISP",
         "EV-BALLISTIC-EROSION-FINAL",

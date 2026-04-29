@@ -27,8 +27,13 @@ from app.domain.ballistics import (
     displacement_history,
     eroded_fraction,
     eroded_history,
+    kinetic_energy,
+    kinetic_energy_history,
     max_displacement_magnitude,
+    mean_velocity,
     perforation_event_step,
+    perforation_verdict_from_exit_plane,
+    residual_velocity_magnitude,
 )
 
 # ---------------------------------------------------------------------------
@@ -106,6 +111,87 @@ def test_max_displacement_magnitude_empty_returns_zero() -> None:
 def test_max_displacement_magnitude_rejects_wrong_shape() -> None:
     with pytest.raises(ValueError, match="shape"):
         max_displacement_magnitude(np.zeros((3, 2), dtype=np.float64))
+
+
+def test_mean_velocity_projectile_subset() -> None:
+    velocities = np.array(
+        [[99.0, 0.0, 0.0], [3.0, 4.0, 0.0], [3.0, 4.0, 0.0]],
+        dtype=np.float64,
+    )
+    mean = mean_velocity(
+        velocities, node_indices=np.array([1, 2], dtype=np.int64)
+    )
+    np.testing.assert_allclose(mean, np.array([3.0, 4.0, 0.0]))
+
+
+def test_residual_velocity_magnitude_uses_projectile_partition() -> None:
+    velocities = np.array(
+        [[99.0, 0.0, 0.0], [3.0, 4.0, 0.0], [3.0, 4.0, 0.0]],
+        dtype=np.float64,
+    )
+    assert residual_velocity_magnitude(
+        velocities, projectile_node_indices=np.array([1, 2], dtype=np.int64)
+    ) == pytest.approx(5.0)
+
+
+def test_kinetic_energy_history_with_subset() -> None:
+    masses = np.array([10.0, 2.0, 2.0], dtype=np.float64)
+    history = kinetic_energy_history(
+        masses,
+        {
+            1: np.array([[100.0, 0, 0], [3.0, 4.0, 0], [0, 0, 0]], dtype=np.float64),
+            2: np.array([[100.0, 0, 0], [6.0, 8.0, 0], [0, 0, 0]], dtype=np.float64),
+        },
+        node_indices=np.array([1, 2], dtype=np.int64),
+    )
+    assert history[1] == pytest.approx(25.0)
+    assert history[2] == pytest.approx(100.0)
+
+
+def test_kinetic_energy_rejects_negative_mass() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        kinetic_energy(
+            np.array([1.0, -1.0], dtype=np.float64),
+            np.zeros((2, 3), dtype=np.float64),
+        )
+
+
+def test_perforation_verdict_requires_full_exit_and_residual_velocity() -> None:
+    coords = np.array([[12.0, 0.0, 5.1], [12.0, 0.0, 5.5]], dtype=np.float64)
+    vel = np.array([[0.0, 0.0, 800.0], [0.0, 0.0, 790.0]], dtype=np.float64)
+    verdict = perforation_verdict_from_exit_plane(
+        coords,
+        exit_plane_coordinate=5.0,
+        travel_axis=2,
+        direction=1,
+        residual_velocity=vel,
+        min_residual_speed=1.0,
+    )
+    assert verdict.perforated is True
+    assert verdict.mode == "exit_plane"
+    assert verdict.residual_speed == pytest.approx(795.0)
+
+
+def test_perforation_verdict_refuses_partial_exit() -> None:
+    coords = np.array([[0.0, 0.0, 4.9], [0.0, 0.0, 5.2]], dtype=np.float64)
+    verdict = perforation_verdict_from_exit_plane(
+        coords, exit_plane_coordinate=5.0
+    )
+    assert verdict.perforated is False
+    assert "not fully crossed" in verdict.reason
+
+
+def test_perforation_verdict_refuses_inward_residual_velocity() -> None:
+    coords = np.array([[0.0, 0.0, 5.1], [0.0, 0.0, 5.2]], dtype=np.float64)
+    vel = np.array([[0.0, 0.0, -1.0], [0.0, 0.0, -2.0]], dtype=np.float64)
+    verdict = perforation_verdict_from_exit_plane(
+        coords,
+        exit_plane_coordinate=5.0,
+        residual_velocity=vel,
+        min_residual_speed=0.0,
+    )
+    assert verdict.perforated is False
+    assert "lacks outward residual velocity" in verdict.reason
 
 
 # ---------------------------------------------------------------------------

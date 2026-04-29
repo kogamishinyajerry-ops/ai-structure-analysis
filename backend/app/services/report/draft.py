@@ -81,6 +81,7 @@ from app.models import (
     ReportSection,
     ReportSpec,
     SimulationEvidence,
+    VerificationStatus,
 )
 from app.services.report.allowable_stress import (
     AllowableStress,
@@ -1494,6 +1495,47 @@ def generate_ballistic_penetration_summary(
     )
 
     section_lines: list[str] = []
+
+    # Governance status for ENG-23 pre-gate work. This is deliberately
+    # a reference evidence item rather than a simulation result: the
+    # report may summarise OpenRadioss artifacts, but until ENG-22/T0 is
+    # approved it must not read as a signed GS-101 benchmark.
+    bundle.add_evidence(
+        EvidenceItem(
+            evidence_id="EV-BALLISTIC-VALIDATION-STATUS",
+            evidence_type=EvidenceType.REFERENCE,
+            title="Ballistic validation gate status",
+            description=(
+                "Governance gate: ballistic OpenRadioss results are "
+                "validation-candidate/demo-safe only until ENG-22 is approved."
+            ),
+            data=ReferenceEvidence(
+                value=0.0,
+                unit="status-code",
+                source_document="Linear ENG-22",
+                citation_anchor=(
+                    "https://linear.app/jerrykogami/issue/ENG-22/"
+                    "eng-gs101-00-adr-gs101-signed-openradioss-carveout"
+                ),
+            ),
+            field_metadata=None,
+            derivation=None,
+            source="Linear Governance",
+            source_file=(
+                "https://linear.app/jerrykogami/issue/ENG-22/"
+                "eng-gs101-00-adr-gs101-signed-openradioss-carveout"
+            ),
+            verification_status=VerificationStatus.PENDING,
+            verification_message=(
+                "T0/Opus carve-out approval required before signed GS-101 claims."
+            ),
+        )
+    )
+    section_lines.append(
+        "- 验证状态 (Validation status): "
+        "**validation-candidate / not signed GS-101** until ENG-22/T0 "
+        "approval  *(EV-BALLISTIC-VALIDATION-STATUS)*"
+    )
 
     # 1) Run duration — bind to the FINAL state's metadata since that
     # is the file the ``time`` value originated from.
