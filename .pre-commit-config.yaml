@@ -21,3 +21,9 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
+      - id: hf5-commit-trailer-check
+        name: HF5 commit trailer check
+        description: Validate Execution-by, Self-verified, and Linear-issue trailers in commit messages.
+        entry: python3 scripts/hf5_commit_trailer_check.py --message-file
+        language: system
+        stages: [commit-msg]
