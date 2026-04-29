@@ -168,7 +168,13 @@ def open_viewport(manifest_path: Path) -> int:
             f"manifest has no states; cannot open empty viewport"
         )
 
-    available_fields = list(manifest.get("available_fields") or [])
+    # Codex R3 PR #112 MEDIUM — open_viewport must derive the
+    # selectable/live-renderable set from RENDERABLE_FIELDS, not raw
+    # manifest.available_fields (which advertises non-renderable raw
+    # arrays like ``displacement`` vector + ``cell_kind``). Live and
+    # snapshot now agree on the predicate.
+    raw_available = list(manifest.get("available_fields") or [])
+    available_fields = [f for f in raw_available if f in RENDERABLE_FIELDS]
     rootname = manifest.get("rootname") or "(unknown)"
 
     # Pre-load every state into memory. For the GS-101 demo (11
@@ -192,6 +198,13 @@ def open_viewport(manifest_path: Path) -> int:
             raise ViewportError(
                 f"failed to read {vtu_path}: {type(exc).__name__}: {exc}"
             ) from exc
+        # Codex R3 PR #112 LOW — pyvista returns an empty grid
+        # (n_points=0) on corrupt/truncated XML rather than raising.
+        # Live viewport now matches the snapshot path's refusal.
+        if getattr(grid, "n_points", 0) == 0:
+            raise ViewportError(
+                f"failed to read {vtu_path}: empty grid (corrupt VTU?)"
+            )
         loaded.append(
             _LoadedState(
                 step_id=int(s["step_id"]),
@@ -453,10 +466,15 @@ def render_snapshots(
     # states (matches the live viewport's behaviour). Wrap pv.read so
     # corrupt VTU files surface as ViewportError instead of pyvista
     # IO exceptions (Codex R1 MEDIUM PR #112).
+    #
+    # Codex R3 PR #112 MEDIUM — strict per-state refusal: every state
+    # must carry the field array AND at least one finite sample. The
+    # "anywhere" semantics of R2 still let mixed-state runs silently
+    # render gray geometry for the missing/all-NaN frames. ADR-003 says
+    # don't paint gray over a real run; that means refusing the *run*,
+    # not just the empty *aggregate*.
     global_min, global_max = float("inf"), float("-inf")
     states_grids: list[Any] = []
-    field_has_finite_anywhere = False
-    field_array_present_anywhere = False
     for s in states_raw:
         vtu_relpath = s.get("vtu_relpath")
         if not vtu_relpath:
@@ -482,33 +500,22 @@ def render_snapshots(
         states_grids.append((s, grid))
         if field in grid.point_data:
             arr = np.asarray(grid.point_data[field]).ravel()
-            field_array_present_anywhere = True
         elif field in grid.cell_data:
             arr = np.asarray(grid.cell_data[field]).ravel()
-            field_array_present_anywhere = True
         else:
-            continue
+            raise ViewportError(
+                f"field {field!r} missing in state step_id={s.get('step_id')} "
+                f"({vtu_path}); refusing to emit a gray frame for this state"
+            )
         valid = arr[np.isfinite(arr)]
         if valid.size == 0:
-            continue
-        field_has_finite_anywhere = True
+            raise ViewportError(
+                f"field {field!r} has no finite samples in state "
+                f"step_id={s.get('step_id')} (all NaN/Inf); refusing to "
+                f"emit an uncoloured frame for this state"
+            )
         global_min = min(global_min, float(valid.min()))
         global_max = max(global_max, float(valid.max()))
-    # Codex R2 PR #112 MEDIUM — refuse when the field exists nowhere OR
-    # exists but is all-NaN in every state. Either way the engineer
-    # cannot read anything from the rendered PNGs, and silent
-    # success-with-gray-geometry is exactly the degradation ADR-003
-    # forbids.
-    if not field_array_present_anywhere:
-        raise ViewportError(
-            f"field {field!r} not present in any state's VTU "
-            f"(point_data or cell_data); refusing to render gray geometry"
-        )
-    if not field_has_finite_anywhere:
-        raise ViewportError(
-            f"field {field!r} has no finite samples in any state "
-            f"(all values are NaN/Inf); refusing to render uncoloured geometry"
-        )
     clim = (global_min, global_max) if global_min < global_max else None
 
     written: list[Path] = []

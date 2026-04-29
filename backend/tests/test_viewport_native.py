@@ -198,6 +198,70 @@ def test_all_nan_field_refused(
         render_snapshots(m, base / "out", field="displacement_magnitude")
 
 
+def test_mixed_state_missing_field_refused(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R3 PR #112 MEDIUM — strict per-state contract: if a field
+    is present in some states but absent in another, refuse the entire
+    run (do not silently emit a gray frame for the missing state).
+    """
+    pyvista = pytest.importorskip("pyvista")
+    import numpy as np
+
+    base = tmp_path  # type: ignore[attr-defined]
+
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+         [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+        dtype=float,
+    )
+    cells = np.array([8, 0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
+    cell_types = np.array([12], dtype=np.uint8)
+
+    # State 0 — has displacement_magnitude
+    g0 = pyvista.UnstructuredGrid(cells, cell_types, points)
+    g0.point_data["displacement_magnitude"] = np.zeros(g0.n_points, dtype=float)
+    g0.save(str(base / "s0.vtu"))
+
+    # State 1 — same geometry, no field
+    g1 = pyvista.UnstructuredGrid(cells, cell_types, points)
+    g1.save(str(base / "s1.vtu"))
+
+    m = base / "m.json"
+    m.write_text(
+        json.dumps(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "states": [
+                    {
+                        "step_id": 0,
+                        "vtu_relpath": "s0.vtu",
+                        "time_ms": 0.0,
+                        "max_displacement_mm": 0.0,
+                        "n_solids_alive": 1,
+                        "n_solids_total": 1,
+                        "n_facets_alive": 0,
+                        "n_facets_total": 0,
+                    },
+                    {
+                        "step_id": 1,
+                        "vtu_relpath": "s1.vtu",
+                        "time_ms": 0.1,
+                        "max_displacement_mm": 0.0,
+                        "n_solids_alive": 1,
+                        "n_solids_total": 1,
+                        "n_facets_alive": 0,
+                        "n_facets_total": 0,
+                    },
+                ],
+                "available_fields": ["displacement_magnitude"],
+            }
+        )
+    )
+    with pytest.raises(ViewportError, match="missing in state step_id=1"):
+        render_snapshots(m, base / "out", field="displacement_magnitude")
+
+
 def test_corrupt_vtu_refused(tmp_path: pytest.TempPathFactory) -> None:
     """Codex R1 PR #112 MEDIUM — corrupt VTU bytes must surface as
     ViewportError, not raw pyvista IOError."""
