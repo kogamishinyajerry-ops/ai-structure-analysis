@@ -186,22 +186,53 @@ class _StreamingExporter:
     def close(self) -> None:
         self._scratch_tmpdir.cleanup()
 
-    def export_one(self, frame_path: Path) -> _StateRecord:
+    def export_one(
+        self, frame_path: Path, *, step_num: int | None = None
+    ) -> _StateRecord:
         """Decompress + parse + render a single frame.
+
+        Parameters
+        ----------
+        frame_path
+            Source ``A###`` (or ``A###.gz``) frame.
+        step_num
+            Canonical A### step number for this frame, parsed from the
+            filename by the caller. If omitted, the exporter falls back
+            to ``len(self.records) + 1`` for backwards compatibility
+            with one-shot ``export_run`` (which feeds frames already
+            sorted A001..A0NN with no gaps). Streaming MUST pass the
+            explicit step_num parsed from the filename so a manifest
+            written after observing {A001, A005} cannot mislabel A005
+            as state 2 (Codex R1 PR #113 HIGH).
 
         Returns the freshly appended ``_StateRecord``. Does NOT rewrite
         the manifest — call ``write_manifest()`` after one or more
         ``export_one`` calls so the on-disk JSON remains atomic.
 
         Raises VTUExportError if the frame's mesh topology disagrees
-        with the reference (cell counts, node count). The exporter is
-        intentionally strict: a streaming run that observes a topology
-        change is almost certainly a misconfigured deck or a corrupt
-        partial frame, and the only honest response is to refuse.
+        with the reference (cell counts, node count), or if step_num
+        breaks contiguous-from-1 ordering (gap or duplicate).
         """
         if frame_path in self.processed:
             raise VTUExportError(
                 f"frame already exported in this session: {frame_path}"
+            )
+
+        # Canonical step assignment + contiguous-from-1 contract.
+        # One-shot export_run feeds frames sorted A001..A0NN already so
+        # the implicit fallback matches the explicit case. Streaming
+        # must pass step_num so we catch out-of-order or gap frames.
+        expected_step = len(self.records) + 1
+        if step_num is None:
+            step_num = expected_step
+        if step_num != expected_step:
+            raise VTUExportError(
+                f"frame {frame_path.name} step number {step_num} is not "
+                f"contiguous with previously exported step "
+                f"{expected_step - 1}; expected {expected_step}. The "
+                f"streaming exporter requires A001..A### with no gaps "
+                f"so the displacement reference (A001) and step ids "
+                f"stay sound."
             )
         decompressed_paths = _decompress_frames_to(self.scratch, [frame_path])
         decompressed = decompressed_paths[0]
@@ -324,7 +355,11 @@ class _StreamingExporter:
         grid.cell_data["cell_kind"] = np.array(cell_kind, dtype=np.uint8)
         self.available_fields.update(["alive", "cell_kind"])
 
-        state_idx = len(self.records) + 1
+        # step_num is now the canonical A### number, not a per-call
+        # counter. Filename + manifest both use it, so a streaming run
+        # that pauses + resumes (or one whose first observed frame is
+        # A005) cannot relabel its way into a wrong timeline.
+        state_idx = step_num
         vtu_path = self.states_dir / f"{self.rootname}_state_{state_idx:03d}.vtu"
         # Atomic VTU write: write to a sibling ``*.tmp.vtu`` (pyvista
         # validates extensions, so ``.tmp`` alone is rejected) then
@@ -466,8 +501,8 @@ def export_run(
             f"OpenRadioss root is not a directory: {openradioss_root}"
         )
 
-    frames = _enumerate_frames(openradioss_root, rootname)
-    if not frames:
+    frames_with_step = _enumerate_frames_with_step(openradioss_root, rootname)
+    if not frames_with_step:
         raise VTUExportError(
             f"no animation frames found at {openradioss_root}/{rootname}A* "
             f"(checked plain and .gz). Did the engine run terminate normally?"
@@ -482,8 +517,8 @@ def export_run(
         pv=pv,
         reader_cls=RadiossReader,
     ) as exporter:
-        for frame_path in frames:
-            exporter.export_one(frame_path)
+        for step_num, frame_path in frames_with_step:
+            exporter.export_one(frame_path, step_num=step_num)
         return exporter.write_manifest()
 
 
@@ -577,21 +612,41 @@ def export_run_streaming(
         start = _now()
         last_progress = start
         while True:
-            # Skip frames already exported.
             try:
-                all_frames = _enumerate_frames(openradioss_root, rootname)
+                all_frames = _enumerate_frames_with_step(
+                    openradioss_root, rootname
+                )
             except VTUExportError:
                 # Ambiguous frame (plain + .gz both present) — let the
                 # error bubble; this is a deck/run misconfiguration the
                 # engineer must resolve.
                 raise
-            new_frames = [f for f in all_frames if f not in exporter.processed]
-            for frame_path in new_frames:
-                record = exporter.export_one(frame_path)
+            # Codex R1 PR #113 HIGH — only consume frames that extend
+            # the contiguous A001..A### prefix the exporter has
+            # already processed. If the watcher starts with {A001,
+            # A005} or {A005} (engine partial recovery, user invokes
+            # mid-bake), we must NOT export A005 as state 2 or anchor
+            # displacement on A005. Instead we wait until A002, A003,
+            # A004 fill in. If they never appear, the idle timeout
+            # eventually fires and the manifest exits with whatever
+            # contiguous prefix it has.
+            next_expected = len(exporter.records) + 1
+            for step_num, frame_path in all_frames:
+                if frame_path in exporter.processed:
+                    continue
+                if step_num < next_expected:
+                    # Already-processed slot reappearing is impossible
+                    # if upstream filenames are stable; defensive skip.
+                    continue
+                if step_num != next_expected:
+                    # Gap — stop scanning, wait for the gap to fill.
+                    break
+                record = exporter.export_one(frame_path, step_num=step_num)
                 exporter.write_manifest()
                 last_progress = _now()
                 if on_state_appended is not None:
                     on_state_appended(record)
+                next_expected += 1
 
             now = _now()
             if now - last_progress >= max_idle_s:
@@ -616,6 +671,18 @@ def _enumerate_frames(root: Path, rootname: str) -> list[Path]:
     must exist in exactly one form (a stale ``A001`` next to a fresh
     ``A001.gz`` is ambiguous and we reject the run).
     """
+    return [p for _, p in _enumerate_frames_with_step(root, rootname)]
+
+
+def _enumerate_frames_with_step(
+    root: Path, rootname: str
+) -> list[tuple[int, Path]]:
+    """Same as ``_enumerate_frames`` but pairs each path with its
+    canonical A### step number parsed from the filename. Streaming uses
+    this so it can enforce contiguous-from-A001 ordering and refuse to
+    process a frame whose step number does not match the next expected
+    slot (Codex R1 PR #113 HIGH).
+    """
     candidates: dict[int, Path] = {}
     pattern_prefix = f"{rootname}A"
     for entry in root.iterdir():
@@ -634,7 +701,7 @@ def _enumerate_frames(root: Path, rootname: str) -> list[Path]:
                 f"and {name} present"
             )
         candidates[step] = entry
-    return [candidates[k] for k in sorted(candidates)]
+    return [(k, candidates[k]) for k in sorted(candidates)]
 
 
 def _decompress_frames_to(scratch: Path, frames: list[Path]) -> list[Path]:

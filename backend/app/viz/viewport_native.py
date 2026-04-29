@@ -473,7 +473,7 @@ def open_viewport(
                 new_payload = json.loads(
                     manifest_path.read_text(encoding="utf-8")
                 )
-            except (json.JSONDecodeError, OSError):
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
                 # Mid-write race or transient FS error. The atomic
                 # write contract should prevent this, but if it
                 # happens we just retry next tick.
@@ -484,46 +484,59 @@ def open_viewport(
                 last_mtime_ref["v"] = mtime
                 return
 
-            # Load only the freshly appended states.
-            for s in new_states[current_n:]:
-                vtu_relpath = s.get("vtu_relpath")
-                if not vtu_relpath:
-                    continue
-                vtu_path = base_dir / vtu_relpath
-                if not vtu_path.is_file():
-                    continue
-                try:
-                    grid = pv.read(vtu_path)
-                except Exception:
-                    return  # try again next tick (vtu mid-write)
-                if (
-                    getattr(grid, "n_points", 0) == 0
-                    or getattr(grid, "n_cells", 0) == 0
-                ):
-                    return
-                loaded.append(
-                    _LoadedState(
-                        step_id=int(s["step_id"]),
-                        time_ms=float(s["time_ms"]),
-                        grid=grid,
-                        max_displacement_mm=float(s["max_displacement_mm"]),
-                        n_solids_alive=int(s["n_solids_alive"]),
-                        n_solids_total=int(s["n_solids_total"]),
+            # Codex R1 PR #113 MEDIUM — stage the entire new batch
+            # before committing. The previous "append-then-return-on-
+            # failure" pattern was non-idempotent: a partial batch
+            # would leave items in ``loaded`` while ``n_states_ref``
+            # lagged, so the next tick would re-load and DUPLICATE the
+            # already-appended states. Atomic batch commit fixes this.
+            staged: list[_LoadedState] = []
+            try:
+                for s in new_states[current_n:]:
+                    vtu_relpath = s.get("vtu_relpath")
+                    if not vtu_relpath:
+                        return  # malformed slot, retry next tick
+                    vtu_path = base_dir / vtu_relpath
+                    if not vtu_path.is_file():
+                        return  # vtu not yet visible, retry next tick
+                    try:
+                        grid = pv.read(vtu_path)
+                    except Exception:
+                        return  # vtu mid-write, retry next tick
+                    if (
+                        getattr(grid, "n_points", 0) == 0
+                        or getattr(grid, "n_cells", 0) == 0
+                    ):
+                        return  # corrupt / empty grid, retry next tick
+                    staged.append(
+                        _LoadedState(
+                            step_id=int(s["step_id"]),
+                            time_ms=float(s["time_ms"]),
+                            grid=grid,
+                            max_displacement_mm=float(s["max_displacement_mm"]),
+                            n_solids_alive=int(s["n_solids_alive"]),
+                            n_solids_total=int(s["n_solids_total"]),
+                        )
                     )
-                )
+            except (KeyError, ValueError, TypeError):
+                # Malformed state record (missing fields, wrong types).
+                # Manifest may be a transient mid-write artefact even
+                # though atomic IO should prevent it; bail and retry.
+                return
 
-            new_n = len(loaded)
-            if new_n == current_n:
+            if not staged:
                 last_mtime_ref["v"] = mtime
                 return
 
-            # Update field_clim with newly observed extrema. We only
-            # widen the range — never shrink — so per-frame normalisation
-            # remains stable for the user's perception.
+            # All-or-nothing: only commit the staged batch in one go.
+            loaded.extend(staged)
+            new_n = len(loaded)
+
+            # Update field_clim with newly observed extrema (widen-only).
             for fname in available_fields:
                 arr_min = field_clim.get(fname, (float("inf"), float("-inf")))[0]
                 arr_max = field_clim.get(fname, (float("inf"), float("-inf")))[1]
-                for state in loaded[current_n:new_n]:
+                for state in staged:
                     arr = _read_array(state.grid, fname)
                     if arr is None or arr.size == 0:
                         continue

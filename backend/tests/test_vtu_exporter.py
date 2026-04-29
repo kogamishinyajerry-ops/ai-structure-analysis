@@ -736,6 +736,72 @@ def test_streaming_atomic_manifest_no_partial_reads(
     assert n_states_seq[-1] == 11
 
 
+def test_streaming_with_initial_gap_waits_for_fill(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """Codex R1 PR #113 HIGH — if the watcher starts with a gap (e.g.
+    A001 + A005 already on disk, A002-A004 missing), it must NOT
+    export A005 as state 2 with the wrong displacement reference.
+    Instead it processes A001, then waits for A002, A003, A004 to
+    fill before resuming.
+    """
+    src_frames = sorted(gs101_baked.glob("model_00A*.gz"))
+    assert len(src_frames) == 11
+
+    watched = tmp_path / "watched"  # type: ignore[attr-defined]
+    out = tmp_path / "out"
+    watched.mkdir()
+
+    # Stage A001 + A005 (creating a 3-frame gap at A002-A004).
+    shutil.copy(src_frames[0], watched / src_frames[0].name)  # A001
+    shutil.copy(src_frames[4], watched / src_frames[4].name)  # A005
+
+    # Track which frames the loop visited and when. We feed in the
+    # missing ones progressively across sleep ticks to verify the
+    # streaming code respects ordering.
+    appended: list[int] = []
+    pending = [src_frames[1], src_frames[2], src_frames[3]]  # A002-A004
+    after = [src_frames[5], src_frames[6], src_frames[7], src_frames[8],
+             src_frames[9], src_frames[10]]  # A006-A011
+
+    clock = _FakeClock()
+
+    def fake_sleep(seconds: float) -> None:
+        # Reveal one missing frame per sleep tick, then start filling
+        # in A006+ once the gap is closed.
+        if pending:
+            f = pending.pop(0)
+            shutil.copy(f, watched / f.name)
+        elif after:
+            f = after.pop(0)
+            shutil.copy(f, watched / f.name)
+        clock.sleep(seconds)
+
+    export_run_streaming(
+        openradioss_root=watched,
+        rootname="model_00",
+        output_dir=out,
+        max_idle_s=3.0,
+        poll_interval_s=0.5,
+        _now=clock.now,
+        _sleep=fake_sleep,
+        on_state_appended=lambda r: appended.append(r.step_id),
+    )
+
+    # Must have processed in strict A### order: 1, 2, 3, ..., 11.
+    assert appended == list(range(1, 12)), (
+        f"streaming must enforce contiguous A### ordering even when "
+        f"the initial dir contains a gap; got {appended}"
+    )
+
+    payload = json.loads(
+        (out / "viewport_manifest.json").read_text(encoding="utf-8")
+    )
+    assert payload["n_states"] == 11
+    # Step ids in manifest must equal A### numbers.
+    assert [s["step_id"] for s in payload["states"]] == list(range(1, 12))
+
+
 def test_streaming_negative_max_idle_refused(
     tmp_path: pytest.TempPathFactory,
 ) -> None:
