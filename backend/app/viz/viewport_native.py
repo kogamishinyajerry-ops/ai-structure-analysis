@@ -442,11 +442,12 @@ def render_snapshots(
     field: str = _DEFAULT_FIELD,
     window_size: tuple[int, int] = (1024, 768),
 ) -> list[Path]:
-    """Off-screen renders one PNG per state, plus a 4×3 mosaic of the
-    full run, for environments where opening the live window is not
-    feasible (CI, headless engineer review, screenshot-only audits).
+    """Off-screen renders one PNG per state for environments where
+    opening the live window is not feasible (CI, headless engineer
+    review, screenshot-only audits).
 
-    Returns the list of per-state PNG paths.
+    Returns the ordered list of per-state PNG paths written to
+    ``output_dir``.
     """
     try:
         import pyvista as pv
