@@ -802,6 +802,60 @@ def test_streaming_with_initial_gap_waits_for_fill(
     assert [s["step_id"] for s in payload["states"]] == list(range(1, 12))
 
 
+def test_streaming_unresolved_gap_raises_at_idle_timeout(
+    gs101_baked: Path, tmp_path: pytest.TempPathFactory
+) -> None:
+    """Codex R2 PR #113 MEDIUM — if a streaming run observes a gap
+    (e.g. A001 + A005 with A002-A004 missing) and the missing frames
+    never appear before idle timeout, the exporter must REFUSE rather
+    than silently truncate to a 1-state manifest. The engineer needs
+    to know the run is partial.
+    """
+    src_frames = sorted(gs101_baked.glob("model_00A*.gz"))
+    watched = tmp_path / "watched"  # type: ignore[attr-defined]
+    out = tmp_path / "out"
+    watched.mkdir()
+
+    shutil.copy(src_frames[0], watched / src_frames[0].name)  # A001
+    shutil.copy(src_frames[4], watched / src_frames[4].name)  # A005
+
+    clock = _FakeClock()
+
+    with pytest.raises(VTUExportError, match="unresolved gap"):
+        export_run_streaming(
+            openradioss_root=watched,
+            rootname="model_00",
+            output_dir=out,
+            max_idle_s=2.0,
+            poll_interval_s=0.5,
+            _now=clock.now,
+            _sleep=clock.sleep,
+        )
+
+    # Manifest must still contain the contiguous A001 prefix even
+    # though we raised — so a polling viewer can still inspect what
+    # WAS exported before the gap.
+    payload = json.loads(
+        (out / "viewport_manifest.json").read_text(encoding="utf-8")
+    )
+    assert payload["n_states"] == 1
+    assert payload["states"][0]["step_id"] == 1
+
+
+def test_enumerate_frames_refuses_zero_step(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """Codex R2 PR #113 MEDIUM — A000 (or any non-positive step) is
+    refused at enumeration so it cannot silently skip the streaming
+    contiguous check."""
+    from app.viz.vtu_exporter import _enumerate_frames_with_step
+
+    base = tmp_path  # type: ignore[attr-defined]
+    (base / "model_00A000").write_bytes(b"")
+    with pytest.raises(VTUExportError, match="non-positive step number"):
+        _enumerate_frames_with_step(base, "model_00")
+
+
 def test_streaming_negative_max_idle_refused(
     tmp_path: pytest.TempPathFactory,
 ) -> None:

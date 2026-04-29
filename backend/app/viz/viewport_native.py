@@ -348,8 +348,12 @@ def open_viewport(
             )
 
         # State info banner — top-left.
+        # Codex R2 PR #113 LOW — read the live count from
+        # ``n_states_ref`` so live-mode renders show "step 5/11" → "5/12"
+        # → "5/13" as new states arrive, instead of freezing on the
+        # initial captured count.
         title = (
-            f"step {state.step_id}/{n_states}  "
+            f"step {state.step_id}/{n_states_ref['v']}  "
             f"t = {state.time_ms:.3f} ms  "
             f"max|d| = {state.max_displacement_mm:.2f} mm  "
             f"solids alive = {state.n_solids_alive}/{state.n_solids_total}"

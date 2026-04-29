@@ -611,6 +611,12 @@ def export_run_streaming(
 
         start = _now()
         last_progress = start
+        # Codex R2 PR #113 MEDIUM — track the latest unresolved gap
+        # observation across polls so an idle-timeout exit can refuse
+        # rather than silently truncate. If the watcher saw A005 but
+        # never observed A002-A004, the run is partial and the
+        # engineer needs to know.
+        unresolved_gap: tuple[int, str] | None = None
         while True:
             try:
                 all_frames = _enumerate_frames_with_step(
@@ -627,19 +633,28 @@ def export_run_streaming(
             # A005} or {A005} (engine partial recovery, user invokes
             # mid-bake), we must NOT export A005 as state 2 or anchor
             # displacement on A005. Instead we wait until A002, A003,
-            # A004 fill in. If they never appear, the idle timeout
-            # eventually fires and the manifest exits with whatever
-            # contiguous prefix it has.
+            # A004 fill in.
             next_expected = len(exporter.records) + 1
+            current_gap: tuple[int, str] | None = None
             for step_num, frame_path in all_frames:
                 if frame_path in exporter.processed:
                     continue
                 if step_num < next_expected:
-                    # Already-processed slot reappearing is impossible
-                    # if upstream filenames are stable; defensive skip.
-                    continue
+                    # Smaller step than expected after the contiguous
+                    # prefix has already advanced past it. Filenames
+                    # are derived from solver output; this only
+                    # happens if a frame was processed then deleted
+                    # then re-created. Treat as a hard error.
+                    raise VTUExportError(
+                        f"frame {frame_path.name} step {step_num} "
+                        f"reappeared after the contiguous prefix moved "
+                        f"past it (next expected {next_expected}); "
+                        f"OpenRadioss output dir was mutated during a "
+                        f"streaming run."
+                    )
                 if step_num != next_expected:
                     # Gap — stop scanning, wait for the gap to fill.
+                    current_gap = (step_num, frame_path.name)
                     break
                 record = exporter.export_one(frame_path, step_num=step_num)
                 exporter.write_manifest()
@@ -647,11 +662,27 @@ def export_run_streaming(
                 if on_state_appended is not None:
                     on_state_appended(record)
                 next_expected += 1
+            unresolved_gap = current_gap
 
             now = _now()
             if now - last_progress >= max_idle_s:
+                if unresolved_gap is not None:
+                    obs_step, obs_name = unresolved_gap
+                    raise VTUExportError(
+                        f"streaming exporter idled out with unresolved "
+                        f"gap: observed frame {obs_name} (step "
+                        f"{obs_step}) but next expected step is "
+                        f"{next_expected}. Frame(s) "
+                        f"A{next_expected:03d}..A{obs_step - 1:03d} "
+                        f"were never written; the engine likely "
+                        f"crashed mid-run. Manifest contains the "
+                        f"contiguous A001..A{next_expected - 1:03d} "
+                        f"prefix."
+                    )
                 break
             if timeout_s is not None and (now - start) >= timeout_s:
+                # Hard timeout — let it through even with an
+                # unresolved gap (caller asked for a wall-clock cap).
                 break
             _sleep(poll_interval_s)
 
@@ -695,6 +726,17 @@ def _enumerate_frames_with_step(
         if not rest.isdigit():
             continue
         step = int(rest)
+        # Codex R2 PR #113 MEDIUM — refuse non-positive step numbers
+        # explicitly. ``A000`` (or worse) parses to step=0 which would
+        # otherwise silently get filtered out by the streaming loop's
+        # ``< next_expected`` skip and never surface as the broken
+        # solver output it actually is.
+        if step <= 0:
+            raise VTUExportError(
+                f"frame {name} has non-positive step number {step}; "
+                f"OpenRadioss A### frames must start at A001 (the "
+                f"reference) and increment monotonically."
+            )
         if step in candidates:
             raise VTUExportError(
                 f"ambiguous frame {step}: both {candidates[step].name} "
