@@ -76,6 +76,126 @@
       "r1_severity": "2 MEDIUM + 2 LOW",
       "r1_review_report": "reports/codex_tool_reports/pr56_r2_viz_get_shim.log",
       "notes": "GET shim for /visualize/plot to fix frontend iframe 405. R1: 2 MEDIUM (increment_index ignored, XSS in fallback HTML) + 2 LOW (path-traversal hardening, AST-only test gap). R2: helpers extracted to fastapi-free _viz_helpers.py, html.escape applied, _CASE_ID_RE + allowed-roots anchor, 25 new behavioral tests. R2 verdict APPROVE_WITH_NITS with 1 LOW (anchor-before-stat). R2-nit fix verbatim per RETRO-V61-001 5-condition exception. Final: merged after CI green."
+    },
+    {
+      "pr": 64,
+      "sha": "015c312",
+      "title": "[P1-08] github_writeback + preflight publisher (re-open)",
+      "merged_at": "2026-04-26T09:59:39Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr64_r1_github_writeback.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 96,
+      "sha": "656658d",
+      "title": "[RFC-001 W7-tools] OpenRadioss Dockerfile + recipe in tools/openradioss/",
+      "merged_at": "2026-04-28T06:18:54Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr96_w7tools_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 97,
+      "sha": "003fe10",
+      "title": "[RFC-001 W7g] RFC-002 multi-solver retrospective + LICENSE-NOTICES.md",
+      "merged_at": "2026-04-28T07:23:25Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr97_w7g_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 98,
+      "sha": "5de9c55",
+      "title": "[RFC-001 W6b] allowable_stress library — GB / ASME room-T [σ] computation",
+      "merged_at": "2026-04-28T07:58:30Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr98_w6b_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 99,
+      "sha": "ceb41e8",
+      "title": "[RFC-001 W6c] verdict library — PASS/FAIL + safety_factor + margin_pct",
+      "merged_at": "2026-04-28T08:53:21Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr99_w6c_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 100,
+      "sha": "0961746",
+      "title": "[RFC-001 W6c.2] DOCX § 许用应力 + § 评定结论 wiring",
+      "merged_at": "2026-04-28T09:51:04Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr100_w6c2_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 101,
+      "sha": "243bd01",
+      "title": "[RFC-001 W6d] boundary-condition summary library — bc.yaml loader + BCSummary",
+      "merged_at": "2026-04-28T11:19:56Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr101_w6d_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 102,
+      "sha": "dc931a3",
+      "title": "[RFC-001 W6d.2] DOCX § 边界条件 wiring",
+      "merged_at": "2026-04-28T11:52:01Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr102_w6d2_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 104,
+      "sha": "0976a97",
+      "title": "[ADR-017] R7 — close alias-annotation + subclass bypasses (rule #5)",
+      "merged_at": "2026-04-28T13:59:39Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr104_r7_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 105,
+      "sha": "cd275b9",
+      "title": "[RFC-001 W7f-fix] cite EV-BALLISTIC-EROSION-FINAL on no-perforation claim",
+      "merged_at": "2026-04-28T14:46:45Z",
+      "r1_outcome": "APPROVE_WITH_NITS",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/pr105_w7f_fix_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 110,
+      "sha": "aa66ed1",
+      "title": "[RFC-001 W6e.2] DOCX § 模型概览 wiring — draft.py + tests",
+      "merged_at": "2026-04-28T17:24:04Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/w6e2_pr110_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
+    },
+    {
+      "pr": 111,
+      "sha": "feec07d",
+      "title": "[RFC-001 W8a] OpenRadioss → VTU + viewport manifest exporter",
+      "merged_at": "2026-04-29T00:22:58Z",
+      "r1_outcome": "CHANGES_REQUIRED",
+      "r1_severity": "(no severity counts found in tail)",
+      "r1_review_report": "reports/codex_tool_reports/w8a_pr111_r1.log",
+      "notes": "Backfilled 2026-05-03 from /reports/codex_tool_reports/. R1 verdict and severity parsed from log tail; full evidence in linked file."
     }
   ],
   "computed_at_bootstrap": {
