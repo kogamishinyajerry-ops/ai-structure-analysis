@@ -35,8 +35,8 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 | FF-06 — pre-commit path-guard for HF1 forbidden zone | ✅ Merged 2026-04-25 | #22 | `ac98fc3` | `scripts/hf1_path_guard.py` + 30 tests. R1 CR → R2 APPROVE. |
 | ADR-012 — Calibration cap for T1 self-pass-rate | ✅ Merged 2026-04-26 01:01Z | #24 | `6f660ba` | Mechanical 5-PR rolling-window ceiling. CI workflow `.github/workflows/calibration-cap-check.yml` enforces on every PR. |
 | ADR-013 — Branch protection enforcement | ✅ Merged 2026-04-26 01:02Z | #25 | `303233c` | 3-layer wrapper (PR template + CI `--check` workflow + `gh api` protection script). |
-| FF-07 — CI commit-trailer presence + claim-id format check (HF5) | 🟡 OPEN (PR #27, lint-and-test FAILURE) | #27 | — | Hard deadline 2026-05-23. Needs lint fix + Codex review. |
-| FF-08 — `golden_samples/<id>` registry schema validation (HF3) | 🟡 OPEN (PR #28, MERGEABLE, ✓2/✗0) | #28 | — | Same hard deadline. Needs Self-pass-rate + body refresh + Codex review. |
+| FF-07 — CI commit-trailer presence + claim-id format check (HF5) | 🟡 OPEN (PR #27, lint fixed 2026-05-03; **R1 BLOCKER, work parked**, see issue #124) | #27 | — | Gated on full Codex R1 fix arc per backlog issue #124 (3 BLOCKER + 2 HIGH + 1 MEDIUM). Pre-merge Codex remains MANDATORY (HF1.9 zone). No date deadline — gated on completion alone. |
+| FF-08 — `golden_samples/<id>` registry schema validation (HF3) | 🟡 OPEN (PR #28, MERGEABLE, ✓2/✗0) | #28 | — | Needs Self-pass-rate + body refresh + Codex review. No date deadline — gated on completion alone. |
 | FF-09 — README ↔ ADR-011 sync (Golden Rules vs 5 dev rules) | 🟡 OPEN (PR #26, MERGEABLE, ✓1/✗0) | #26 | — | Bundled with FF-03/FF-04 governance docs sync. |
 
 ---
@@ -145,14 +145,15 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 
 ## Carry-overs (still open)
 
-1. **Calibration state file is stale**: `reports/calibration_state.json` last entry is PR #56 (2026-04-26). PRs #64-#114 (W1-W8 series) merged but not appended. The mechanical ceiling stays at 30% (5/5 last CR) because the file doesn't reflect any newer R1 outcomes — no recovery is possible until backfill. **Action**: backfill or document why backfill is intentional.
-2. **FF-07 PR #27** has `lint-and-test` failure not yet diagnosed.
-3. **FF-08 / FF-09** stalled in OPEN since 2026-04-25. Need PR-body refresh (Self-pass-rate) + Codex review to close out the Phase 1.5 governance maturity deadline of 2026-05-23.
-4. **Codex/ENG-* DRAFT lane (#115-#120)** all 6 PRs blocked on missing Self-pass-rate. Triage pass needed: which to keep vs close as duplicates of FF-07/08/09.
+1. **Calibration state file backfill** (PR #123 in flight): adds 12 R1 entries (#64-#111) so ceiling can recover from 30% trap. Out-of-scope: 38 of 51 merged PRs in window have no R1 report on disk — separate audit needed.
+2. **FF-07 PR #27** parked at R1=BLOCKER per backlog issue #124. Lint-only fix landed 2026-05-03; structural rewrite (3 BLOCKER + 2 HIGH + 1 MEDIUM) gated on dependency completion, not date.
+3. **FF-08 / FF-09** stalled in OPEN since 2026-04-25. Need PR-body refresh (Self-pass-rate) + Codex review. Gated on completion alone — **no date deadline applies** per project policy (2026-05-03 update: date-based gating removed).
+4. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
 5. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
-6. **W6e #103 stale** — superseded by merged #109+#110. Recommend close.
+6. **W6e #103** — closed 2026-05-03 as stale (subsumed by #109+#110).
 7. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
 8. **Self-pass-rate honor-system replacement**: ADR-012 + ADR-013 are live and enforcing; calibration_state.json backfill (#1 above) is the residual gap.
+9. **Date-based deadline policy removed** (2026-05-03 directive): no task may be gated by a calendar date. All gates must be dependency- or task-completion-driven. ADR-011 §Calibration Mode and §Enforcement Maturity contain "2026-05-23" deadlines that need a separate ADR amendment (HF1.9 zone, Codex R1 mandatory).
 
 ---
 
