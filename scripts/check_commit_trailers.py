@@ -58,9 +58,7 @@ _CODEX_RE = re.compile(
     r"^Codex-verified:\s*(.+)$",
     re.MULTILINE | re.IGNORECASE,
 )
-_CODEX_VALUE_RE = re.compile(
-    r"^([A-Za-z0-9_\-]+|<claim-id>)@([0-9a-fA-F]{7,40}|<sha>|HEAD)$"
-)
+_CODEX_VALUE_RE = re.compile(r"^([A-Za-z0-9_\-]+|<claim-id>)@([0-9a-fA-F]{7,40}|<sha>|HEAD)$")
 
 
 @dataclass

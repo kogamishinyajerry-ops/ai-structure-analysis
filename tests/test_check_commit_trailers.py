@@ -64,7 +64,9 @@ Codex-verified: ADR-011-r5@e53b0f7
 
 
 def test_codex_verified_with_full_sha(mod):
-    body = "x\n\nExecution-by: x\nCodex-verified: FF-06-r2@e53b0f779815d0416764bf69a64f2d8cc339cba1\n"
+    body = (
+        "x\n\nExecution-by: x\nCodex-verified: FF-06-r2@e53b0f779815d0416764bf69a64f2d8cc339cba1\n"
+    )
     r = mod.check_commit("abc123", "subj", body)
     assert r.codex_format_valid
 
@@ -139,10 +141,7 @@ def test_case_insensitive_attribution(mod):
 
 
 def test_multiple_coauthors_first_match_wins(mod):
-    body = (
-        "x\n\nCo-Authored-By: Alice <a@x>\n"
-        "Co-Authored-By: Bob <b@x>\n"
-    )
+    body = "x\n\nCo-Authored-By: Alice <a@x>\nCo-Authored-By: Bob <b@x>\n"
     r = mod.check_commit("abc123", "subj", body)
     assert r.has_attribution
     # First match takes attribution_value
