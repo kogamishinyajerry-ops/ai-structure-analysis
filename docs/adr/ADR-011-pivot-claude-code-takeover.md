@@ -1,14 +1,15 @@
 # ADR-011: Pivot to Claude Code CLI Single-Path Governance
 
-- **Status:** Accepted (amended 2026-04-25 per AR-2026-04-25-001)
+- **Status:** Accepted (amended 2026-04-25 per AR-2026-04-25-001; amended 2026-05-03 per AR-2026-05-03-001)
 - **Decider:** Claude Code CLI (Opus 4.7, 1M context) — human-confirmed
-- **Date:** 2026-04-25 (R5 APPROVE), amended 2026-04-25 (per T0 verdict AR-2026-04-25-001)
+- **Date:** 2026-04-25 (R5 APPROVE), amended 2026-04-25 (AR-2026-04-25-001), amended 2026-05-03 (AR-2026-05-03-001)
 - **Supersedes:** ADR-000 template's `Decider: Antigravity / Gemini 3.1 Pro` line; prior routing memos (TBD by main session — placeholder until FF-03 inventory completes)
 - **Related Phase:** 1.5 Foundation-Freeze (FF-01)
-- **Branch:** `feature/AI-FEA-ADR-011-pivot-claude-code-takeover` (R5 APPROVE) ; `feature/AI-FEA-ADR-011-amendments-AR-2026-04-25-001` (this amendment cycle)
+- **Branch:** `feature/AI-FEA-ADR-011-pivot-claude-code-takeover` (R5 APPROVE) ; `feature/AI-FEA-ADR-011-amendments-AR-2026-04-25-001` (prior amendment cycle) ; `feature/ADR-011-amendment-AR-2026-05-03-001-no-date-deadlines` (this amendment cycle)
 - **Amendment cycles:**
   - 2026-04-25 R1→R5 — original Codex review arc (FF-01 baseline)
   - **2026-04-25 AR-2026-04-25-001** — T0 ratified amendments to §T2 (Codex role rewording), §HF2 (subagent activity-type split), §HF1 (zone narrowing — `docs/adr/`/`docs/governance/` moved to PR-protected zone, `scripts/hf1_path_guard.py` self-protection + `.github/workflows/**` added), §Enforcement Maturity (post-FF-06 state model + CI port deferred to ADR-013), §Rollback (weighted-zone table updated to HF1.1-HF1.9 + separate PR-protected-zone bypass metric), §Known Gaps (ADR-012/013 number reassignment), §Cross-References (import-linter reference unbound), and §Calibration Mode (note that ADR-012 supersedes self-pass-rate honor-system)
+  - **2026-05-03 AR-2026-05-03-001** — User directive: **all date-based deadlines are removed from project policy**. Gates may only be dependency- or task-completion-driven. Affected sections: §HF1 (HF2 Detection column "calibration window through 2026-05-23" → "calibration window remains open until …"), §Enforcement Maturity (HF2/HF3/HF5 Status column dates removed; FF-07/FF-08 deadline lines removed; §"In summary" date removed), §Calibration Mode ("Calibration window: 2026-04-25 → 2026-05-23 (4 周)" replaced with task-completion gate), §Rollback ("观察窗口 4 周" replaced; date-anchored audit-log path replaced with rolling-log path), §Risks #4 ("终止日期 2026-05-23 不可滑动" rule deleted — HF2 calibration ends when calibration-mode close-out criteria are met, not when a calendar passes). No semantic change to HF1-HF5 trigger conditions or detection thresholds; only the calendar-anchor is removed in favor of completion-anchor.
 
 ---
 
@@ -107,7 +108,7 @@ When subagent IS used, the existing rule remains: prompt must explicitly declare
 | ID  | Trigger | Detection (现状 / 目标) | Recovery |
 |-----|---------|------------------------|----------|
 | HF1 | Diff 触及 HF1 hard-stop zone (HF1.1-HF1.9) — PR-protected zone NOT included | **HF1 hard-stop**: pre-commit `scripts/hf1_path_guard.py` (FF-06 ✅) + CI ported version pending; **PR-protected zone**: branch protection (ADR-013) + mandatory Codex M1 (§T2 amended) | HF1 hard-stop: 立即 `git reset --soft`，先开 ADR / 申请 Gate (or `HF1_GUARD_OVERRIDE='<reason>'` for emergencies, audited at PR review). PR-protected zone: regular PR + Codex pre-merge required. |
-| HF2 | 单会话 drift > 5 turns / 40k tokens / 3 files / 500 LOC 且未拆分 subagent | T1 自检 + claude-hud 计数（手动） | 4 周 Calibration Mode 期内可附 ≤30 字理由继续；之后强制 spawn subagent，否则停手 |
+| HF2 | 单会话 drift > 5 turns / 40k tokens / 3 files / 500 LOC 且未拆分 subagent | T1 自检 + claude-hud 计数（手动） | Calibration Mode 期内可附 ≤30 字理由继续；Calibration Mode 关闭后强制 spawn subagent，否则停手（关闭判据见 §Calibration Mode，与日历无关） |
 | HF3 | 新增 sample 无 golden-standard 引用 | **现状**：人工 PR review；**目标**：sample registry schema 校验 + CI（FF-08 跟踪） | 标记 `insufficient_evidence`，不进入回归集 |
 | HF4 | Artifact 落入 Decisions DB 但 Notion Handoff 缺失 | **现状**：Notion sync 脚本输出对账 + 人工核对；**目标**：notion_sync.py 端到端 diff 守卫（已部分实现，contract 迁移 in-flight on `feature/AI-FEA-S2.1-02-notion-sync-contract-align`） | 回滚 Decisions 记录；补 Handoff 后重发 |
 | HF5 | Codex verify 结论与 repo 真值不一致 | **现状**：人工对账（Codex 报告 vs `git diff`）；**目标**：`Codex-verified` trailer 存在性 + claim-id 校验 hook（FF-07 跟踪） | T0 Gate 召回；以 repo 为准修 Notion / Codex 上下文 |
@@ -120,27 +121,30 @@ ADR-011 v1 把 HF1/HF5 的 Detection 写成既成事实是 **过度声明** — 
 |---|---|---|
 | **HF1 (hard-stop zone)** | pre-commit `scripts/hf1_path_guard.py` reads `git diff --cached --name-status -z` (covers renames + deletes). Script also supports CI invocation via `--from-diff <ref>` mode (pure function ready); workflow integration ports the call into `.github/workflows/ci.yml`. | pre-commit ✅ **landed in FF-06 (PR #22, commit `ac98fc3`)**. CI port pending in **ADR-013** (T0 §2 placed CI status check under ADR-013 alongside branch protection). The `--from-diff` script mode lands in this AR-2026-04-25-001 amendment cycle so ADR-013 can wire it without code change. |
 | **HF1 (PR-protected zone)** | branch protection (per ADR-013 — pending) + mandatory Codex M1 trigger (per amended §T2) | ADR-013 in flight; Codex M1 active immediately upon AR-2026-04-25-001 ratification |
-| HF2 (subagent split) | T1 self-check + `claude-hud` token counter + `reports/hf2_calibration.md` log | honor-system, calibration window through 2026-05-23 |
-| HF3 (sample registry) | manual PR review against FP-001/002/003 evidence | honor-system, **FF-08 pending** (deadline 2026-05-23) |
+| HF2 (subagent split) | T1 self-check + `claude-hud` token counter + `reports/hf2_calibration.md` log | honor-system, calibration window open until close-out criteria met (per §Calibration Mode; no calendar deadline per AR-2026-05-03-001) |
+| HF3 (sample registry) | manual PR review against FP-001/002/003 evidence | honor-system, **FF-08 pending** (gated on completion alone; no calendar deadline per AR-2026-05-03-001) |
 | HF4 (Notion handoff) | `notion_sync.py` diff guard partial; manual reconciliation | honor-system + partial automation; in-flight on `feature/AI-FEA-S2.1-02-notion-sync-contract-align` |
-| HF5 (Codex verify) | manual reconciliation of Codex tool report vs `git diff` | honor-system, **FF-07 pending** (deadline 2026-05-23) |
+| HF5 (Codex verify) | manual reconciliation of Codex tool report vs `git diff` | honor-system, **FF-07 pending** (gated on completion alone; no calendar deadline per AR-2026-05-03-001) |
 
 **Tracking tasks (FF-06 partially done; FF-07/08 still tracking):**
 
 - **FF-06** **partially done** — pre-commit hook ✅ landed (PR #22, commit `ac98fc3`, R1+R2 Codex APPROVE); script `--from-diff` mode ✅ landed (this AR-2026-04-25-001 amendment cycle); CI workflow integration **pending ADR-013** (T0 §2 placed CI status check under ADR-013)
-- **FF-07**: CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）— deadline 2026-05-23
-- **FF-08**: `golden_samples/<id>` registry schema 校验（HF3 detection automation）— deadline 2026-05-23
+- **FF-07**: CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001)
+- **FF-08**: `golden_samples/<id>` registry schema 校验（HF3 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001)
 
-In summary: **HF1 pre-commit enforcement landed in FF-06; CI enforcement pending ADR-013** (which will wire `scripts/hf1_path_guard.py --from-diff origin/main...HEAD` into `.github/workflows/ci.yml`). HF5/HF3 remain honor-system pending FF-07/08. HF2 is calibration-mode honor-system through 2026-05-23, then hard-stop. HF4 is partial automation + manual reconciliation.
+In summary: **HF1 pre-commit enforcement landed in FF-06; CI enforcement pending ADR-013** (which will wire `scripts/hf1_path_guard.py --from-diff origin/main...HEAD` into `.github/workflows/ci.yml`). HF5/HF3 remain honor-system pending FF-07/08. HF2 is calibration-mode honor-system pending §Calibration Mode close-out (no calendar deadline per AR-2026-05-03-001), then hard-stop. HF4 is partial automation + manual reconciliation.
 
 ### Calibration Mode (HF2 解除自相矛盾)
 
 ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附理由继续 — Codex R1 SHOULD_FIX #2 正确指出这是矛盾。本节明确：
 
-- **Calibration window**: 2026-04-25 → **2026-05-23**（4 周）
+- **Calibration window** (per AR-2026-05-03-001): **task-completion-driven, no calendar end date**. The window opens at 2026-04-25 (this ADR's first ratification) and **closes when ANY of the following completion criteria is met**:
+  1. **Sample threshold**: `reports/hf2_calibration.md` accumulates ≥ 20 entries (sufficient sample to evaluate threshold sanity), AND
+  2. **Mini-retro signed off**: T1 has produced a mini-retro on `reports/hf2_calibration.md` and human (T0) has accepted it, OR
+  3. **Explicit human (T0) close-out** at any time, regardless of sample size.
 - 期内 HF2 触发 = T1 在该 turn 内附 ≤30 字理由 + 在 `reports/hf2_calibration.md` 追加一行；可继续。
 - 期后 HF2 触发 = 真 STOP；必须当场 spawn subagent 或停手。
-- Calibration window 结束时，T1 必须基于 `reports/hf2_calibration.md` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
+- Calibration window 关闭时，T1 必须基于 `reports/hf2_calibration.md` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
 
 在 calibration window 内 HF2 是 **soft floor**，期后回归 hard floor。其他 HF 不受此例外影响。
 
@@ -191,7 +195,7 @@ Codex-verified: <claim-id>@<sha>
 1. **单驱动瓶颈** — 当 Codex 验证不可用（额度耗尽 / 服务异常）时，critical claim 无法获得独立验证；缓解：`cx-auto 20` 多账号自动切换。
 2. **Subagent 边界违规成本** — Allowed/Forbidden 描述不准会导致 rollback；缓解：HF1 path-guard 前置（FF-06 automation 落地前依赖人工 review）。
 3. **In-flight S2.1-02 collision (watch-item)** — 本 ADR 的首次 Notion sync 可能与 `feature/AI-FEA-S2.1-02-notion-sync-contract-align` 的契约迁移在 Notion DB schema 上撞车。**主 session 须在 commit 前手工核对 FF-01b**（"先验证 S2.1-02 是否已合并；未合并则 ADR-011 的 Notion 同步走旧契约，并在 ADR 里补一条 follow-up 标注"）。FF-01b 实测发现 Decisions DS 实际 schema 与 `notion_sync.register_decision()` 期望字段差距更大（缺 `Branch`/`Session Batch`/`ADR Link` 三项），S2.1-02 的 `Sprint` 添加并未对齐 — 应另开 ADR 修 schema。
-4. **HF2 自相矛盾** — 见上方 §Calibration Mode（Codex R1 SHOULD_FIX #2 修复）。期内 soft floor，期后 hard floor；终止日期 2026-05-23 不可滑动。
+4. **HF2 自相矛盾** — 见上方 §Calibration Mode（Codex R1 SHOULD_FIX #2 修复）。期内 soft floor，期后 hard floor。Per AR-2026-05-03-001, the window terminates on completion-criteria satisfaction (see §Calibration Mode), not on a calendar date.
 5. **T0 召回延迟** — Gate 是人工触发，深夜事件可能滞留；明确 SLA 由后续 ADR 补（候选 SLA：工作日 4h，周末 24h；本 ADR 不强制）。
 6. **Enforcement maturity gap** — HF1/HF5 现阶段是 honor-system（见 §Enforcement Maturity）。在 FF-06/07/08 落地前，治理可信度依赖 T1 自检 + PR review。Codex R1 BLOCKING #1 正确指出该差距；本 ADR 接受并以排期对冲，不靠装作已有 hook 来 over-claim。
 
@@ -199,7 +203,7 @@ Codex-verified: <claim-id>@<sha>
 
 ## Rollback
 
-观察窗口 4 周（2026-04-25 → 2026-05-23），与 Calibration Mode 同步。若出现以下任一（指标已加 denominator 与严重度分层，回应 Codex R1 BLOCKING #2）：
+观察窗口 = 当前 Calibration window（per §Calibration Mode close-out criteria，无日历终止日；AR-2026-05-03-001 修订）。Rollback metrics 在 window 期内累计、close-out 时清零并 archive。若 window 期内出现以下任一（指标已加 denominator 与严重度分层，回应 Codex R1 BLOCKING #2）：
 
 - **Codex verification mismatch rate > 15%**，**且**该周期内累积 verified claim ≥ 20。低于 20 时只记录、不触发 rollback（小样本不可靠）。
 - **HF1 hard-stop 触发按区域加权 > 2 weighted points** (covers HF1.1-HF1.9 hard-stop zone per AR-2026-04-25-001 §3 amendment; PR-protected-zone bypass tracked separately below):
@@ -215,7 +219,7 @@ Codex-verified: <claim-id>@<sha>
 
 任一触发则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用一个只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
 
-**记录责任** — calibration window 内由 T1 在 `reports/hf_audit_2026-04-25_to_2026-05-23.md` 累计每条 HF / verified claim 数据；FF-06/07/08 落地后转为自动统计。
+**记录责任** — calibration window 内由 T1 在 `reports/hf_audit.md` (rolling log; per AR-2026-05-03-001, no calendar suffix in filename) 累计每条 HF / verified claim 数据；window close-out 时整体 archive 到 `reports/archive/hf_audit_<window-id>.md`，重置 rolling log。FF-06/07/08 落地后转为自动统计。
 
 ---
 
