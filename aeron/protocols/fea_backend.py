@@ -41,9 +41,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.sim_plan import SimPlan
+from schemas.sim_state import FaultClass
+
+# All carriers reject unknown keys. This makes adapter-boundary version
+# skew loud (ValidationError) instead of silently dropping fields — e.g.
+# forwarding ``tools.calculix_driver.run_solve()``'s legacy dict shape
+# directly into ``SolveStatus`` will fail fast on stale keys, forcing
+# the driver to do the explicit mapping.
+_STRICT = ConfigDict(extra="forbid")
 
 # ---------------------------------------------------------------------------
 # Status enums (string-valued; serialise cleanly)
@@ -66,17 +74,43 @@ class SolveStatusCode(StrEnum):
 
 
 class SolveStatus(BaseModel):
-    """Outcome status of a single solve invocation."""
+    """Outcome status of a single solve invocation.
 
-    code: SolveStatusCode = Field(..., description="One of the SolveStatusCode members.")
+    ``code`` is the solver-agnostic high-level outcome (six-value closed
+    enum). ``fault_class`` carries the project's ADR-004 fault taxonomy
+    (``FaultClass``) so downstream consumers like
+    ``backend/app/rag/reviewer_advisor.py`` keep their existing
+    fine-grained branching (``solver_syntax`` vs ``solver_timestep`` vs
+    ``solver_convergence``) without the L0 protocol enum being polluted
+    by solver-specific concerns. Drivers map their native classifications
+    onto ``FaultClass`` at the adapter boundary.
+    """
+
+    model_config = _STRICT
+
+    code: SolveStatusCode = Field(..., description="High-level, solver-agnostic outcome.")
+    fault_class: FaultClass | None = Field(
+        default=None,
+        description=(
+            "Project ADR-004 fault taxonomy. ``None`` when ``code == OK`` or "
+            "when the driver cannot classify the failure."
+        ),
+    )
     message: str = Field(default="", description="Human-readable detail.")
-    return_code: int | None = Field(
-        default=None, description="Underlying solver process return code, if applicable."
+    returncode: int | None = Field(
+        default=None,
+        description=(
+            "Underlying solver process return code, if applicable. Matches "
+            "Python ``subprocess.CompletedProcess.returncode`` and the "
+            "existing ``tools.calculix_driver.run_solve()`` payload key."
+        ),
     )
 
 
 class HealthStatus(BaseModel):
     """Outcome of a backend self-test."""
+
+    model_config = _STRICT
 
     healthy: bool
     solver_name: str
@@ -96,6 +130,8 @@ class CasePackage(BaseModel):
     where they live and any metadata the orchestrator needs without reading
     them.
     """
+
+    model_config = _STRICT
 
     case_id: str = Field(..., description="Mirrors ``SimPlan.case_id``.")
     case_dir: Path = Field(..., description="Root directory containing all prepared inputs.")
@@ -119,6 +155,8 @@ class SolveOptions(BaseModel):
     degree) belong in the driver's constructor, not here.
     """
 
+    model_config = _STRICT
+
     timeout_s: float | None = Field(default=None, ge=0.0, description="Hard wall-clock cap.")
     num_threads: int | None = Field(default=None, ge=1, description="Solver thread hint.")
     dry_run: bool = Field(
@@ -133,6 +171,8 @@ class SolveOptions(BaseModel):
 
 class SolveOutcome(BaseModel):
     """What ``solve`` returns. Raw artefacts only — parsing is a separate step."""
+
+    model_config = _STRICT
 
     case_id: str
     status: SolveStatus
@@ -149,8 +189,12 @@ class ResultBundle(BaseModel):
 
     The shape is intentionally permissive: AERON's reviewer/reporter layers
     consume ``fields`` and ``scalars``; drivers may add solver-specific keys
-    under ``extras`` without breaking the contract.
+    under ``extras`` without breaking the contract. Note ``extras`` is
+    ``dict[str, Any]`` by design — extra **keys at the model level** are
+    forbidden, but the ``extras`` dict itself is the explicit escape hatch.
     """
+
+    model_config = _STRICT
 
     case_id: str
     fields: dict[str, Path] = Field(
@@ -166,6 +210,8 @@ class ResultBundle(BaseModel):
 
 class HealthReport(BaseModel):
     """Result of ``health_check``."""
+
+    model_config = _STRICT
 
     status: HealthStatus
     checks: dict[str, bool] = Field(
