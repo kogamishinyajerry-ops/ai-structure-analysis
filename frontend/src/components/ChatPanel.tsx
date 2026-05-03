@@ -3,8 +3,12 @@ import { Send, Bot, User, Check, X, Sparkles, MessageSquare } from 'lucide-react
 
 interface Action {
   action_type: string;
-  parameters: any;
+  parameters: Record<string, unknown>;
   description: string;
+}
+
+interface ExecuteActionResult {
+  message?: string;
 }
 
 interface Message {
@@ -16,7 +20,7 @@ interface Message {
 
 interface ChatPanelProps {
   caseId: string | null;
-  onExecuteAction: (action: Action) => Promise<any>;
+  onExecuteAction: (action: Action) => Promise<ExecuteActionResult>;
 }
 
 export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
@@ -74,7 +78,7 @@ export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
       }
 
       setMessages(prev => [...prev, assistantMsg]);
-    } catch (err) {
+    } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I had trouble connecting to the brain." }]);
     } finally {
       setLoading(false);

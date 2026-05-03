@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import { 
   FileUp, 
   Activity, 
@@ -38,7 +38,7 @@ interface ReportData {
     max_displacement: number;
     max_von_mises: number;
     safety_factor: number;
-    status: string;
+    status: 'PASS' | 'FAIL' | 'CRITICAL' | 'N/A';
   };
   validation: {
     status: string;
@@ -66,6 +66,18 @@ interface ExperimentStatus {
       status: string;
       inp_path: string;
   }[];
+}
+
+interface CopilotAction {
+  action_type: string;
+  parameters: Record<string, unknown>;
+  description: string;
+}
+
+interface CopilotActionResult {
+  job_id?: string;
+  experiment_id?: string;
+  message?: string;
 }
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -108,7 +120,7 @@ function App() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
@@ -190,7 +202,7 @@ function App() {
       });
       const data = await response.json();
       if (data.job_id) {
-        monitorJob(data.job_id);
+        connectToLogs(data.job_id);
       }
     } catch (err) {
       console.error("Solver start failed", err);
@@ -292,14 +304,14 @@ function App() {
     }, 2000);
   };
 
-  const handleExecuteCopilotAction = async (action: any) => {
+  const handleExecuteCopilotAction = async (action: CopilotAction): Promise<CopilotActionResult> => {
     try {
       const res = await fetch(`${API_BASE}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: action, context: { case_id: activeCaseId } })
       });
-      const data = await res.json();
+      const data = await res.json() as CopilotActionResult;
       
       if (data.job_id) {
           setShowConsole(true);
@@ -382,7 +394,7 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
                     Analysis <ChevronRight size={14} /> <span style={{ color: 'var(--text-primary)' }}>{activeCaseId || (file ? file.name : "Session")}</span>
                 </div>
-                {report && <ComplianceBadge status={report.metrics.status as any} standard="GB50017" />}
+                {report && <ComplianceBadge status={report.metrics.status} standard="GB50017" />}
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
                 <button onClick={() => setShowChat(!showChat)} style={{ padding: '8px 16px', borderRadius: '8px', background: showChat ? 'var(--accent)' : 'var(--bg-surface)', color: showChat ? '#000' : '#fff', border: '1px solid var(--border)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
@@ -392,7 +404,7 @@ function App() {
                 <div style={{ display: 'flex', gap: '8px' }}>
                     <select 
                         value={analysisType} 
-                        onChange={(e) => setAnalysisType(e.target.value as any)}
+                        onChange={(e) => setAnalysisType(e.target.value as 'static' | 'modal' | 'buckling')}
                         style={{ background: 'var(--bg-surface)', color: '#fff', border: '1px solid var(--border)', borderRadius: '8px', padding: '0 12px', fontSize: '0.85rem', outline: 'none' }}
                     >
                         <option value="static">Static Analysis</option>
@@ -462,7 +474,7 @@ function App() {
                                         {report?.increments && report.increments.length > 0 && (
                                             <div style={{ position: 'absolute', top: '24px', right: '24px', width: '320px', zIndex: 10 }}>
                                                 <ModeSelector 
-                                                    increments={report.increments as any} 
+                                                    increments={report.increments}
                                                     selectedModeIndex={selectedModeIndex}
                                                     activeAnalysisType={analysisType}
                                                     onSelectMode={(idx) => setSelectedModeIndex(idx)}
@@ -520,7 +532,7 @@ function App() {
   );
 }
 
-function TabButton({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon: any }) {
+function TabButton({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon: ReactNode }) {
   return (
     <button onClick={onClick} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', background: active ? 'var(--accent)' : 'transparent', color: active ? '#000' : '#fff', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}>
       {icon} {label}
