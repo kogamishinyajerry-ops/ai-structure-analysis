@@ -9,6 +9,7 @@ from aeron.protocols.fea_backend import (
     SolveOptions,
     SolveOutcome,
     SolveStatus,
+    SolveStatusCode,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "SolveOptions",
     "SolveOutcome",
     "SolveStatus",
+    "SolveStatusCode",
 ]

@@ -37,6 +37,7 @@ Per §05 four-field discipline:
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
@@ -49,16 +50,25 @@ from schemas.sim_plan import SimPlan
 # ---------------------------------------------------------------------------
 
 
+class SolveStatusCode(StrEnum):
+    """Closed vocabulary for ``SolveStatus.code``.
+
+    Higher layers branch on this finite set; an unconstrained string would
+    let driver typos (e.g. ``"timeot"``) cross process boundaries silently.
+    """
+
+    OK = "ok"
+    DIVERGED = "diverged"
+    TIMEOUT = "timeout"
+    PREFLIGHT_FAILED = "preflight_failed"
+    SOLVER_ERROR = "solver_error"
+    ABORTED = "aborted"
+
+
 class SolveStatus(BaseModel):
     """Outcome status of a single solve invocation."""
 
-    code: str = Field(
-        ...,
-        description=(
-            "One of: 'ok' | 'diverged' | 'timeout' | 'preflight_failed' | "
-            "'solver_error' | 'aborted'."
-        ),
-    )
+    code: SolveStatusCode = Field(..., description="One of the SolveStatusCode members.")
     message: str = Field(default="", description="Human-readable detail.")
     return_code: int | None = Field(
         default=None, description="Underlying solver process return code, if applicable."
