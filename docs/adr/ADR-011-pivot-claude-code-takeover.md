@@ -9,7 +9,7 @@
 - **Amendment cycles:**
   - 2026-04-25 R1→R5 — original Codex review arc (FF-01 baseline)
   - **2026-04-25 AR-2026-04-25-001** — T0 ratified amendments to §T2 (Codex role rewording), §HF2 (subagent activity-type split), §HF1 (zone narrowing — `docs/adr/`/`docs/governance/` moved to PR-protected zone, `scripts/hf1_path_guard.py` self-protection + `.github/workflows/**` added), §Enforcement Maturity (post-FF-06 state model + CI port deferred to ADR-013), §Rollback (weighted-zone table updated to HF1.1-HF1.9 + separate PR-protected-zone bypass metric), §Known Gaps (ADR-012/013 number reassignment), §Cross-References (import-linter reference unbound), and §Calibration Mode (note that ADR-012 supersedes self-pass-rate honor-system)
-  - **2026-05-03 AR-2026-05-03-001** — User directive: **all date-based deadlines are removed from project policy**. Gates may only be dependency- or task-completion-driven. Affected sections: §HF1 (HF2 Detection column "calibration window through 2026-05-23" → "calibration window remains open until …"), §Enforcement Maturity (HF2/HF3/HF5 Status column dates removed; FF-07/FF-08 deadline lines removed; §"In summary" date removed), §Calibration Mode ("Calibration window: 2026-04-25 → 2026-05-23 (4 周)" replaced with task-completion gate), §Rollback ("观察窗口 4 周" replaced; date-anchored audit-log path replaced with rolling-log path), §Risks #4 ("终止日期 2026-05-23 不可滑动" rule deleted — HF2 calibration ends when calibration-mode close-out criteria are met, not when a calendar passes). No semantic change to HF1-HF5 trigger conditions or detection thresholds; only the calendar-anchor is removed in favor of completion-anchor.
+  - **2026-05-03 AR-2026-05-03-001** — User directive: **all date-based deadlines are removed from project policy**. Gates may only be dependency- or task-completion-driven. Primary affected ADR sections: §HF1 (HF2 Detection column "calibration window through 2026-05-23" → "calibration window remains open until …"), §Enforcement Maturity (HF2/HF3/HF5 Status column dates removed; FF-07/FF-08/FF-09 hard prerequisites added — must merge before Phase 2 activation, before Calibration Mode close-out, and before any PR may claim HF5/HF3 automation; §"In summary" date removed), §Calibration Mode (calendar window replaced with explicit Boolean close-out predicate `((entries≥20 AND T0-accepted retro) OR T0 explicit close-out OR Phase 2 activation imminent)`), §Rollback ("观察窗口 4 周" replaced with rolling Calibration window; HF2 post-close-out rate-of-occurrence trigger restated as "first 10 post-close-out T1 sessions/PRs" per Codex R1; date-anchored audit-log path replaced with `reports/hf_audit.md` rolling log + `reports/archive/hf_audit_window-NNN.md` monotonic counter naming rule), §Risks #4 ("终止日期 2026-05-23 不可滑动" rule deleted — HF2 calibration ends when close-out predicate is true, not when a calendar passes). Companion edits in same amendment cycle: ADR header metadata (lines 3-8 — Status / Date / Branch / Amendment cycles updated) and `reports/hf2_calibration.md` header line (calendar window → predicate-driven). No semantic change to HF1-HF5 trigger conditions, HF2 numerical thresholds (5 turns / 40k tokens / 3 files / 500 LOC), Rollback weighted-zone math, or M1-M5 trigger taxonomy — only the calendar-anchor is removed in favor of completion-anchor.
 
 ---
 
@@ -129,8 +129,9 @@ ADR-011 v1 把 HF1/HF5 的 Detection 写成既成事实是 **过度声明** — 
 **Tracking tasks (FF-06 partially done; FF-07/08 still tracking):**
 
 - **FF-06** **partially done** — pre-commit hook ✅ landed (PR #22, commit `ac98fc3`, R1+R2 Codex APPROVE); script `--from-diff` mode ✅ landed (this AR-2026-04-25-001 amendment cycle); CI workflow integration **pending ADR-013** (T0 §2 placed CI status check under ADR-013)
-- **FF-07**: CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001)
-- **FF-08**: `golden_samples/<id>` registry schema 校验（HF3 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001)
+- **FF-07**: CI 实现 commit trailer presence + claim-id 格式校验（HF5 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001). **Hard prerequisite**: must merge before (a) Phase 2 Web Console activation Gate is opened, AND (b) Calibration Mode close-out predicate evaluates true, AND (c) any future PR may claim "HF5 automation enforced" in its body. Until FF-07 lands, HF5 stays honor-system and any HF5-automation claim is over-claiming (audit-trail violation).
+- **FF-08**: `golden_samples/<id>` registry schema 校验（HF3 detection automation）— gated on completion (no calendar deadline per AR-2026-05-03-001). **Hard prerequisite**: must merge before (a) Phase 2 Web Console activation Gate is opened, AND (b) any future PR may claim "HF3 automation enforced" in its body. Until FF-08 lands, HF3 stays honor-system.
+- **FF-09** (README ↔ ADR-011 sync): not on automation path, but normative. **Hard prerequisite**: must merge before Phase 2 activation Gate to ensure README and ADR-011 are not in conflict at the moment Phase 2 begins.
 
 In summary: **HF1 pre-commit enforcement landed in FF-06; CI enforcement pending ADR-013** (which will wire `scripts/hf1_path_guard.py --from-diff origin/main...HEAD` into `.github/workflows/ci.yml`). HF5/HF3 remain honor-system pending FF-07/08. HF2 is calibration-mode honor-system pending §Calibration Mode close-out (no calendar deadline per AR-2026-05-03-001), then hard-stop. HF4 is partial automation + manual reconciliation.
 
@@ -138,10 +139,14 @@ In summary: **HF1 pre-commit enforcement landed in FF-06; CI enforcement pending
 
 ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附理由继续 — Codex R1 SHOULD_FIX #2 正确指出这是矛盾。本节明确：
 
-- **Calibration window** (per AR-2026-05-03-001): **task-completion-driven, no calendar end date**. The window opens at 2026-04-25 (this ADR's first ratification) and **closes when ANY of the following completion criteria is met**:
-  1. **Sample threshold**: `reports/hf2_calibration.md` accumulates ≥ 20 entries (sufficient sample to evaluate threshold sanity), AND
-  2. **Mini-retro signed off**: T1 has produced a mini-retro on `reports/hf2_calibration.md` and human (T0) has accepted it, OR
-  3. **Explicit human (T0) close-out** at any time, regardless of sample size.
+- **Calibration window** (per AR-2026-05-03-001): **task-completion-driven, no calendar end date**. The window opens at 2026-04-25 (this ADR's first ratification) and **closes when the close-out predicate evaluates true**. The predicate (in explicit Boolean form):
+
+  `( (reports/hf2_calibration.md_entries ≥ 20  AND  T0_accepted_mini_retro == true)  OR  T0_explicit_close_out == true  OR  Phase_2_activation_imminent == true )`
+
+  where:
+  1. **Sample-threshold-AND-retro path**: `reports/hf2_calibration.md` accumulates ≥ 20 entries AND T1 has produced a mini-retro on `reports/hf2_calibration.md` AND human (T0) has accepted it. Both clauses required.
+  2. **T0 explicit close-out path**: human (T0) issues an explicit close-out at any time, regardless of sample size.
+  3. **Mandatory non-calendar fallback (anti-drift)**: Calibration Mode **must close before Phase 2 Web Console activation Gate is opened**, regardless of paths 1 and 2 status. If neither 1 nor 2 has fired by the time Phase 2 activation is on the Gate queue, T1 must (a) produce the mini-retro from whatever sample exists, (b) request T0 close-out as a Phase 2 prerequisite. This forecloses the failure mode where the log never reaches 20 entries and T0 is never asked.
 - 期内 HF2 触发 = T1 在该 turn 内附 ≤30 字理由 + 在 `reports/hf2_calibration.md` 追加一行；可继续。
 - 期后 HF2 触发 = 真 STOP；必须当场 spawn subagent 或停手。
 - Calibration window 关闭时，T1 必须基于 `reports/hf2_calibration.md` 提交 mini-retro，**决定是否调阈**或维持 5/40k/3/500。
@@ -215,11 +220,11 @@ Codex-verified: <claim-id>@<sha>
   例：solver core 误改 1 次 = 1.0 (未触发)；solver core 误改 2 次 = 2.0 (未触发，临界)；solver core 误改 3 次 = 3.0 (触发)；Makefile 误改 5 次 = 2.5 (触发)；CI workflow 误改 4 次 = 2.0 (临界)。
 
 - **PR-protected zone bypass > 2 incidents per window** — tracks unreviewed direct-pushes to `docs/adr/**`, `docs/governance/**`, `docs/failure_patterns/**` (these are no longer HF1 but their integrity depends on branch protection per ADR-013). Each bypass = **0.3 / 次** for the rollback metric, separate denominator from HF1 hard-stop.
-- **HF2 calibration window 关闭后**，HF2 hard-stop 触发频次 > 1 / 周。
+- **HF2 calibration window 关闭后**，HF2 hard-stop 触发频次 > 1 in the **first 10 post-close-out T1 sessions OR PRs to main, whichever is reached first** (rolling check, no calendar; resets at next Phase activation Gate or T0 retro acceptance, whichever comes first).
 
 任一触发则升级到 T0 (Opus 4.7) 架构审查，重新评估是否需要引入第二条模型通道（候选：Codex 提升为受限的 main-code 提交者，或重新启用一个只读 review 通道）。Rollback 通过新 ADR (ADR-{nnn}-revoke-011) 形式落地，本 ADR 标记为 Superseded。
 
-**记录责任** — calibration window 内由 T1 在 `reports/hf_audit.md` (rolling log; per AR-2026-05-03-001, no calendar suffix in filename) 累计每条 HF / verified claim 数据；window close-out 时整体 archive 到 `reports/archive/hf_audit_<window-id>.md`，重置 rolling log。FF-06/07/08 落地后转为自动统计。
+**记录责任** — calibration window 内由 T1 在 `reports/hf_audit.md` (rolling log; per AR-2026-05-03-001, no calendar suffix in filename) 累计每条 HF / verified claim 数据；window close-out 时整体 archive 到 `reports/archive/hf_audit_window-NNN.md` 并重置 rolling log。`<NNN>` 命名规则：**monotonic 3-digit zero-padded counter** (`window-001`, `window-002`, ...), assigned by T1 at close-out using `ls reports/archive/hf_audit_window-*.md | wc -l` + 1; T0 ratifies the counter in the same close-out decision (either explicit close-out or mini-retro acceptance per §Calibration Mode predicate paths 2 / 1). Two windows MUST NOT share an ID; collision = governance defect, escalate to T0. FF-06/07/08 落地后转为自动统计。
 
 ---
 
