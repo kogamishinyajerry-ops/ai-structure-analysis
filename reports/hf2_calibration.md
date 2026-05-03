@@ -1,6 +1,6 @@
 # HF2 Calibration Log
 
-Window: 2026-04-25 → 2026-05-23 (per ADR-011 §Calibration Mode).
+Window: opened 2026-04-25; closes per §Calibration Mode close-out criteria (per AR-2026-05-03-001 — no calendar end date).
 Each entry: timestamp · turn-count-estimate · file-count · reason (≤30 字).
 
 ---
