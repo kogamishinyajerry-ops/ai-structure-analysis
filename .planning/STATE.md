@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `FF-09-closeout-2026-05-06 · main=a5c3dc4`
-> **Last updated:** 2026-05-06 (after PR #132 merge; PR #26 close; ENG-18 Done)
+> **Stamp:** `control-plane-triage-2026-05-06 · main=897fd28`
+> **Last updated:** 2026-05-06 (after PR #133 merge; read-only GitHub/Linear control-plane triage)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -18,7 +18,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
 | Phase 1.9 — RFC-001 3D viewport + live bake (W8) | ✅ Done 2026-04-29 (#111-#114) | OpenRadioss → VTU exporter + PyVista viewport + live streaming + Electron live-bake orchestration. |
-| Phase 2 — Web Console hardening | 🟡 Active (ENG-31 done; activation still gated) | Frontend build-smoke restoration landed in PR #121. Phase 2 activation still depends on governance/workflow gates. |
+| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed; next implementation now requires an agent-eligible Linear issue contract and stale-PR cleanup before more automation. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
 ---
@@ -58,7 +58,16 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == a5c3dc4` (post FF-09 PR #132 merge, 2026-05-06).
+`main == origin/main == 897fd28` (post FF-09 STATE closeout PR #133 merge, 2026-05-06).
+
+2026-05-06 pre-WF-01 Linear discover readback:
+
+- `eligible_count = 0`.
+- Remaining queued GS101 issues ENG-24..ENG-30 are not agent-eligible because they lack repository, acceptance, boundaries, and evidence_required fields.
+- ENG-11 / ENG-20 / ENG-21 / ENG-13..15 are in Pending Review but still lack executable issue contracts.
+- Next business-code work should first create or refresh one bounded Linear contract; do not infer acceptance criteria from stale PR bodies.
+
+WF-01 / ENG-34 was then created as the bounded control-plane triage issue for this STATE refresh and the approved stale closure/verification path (#116 and #103). Post-creation discover readback returns `eligible_count = 1` with ENG-34 as the only eligible issue.
 
 ---
 
@@ -74,6 +83,11 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | #130 | `codex/ff-07-state-closeout` | MERGED 2026-05-06 · FF-07 closeout | Verified `trailer-check` as a required branch-protection context on a follow-up PR and refreshed repo state. |
 | #131 | `codex/ff-08-gs-registry-validation` | MERGED 2026-05-06 · FF-08 / ENG-17 | Landed HF3 golden-sample registry validator and `golden-samples-validation`; branch protection now requires the check. Old #28 closed as superseded. |
 | #132 | `codex/ff-09-readme-adr-routing-sync` | MERGED 2026-05-06 · FF-09 / ENG-18 | Synced README, ADR-011, and `docs/governance/` with current Codex-primary workflow truth. Old #26 closed as superseded. |
+| #133 | `codex/ff-09-state-closeout` | MERGED 2026-05-06 · FF-09 closeout | Refreshed STATE after #132 and confirmed no active Codex Foundation-Freeze PRs. |
+| #117 | `codex/ENG-16-hf5-commit-trailers` | CLOSED · superseded by #129 | Old draft duplicate; do not reopen. |
+| #118 | `codex/ENG-17-hf3-gs-registry` | CLOSED · superseded by #131 | Old draft duplicate; do not reopen. |
+| #120 | `codex/ENG-18-routing-sync-plan` | CLOSED · superseded by #132 | Old draft duplicate; do not reopen. |
+| #116 | `codex/ENG-11-github-sync-probe` | CLOSED 2026-05-06 · superseded by WF-00 / #127-#133 | Empty workflow probe; actual Codex-primary workflow proof now lives in the merged governance path. |
 
 ### Active Codex Foundation-Freeze PRs
 
@@ -81,18 +95,14 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 |----|--------|--------|-------|
 | — | — | None | FF-07/08/09 governance closeout path is complete. |
 
-### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
+### Remaining Codex/ENG-* draft backlog (blocked, no current merge path)
 
-| PR | Linear | Title |
-|----|--------|-------|
-| #115 | ENG-23 | GS-101 pre-gate ballistic candidate tooling |
-| #116 | ENG-11 | GitHub sync live probe |
-| #117 | ENG-16 | HF5 commit trailer enforcement (overlaps FF-07) |
-| #118 | ENG-17 | HF3 golden-sample registry validation (overlaps FF-08) |
-| #119 | ENG-20 | Plan viewport screenshot storyboard hook |
-| #120 | ENG-18 | Plan README/ADR v6.3 routing sync (overlaps FF-09) |
+| PR | Linear | Status | Triage |
+|----|--------|--------|--------|
+| #115 | ENG-23 | OPEN DRAFT · behind main · failing `calibration-cap-check` | Real GS-101-adjacent code; possible salvage only after ENG-22/GS101 contract is made agent-eligible and PR body/checks are refreshed. Do not merge as-is. |
+| #119 | ENG-20 | OPEN DRAFT · docs-only plan · behind main · failing `calibration-cap-check` | Useful planning material may be copied into a future issue, but the PR is not a merge target as-is. Recommended close or refresh under a new issue contract. |
 
-All 6 fail `calibration-cap-check` for the same reason as #121's first failure (no `## Self-pass-rate` section). Triage decision pending: keep ENG-16/17/18 as supersedes for FF-07/08/09 and close FF-* duplicates, OR vice versa.
+All remaining drafts fail `calibration-cap-check` because their PR bodies predate the enforced `## Self-pass-rate` section. Treat these as backlog evidence, not active implementation branches.
 
 ### Phase 1.5 governance backlog (still relevant, needs body+Codex refresh)
 
@@ -114,7 +124,7 @@ All 6 fail `calibration-cap-check` for the same reason as #121's first failure (
 
 | PR | Branch | Status |
 |----|--------|--------|
-| #103 | `feature/RFC-001-W6e-model-overview` | OPEN · UNKNOWN mergeable · subsumed by #109 (`407436e`) and #110 (`aa66ed1`) which both merged. **Recommended: close as stale.** |
+| #103 | `feature/RFC-001-W6e-model-overview` | CLOSED · subsumed by #109 (`407436e`) and #110 (`aa66ed1`) which both merged; stale state verified on 2026-05-06, no action needed. |
 
 ### Pre-pivot P1-* (4-18, predates ADR-011 routing contract)
 
@@ -156,11 +166,11 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 
 ## Carry-overs (still open)
 
-1. **Foundation-Freeze governance gate path**: FF-07/08/09 are merged, old #26/#28 are closed, ENG-17/18 are Done, and required checks now include `trailer-check` + `golden-samples-validation`. Next work should choose a non-governance issue from the remaining backlog unless the user explicitly asks for mirror cleanup.
-2. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
-3. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
+1. **Foundation-Freeze governance gate path**: FF-07/08/09 are merged, old #26/#27/#28 and draft duplicates #117/#118/#120 are closed, ENG-17/18 are Done, and required checks now include `trailer-check` + `golden-samples-validation`. Workflow gates are reliable enough to select a next issue, but the current Linear backlog has no agent-eligible contract.
+2. **Codex/ENG-* DRAFT lane**: remaining open drafts are ENG-20 (#119 planning doc) and ENG-23 (#115 real GS-101-adjacent code). Recommended: close or refresh #119 under a new issue; keep #115 only if ENG-22/GS101 acceptance is explicitly contracted.
+3. **Pre-pivot P1-* (#11-#16) and surrogate stack (#30/#36/#37)** disposition deferred since 2026-04-25. These PRs predate ADR-011/012/013 and should not be merged without a separate Codex-owned triage/rebuild issue.
 4. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-5. **ENG-33 AERON L0 protocol salvage**: Done via PR #128. PR #126 is closed as blocked/superseded. Further AERON work must proceed through Codex-owned Linear issues/PRs after workflow gates are reliable.
+5. **ENG-33 AERON L0 protocol salvage**: Done via PR #128. PR #126 is closed as blocked/superseded. Recommended next AERON step is adapter adoption through a new Codex-owned Linear issue with explicit repository, acceptance, boundaries, and evidence_required fields.
 
 ---
 
