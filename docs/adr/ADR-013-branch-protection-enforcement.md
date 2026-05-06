@@ -31,7 +31,9 @@ Every PR is opened from a template that:
 
 The template is only a *prompt*; the actual enforcement is in Layer 2.
 
-### Layer 2 — CI workflow (`.github/workflows/calibration-cap-check.yml`)
+### Layer 2 — CI workflows
+
+#### Calibration cap check (`.github/workflows/calibration-cap-check.yml`)
 
 Triggered on every `pull_request` event (`opened` / `edited` / `synchronize` / `reopened`):
 
@@ -41,11 +43,22 @@ Triggered on every `pull_request` event (`opened` / `edited` / `synchronize` / `
 
 Result: a PR whose body claims 80% while the formula says 30% fails CI. The author cannot fix this by editing the body to a higher number — only by either correcting downward to ≤ ceiling or by adding R1=APPROVE entries to `calibration_state.json` (which requires merging clean PRs first, which require Codex review, which is the whole point).
 
+#### HF5 trailer check (`.github/workflows/trailer-check.yml`)
+
+FF-07 adds a `pull_request_target` workflow that runs from trusted `main`, checks out the PR head as git data only, and runs `scripts/check_commit_trailers.py` from trusted `main`. It validates:
+
+1. `Execution-by: codex-primary` presence and exact value.
+2. `Linear-Issue: ENG-<id>` presence and format.
+3. `Reviewed-by: claude-opus47 APPROVE <proof-ref>` when the trusted calibration state says review is mandatory.
+4. `Codex-verified: <claim-id>@<7-40 hex sha>` presence and format for the HF5 claim-proof path.
+
+This is intentionally prospective: the FF-07 bootstrap PR lands the workflow and validator, then the trusted-main workflow applies to subsequent PRs.
+
 ### Layer 3 — GitHub branch protection (`scripts/apply_branch_protection.sh`)
 
 A protection ruleset on `main` requires:
 
-- **`required_status_checks`** = `["lint-and-test (3.11)", "calibration-cap-check"]` with `strict: true` (PR must be up-to-date with main before merge).
+- **`required_status_checks`** = `["lint-and-test (3.11)", "calibration-cap-check", "trailer-check"]` with `strict: true` (PR must be up-to-date with main before merge).
 - **`required_linear_history`** = `true` — squash-only style, no merge commits.
 - **`allow_force_pushes`** = `false`, **`allow_deletions`** = `false` — protect against accidental destruction of main.
 - **`required_conversation_resolution`** = `true` — Codex review threads must be resolved.
@@ -68,15 +81,17 @@ Any T1 merge that violates this contract is a P0 procedural failure and triggers
 |---|---|
 | `.github/PULL_REQUEST_TEMPLATE.md` | Layer 1 — PR template |
 | `.github/workflows/calibration-cap-check.yml` | Layer 2 — CI claim-vs-ceiling check |
+| `.github/workflows/trailer-check.yml` | Layer 2 — HF5 commit-trailer check |
 | `scripts/extract_pr_self_pass_rate.py` | Layer 2 — PR body parser (16 unit tests) |
+| `scripts/check_commit_trailers.py` | Layer 2 — trusted commit-trailer validator |
 | `scripts/apply_branch_protection.sh` | Layer 3 — idempotent protection setup |
 | `docs/adr/ADR-013-branch-protection-enforcement.md` | This doc |
 
 ## Activation sequence
 
 1. **Land this PR via Codex R1=APPROVE.** Layers 1 and 2 take effect on merge (template applies to subsequent PRs; CI workflow runs on subsequent PRs).
-2. **T0 runs** `bash scripts/apply_branch_protection.sh` once after merge. Layer 3 takes effect immediately; from this moment forward, no merge to main can land without `lint-and-test (3.11)` + `calibration-cap-check` both green.
-3. **Subsequent PRs** open from the new template; the calibration-cap-check workflow validates each automatically.
+2. **T0 runs** `bash scripts/apply_branch_protection.sh` once after merge. Layer 3 takes effect immediately; from this moment forward, no merge to main can land without `lint-and-test (3.11)` + `calibration-cap-check` + `trailer-check` all green.
+3. **Subsequent PRs** open from the new template; the calibration-cap-check and trailer-check workflows validate each automatically.
 
 The bootstrap PR for ADR-013 itself (this PR) is NOT subject to Layer 2 yet because the workflow file lands as part of this PR — GitHub doesn't run workflow files that don't exist on the base branch yet. ADR-012's PR (#24) is also NOT subject to Layer 2 for the same reason. **Both PRs land under Layer 0 (no enforcement) but are required by ADR-012/AR-2026-04-25-001 §1 to reach Codex R1=APPROVE before merge** — the discipline binding above applies retroactively to the same session that authored these ADRs.
 
@@ -84,8 +99,8 @@ The bootstrap PR for ADR-013 itself (this PR) is NOT subject to Layer 2 yet beca
 
 **Intended:**
 
-- T1's mechanical ceiling becomes physically enforced at PR-merge time once Layer 3 is on. CI red blocks merge.
-- Layer 1 + 2 produce a clear paper trail: every PR body declares a ceiling; CI validates it; the validation result is part of the PR's check history.
+- T1's mechanical ceiling becomes physically enforced at PR-merge time once Layer 3 is on. HF5 trailer discipline is physically enforced for PR commits before merge; the final squash commit remains a merge-operator responsibility.
+- Layer 1 + 2 produce a clear paper trail: every PR body declares a ceiling; CI validates it; every PR commit carries execution/work-control/review/claim trailers where required; the PR template carries the merge-trailer block that must be used for the squash commit.
 - Layer 3 prevents accidental force-push or deletion of main (defense against the same class of error that produced PR #20's revert).
 - The discipline binding turns the residual admin-bypass into a documented retro-eligible event rather than a silent loophole.
 

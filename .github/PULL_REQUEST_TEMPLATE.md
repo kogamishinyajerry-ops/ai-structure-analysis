@@ -50,6 +50,15 @@ when applicable. Tick any that fire:
 - [ ] *(if applicable)* hot-smoke / hand-tested in a real workflow
 - [ ] Codex pre-merge review *(if BLOCKING/MANDATORY or any M1-M5 triggered)*
 
+## Merge trailers <!-- REQUIRED when FF-07 is active -->
+
+```text
+Execution-by: codex-primary
+Codex-verified: <claim-id>@<7-40 hex sha>
+Reviewed-by: claude-opus47 APPROVE <verdict-or-proof-ref>
+Linear-Issue: ENG-<id>
+```
+
 ## Out of scope
 
 <!-- What this PR explicitly does NOT do, to prevent scope creep reviews. -->

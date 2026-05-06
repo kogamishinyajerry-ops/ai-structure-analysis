@@ -1,0 +1,73 @@
+name: Trailer Check (FF-07 / HF5)
+
+# Runs from the base branch via pull_request_target. The workflow executes
+# only the validator from trusted main and treats the PR checkout as git data.
+# This closes the PR-controlled validator bypass found in PR #27 R1.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  trailer-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+
+      - name: Checkout PR head as untrusted git data
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch trusted base commit into candidate repo
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git -C candidate remote add base "https://github.com/${BASE_REPO}.git"
+          git -C candidate fetch --no-tags --depth=1 base "${BASE_SHA}"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compute review gate from trusted main
+        id: calibration
+        working-directory: trusted
+        run: |
+          set -euo pipefail
+          OUTPUT=$(python3 scripts/compute_calibration_cap.py)
+          MANDATORY=$(echo "$OUTPUT" | python3 -c "import json,sys;print(str(json.load(sys.stdin)['mandatory_codex']).lower())")
+          GATE=$(echo "$OUTPUT" | python3 -c "import json,sys;print(json.load(sys.stdin)['gate_label'])")
+          echo "mandatory=$MANDATORY" >> "$GITHUB_OUTPUT"
+          echo "gate=$GATE" >> "$GITHUB_OUTPUT"
+          echo "Review gate: ${GATE}; require Reviewed-by trailer: ${MANDATORY}"
+
+      - name: Validate PR commit trailers with trusted validator
+        working-directory: candidate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REQUIRE_REVIEWED_BY: ${{ steps.calibration.outputs.mandatory }}
+        run: |
+          set -euo pipefail
+          args=(--range "${BASE_SHA}..${HEAD_SHA}" --require-codex-verified)
+          if [[ "${REQUIRE_REVIEWED_BY}" == "true" ]]; then
+            args+=(--require-reviewed-by)
+          fi
+          python3 ../trusted/scripts/check_commit_trailers.py "${args[@]}"
