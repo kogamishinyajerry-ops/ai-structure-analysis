@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional
 
 from ..parsers.frd_parser import FRDParser
 from ..services.report_generator import ReportGenerator
@@ -14,9 +13,9 @@ from .knowledge_store import GoldenSampleKnowledgeStore
 from .project_state import ProjectStateStore
 from .schemas import (
     ArtifactRecord,
+    HandoffPacket,
     HarnessRunRecord,
     HarnessRunStatus,
-    HandoffPacket,
     VerificationFinding,
     VerificationReport,
 )
@@ -27,11 +26,11 @@ class WellHarnessRunner:
 
     def __init__(
         self,
-        executor: Optional[StructuralExecutor] = None,
-        store: Optional[GoldenSampleKnowledgeStore] = None,
-        report_generator: Optional[ReportGenerator] = None,
-        state_store: Optional[ProjectStateStore] = None,
-        sync_builder: Optional[ControlPlaneSyncBuilder] = None,
+        executor: StructuralExecutor | None = None,
+        store: GoldenSampleKnowledgeStore | None = None,
+        report_generator: ReportGenerator | None = None,
+        state_store: ProjectStateStore | None = None,
+        sync_builder: ControlPlaneSyncBuilder | None = None,
         stress_tolerance: float = 0.35,
     ) -> None:
         self._executor = executor or ReplayExecutor()
@@ -41,7 +40,7 @@ class WellHarnessRunner:
         self._sync_builder = sync_builder or ControlPlaneSyncBuilder()
         self._stress_tolerance = stress_tolerance
 
-    def run_cases(self, case_ids: List[str]) -> List[HarnessRunRecord]:
+    def run_cases(self, case_ids: list[str]) -> list[HarnessRunRecord]:
         return [self.run_case(case_id) for case_id in case_ids]
 
     def run_case(self, case_id: str) -> HarnessRunRecord:
@@ -50,7 +49,12 @@ class WellHarnessRunner:
         state_dir = self._state_store.run_dir(case_id, run_id)
         task_spec = self._store.build_task_spec(case_id)
 
-        execution = self._executor.execute(case_id, task_spec, self._store)
+        execution = self._executor.execute(
+            case_id,
+            task_spec,
+            self._store,
+            work_dir=state_dir / "executor",
+        )
         if not execution.success:
             run_record = HarnessRunRecord(
                 run_id=run_id,
@@ -77,7 +81,13 @@ class WellHarnessRunner:
                 ),
             )
             run_record.project_state_dir = str(state_dir)
-            run_record.artifacts = [ArtifactRecord("project_state", str(state_dir), "Persisted run state directory")]
+            run_record.artifacts = [
+                ArtifactRecord(
+                    "project_state",
+                    str(state_dir),
+                    "Persisted run state directory",
+                )
+            ]
             run_record.handoff = self._build_handoff(run_record)
             self._persist(run_record)
             return run_record
@@ -86,7 +96,12 @@ class WellHarnessRunner:
         parsed = parser.parse(execution.frd_path)
         report = self._report_generator.generate(parsed, case_id=case_id)
         verification = self._verify_case(case_id, parsed.max_von_mises, report.validation)
-        status = self._resolve_status(execution.success, parsed.success, verification, report.validation)
+        status = self._resolve_status(
+            execution.success,
+            parsed.success,
+            verification,
+            report.validation,
+        )
 
         artifacts = self._build_artifacts(case_id, execution.frd_path, state_dir)
         run_record = HarnessRunRecord(
@@ -115,11 +130,20 @@ class WellHarnessRunner:
         sync_plan = self._sync_builder.build(run_record)
         self._state_store.persist(run_record, sync_plan)
 
-    def _build_artifacts(self, case_id: str, frd_path: str, state_dir: Path) -> List[ArtifactRecord]:
+    def _build_artifacts(
+        self,
+        case_id: str,
+        frd_path: str,
+        state_dir: Path,
+    ) -> list[ArtifactRecord]:
         expected_path = self._store.case_dir(case_id) / "expected_results.json"
         artifacts = [
             ArtifactRecord("result_frd", frd_path, "Primary FRD result consumed by the harness"),
-            ArtifactRecord("expected_results", str(expected_path), "Golden sample reference payload"),
+            ArtifactRecord(
+                "expected_results",
+                str(expected_path),
+                "Golden sample reference payload",
+            ),
             ArtifactRecord("project_state", str(state_dir), "Persisted run state directory"),
         ]
         input_file = self._store.find_input_file(case_id)
@@ -132,10 +156,10 @@ class WellHarnessRunner:
     def _verify_case(
         self,
         case_id: str,
-        actual_stress: Optional[float],
+        actual_stress: float | None,
         validation: dict,
     ) -> VerificationReport:
-        findings: List[VerificationFinding] = []
+        findings: list[VerificationFinding] = []
         reference_stress, source = self._store.resolve_reference_stress(case_id)
 
         if actual_stress is None:
@@ -149,7 +173,11 @@ class WellHarnessRunner:
             )
 
         if reference_stress is not None and actual_stress is not None:
-            relative_error = abs(actual_stress - reference_stress) / reference_stress if reference_stress else 0.0
+            relative_error = (
+                abs(actual_stress - reference_stress) / reference_stress
+                if reference_stress
+                else 0.0
+            )
             severity = "warning" if relative_error > self._stress_tolerance else "info"
             findings.append(
                 VerificationFinding(
@@ -176,7 +204,10 @@ class WellHarnessRunner:
         if not findings:
             summary = "Automation completed without reference-side findings."
         elif blocking:
-            summary = "Automation completed, but the case requires human review before control-plane closure."
+            summary = (
+                "Automation completed, but the case requires human review before "
+                "control-plane closure."
+            )
         else:
             summary = "Automation completed and reference checks stayed within tolerance."
 
@@ -202,30 +233,46 @@ class WellHarnessRunner:
 
     def _build_handoff(self, run_record: HarnessRunRecord) -> HandoffPacket:
         risks = [
-            item.title for item in run_record.verification.findings if item.severity in {"warning", "critical"}
+            item.title
+            for item in run_record.verification.findings
+            if item.severity in {"warning", "critical"}
         ]
         if run_record.executor.is_replay:
-            risks.append("run used replay_executor and did not launch a fresh CalculiX solve")
+            risks.append(
+                f"run used {run_record.executor.executor_name} replay/dummy mode and did not "
+                "launch a fresh signed CalculiX validation solve"
+            )
         if not risks:
             risks = ["no blocking risk detected by automation"]
 
         next_steps = []
         if run_record.status == HarnessRunStatus.PENDING_REVIEW:
-            next_steps.append("Review project_state artifacts and decide whether to accept the current benchmark drift.")
+            next_steps.append(
+                "Review project_state artifacts and decide whether to accept the current "
+                "benchmark drift."
+            )
         if run_record.status == HarnessRunStatus.FAILED:
-            next_steps.append("Inspect executor logs and rerun the case after fixing the blocking issue.")
+            next_steps.append(
+                "Inspect executor logs and rerun the case after fixing the blocking issue."
+            )
         if run_record.status == HarnessRunStatus.COMPLETED:
-            next_steps.append("Attach the run bundle to the active Notion/GitHub control-plane record.")
-        next_steps.append("Use control_plane_sync.json as the deterministic payload for external connectors.")
+            next_steps.append(
+                "Attach the run bundle to the active Notion/GitHub control-plane record."
+            )
+        next_steps.append(
+            "Use control_plane_sync.json as the deterministic payload for external connectors."
+        )
 
         return HandoffPacket(
             did_what=(
-                f"Ran well-harness for {run_record.case_id}, parsed the FRD result, generated a report, "
-                "evaluated it against golden-sample references, and persisted a project_state bundle."
+                f"Ran well-harness for {run_record.case_id}, parsed the FRD result, "
+                "generated a report, evaluated it against golden-sample references, and "
+                "persisted a project_state bundle."
             ),
             did_not_do=(
-                "Did not auto-write back to Notion or GitHub because this repository currently generates "
-                "connector-ready payloads rather than issuing live API mutations."
+                "Did not auto-write back to Notion or GitHub because this repository "
+                "currently generates connector-ready payloads rather than issuing live "
+                "API mutations."
             ),
             risks=risks,
             next_steps=next_steps,
@@ -234,9 +281,9 @@ class WellHarnessRunner:
 
     @staticmethod
     def _iso_now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     @staticmethod
     def _make_run_id(case_id: str) -> str:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         return f"{case_id.lower().replace('-', '_')}_{timestamp}"

@@ -76,6 +76,16 @@ export NOTION_API_KEY="your-integration-token"
 python run_well_harness.py GS-001 GS-002 GS-003
 ```
 
+For the current AERON-backed graph adoption smoke, run without external writes:
+
+```bash
+python run_well_harness.py GS-001 --executor graph --no-notion-sync
+```
+
+This mode exercises the LangGraph path and AERON CalculiX backend boundary, but
+it is still replay/dummy execution. Treat its output as an integration smoke and
+project_state bundle, not as GS101 or signed validation evidence.
+
 See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
 
 ## Development Rules

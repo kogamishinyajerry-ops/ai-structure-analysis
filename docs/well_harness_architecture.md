@@ -61,3 +61,12 @@ python3 run_well_harness.py GS-001 GS-002 GS-003
 ```bash
 run-well-harness GS-001 GS-002 GS-003
 ```
+
+AERON 图路径冒烟可使用：
+
+```bash
+python3 run_well_harness.py GS-001 --executor graph --no-notion-sync
+```
+
+`graph` 执行器会通过 LangGraph 和 AERON CalculiX backend 边界，但它仍是
+replay/dummy 模式，不代表 fresh CalculiX solve、GS101 或 signed validation。

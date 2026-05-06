@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from .executors import CalculixExecutor, ReplayExecutor
+from .executors import CalculixExecutor, GraphExecutor, ReplayExecutor
 from .notion_sync import NotionRunRegistrar
 from .task_runner import WellHarnessRunner
 
@@ -16,16 +16,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the structure-analysis well-harness on one or more golden samples.",
     )
-    parser.add_argument("case_ids", nargs="+", help="Golden sample case ids, for example GS-001 GS-002")
+    parser.add_argument(
+        "case_ids",
+        nargs="+",
+        help="Golden sample case ids, for example GS-001 GS-002",
+    )
     parser.add_argument(
         "--executor",
-        choices=("replay", "calculix"),
+        choices=("replay", "calculix", "graph"),
         default="replay",
         help="Executor surface to use for the run",
     )
     parser.add_argument(
         "--control-plane-config",
-        default=str(Path(__file__).resolve().parents[3] / "config" / "well_harness_control_plane.yaml"),
+        default=str(
+            Path(__file__).resolve().parents[3] / "config" / "well_harness_control_plane.yaml"
+        ),
         help="Path to the project-scoped control plane config file.",
     )
     parser.add_argument(
@@ -48,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    executor = ReplayExecutor() if args.executor == "replay" else CalculixExecutor()
+    executor = _build_executor(args.executor)
     runner = WellHarnessRunner(executor=executor)
     run_records = runner.run_cases(args.case_ids)
 
@@ -79,6 +85,16 @@ def main() -> None:
 def _build_invoked_command(case_ids: list[str], executor_mode: str) -> str:
     joined = " ".join(case_ids)
     return f"python3 run_well_harness.py {joined} --executor {executor_mode}"
+
+
+def _build_executor(executor_mode: str):
+    if executor_mode == "replay":
+        return ReplayExecutor()
+    if executor_mode == "calculix":
+        return CalculixExecutor()
+    if executor_mode == "graph":
+        return GraphExecutor()
+    raise ValueError(f"Unsupported executor mode: {executor_mode}")
 
 
 if __name__ == "__main__":
