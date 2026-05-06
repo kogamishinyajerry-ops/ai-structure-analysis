@@ -40,6 +40,7 @@ Proposed PR body:
 
 - `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md`
 - `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`
+- `reports/codex_tool_reports/pr127_wf00_claude_opus_governance_audit.md`
 - Current calibration cap: 50%, independent review mandatory.
 
 ## Self-pass-rate (mechanically derived)

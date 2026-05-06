@@ -69,7 +69,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
 | #126 | `claude/L0-protocol` | OPEN · CI green · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Rewrite governance in Codex-owned PR, then salvage AERON protocol code separately. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
-| #127 | `codex/wf-00-codex-primary-pilot` | OPEN · CI in progress · Codex-owned governance PR for ENG-32 | Establishes Codex-primary governance patch and WF-00 evidence. No auto-merge; review remains mandatory at 50% calibration. |
+| #127 | `codex/wf-00-codex-primary-pilot` | OPEN · CI green · Claude Opus governance audit APPROVE · Codex-owned governance PR for ENG-32 | Establishes Codex-primary governance patch and WF-00 evidence. No auto-merge; review remains mandatory at 50% calibration. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
