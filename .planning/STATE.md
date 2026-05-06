@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `control-plane-triage-2026-05-06 · main=897fd28`
-> **Last updated:** 2026-05-06 (after PR #133 merge; read-only GitHub/Linear control-plane triage)
+> **Stamp:** `aeron-01-closeout-2026-05-06 · main=f087dd4`
+> **Last updated:** 2026-05-06 (after PR #135 merge; ENG-35 Done)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -18,7 +18,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
 | Phase 1.9 — RFC-001 3D viewport + live bake (W8) | ✅ Done 2026-04-29 (#111-#114) | OpenRadioss → VTU exporter + PyVista viewport + live streaming + Electron live-bake orchestration. |
-| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed; next implementation now requires an agent-eligible Linear issue contract and stale-PR cleanup before more automation. |
+| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed. AERON-01 landed the first concrete AERON L0 backend adapter in PR #135; next implementation should wire that backend into exactly one caller path through a new agent-eligible Linear issue. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
 ---
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == 897fd28` (post FF-09 STATE closeout PR #133 merge, 2026-05-06).
+`main == origin/main == f087dd4` (post AERON-01 / ENG-35 PR #135 merge, 2026-05-06).
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
@@ -68,6 +68,14 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 - Next business-code work should first create or refresh one bounded Linear contract; do not infer acceptance criteria from stale PR bodies.
 
 WF-01 / ENG-34 was then created as the bounded control-plane triage issue for this STATE refresh and the approved stale closure/verification path (#116 and #103). Post-creation discover readback returns `eligible_count = 1` with ENG-34 as the only eligible issue.
+
+AERON-01 / ENG-35 then created and landed the first concrete AERON L0 backend adapter:
+
+- PR #135 added `aeron.drivers.CalculiXFEABackend`.
+- `solve(..., dry_run=True)` does not invoke `ccx`.
+- Non-dry-run `solve()` delegates to the existing `tools.calculix_driver.run_solve()`.
+- `parse_results()` exposes raw output paths and metadata without derived engineering quantities.
+- ENG-35 is Done with `verify:passed`.
 
 ---
 
@@ -84,6 +92,8 @@ WF-01 / ENG-34 was then created as the bounded control-plane triage issue for th
 | #131 | `codex/ff-08-gs-registry-validation` | MERGED 2026-05-06 · FF-08 / ENG-17 | Landed HF3 golden-sample registry validator and `golden-samples-validation`; branch protection now requires the check. Old #28 closed as superseded. |
 | #132 | `codex/ff-09-readme-adr-routing-sync` | MERGED 2026-05-06 · FF-09 / ENG-18 | Synced README, ADR-011, and `docs/governance/` with current Codex-primary workflow truth. Old #26 closed as superseded. |
 | #133 | `codex/ff-09-state-closeout` | MERGED 2026-05-06 · FF-09 closeout | Refreshed STATE after #132 and confirmed no active Codex Foundation-Freeze PRs. |
+| #134 | `codex/control-plane-triage-state` | MERGED 2026-05-06 · WF-01 / ENG-34 | Refreshed control-plane stale PR triage after #133; ENG-34 Done. |
+| #135 | `codex/ENG-35-aeron-calculix-backend` | MERGED 2026-05-06 · AERON-01 / ENG-35 | Adds `aeron.drivers.CalculiXFEABackend`, the first concrete AERON L0 backend adapter. No protocol/schema/driver/golden-sample changes. |
 | #117 | `codex/ENG-16-hf5-commit-trailers` | CLOSED · superseded by #129 | Old draft duplicate; do not reopen. |
 | #118 | `codex/ENG-17-hf3-gs-registry` | CLOSED · superseded by #131 | Old draft duplicate; do not reopen. |
 | #120 | `codex/ENG-18-routing-sync-plan` | CLOSED · superseded by #132 | Old draft duplicate; do not reopen. |
@@ -170,7 +180,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 2. **Codex/ENG-* DRAFT lane**: remaining open drafts are ENG-20 (#119 planning doc) and ENG-23 (#115 real GS-101-adjacent code). Recommended: close or refresh #119 under a new issue; keep #115 only if ENG-22/GS101 acceptance is explicitly contracted.
 3. **Pre-pivot P1-* (#11-#16) and surrogate stack (#30/#36/#37)** disposition deferred since 2026-04-25. These PRs predate ADR-011/012/013 and should not be merged without a separate Codex-owned triage/rebuild issue.
 4. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-5. **ENG-33 AERON L0 protocol salvage**: Done via PR #128. PR #126 is closed as blocked/superseded. Recommended next AERON step is adapter adoption through a new Codex-owned Linear issue with explicit repository, acceptance, boundaries, and evidence_required fields.
+5. **AERON L0 adoption**: ENG-33 / PR #128 salvaged the protocol package; ENG-35 / PR #135 landed the first concrete `CalculiXFEABackend`. Recommended next AERON step is to wire this backend into exactly one caller path through a new Codex-owned Linear issue with explicit repository, acceptance, boundaries, and evidence_required fields. Do not start GS101 or signed-validation work from this adapter landing.
 
 ---
 
