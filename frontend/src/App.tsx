@@ -86,8 +86,20 @@ interface OperatorStatusItem {
   tone?: 'accent' | 'warning' | 'muted';
 }
 
+type JobStatus = 'idle' | 'starting' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'stopped' | 'connection_lost';
+
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
+
+const SOLVER_FAILURE_MARKERS = [
+  'System Error:',
+  'Solver exited with code:',
+  'Error: Job not found',
+  'Socket Error:',
+];
+
+const isSolverFailureLog = (message: string) =>
+  SOLVER_FAILURE_MARKERS.some(marker => message.includes(marker));
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -106,7 +118,7 @@ function App() {
   const [showConsole, setShowConsole] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
-  const [currentJobStatus, setCurrentJobStatus] = useState<'idle' | 'starting' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'connection_lost'>('idle');
+  const [currentJobStatus, setCurrentJobStatus] = useState<JobStatus>('idle');
   const [currentJobAnalysis, setCurrentJobAnalysis] = useState<'static' | 'modal' | 'buckling'>('static');
   const [activeExperiment, setActiveExperiment] = useState<ExperimentStatus | null>(null);
   const [comparedIndices, setComparedIndices] = useState<[number, number] | null>(null);
@@ -130,6 +142,9 @@ function App() {
   }, [logs]);
 
   const clearJobContext = () => {
+    setSolving(false);
+    setLogs([]);
+    setShowConsole(false);
     setCurrentJobId(null);
     setCurrentJobStatus('idle');
     setCurrentJobAnalysis(analysisType);
@@ -222,12 +237,20 @@ function App() {
           num_modes: 5
         }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof data.detail === 'string' ? data.detail : `HTTP ${response.status}`;
+        setLogs(prev => [...prev, `[ERROR] Solver start failed: ${detail}`]);
+        setCurrentJobStatus('failed');
+        setSolving(false);
+        return;
+      }
       if (data.job_id) {
         setCurrentJobId(data.job_id);
         setCurrentJobStatus('running');
         connectToLogs(data.job_id);
       } else {
+        setLogs(prev => [...prev, "[ERROR] Solver start failed: missing job id"]);
         setCurrentJobStatus('failed');
         setSolving(false);
       }
@@ -268,21 +291,45 @@ function App() {
     setCurrentJobStatus('stop_requested');
     
     try {
-      await fetch(`${API_BASE}/solver/stop/${currentJobId}`, { method: 'POST' });
+      const response = await fetch(`${API_BASE}/solver/stop/${currentJobId}`, { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const detail = typeof data.detail === 'string' ? `: ${data.detail}` : '';
+        setLogs(prev => [...prev, `[SYSTEM] Stop request failed${detail}`]);
+        setCurrentJobStatus('failed');
+        setSolving(false);
+        return;
+      }
+      setLogs(prev => [...prev, "[SYSTEM] Stop request accepted."]);
+      setCurrentJobStatus('stopped');
+      setSolving(false);
     } catch (err) {
       console.error("Stop failed", err);
+      setLogs(prev => [...prev, "[SYSTEM] Stop request failed"]);
       setCurrentJobStatus('failed');
+      setSolving(false);
     }
   };
 
   const connectToLogs = (jobId: string) => {
     const ws = new WebSocket(`${WS_BASE}/solver/ws/logs/${jobId}`);
     ws.onmessage = (event) => {
-      setLogs(prev => [...prev, event.data]);
-      if (event.data.includes("--- Process Finished")) {
+      const message = event.data;
+      setLogs(prev => [...prev, message]);
+      if (isSolverFailureLog(message)) {
         setSolving(false);
-        setCurrentJobStatus(event.data.includes("status: COMPLETED") ? 'completed' : 'failed');
-        if (event.data.includes("status: COMPLETED")) {
+        setCurrentJobStatus('failed');
+        return;
+      }
+      if (message.includes("[SYSTEM] Job terminated")) {
+        setSolving(false);
+        setCurrentJobStatus('stopped');
+        return;
+      }
+      if (message.includes("--- Process Finished")) {
+        setSolving(false);
+        setCurrentJobStatus(message.includes("status: COMPLETED") ? 'completed' : 'failed');
+        if (message.includes("status: COMPLETED")) {
             setTimeout(() => {
                 if (activeCaseId) {
                    const matchedCase = availableCases.find(c => c.id === activeCaseId);
@@ -391,6 +438,11 @@ function App() {
   const backendProvenance = currentJobId
     ? `Existing /solver/run CalculiX path, job ${currentJobId}; software-path evidence only`
     : 'AERON L0 / CalculiX path awaits a solver job response';
+  const runStateTone = solving || activeExperiment
+    ? 'accent'
+    : currentJobStatus === 'failed' || currentJobStatus === 'connection_lost'
+      ? 'warning'
+      : 'muted';
   const nextAction = solving
     ? 'Watch the solver console or stop the job; do not promote evidence'
     : loading
@@ -409,7 +461,7 @@ function App() {
     { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
     { label: 'Analysis mode', value: analysisModeLabel },
     { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
-    { label: 'Run state', value: runState, tone: solving || activeExperiment ? 'accent' : 'muted' },
+    { label: 'Run state', value: runState, tone: runStateTone },
     { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
     { label: 'Backend provenance', value: backendProvenance },
     { label: 'Latest event', value: latestEvent },
