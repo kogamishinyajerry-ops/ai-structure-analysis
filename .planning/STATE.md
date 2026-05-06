@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `eng44-fm01-candidate-acceptance-packet-2026-05-07 · main=f133f5a`
-> **Last updated:** 2026-05-07 (after ENG-43 PR #147 merge; ENG-44/FM-01 candidate packet branch opened)
+> **Stamp:** `eng45-fm01-solver-failure-recovery-2026-05-07 · main=9d77042`
+> **Last updated:** 2026-05-07 (after ENG-44 PR #148 merge; ENG-45/FM-01 polish branch opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`origin/main == f133f5a` (post ENG-43 PR #147 merge, 2026-05-07).
+`origin/main == 9d77042` (post ENG-44 PR #148 merge, 2026-05-07).
 
 ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 
@@ -84,10 +84,15 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 - ENG-43 / FM-01 merged in PR #147 at `f133f5a`. It added current solver job
   id/status, active analysis mode, and software-path backend provenance to the
   operator shell from existing frontend session state. Linear ENG-43 is Done.
-- ENG-44 / FM-01 is the active candidate-acceptance packet issue. Branch
-  `codex/ENG-44-fm01-acceptance-packet` starts from `f133f5a` and is limited
-  to preparing repo-local milestone evidence for human experience review.
-  FM-01 is not user-accepted until the human milestone checkpoint records it.
+- ENG-44 / FM-01 merged in PR #148 at `9d77042`. It prepared the repo-local
+  FM-01 candidate acceptance packet for human milestone experience review.
+  FM-01 remains not user-accepted until the human milestone checkpoint records
+  it.
+- ENG-45 / FM-01 polish is active after milestone experience found a recoverable
+  UX defect: a backend solver startup failure can leave the operator shell stuck
+  in `running` / `stop requested` with `Run Solver` disabled. Branch
+  `codex/ENG-45-fm01-solver-failure-recovery` starts from `9d77042` and is
+  limited to frontend state recovery plus repo-local evidence.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
@@ -151,7 +156,7 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
-| — | — | None | ENG-40/FM-01 implementation branch is active but no PR is open yet. |
+| — | — | None | ENG-45/FM-01 polish branch is active but no PR is open yet. |
 
 ### Remaining Codex/ENG-* draft backlog (blocked, no current merge path)
 
