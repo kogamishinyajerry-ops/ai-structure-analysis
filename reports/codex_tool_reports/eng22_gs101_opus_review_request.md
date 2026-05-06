@@ -34,7 +34,7 @@ Return exactly one verdict:
 
 - `APPROVE-CARVEOUT`
 - `REJECT-CARVEOUT`
-- `CHANGES_REQUIRED`
+- `CHANGES-REQUIRED`
 - `BLOCKER`
 
 Use `APPROVE-CARVEOUT` only if all approval checks pass and the approval is limited to the solver-truth carve-out below:
@@ -78,7 +78,7 @@ The current evidence must not support:
 Use this structure:
 
 ```text
-Verdict: APPROVE-CARVEOUT | REJECT-CARVEOUT | CHANGES_REQUIRED | BLOCKER
+Verdict: APPROVE-CARVEOUT | REJECT-CARVEOUT | CHANGES-REQUIRED | BLOCKER
 
 Scope accepted:
 - <one or two bullets>

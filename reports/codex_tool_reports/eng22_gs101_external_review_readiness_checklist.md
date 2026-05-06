@@ -11,6 +11,7 @@ Reviewer must choose exactly one:
 - `APPROVE-CARVEOUT`
 - `REJECT-CARVEOUT`
 - `CHANGES-REQUIRED`
+- `BLOCKER`
 
 Linear state snapshot:
 
@@ -93,7 +94,7 @@ If ENG-22 is approved, start only ENG-24 benchmark-source selection. Do not star
 ENG-22 is ready for external carve-out review.
 
 Decision requested:
-Choose exactly one: APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED.
+Choose exactly one: APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED / BLOCKER.
 
 Evidence:
 - Gate packet: reports/codex_tool_reports/eng22_gs101_validation_gate_packet.md
@@ -115,6 +116,6 @@ No signed GS101, validated physics, steel perforation completion, or public benc
 If approved:
 Start ENG-24 benchmark source selection only.
 
-If rejected or changes-required:
+If rejected, changes-required, or blocker:
 Stop GS101 signed-validation continuation until the blocker is resolved.
 ```

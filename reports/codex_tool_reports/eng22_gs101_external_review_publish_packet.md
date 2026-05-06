@@ -12,6 +12,7 @@ Decision options:
 - `APPROVE-CARVEOUT`
 - `REJECT-CARVEOUT`
 - `CHANGES-REQUIRED`
+- `BLOCKER`
 
 Scope boundary:
 
@@ -65,7 +66,7 @@ Reviewer fills `yes` or `no` and notes. Approval requires all checks to be `yes`
 Reviewer verdict:
 
 ```text
-Verdict: APPROVE-CARVEOUT | REJECT-CARVEOUT | CHANGES-REQUIRED
+Verdict: APPROVE-CARVEOUT | REJECT-CARVEOUT | CHANGES-REQUIRED | BLOCKER
 Required changes before approval:
 - <fill in>
 Allowed next step:
@@ -84,7 +85,7 @@ Do not post unless external writes are explicitly authorized and the ENG-22 revi
 ENG-22 external review packet is ready.
 
 Decision requested:
-APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED.
+APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED / BLOCKER.
 
 Evidence:
 - Gate packet: reports/codex_tool_reports/eng22_gs101_validation_gate_packet.md
@@ -122,7 +123,7 @@ This PR contains repo-local proof and review artifacts only. It does not merge s
 
 ## Decision Requested
 
-External reviewer must choose: APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED.
+External reviewer must choose: APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED / BLOCKER.
 
 ## Evidence Boundary
 
@@ -167,7 +168,7 @@ Forbidden wording:
 Stop line:
 
 - If ENG-22 has not explicitly returned `APPROVE-CARVEOUT`, do not perform external write-back for Linear comments, PR opening, PR comments, Notion updates, or GitHub state changes.
-- If ENG-22 is rejected or changes-required, stop GS101 signed-validation continuation until the blocker is resolved.
+- If ENG-22 is rejected, changes-required, or blocker, stop GS101 signed-validation continuation until the blocker is resolved.
 - Do not enter ENG-24..ENG-30 execution unless ENG-22 is `APPROVE-CARVEOUT`.
 - Do not edit `golden_samples/**`.
 - Do not start signed-grade deck/report work.

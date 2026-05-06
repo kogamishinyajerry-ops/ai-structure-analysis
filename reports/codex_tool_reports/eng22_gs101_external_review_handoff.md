@@ -13,6 +13,7 @@ Please review ENG-22 and explicitly choose one decision:
 1. `APPROVE-CARVEOUT`: CalculiX remains the default structural solver truth, but OpenRadioss may be accepted as solver truth for explicit-dynamics ballistic penetration cases only when benchmark source, deck, runtime artifacts, metrics, tolerances, convergence evidence, and signoff are captured in Linear/GitHub evidence.
 2. `REJECT-CARVEOUT`: OpenRadioss must not be used as solver truth for GS101; GS101 remains demo/candidate only.
 3. `CHANGES-REQUIRED`: ENG-22 packet is not sufficient; reviewer must list the missing evidence or policy change needed before approval.
+4. `BLOCKER`: A hard blocker prevents GS101 signed-validation continuation until it is resolved.
 
 ## Non-Negotiable Evidence Boundary
 
@@ -47,7 +48,7 @@ Before approving ENG-22, reviewer should confirm:
 ENG-22 review handoff prepared repo-locally.
 
 Decision requested:
-Choose one of APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED for the narrow OpenRadioss explicit-dynamics ballistic solver-truth carve-out.
+Choose one of APPROVE-CARVEOUT / REJECT-CARVEOUT / CHANGES-REQUIRED / BLOCKER for the narrow OpenRadioss explicit-dynamics ballistic solver-truth carve-out.
 
 Repo evidence:
 - Gate packet: reports/codex_tool_reports/eng22_gs101_validation_gate_packet.md
