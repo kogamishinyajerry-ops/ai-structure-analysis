@@ -151,6 +151,7 @@ def test_p0_10_cold_smoke_graph_wiring(monkeypatch, tmp_path):
 
     assert result["fault_class"] == FaultClass.NONE
     assert result["verdict"] == "Accept"
+    assert result["solve_metadata"]["backend"] == "calculix"
     assert result["reports"]["markdown"] == str(report_path)
     assert result["reports"]["vtp"] == str(vtp_path)
     assert result["reports"]["manifest"] == str(manifest_path)
