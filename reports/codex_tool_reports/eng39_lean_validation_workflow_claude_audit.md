@@ -7,6 +7,7 @@
 - **Linear:** ENG-39
 - **R1 Verdict:** `CHANGES_REQUIRED`
 - **R2 Verdict:** `APPROVE`
+- **Follow-up Verdict:** `APPROVE`
 
 ## R1 Reviewer Result
 
@@ -76,3 +77,34 @@ Non-blocking reviewer advisories:
   returned `HF5 commit-trailer check passed`.
 - `rg` sweep confirmed forbidden-claim phrases and Notion proposed/not-written
   wording in the scoped docs.
+
+## Follow-up Reviewer Result
+
+After PR #143 opened, the user requested a clearer feature-milestone workflow
+using Codex + Linear + OpenAI Symphony-style `/goal` runs with Claude Opus 4.7
+review. A follow-up docs/planning diff added `.planning/ROADMAP.md`,
+`docs/governance/goal_driven_development.md`, and routing/onboarding/STATE
+updates.
+
+Claude Opus returned `APPROVE`.
+
+The reviewer confirmed:
+
+1. The follow-up diff is docs/planning only and does not touch solver code,
+   schemas, public APIs, CI, dependencies, `golden_samples/**`, or runtime truth
+   mechanisms.
+2. Linear remains work-control truth, GitHub/repo remains code truth, and Notion
+   remains a downstream mirror.
+3. Claude remains read-only reviewer/auditor and cannot authorize merge,
+   self-approval, Linear transitions, Notion mutation, branch-protection change,
+   or signed-claim promotion.
+4. The milestone ordering is coherent: FM-01 operator shell, FM-02 AERON path,
+   FM-03 candidate report spine, FM-04 signed validation gate, and FM-05
+   nonlinear/adaptive activation.
+5. The reusable `/goal` template has explicit `Objective`, `Scope`,
+   `Constraints`, `Done when`, and `Stop if` sections.
+
+Non-blocking reviewer nit addressed in `.planning/ROADMAP.md`: milestone exit
+evidence is satisfied by repo artifacts, CI/runtime proof, Linear/GitHub
+linkage, and owner-approved gates where required; Claude may review evidence but
+cannot mark a milestone complete by itself.

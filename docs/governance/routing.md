@@ -40,6 +40,19 @@ agreement, or completed bullet-through-steel behavior.
 - Notion-first truth changes.
 - Direct pushes to `main`.
 
+## Milestone-To-Goal Flow
+
+Functional development is organized by `.planning/ROADMAP.md`. Each feature
+milestone must be decomposed into one or more Linear issues before execution.
+Codex may only start a long-running `/goal` run when one issue has outcome,
+repository route, acceptance, boundaries, evidence requirements, claim tier, and
+stop conditions.
+
+OpenAI Symphony-style automation is the run pattern: discover one eligible
+Linear issue, convert it into a 5-section `/goal`, execute on a Codex-owned
+branch, verify locally, invoke Claude Opus read-only review when required, open
+a PR, then publish proof after repo evidence exists.
+
 ## Issue-To-PR Flow
 
 1. Start from a Linear issue or explicit user scope.

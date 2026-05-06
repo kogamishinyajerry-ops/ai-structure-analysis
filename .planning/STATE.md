@@ -66,6 +66,10 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 - Tier 1 engineering-candidate work uses compact reproducibility manifests and automatic read-only Claude Opus review when triggered.
 - Tier 2 signed validation remains strict at the physical-claim boundary: benchmark, metrics, tolerance comparison, convergence, hashes, and reviewer/signoff.
 - This change is governance/documentation only and does not mutate `golden_samples/**`, solver decks, schemas, protocols, CI, dependencies, or signed-validation evidence.
+- PR #143 opened 2026-05-07 for ENG-39. The same branch now also introduces
+  `.planning/ROADMAP.md` and `docs/governance/goal_driven_development.md` so
+  future feature work is organized as Linear-backed milestone `/goal` runs with
+  Claude Opus read-only review gates.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
@@ -128,7 +132,7 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
-| — | — | None | FF-07/08/09 governance closeout path is complete. |
+| #143 | `codex/ENG-39-lean-validation-workflow` | OPEN · ENG-39 | Adds ADR-023 lean validation workflow plus feature milestone `/goal` run structure. CI pending at PR creation. |
 
 ### Remaining Codex/ENG-* draft backlog (blocked, no current merge path)
 

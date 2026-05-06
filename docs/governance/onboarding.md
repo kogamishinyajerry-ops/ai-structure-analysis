@@ -11,8 +11,10 @@
 4. `docs/adr/ADR-012-calibration-cap-for-t1-self-pass-rate.md` for mechanical self-pass-rate.
 5. `docs/adr/ADR-013-branch-protection-enforcement.md` for PR template, CI gates, and branch protection.
 6. `docs/adr/ADR-023-lean-validation-workflow.md` for the fast development lanes and signed-claim boundary.
-7. `docs/governance/routing.md` for the short operational routing map.
-8. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
+7. `.planning/ROADMAP.md` for feature milestones and the reusable `/goal` template.
+8. `docs/governance/goal_driven_development.md` for the Codex + Linear + Symphony run loop.
+9. `docs/governance/routing.md` for the short operational routing map.
+10. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
 
 ## Local Setup
 
@@ -43,20 +45,21 @@ in the PR and proof comments.
 ## Before Opening A PR
 
 1. Confirm the Linear issue or explicit user scope.
-2. Check the current calibration ceiling:
+2. Confirm the issue maps to one feature milestone in `.planning/ROADMAP.md`.
+3. Check the current calibration ceiling:
 
    ```bash
    python3 scripts/compute_calibration_cap.py --human
    ```
 
-3. Identify ADR-011 M1-M5 triggers honestly.
-4. Prepare reviewer/auditor evidence when review is mandatory.
-5. If reviewer evidence is mandatory, invoke local Claude Opus 4.7 in read-only
+4. Identify ADR-011 M1-M5 triggers honestly.
+5. Prepare reviewer/auditor evidence when review is mandatory.
+6. If reviewer evidence is mandatory, invoke local Claude Opus 4.7 in read-only
    mode when available; do not stop only to ask whether reviewer invocation is
    allowed.
-6. Name the validation lane: Tier 0 sandbox/demo, Tier 1 engineering candidate,
+7. Name the validation lane: Tier 0 sandbox/demo, Tier 1 engineering candidate,
    or Tier 2 signed validation.
-7. Make sure commits include the required trailers:
+8. Make sure commits include the required trailers:
 
    ```text
    Execution-by: codex-primary
@@ -77,6 +80,7 @@ in the PR and proof comments.
 | `docs/adr/` | Architecture Decision Records; canonical governance text. |
 | `docs/governance/` | Operational pointers and onboarding, subordinate to ADRs. |
 | `docs/failure_patterns/` | Empirical failure-pattern records. |
+| `.planning/ROADMAP.md` | Feature milestone map and reusable `/goal` template. |
 | `.planning/STATE.md` | Repo-side execution snapshot, updated in the same PR as status-changing work. |
 | `reports/codex_tool_reports/` | Reviewer/auditor evidence artifacts. |
 
