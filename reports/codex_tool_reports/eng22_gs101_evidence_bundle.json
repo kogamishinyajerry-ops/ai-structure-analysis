@@ -1,0 +1,422 @@
+{
+  "bundle_id": "ENG22-GS101-EVIDENCE-BUNDLE-2026-05-06",
+  "created_at": "2026-05-06T22:05:00+08:00",
+  "repository": "/Users/Zhuanz/20260408 AI StructureAnalysis",
+  "branch": "codex/ENG-22-gs101-validation-gate",
+  "base_ref": "origin/main",
+  "related_files": [
+    "reports/codex_tool_reports/eng22_gs101_validation_gate_packet.md",
+    "reports/codex_tool_reports/eng22_gs101_external_review_handoff.md"
+  ],
+  "scope_boundary": {
+    "repo_local_only": true,
+    "external_writes_performed": false,
+    "forbidden_paths_mutated": false,
+    "golden_samples_mutated": false,
+    "solver_decks_mutated": false,
+    "dependencies_mutated": false,
+    "claim_boundary": "GS-101-demo-unsigned is software-path evidence only; no steel perforation, signed validation, or validated physics is claimed."
+  },
+  "linear_snapshot": {
+    "source": "Linear connector fetch on 2026-05-06",
+    "issues": [
+      {
+        "id": "ENG-22",
+        "title": "ENG-GS101-00 - ADR-GS101-SIGNED-OPENRADIOSS-CARVEOUT",
+        "status": "Pending Review",
+        "statusType": "started",
+        "labels": [
+          "plane:control",
+          "type:decision",
+          "type:gate",
+          "type:adr",
+          "hf1",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "Governance",
+        "parentId": null,
+        "url": "https://linear.app/jerrykogami/issue/ENG-22/eng-gs101-00-adr-gs101-signed-openradioss-carveout",
+        "decision_needed": "Accept or reject the narrow OpenRadioss explicit-dynamics ballistic solver-truth carve-out.",
+        "acceptance_summary": [
+          "T0/Opus gate explicitly accepts or rejects carve-out",
+          "GS-101-demo-unsigned remains unsigned",
+          "No golden_samples/** mutation before approval",
+          "Future benchmark uses one public experiment source with residual velocity or perforation target metrics",
+          "Issue and ADR remain verify:pending until closeout"
+        ]
+      },
+      {
+        "id": "ENG-24",
+        "title": "ENG-GS101-02 - Public benchmark source and validation_source.yaml",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:knowledge",
+          "plane:evaluation",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-24/eng-gs101-02-public-benchmark-source-and-validation-sourceyaml",
+        "blocker": "Blocked by ENG-22 T0/OpenRadioss solver-truth carve-out.",
+        "required_output": "Exactly one primary/public ballistic plate penetration experiment with residual velocity or perforation target metrics."
+      },
+      {
+        "id": "ENG-25",
+        "title": "ENG-GS101-03 - Free-flight OpenRadioss bullet-vs-plate source deck",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:execution",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-25/eng-gs101-03-free-flight-openradioss-bullet-vs-plate-source-deck",
+        "blocker": "Blocked by ENG-22 and ENG-24 benchmark selection.",
+        "required_output": "Free-flight OpenRadioss deck; no imposed-displacement shortcut."
+      },
+      {
+        "id": "ENG-26",
+        "title": "ENG-GS101-04 - OpenRadioss bake harness and artifact manifest",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:execution",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-26/eng-gs101-04-openradioss-bake-harness-and-artifact-manifest",
+        "blocker": "Blocked by ENG-22 and source deck readiness.",
+        "required_output": "Starter/engine logs, exit code, frame list, hashes, normal termination, NaN/Inf checks, and energy-error gates."
+      },
+      {
+        "id": "ENG-27",
+        "title": "ENG-GS101-05 - Post-gate reader hardening for signed benchmark fields",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:execution",
+          "plane:evaluation",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-27/eng-gs101-05-post-gate-reader-hardening-for-signed-benchmark-fields",
+        "blocker": "Blocked by ENG-22 and baked fixture availability.",
+        "required_output": "Real OpenRadioss raw velocity/stress/strain/plastic-strain/partition fields without fabricated Layer-1 quantities."
+      },
+      {
+        "id": "ENG-28",
+        "title": "ENG-GS101-06 - Ballistics residual velocity, energy, and true perforation metrics",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:evaluation",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-28/eng-gs101-06-ballistics-residual-velocity-energy-and-true-perforation",
+        "blocker": "Blocked by ENG-22 and real benchmark/deck artifacts.",
+        "required_output": "Residual velocity, energy, mass loss/eroded fraction, crater/plug indicators, and true perforation verdict from exit/residual velocity or through-thickness evidence."
+      },
+      {
+        "id": "ENG-29",
+        "title": "ENG-GS101-07 - Signed/candidate ballistic report and viewport storyboard",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:evaluation",
+          "plane:execution",
+          "type:task",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-29/eng-gs101-07-signedcandidate-ballistic-report-and-viewport-storyboard",
+        "blocker": "Blocked by ENG-22 and metrics readiness.",
+        "required_output": "Candidate/signed report and viewport storyboard with wording that distinguishes demo-unsigned, validation-candidate, and signed."
+      },
+      {
+        "id": "ENG-30",
+        "title": "ENG-GS101-08 - Mesh/time-step convergence and closeout verification packet",
+        "status": "Todo",
+        "statusType": "unstarted",
+        "labels": [
+          "plane:evaluation",
+          "plane:control",
+          "type:gate",
+          "type:handoff",
+          "hf3",
+          "verify:pending"
+        ],
+        "project": "P1.5 Foundation-Freeze",
+        "parentId": "ENG-22",
+        "url": "https://linear.app/jerrykogami/issue/ENG-30/eng-gs101-08-meshtime-step-convergence-and-closeout-verification",
+        "blocker": "Blocked by ENG-22 and full signed-candidate pipeline readiness.",
+        "required_output": "Mesh/time-step convergence matrix, benchmark comparison, artifact fingerprints, and double-blind verification; without physics signature, candidate only."
+      }
+    ]
+  },
+  "github_snapshot": {
+    "source": "gh pr view on 2026-05-06",
+    "pull_requests": [
+      {
+        "number": 141,
+        "url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/pull/141",
+        "headRefName": "codex/ENG-38-aeron-well-harness-graph",
+        "baseRefName": "main",
+        "state": "OPEN",
+        "isDraft": false,
+        "mergeable": "MERGEABLE",
+        "reviewDecision": "",
+        "updatedAt": "2026-05-06T13:10:06Z",
+        "statusCheckRollup": [
+          {
+            "name": "lint-and-test (3.11)",
+            "workflowName": "CI",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          },
+          {
+            "name": "calibration-cap-check",
+            "workflowName": "Calibration Cap Check",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          },
+          {
+            "name": "calibration-cap-check",
+            "workflowName": "Calibration Cap Check",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          },
+          {
+            "name": "golden-samples-validation",
+            "workflowName": "Golden Samples Validation (FF-08 / HF3)",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          },
+          {
+            "name": "trailer-check",
+            "workflowName": "Trailer Check (FF-07 / HF5)",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          }
+        ],
+        "interpretation": "Separate AERON-04 PR; not GS101 evidence and not self-merged."
+      },
+      {
+        "number": 115,
+        "url": "https://github.com/kogamishinyajerry-ops/ai-structure-analysis/pull/115",
+        "headRefName": "codex/ENG-23-gs101-pre-gate-tooling",
+        "baseRefName": "main",
+        "state": "OPEN",
+        "isDraft": true,
+        "mergeable": "MERGEABLE",
+        "reviewDecision": "",
+        "updatedAt": "2026-04-29T09:56:58Z",
+        "statusCheckRollup": [
+          {
+            "name": "calibration-cap-check",
+            "workflowName": "Calibration Cap Check",
+            "status": "COMPLETED",
+            "conclusion": "FAILURE"
+          },
+          {
+            "name": "lint-and-test (3.11)",
+            "workflowName": "CI",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS"
+          }
+        ],
+        "interpretation": "Pre-gate/backlog evidence only; open draft with calibration-cap-check failure."
+      }
+    ]
+  },
+  "local_demo_probe": {
+    "path": "/tmp/gs101-bake-codex",
+    "artifact_count": {
+      "animation_frames_gz": 11,
+      "solid_deletion_lines": 30,
+      "shell_deletion_evidence_observed": false
+    },
+    "starter_log": {
+      "file": "/tmp/gs101-bake-codex/model_00_0000.out",
+      "normal_termination": true,
+      "errors": "0 ERROR(S)",
+      "warnings": "0 WARNING(S)"
+    },
+    "engine_log": {
+      "file": "/tmp/gs101-bake-codex/model_00_0001.out",
+      "normal_termination": true,
+      "total_cycles": 4777,
+      "energy_error_rows": [
+        {
+          "cycle": 0,
+          "time": "0.000",
+          "error_percent": "0.0%"
+        },
+        {
+          "cycle": 1000,
+          "time": "0.6569",
+          "error_percent": "-2.6%"
+        },
+        {
+          "cycle": 2000,
+          "time": "1.286",
+          "error_percent": "-9.9%"
+        },
+        {
+          "cycle": 3000,
+          "time": "1.903",
+          "error_percent": "-7.4%"
+        },
+        {
+          "cycle": 4000,
+          "time": "2.521",
+          "error_percent": "-7.4%"
+        }
+      ],
+      "max_recorded_abs_energy_error_percent": 9.9,
+      "final_recorded_energy_error_percent": -7.4
+    },
+    "nan_inf_scan": {
+      "command": "rg -ni \"(^|[^[:alpha:]])(nan|inf)([^[:alpha:]]|$)\" /tmp/gs101-bake-codex/model_00_0000.out /tmp/gs101-bake-codex/model_00_0001.out",
+      "exit_code": 1,
+      "matches": 0,
+      "interpretation": "No NaN/Inf tokens found in starter or engine text logs."
+    },
+    "docx_probe": {
+      "file": "/tmp/gs101-bake-codex/GS-101-demo.docx",
+      "duration_ms": 3.00032,
+      "peak_displacement_mm": 125.396,
+      "final_eroded_facets": 0,
+      "perforation_event": "not observed / no perforation observed"
+    },
+    "hashes_sha256": [
+      {
+        "sha256": "37d538d7e4cbfc94159a13bbdeb92d645069b246bbdbcce125bcd42c46d29f05",
+        "path": "/tmp/gs101-bake-codex/model_00_0000.rad"
+      },
+      {
+        "sha256": "872a28fe51b7420f114ac2cea3f7b7251203c524b73c87ae5cb04ddbdd82882f",
+        "path": "/tmp/gs101-bake-codex/model_00_0001.rad"
+      },
+      {
+        "sha256": "2b064b3fa964ea8609f09aad325aadcc7ead43a55fcb7ce23364c5e2769e869e",
+        "path": "/tmp/gs101-bake-codex/model_00_0000.out"
+      },
+      {
+        "sha256": "83bb271070f5ec243df9840a792cce3b31f0ebc5fd39d662a7b6284845757a2e",
+        "path": "/tmp/gs101-bake-codex/model_00_0001.out"
+      },
+      {
+        "sha256": "c42708171eb6daad7dc49a64d42316ea0d5fc75d12324091262b1ca7b90d5873",
+        "path": "/tmp/gs101-bake-codex/GS-101-demo.docx"
+      },
+      {
+        "sha256": "0707b1423132deb1b4a6024f13af4c21bb7e9c5dc7d6c1038b78a2364ead7dd4",
+        "path": "/tmp/gs101-bake-codex/GS-101-demo-vtu-probe.docx"
+      }
+    ],
+    "frame_hashes_sha256": [
+      {
+        "sha256": "b9784b5910e0b8861c5bf9a9b5488f8ba3a65550292f2290a59b9de91fcd571e",
+        "file": "model_00A001.gz"
+      },
+      {
+        "sha256": "3e4e4fb0c111a3b09ed1f9da27f8bc99a325638c22b68b0e1593f17a93eef6bd",
+        "file": "model_00A002.gz"
+      },
+      {
+        "sha256": "96bbdddfaa1cf6b8f1a6becf155f4093131862f462338817cbf6a77430c488f1",
+        "file": "model_00A003.gz"
+      },
+      {
+        "sha256": "17593aaf2ae72d708be4a0be98b02cceffa3872199dc13aba42bb1862b5a3ffb",
+        "file": "model_00A004.gz"
+      },
+      {
+        "sha256": "d7e0719e916f998df21e906a184d91ef30064d1033e4d1cbd65643c2269e5d5b",
+        "file": "model_00A005.gz"
+      },
+      {
+        "sha256": "62477488f4c4fa18244e89c35ba8e8a7a1c614c448a0123fc28f09bec30bddf4",
+        "file": "model_00A006.gz"
+      },
+      {
+        "sha256": "bf90778981189200f0c580192892f9a26486e8772b8d1b94c3fcc84c45372c08",
+        "file": "model_00A007.gz"
+      },
+      {
+        "sha256": "782a40632df8cf59a498214cc69c4361dadb14f7d64ae15fde97fab80b3067d1",
+        "file": "model_00A008.gz"
+      },
+      {
+        "sha256": "2144bee642b50bec32210a575096497ce8ad157f8914270de91bd8a54ea566f6",
+        "file": "model_00A009.gz"
+      },
+      {
+        "sha256": "2ecfd41c3d7b294f8f19b0c61c27a7250e235eab7a03c537138d3f86b97d2b14",
+        "file": "model_00A010.gz"
+      },
+      {
+        "sha256": "9c4453d305cfc888fe376023cb46a2b0e76972b6a9858aa88b3a4f25835f2db4",
+        "file": "model_00A011.gz"
+      }
+    ]
+  },
+  "vtu_viewport_blocker": {
+    "command": ".venv/bin/report-cli --kind ballistic --openradioss-root /tmp/gs101-bake-codex --rootname model_00 --unit-system si-mm --project-id GS-101-DEMO --task-id BULLET-PLATE-INT25 --report-id RPT-GS101-DEMO-VTU-PROBE --output /tmp/gs101-bake-codex/GS-101-demo-vtu-probe.docx --viewport-out /tmp/gs101-vtu-codex --no-validate-template --no-figures",
+    "process_exit_code": 0,
+    "docx_export_completed": true,
+    "viewport_export_completed": false,
+    "error": "VTUExportError: pyvista is required for VTU export but is not importable: numpy.core.multiarray failed to import",
+    "interpretation": "The CLI continued with DOCX-only output. This is an environment/dependency compatibility blocker for VTU/viewport evidence, not proof of physical perforation failure."
+  },
+  "environment_fingerprint": {
+    "python": "Python 3.11.15 (main, Mar 3 2026, 00:52:57) [Clang 17.0.0 (clang-1700.6.3.2)]",
+    "packages": {
+      "numpy": "2.4.4",
+      "pyvista": "0.43.1",
+      "matplotlib": "3.8.2",
+      "vtk": "9.6.1"
+    },
+    "compatibility_note": "VTU export attempts import pyvista, which imports matplotlib; matplotlib binary extension import fails under NumPy 2.4.4 with numpy.core.multiarray failed to import."
+  },
+  "focused_tests": {
+    "command": ".venv/bin/python -m pytest backend/tests/test_ballistics.py backend/tests/test_ballistic_summary_draft.py backend/tests/test_report_cli.py -q -o addopts=''",
+    "exit_code": 0,
+    "summary": "78 passed in 1.86s"
+  },
+  "spark_subagent_audit": {
+    "agent_id": "019dfd92-a32e-72f3-a5d4-491fe9af889c",
+    "model_requested": "gpt-5.3-codex-spark",
+    "result": "No obvious overclaiming or external-write risk in the packet; recommended adding a compact evidence bundle with Linear/PR snapshots, NaN/Inf and energy evidence, artifact hashes, and environment versions.",
+    "gaps_addressed_by_this_bundle": [
+      "Linear status and verify labels are captured",
+      "PR 115/141 status snapshots are captured",
+      "NaN/Inf scan and energy-error rows are captured",
+      "Key artifact and frame hashes are captured",
+      "Python/NumPy/PyVista/Matplotlib/VTK versions are captured"
+    ]
+  },
+  "approval_recommendation": {
+    "go": "Proceed to external ENG-22 carve-out review.",
+    "no_go": "Do not start ENG-24..ENG-30 execution, mutate golden_samples/**, claim steel perforation, or claim signed validation until ENG-22 is accepted and ENG-24 benchmark truth is established."
+  }
+}
