@@ -10,8 +10,11 @@
 3. `docs/adr/ADR-011-pivot-claude-code-takeover.md` for role authority, truth hierarchy, HF rules, Golden Rules, and commit trailers.
 4. `docs/adr/ADR-012-calibration-cap-for-t1-self-pass-rate.md` for mechanical self-pass-rate.
 5. `docs/adr/ADR-013-branch-protection-enforcement.md` for PR template, CI gates, and branch protection.
-6. `docs/governance/routing.md` for the short operational routing map.
-7. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
+6. `docs/adr/ADR-023-lean-validation-workflow.md` for the fast development lanes and signed-claim boundary.
+7. `.planning/ROADMAP.md` for feature milestones and the reusable `/goal` template.
+8. `docs/governance/goal_driven_development.md` for the Codex + Linear + Symphony run loop.
+9. `docs/governance/routing.md` for the short operational routing map.
+10. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
 
 ## Local Setup
 
@@ -42,15 +45,21 @@ in the PR and proof comments.
 ## Before Opening A PR
 
 1. Confirm the Linear issue or explicit user scope.
-2. Check the current calibration ceiling:
+2. Confirm the issue maps to one feature milestone in `.planning/ROADMAP.md`.
+3. Check the current calibration ceiling:
 
    ```bash
    python3 scripts/compute_calibration_cap.py --human
    ```
 
-3. Identify ADR-011 M1-M5 triggers honestly.
-4. Prepare reviewer/auditor evidence when review is mandatory.
-5. Make sure commits include the required trailers:
+4. Identify ADR-011 M1-M5 triggers honestly.
+5. Prepare reviewer/auditor evidence when review is mandatory.
+6. If reviewer evidence is mandatory, invoke local Claude Opus 4.7 in read-only
+   mode when available; do not stop only to ask whether reviewer invocation is
+   allowed.
+7. Name the validation lane: Tier 0 sandbox/demo, Tier 1 engineering candidate,
+   or Tier 2 signed validation.
+8. Make sure commits include the required trailers:
 
    ```text
    Execution-by: codex-primary
@@ -71,8 +80,17 @@ in the PR and proof comments.
 | `docs/adr/` | Architecture Decision Records; canonical governance text. |
 | `docs/governance/` | Operational pointers and onboarding, subordinate to ADRs. |
 | `docs/failure_patterns/` | Empirical failure-pattern records. |
+| `.planning/ROADMAP.md` | Feature milestone map and reusable `/goal` template. |
 | `.planning/STATE.md` | Repo-side execution snapshot, updated in the same PR as status-changing work. |
 | `reports/codex_tool_reports/` | Reviewer/auditor evidence artifacts. |
+
+## Validation Lanes
+
+| Lane | Fast rule | Hard stop |
+|---|---|---|
+| Tier 0 — Sandbox / Demo | Iterate quickly with local verification and clear `demo-only` / `software-path evidence only` labels. | Do not imply validated physics, benchmark agreement, or signed evidence. |
+| Tier 1 — Engineering Candidate | Capture a compact manifest: deck/model provenance, solver logs, units/material/BC/contact assumptions, hashes, and limitations. | Do not promote to signed validation without benchmark and signoff. |
+| Tier 2 — Signed Validation | Use the strict gate: benchmark, metrics, tolerance, convergence, manifest, independent review/signoff. | Stop if benchmark/material/source evidence is missing. |
 
 ## Common Mistakes
 
@@ -85,6 +103,8 @@ in the PR and proof comments.
 - Editing `golden_samples/**` without a signed validation issue.
 - Closing, merging, transitioning Linear state, or mutating Notion without dry-run
   payload and explicit confirmation.
+- Creating large validation packets for Tier 0 demos when a clear label and
+  local verification would be sufficient.
 
 ## Self-Test
 
@@ -96,12 +116,17 @@ You are ready to contribute when you can answer:
 4. Which command computes the self-pass-rate ceiling?
 5. Which four status checks are required on `main`?
 6. What happens to unsigned or indefensible golden samples?
+7. Which validation lane allows fast demo iteration, and which lane is required
+   for signed physical claims?
 
 Answers:
 
 1. GitHub/repo.
 2. Linear `Engineering`.
-3. Review/audit prepared packets or diffs; not default execution.
+3. Review/audit prepared packets or diffs, automatically when required and
+   available; not default execution.
 4. `python3 scripts/compute_calibration_cap.py --human`.
 5. `lint-and-test (3.11)`, `calibration-cap-check`, `trailer-check`, and `golden-samples-validation`.
 6. They are marked or treated as `insufficient_evidence` and excluded from regression evidence.
+7. Tier 0 allows fast demo iteration; Tier 2 is required for signed physical
+   claims.

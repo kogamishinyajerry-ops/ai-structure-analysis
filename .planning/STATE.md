@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `aeron-03-closeout-2026-05-06 · main=059f21e`
-> **Last updated:** 2026-05-06 (after PR #139 merge; ENG-37 AERON-03 code landed)
+> **Stamp:** `eng39-lean-validation-workflow-2026-05-06 · main=8a38b20`
+> **Last updated:** 2026-05-06 (ENG-39 workflow adjustment branch opened from current main)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -18,7 +18,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
 | Phase 1.9 — RFC-001 3D viewport + live bake (W8) | ✅ Done 2026-04-29 (#111-#114) | OpenRadioss → VTU exporter + PyVista viewport + live streaming + Electron live-bake orchestration. |
-| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed. AERON-01 landed the first concrete AERON L0 backend adapter in PR #135; AERON-02 wired that backend into exactly one solver caller path in PR #137; AERON-03 surfaced backend provenance through graph cold-smoke in PR #139. |
+| Phase 2 — Web Console hardening | 🟡 Active candidate lane (lean validation workflow being adopted) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed. AERON-01 landed the first concrete AERON L0 backend adapter in PR #135; AERON-02 wired that backend into exactly one solver caller path in PR #137; AERON-03 surfaced backend provenance through graph cold-smoke in PR #139. ENG-39 introduces ADR-023 so Tier 0/Tier 1 development can move faster while signed physical claims remain strictly gated. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
 ---
@@ -58,7 +58,18 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == 059f21e` (post AERON-03 PR #139 merge, 2026-05-06).
+`origin/main == 8a38b20` (post ENG-37 state closeout PR #140 merge, 2026-05-06).
+
+ENG-39 created 2026-05-06 to adopt a lean validation workflow:
+
+- Tier 0 sandbox/demo work moves quickly with explicit software-path-only labels.
+- Tier 1 engineering-candidate work uses compact reproducibility manifests and automatic read-only Claude Opus review when triggered.
+- Tier 2 signed validation remains strict at the physical-claim boundary: benchmark, metrics, tolerance comparison, convergence, hashes, and reviewer/signoff.
+- This change is governance/documentation only and does not mutate `golden_samples/**`, solver decks, schemas, protocols, CI, dependencies, or signed-validation evidence.
+- PR #143 opened 2026-05-07 for ENG-39. The same branch now also introduces
+  `.planning/ROADMAP.md` and `docs/governance/goal_driven_development.md` so
+  future feature work is organized as Linear-backed milestone `/goal` runs with
+  Claude Opus read-only review gates.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
@@ -121,7 +132,7 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
-| — | — | None | FF-07/08/09 governance closeout path is complete. |
+| #143 | `codex/ENG-39-lean-validation-workflow` | OPEN · ENG-39 | Adds ADR-023 lean validation workflow plus feature milestone `/goal` run structure. CI pending at PR creation. |
 
 ### Remaining Codex/ENG-* draft backlog (blocked, no current merge path)
 
@@ -189,6 +200,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 | ADR-020 | Accepted | `docs/adr/ADR-020-allowable-stress-lookup.md` |
 | ADR-021 | Accepted | `docs/adr/ADR-021-gs100-radioss-smoke-fixture.md` |
 | ADR-022 | Accepted | `docs/adr/ADR-022-gs101-demo-unsigned-fixture.md` |
+| ADR-023 | Accepted by user directive, implementation PR pending | `docs/adr/ADR-023-lean-validation-workflow.md` |
 
 ---
 
