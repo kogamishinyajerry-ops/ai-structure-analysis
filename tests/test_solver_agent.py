@@ -105,7 +105,11 @@ class TestSolverAgent:
                     status=SolveStatus(code=SolveStatusCode.OK, returncode=0),
                     wall_clock_s=0.25,
                     raw_outputs={"frd": case.case_dir / "solve.frd"},
-                    metadata={"ccx_version": "fake-2.21", "converged": True},
+                    metadata={
+                        "backend": "calculix",
+                        "ccx_version": "fake-2.21",
+                        "converged": True,
+                    },
                 )
 
             def parse_results(self, outcome):
@@ -126,6 +130,7 @@ class TestSolverAgent:
         assert [call[0] for call in calls] == ["prepare_case", "solve", "parse_results"]
         assert result["fault_class"] == FaultClass.NONE
         assert result["frd_path"].endswith("solve.frd")
+        assert result["solve_metadata"]["backend"] == "calculix"
         assert result["solve_metadata"]["ccx_version"] == "fake-2.21"
 
     def test_successful_solve(self, solver_state, tmp_path):
@@ -155,6 +160,7 @@ class TestSolverAgent:
 
         assert result["fault_class"] == FaultClass.NONE
         assert result["frd_path"] is not None
+        assert result["solve_metadata"]["backend"] == "calculix"
         assert any(path.endswith("solve.inp") for path in result["artifacts"])
 
     def test_classified_failure_retries_solver(self, solver_state):

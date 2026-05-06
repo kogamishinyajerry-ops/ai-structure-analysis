@@ -195,6 +195,7 @@ def run(state: SimState) -> dict[str, Any]:
         "artifacts": new_artifacts,
         "solve_path": str(case.primary_input),
         "solve_metadata": {
+            "backend": outcome.metadata.get("backend"),
             "wall_time_s": outcome.wall_clock_s,
             "ccx_version": outcome.metadata.get("ccx_version"),
         },
