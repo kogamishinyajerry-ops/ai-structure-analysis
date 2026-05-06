@@ -104,6 +104,7 @@ include = [
     "schemas*",
     "checkers*",
     "reporters*",
+    "aeron*",
     "app*",
 ]
 
