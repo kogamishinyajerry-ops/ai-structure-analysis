@@ -2,7 +2,9 @@
 
 > **Code SSOT** = This repository: [`kogamishinyajerry-ops/ai-structure-analysis`](https://github.com/kogamishinyajerry-ops/ai-structure-analysis)
 >
-> **Process SSOT** = Notion PRD v0.2: [AI StructureAnalysis 项目中枢](https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9)
+> **Work-control SSOT** = Linear `Engineering` issues for scoped work, acceptance, blockers, and proof.
+>
+> **Architecture mirror** = Notion PRD v0.2: [AI StructureAnalysis 项目中枢](https://www.notion.so/AI-StructureAnalysis-345c68942bed80f6a092c9c2b3d3f5b9)
 >
 > **Runtime SSOT** = `runs/` directory + CI artifacts
 
@@ -79,10 +81,10 @@ See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
 ## Development Rules
 
 1. All code lands via **PR** — no direct push to `main`.
-2. **No local absolute paths** in commits, PRs, or Notion writebacks.
-3. New agents/solvers require **Notion task review** before merge.
-4. One Case ID per PR; completion triggers Notion writeback.
-5. Architecture decisions go to the **Notion 决策库** as ADR-{nnn}.
+2. Linear issues define scoped work, acceptance, blockers, and proof.
+3. Codex is the primary implementation agent; local Claude Opus is reviewer/auditor.
+4. **No local absolute paths** in commits, PRs, Linear proof comments, or Notion writebacks.
+5. Notion is patched only as an architecture/control mirror after repo and Linear truth are settled.
 
 ## Naming Conventions
 
