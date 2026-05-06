@@ -10,8 +10,9 @@
 3. `docs/adr/ADR-011-pivot-claude-code-takeover.md` for role authority, truth hierarchy, HF rules, Golden Rules, and commit trailers.
 4. `docs/adr/ADR-012-calibration-cap-for-t1-self-pass-rate.md` for mechanical self-pass-rate.
 5. `docs/adr/ADR-013-branch-protection-enforcement.md` for PR template, CI gates, and branch protection.
-6. `docs/governance/routing.md` for the short operational routing map.
-7. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
+6. `docs/adr/ADR-023-lean-validation-workflow.md` for the fast development lanes and signed-claim boundary.
+7. `docs/governance/routing.md` for the short operational routing map.
+8. `.planning/STATE.md` for current phase status, PR ledger, and carry-overs.
 
 ## Local Setup
 
@@ -50,7 +51,12 @@ in the PR and proof comments.
 
 3. Identify ADR-011 M1-M5 triggers honestly.
 4. Prepare reviewer/auditor evidence when review is mandatory.
-5. Make sure commits include the required trailers:
+5. If reviewer evidence is mandatory, invoke local Claude Opus 4.7 in read-only
+   mode when available; do not stop only to ask whether reviewer invocation is
+   allowed.
+6. Name the validation lane: Tier 0 sandbox/demo, Tier 1 engineering candidate,
+   or Tier 2 signed validation.
+7. Make sure commits include the required trailers:
 
    ```text
    Execution-by: codex-primary
@@ -74,6 +80,14 @@ in the PR and proof comments.
 | `.planning/STATE.md` | Repo-side execution snapshot, updated in the same PR as status-changing work. |
 | `reports/codex_tool_reports/` | Reviewer/auditor evidence artifacts. |
 
+## Validation Lanes
+
+| Lane | Fast rule | Hard stop |
+|---|---|---|
+| Tier 0 — Sandbox / Demo | Iterate quickly with local verification and clear `demo-only` / `software-path evidence only` labels. | Do not imply validated physics, benchmark agreement, or signed evidence. |
+| Tier 1 — Engineering Candidate | Capture a compact manifest: deck/model provenance, solver logs, units/material/BC/contact assumptions, hashes, and limitations. | Do not promote to signed validation without benchmark and signoff. |
+| Tier 2 — Signed Validation | Use the strict gate: benchmark, metrics, tolerance, convergence, manifest, independent review/signoff. | Stop if benchmark/material/source evidence is missing. |
+
 ## Common Mistakes
 
 - Treating Notion as code truth instead of a mirror.
@@ -85,6 +99,8 @@ in the PR and proof comments.
 - Editing `golden_samples/**` without a signed validation issue.
 - Closing, merging, transitioning Linear state, or mutating Notion without dry-run
   payload and explicit confirmation.
+- Creating large validation packets for Tier 0 demos when a clear label and
+  local verification would be sufficient.
 
 ## Self-Test
 
@@ -96,12 +112,17 @@ You are ready to contribute when you can answer:
 4. Which command computes the self-pass-rate ceiling?
 5. Which four status checks are required on `main`?
 6. What happens to unsigned or indefensible golden samples?
+7. Which validation lane allows fast demo iteration, and which lane is required
+   for signed physical claims?
 
 Answers:
 
 1. GitHub/repo.
 2. Linear `Engineering`.
-3. Review/audit prepared packets or diffs; not default execution.
+3. Review/audit prepared packets or diffs, automatically when required and
+   available; not default execution.
 4. `python3 scripts/compute_calibration_cap.py --human`.
 5. `lint-and-test (3.11)`, `calibration-cap-check`, `trailer-check`, and `golden-samples-validation`.
 6. They are marked or treated as `insufficient_evidence` and excluded from regression evidence.
+7. Tier 0 allows fast demo iteration; Tier 2 is required for signed physical
+   claims.

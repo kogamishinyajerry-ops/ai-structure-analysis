@@ -1,7 +1,7 @@
 # Codex-Primary Routing
 
 > **Status:** Active project routing for AI-Structure-FEA.
-> **Canonical source:** ADR-011. This page is a thin operational pointer.
+> **Canonical source:** ADR-011 and ADR-023. This page is a thin operational pointer.
 
 ## Truth Surfaces
 
@@ -17,8 +17,20 @@
 | Role | Responsibility | Boundary |
 |---|---|---|
 | Codex | Primary implementation agent. Edits repo files, runs tests, prepares review/proof artifacts, opens PRs, and writes approved proof comments. | Does not self-approve, auto-merge, or claim completion beyond evidence. |
-| Local Claude Opus 4.7 | Reviewer/auditor. Reviews prepared packets, diffs, and high-risk decisions; returns `APPROVE`, `CHANGES_REQUIRED`, or `BLOCKER`. | Not the default executor, repo owner, or Notion/code truth source. |
+| Local Claude Opus 4.7 | Reviewer/auditor. Reviews prepared packets, diffs, and high-risk decisions; returns `APPROVE`, `CHANGES_REQUIRED`, or `BLOCKER`. Invoked automatically by Codex when review is required and the local CLI is available. | Read-only by default; not the executor, repo owner, or Notion/code truth source. |
 | Human owner | Final authority for explicit gates, emergency overrides, and external write approvals. | Must approve PR merges, Linear state transitions, Notion mutations, and other gated writes when policy requires it. |
+
+## Lean Validation Lanes
+
+| Lane | Use for | Gate level | Exit claim |
+|---|---|---|---|
+| Tier 0 — Sandbox / Demo | fast path discovery, adapter smoke, UI/workbench demo, report wiring | ordinary local verification and honest labeling | software-path evidence only |
+| Tier 1 — Engineering Candidate | reproducible candidate deck/run/report | manifest, solver logs, units/material/BC/contact trace, hashes, limitations, Opus review when triggered | candidate result, not signed |
+| Tier 2 — Signed Validation | physical-validation claims | benchmark source, metrics, tolerance comparison, convergence, artifact hashes, reviewer/signoff | signed validation / benchmark agreement |
+
+Do not build Tier 2 packets for every Tier 0/Tier 1 change. Do build Tier 2
+evidence before saying validated physics, signed GS evidence, benchmark
+agreement, or completed bullet-through-steel behavior.
 
 ## Banned Default Routes
 
@@ -34,8 +46,10 @@
 2. Confirm repository route, acceptance, boundaries, and evidence requirements.
 3. Create a Codex-owned branch from current `main`.
 4. Implement the smallest reversible diff.
-5. Run local verification and mandatory reviewer/auditor checks.
-6. Open a PR with mechanical self-pass-rate, M-trigger checkboxes, test results, and merge trailers.
+5. Run local verification and mandatory reviewer/auditor checks. If review is
+   required, call local Claude Opus automatically in read-only mode.
+6. Open a PR with mechanical self-pass-rate, M-trigger checkboxes, test results,
+   claim tier, and merge trailers.
 7. Wait for required checks and review findings; fix before merge.
 8. Show dry-run payloads before external proof comments, PR close/merge actions, branch-protection changes, or state transitions.
 9. Merge only after explicit confirmation.
@@ -53,7 +67,10 @@ The ADR-011 M1-M5 triggers remain binding:
 | M4 | Governance text becomes enforcement code: hooks, CI, validators, lints, schemas. |
 | M5 | A PR is opened while calibration ceiling is at or below 50%. |
 
-When any trigger fires, attach independent review evidence before merge.
+When any trigger fires, attach independent review evidence before merge. Codex
+should invoke local Claude Opus automatically for these triggers when the local
+CLI is available; do not pause only to ask whether reviewer invocation is
+allowed.
 
 ## Required Main Checks
 

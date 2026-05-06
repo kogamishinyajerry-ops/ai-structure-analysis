@@ -10,7 +10,24 @@
 
 AI-driven Finite Element Analysis engine with multi-agent orchestration.
 Solves linear-static, modal, and thermal-structural problems end-to-end:
-from natural-language spec → parametric CAD → adaptive mesh → CalculiX solve → validated report.
+from natural-language spec → parametric CAD → adaptive mesh → CalculiX solve →
+candidate or validated report, depending on the claim tier.
+
+## Validation Mode
+
+Development follows the lean validation workflow in
+[ADR-023](docs/adr/ADR-023-lean-validation-workflow.md):
+
+| Tier | Use for | Evidence level | Allowed claim |
+|---|---|---|---|
+| Tier 0 — Sandbox / Demo | fast path discovery, UI/workbench demo, adapter smoke, report wiring | local run evidence and honest labels | software path only |
+| Tier 1 — Engineering Candidate | reproducible candidate simulation or deck exploration | manifest, logs, units/material/BC/contact trace, hashes, limitations | engineering candidate, not signed |
+| Tier 2 — Signed Validation | benchmark-backed physical claims | public benchmark, metrics, tolerance comparison, convergence, hashes, reviewer/signoff | signed validation / benchmark agreement |
+
+Most development should move through Tier 0 and Tier 1 quickly. Strict
+validation packets are required only when the project wants to claim validated
+physics, benchmark agreement, signed GS evidence, or completed physical
+simulation behavior.
 
 ## Architecture
 
@@ -82,7 +99,8 @@ See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
 
 > **Canonical ruleset:** [ADR-011](docs/adr/ADR-011-pivot-claude-code-takeover.md),
 > [ADR-012](docs/adr/ADR-012-calibration-cap-for-t1-self-pass-rate.md), and
-> [ADR-013](docs/adr/ADR-013-branch-protection-enforcement.md). This section is
+> [ADR-013](docs/adr/ADR-013-branch-protection-enforcement.md), plus
+> [ADR-023](docs/adr/ADR-023-lean-validation-workflow.md). This section is
 > only a quick-reference; if it drifts from those ADRs, the ADRs win.
 
 **Truth and roles**
@@ -95,35 +113,40 @@ See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
    reviewer/auditor, not the default executor or repo owner.
 4. Notion is an architecture/control mirror after repo and Linear truth settle.
    Do not make Notion-first truth changes.
+5. When a reviewer is required, Codex calls local Claude Opus 4.7 automatically
+   as a read-only reviewer if available. This does not authorize merge,
+   self-approval, or external writes.
 
 **Gates and traceability**
 
-5. Use the PR template. The `Self-pass-rate` claim must come from
+6. Use the PR template. The `Self-pass-rate` claim must come from
    `python3 scripts/compute_calibration_cap.py --human`, not intuition.
-6. Current required checks on `main`: `lint-and-test (3.11)`,
+7. Current required checks on `main`: `lint-and-test (3.11)`,
    `calibration-cap-check`, `trailer-check`, and `golden-samples-validation`.
-7. Linear-controlled commits carry `Execution-by: codex-primary`,
+8. Linear-controlled commits carry `Execution-by: codex-primary`,
    `Codex-verified: <claim-id>@<sha>`, `Reviewed-by: claude-opus47 APPROVE ...`
    when review is required, and `Linear-Issue: ENG-<id>`.
-8. External writes are gated: show dry-run payloads before Linear comments/state
+9. External writes are gated: show dry-run payloads before Linear comments/state
    transitions, GitHub PR comments/close/merge actions, branch-protection
    mutations, or Notion updates.
-9. Do not commit local absolute paths, secrets, raw env dumps, or machine-only
+10. Do not commit local absolute paths, secrets, raw env dumps, or machine-only
    credentials in commits, PRs, Linear proof comments, or Notion mirrors.
 
 **Safety floors**
 
-10. Treat `golden_samples/**` as read-only unless a signed validation issue
+11. Treat `golden_samples/**` as read-only unless a signed validation issue
    explicitly authorizes a change. Unsigned smoke/demo fixtures are not signed
    validation samples.
-11. No golden-standard reference means `insufficient_evidence`, not regression
+12. No golden-standard reference means `insufficient_evidence`, not regression
     evidence. `scripts/validate_golden_samples.py` enforces signed `GS-###`
     registry shape.
-12. CalculiX is the numerical truth source unless a new ADR and gate approve a
+13. CalculiX is the numerical truth source unless a new ADR and gate approve a
     different solver truth source.
-13. Keep decisions reversible: architecture changes go through ADRs, schema
+14. Keep decisions reversible: architecture changes go through ADRs, schema
     changes are schema-first, and the four-layer import direction in ADR-011
     remains binding.
+15. Tier 0 and Tier 1 outputs must never be summarized as Tier 2 signed
+    validation. Use the claim tier explicitly in reports and handoffs.
 
 ## Naming Conventions
 
