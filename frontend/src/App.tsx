@@ -89,14 +89,6 @@ interface OperatorStatusItem {
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
 
-const operatorStatus: OperatorStatusItem[] = [
-  { label: 'Milestone', value: 'FM-01 Web Console Operator Shell', tone: 'accent' },
-  { label: 'Linear issue', value: 'ENG-40' },
-  { label: 'Claim tier', value: 'Tier 0 sandbox/demo', tone: 'warning' },
-  { label: 'Backend provenance', value: 'AERON L0 / CalculiX path, shown when run metadata is available' },
-  { label: 'Next action', value: 'Select or upload a case, then run a software-path smoke only' },
-];
-
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
@@ -341,6 +333,50 @@ function App() {
       throw err;
     }
   };
+
+  const activeCase = activeCaseId ? availableCases.find(c => c.id === activeCaseId) : null;
+  const caseLabel = activeCase
+    ? `${activeCase.id} / ${activeCase.name}`
+    : file
+      ? `Uploaded FRD / ${file.name}`
+      : 'No active case';
+  const runState = solving
+    ? `Running ${analysisType} solver`
+    : activeExperiment
+      ? `Study ${activeExperiment.status}`
+      : loading
+        ? 'Preparing report/status'
+        : report
+          ? 'Report loaded'
+          : 'Idle';
+  const evidenceState = report
+    ? `Software-path report ${report.metrics.status}; not signed validation`
+    : logs.length > 0
+      ? 'Solver log stream only; not signed validation'
+      : 'No run evidence yet';
+  const latestEvent = logs.length > 0 ? logs[logs.length - 1].slice(0, 96) : 'No runtime log event';
+  const nextAction = solving
+    ? 'Watch the solver console or stop the job; do not promote evidence'
+    : loading
+      ? 'Wait for report generation to finish'
+      : !activeCaseId && !file
+        ? 'Select a gallery case or upload an FRD file'
+        : !report
+          ? 'Generate a report, then inspect software-path evidence'
+          : activeCaseId
+            ? 'Run a solver smoke or export the report with Tier 0 wording'
+            : 'Review the uploaded report; select a gallery case before solver run';
+  const operatorStatus: OperatorStatusItem[] = [
+    { label: 'Milestone', value: 'FM-01 Web Console Operator Shell', tone: 'accent' },
+    { label: 'Linear issue', value: 'ENG-42' },
+    { label: 'Claim tier', value: 'Tier 0 sandbox/demo', tone: 'warning' },
+    { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
+    { label: 'Run state', value: runState, tone: solving || activeExperiment ? 'accent' : 'muted' },
+    { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
+    { label: 'Backend provenance', value: 'AERON L0 / CalculiX path, shown when run metadata is available' },
+    { label: 'Latest event', value: latestEvent },
+    { label: 'Next action', value: nextAction, tone: 'accent' },
+  ];
 
   return (
     <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '240px 300px 1fr', height: '100vh' }}>
