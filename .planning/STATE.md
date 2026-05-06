@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
 > **Stamp:** `ENG-33-aeron-l0-protocol-salvage-2026-05-06 · main=0a2f84b`
-> **Last updated:** 2026-05-06 (after PR #127 merge; PR #126 blocker comment posted; ENG-33 AERON L0 protocol salvage opened)
+> **Last updated:** 2026-05-06 (after PR #127 merge; PR #126 blocker comment posted; ENG-33 AERON L0 protocol salvage PR #128 opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -69,7 +69,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
 | #126 | `claude/L0-protocol` | OPEN · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Blocker comment posted 2026-05-06. Salvage AERON protocol code only via Codex-owned ENG-33 branch. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
-| local | `codex/aeron-l0-protocol-salvage` | In progress for ENG-33 | Salvages only the AERON L0 protocol package and packaging/tests from blocked #126. Does not inherit #126 root `AGENTS.md`. |
+| #128 | `codex/aeron-l0-protocol-salvage` | OPEN · CI pending · Claude Opus audit APPROVE · ENG-33 | Salvages only the AERON L0 protocol package and packaging/tests from blocked #126. Does not inherit #126 root `AGENTS.md`. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
