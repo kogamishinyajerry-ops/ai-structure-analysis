@@ -1,0 +1,51 @@
+name: Golden Samples Validation (FF-08 / HF3)
+
+# Required checks must not be path-filtered: a skipped workflow can either
+# block unrelated PRs or fail to protect sample-registry changes. The PR
+# event runs the validator from trusted main and treats the PR checkout as
+# untrusted data.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  golden-samples-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: trusted
+
+      - name: Checkout PR head as untrusted sample data
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate signed golden-sample registry
+        run: |
+          set -euo pipefail
+          ROOT="trusted"
+          if [[ "${{ github.event_name }}" == "pull_request_target" ]]; then
+            ROOT="candidate"
+          fi
+          python3 trusted/scripts/validate_golden_samples.py --root "${ROOT}"

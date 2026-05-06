@@ -54,11 +54,30 @@ FF-07 adds a `pull_request_target` workflow that runs from trusted `main`, check
 
 This is intentionally prospective: the FF-07 bootstrap PR lands the workflow and validator, then the trusted-main workflow applies to subsequent PRs.
 
+#### HF3 golden-sample registry check (`.github/workflows/golden-samples-validation.yml`)
+
+FF-08 adds a `pull_request_target` workflow that runs from trusted `main`,
+checks out the PR head only as untrusted sample data, and runs
+`scripts/validate_golden_samples.py` from trusted `main`. It validates:
+
+1. Signed sample directories are exactly `golden_samples/GS-###/`.
+2. Smoke/demo fixtures such as `GS-100-radioss-smoke` and
+   `GS-101-demo-unsigned` are excluded from signed-registry validation.
+3. Every signed sample has `README.md`, `expected_results.json`, matching
+   `case_id`, non-empty `case_name` / `analysis_type`, a valid `status`, and
+   at least one `.inp` or theory `.py` evidence artifact.
+4. Samples marked `insufficient_evidence` carry a `FP-###`
+   `failure_pattern_ref` and non-empty `status_reason`.
+
+This workflow is deliberately not path-filtered. Once it is a required status
+check, a skipped required workflow would either block unrelated PRs or fail to
+protect sample-registry changes.
+
 ### Layer 3 — GitHub branch protection (`scripts/apply_branch_protection.sh`)
 
 A protection ruleset on `main` requires:
 
-- **`required_status_checks`** = `["lint-and-test (3.11)", "calibration-cap-check", "trailer-check"]` with `strict: true` (PR must be up-to-date with main before merge).
+- **`required_status_checks`** = `["lint-and-test (3.11)", "calibration-cap-check", "trailer-check", "golden-samples-validation"]` with `strict: true` (PR must be up-to-date with main before merge).
 - **`required_linear_history`** = `true` — squash-only style, no merge commits.
 - **`allow_force_pushes`** = `false`, **`allow_deletions`** = `false` — protect against accidental destruction of main.
 - **`required_conversation_resolution`** = `true` — Codex review threads must be resolved.
@@ -82,18 +101,25 @@ Any T1 merge that violates this contract is a P0 procedural failure and triggers
 | `.github/PULL_REQUEST_TEMPLATE.md` | Layer 1 — PR template |
 | `.github/workflows/calibration-cap-check.yml` | Layer 2 — CI claim-vs-ceiling check |
 | `.github/workflows/trailer-check.yml` | Layer 2 — HF5 commit-trailer check |
+| `.github/workflows/golden-samples-validation.yml` | Layer 2 — HF3 golden-sample registry check |
 | `scripts/extract_pr_self_pass_rate.py` | Layer 2 — PR body parser (16 unit tests) |
 | `scripts/check_commit_trailers.py` | Layer 2 — trusted commit-trailer validator |
+| `scripts/validate_golden_samples.py` | Layer 2 — trusted signed sample-registry validator |
 | `scripts/apply_branch_protection.sh` | Layer 3 — idempotent protection setup |
 | `docs/adr/ADR-013-branch-protection-enforcement.md` | This doc |
 
 ## Activation sequence
 
 1. **Land this PR via Codex R1=APPROVE.** Layers 1 and 2 take effect on merge (template applies to subsequent PRs; CI workflow runs on subsequent PRs).
-2. **T0 runs** `bash scripts/apply_branch_protection.sh` once after merge. Layer 3 takes effect immediately; from this moment forward, no merge to main can land without `lint-and-test (3.11)` + `calibration-cap-check` + `trailer-check` all green.
-3. **Subsequent PRs** open from the new template; the calibration-cap-check and trailer-check workflows validate each automatically.
+2. **T0 runs** `bash scripts/apply_branch_protection.sh` once after merge. Layer 3 takes effect immediately; from this moment forward, no merge to main can land without `lint-and-test (3.11)` + `calibration-cap-check` + `trailer-check` + `golden-samples-validation` all green.
+3. **Subsequent PRs** open from the new template; the calibration-cap-check, trailer-check, and golden-samples-validation workflows validate each automatically.
 
 The bootstrap PR for ADR-013 itself (this PR) is NOT subject to Layer 2 yet because the workflow file lands as part of this PR — GitHub doesn't run workflow files that don't exist on the base branch yet. ADR-012's PR (#24) is also NOT subject to Layer 2 for the same reason. **Both PRs land under Layer 0 (no enforcement) but are required by ADR-012/AR-2026-04-25-001 §1 to reach Codex R1=APPROVE before merge** — the discipline binding above applies retroactively to the same session that authored these ADRs.
+
+The FF-08 `golden-samples-validation` addition follows the same prospective
+pattern: the workflow and trusted validator land first, then
+`scripts/apply_branch_protection.sh` is rerun so subsequent PRs must satisfy the
+new HF3 status check.
 
 ## Consequences
 

@@ -6,6 +6,7 @@
 #
 # Settings rationale (see ADR-013 §"Protection ruleset"):
 # - required_status_checks: lint-and-test (3.11) + calibration-cap-check + trailer-check
+#   + golden-samples-validation
 # - enforce_admins: false        (T0 retains emergency override)
 # - required_pull_request_reviews: null  (solo-dev — Codex is the de facto reviewer)
 # - allow_force_pushes: false
@@ -26,7 +27,12 @@ gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["lint-and-test (3.11)", "calibration-cap-check", "trailer-check"]
+    "contexts": [
+      "lint-and-test (3.11)",
+      "calibration-cap-check",
+      "trailer-check",
+      "golden-samples-validation"
+    ]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": null,
