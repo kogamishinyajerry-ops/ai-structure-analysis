@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `eng40-fm01-operator-shell-2026-05-07 · main=b885226`
-> **Last updated:** 2026-05-07 (after ENG-39 PR #143 merge; ENG-40/FM-01 branch opened)
+> **Stamp:** `eng41-delegated-claude-owner-gate-2026-05-07 · main=776fdae`
+> **Last updated:** 2026-05-07 (after ENG-40 PR #144 merge; ENG-41 workflow-policy branch opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`origin/main == b885226` (post ENG-39 PR #143 merge, 2026-05-07).
+`origin/main == 776fdae` (post ENG-40 PR #144 merge, 2026-05-07).
 
 ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 
@@ -70,9 +70,15 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   `.planning/ROADMAP.md` and `docs/governance/goal_driven_development.md` so
   future feature work is organized as Linear-backed milestone `/goal` runs with
   Claude Opus read-only review gates.
-- ENG-40 / FM-01 is now the first executable milestone issue. Branch
-  `codex/ENG-40-fm01-operator-shell` starts from `b885226` and is limited to a
-  Tier 0 Web Console operator shell/status surface.
+- ENG-40 / FM-01 merged in PR #144 at `776fdae`. It added the first Tier 0 Web
+  Console operator shell/status surface and closed with local Claude Opus 4.7
+  owner-gate `APPROVE_TO_MERGE`. Linear ENG-40 is Done as an issue-level slice;
+  human acceptance remains deferred to the feature-milestone experience
+  checkpoint.
+- ENG-41 is the active workflow-policy issue. Branch
+  `codex/ENG-41-delegated-claude-owner-gate` starts from `776fdae` and is
+  limited to documenting the delegated Claude owner gate and milestone-level
+  human acceptance boundary.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
