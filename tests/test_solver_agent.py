@@ -15,6 +15,7 @@ from schemas.sim_plan import (
     MaterialSpec,
     MeshStrategy,
     SimPlan,
+    SolverBackend,
     SolverControls,
 )
 from schemas.sim_state import FaultClass
@@ -239,3 +240,26 @@ class TestSolverAgent:
         }
         result = solver_run(state)
         assert result["fault_class"] == FaultClass.UNKNOWN
+
+    def test_unsupported_solver_backend_is_non_retriable(self, sample_plan, tmp_path):
+        from agents.solver import run as solver_run
+
+        mesh = tmp_path / "model.inp"
+        mesh.write_text("*NODE\n1, 0, 0, 0\n", encoding="utf-8")
+        state = {
+            "plan": sample_plan.model_copy(
+                update={"solver": SolverControls(name=SolverBackend.FENICS)}
+            ),
+            "project_state_dir": str(tmp_path),
+            "artifacts": [str(mesh)],
+            "mesh_path": str(mesh),
+            "retry_budgets": {},
+            "history": [],
+        }
+
+        result = solver_run(state)
+
+        assert result["fault_class"] == FaultClass.UNKNOWN
+        assert "Unsupported solver backend" in result["history"][0]["msg"]
+        assert "retry_budgets" not in result
+        assert result.get("verdict") is None

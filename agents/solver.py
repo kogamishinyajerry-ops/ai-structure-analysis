@@ -9,6 +9,7 @@ from typing import Any
 import jinja2
 
 from aeron.protocols import SolveOptions, SolveOutcome, SolveStatusCode
+from schemas.sim_plan import SolverBackend
 from schemas.sim_state import FaultClass, SimState
 from tools.calculix_driver import run_solve
 
@@ -102,6 +103,20 @@ def _preflight_failure(outcome: SolveOutcome) -> dict[str, Any]:
     }
 
 
+def _unsupported_backend_failure(plan: Any) -> dict[str, Any]:
+    message = f"Unsupported solver backend for CalculiX solver node: {plan.solver.name}"
+    return {
+        "fault_class": FaultClass.UNKNOWN,
+        "history": [
+            {
+                "node": "solver",
+                "fault_class": FaultClass.UNKNOWN.value,
+                "msg": message,
+            }
+        ],
+    }
+
+
 def _failed_solve(outcome: SolveOutcome) -> dict[str, Any]:
     fault_class = outcome.status.fault_class or FaultClass.UNKNOWN
     logger.warning(
@@ -133,6 +148,9 @@ def run(state: SimState) -> dict[str, Any]:
     plan = state.get("plan")
     if not plan:
         raise ValueError("SimState is missing a SimPlan.")
+    if plan.solver.name is not SolverBackend.CALCULIX:
+        logger.error("Unsupported solver backend for CalculiX path: %s", plan.solver.name)
+        return _unsupported_backend_failure(plan)
 
     project_dir = Path(state.get("project_state_dir", "."))
     artifacts = state.get("artifacts", [])
