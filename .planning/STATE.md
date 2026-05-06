@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `FF-09-in-review-2026-05-06 · main=0913792 · pr=132`
-> **Last updated:** 2026-05-06 (after FF-08 merge/cleanup and PR #132 opened from `codex/ff-09-readme-adr-routing-sync`)
+> **Stamp:** `FF-09-closeout-2026-05-06 · main=a5c3dc4`
+> **Last updated:** 2026-05-06 (after PR #132 merge; PR #26 close; ENG-18 Done)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -13,7 +13,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Foundation | ✅ Done (Sprint 2) | See `docs/PHASE1_SPRINT2_COMPLETION.md` and `PHASE1_SPRINT1_COMPLETION.md`. |
-| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. ENG-33 AERON L0 protocol salvage done via #128. FF-07 done via #129; FF-08 done via #131 and branch protection now requires `golden-samples-validation`; FF-09 Codex-owned replacement is in review via #132. |
+| Phase 1.5 — Foundation-Freeze (post-pivot) | ✅ Governance/workflow gates closed: WF-00 / ENG-32 established Codex-primary + Linear work-control + Claude Opus audit; ENG-33 AERON L0 protocol salvage done via #128; FF-07 done via #129; FF-08 done via #131; FF-09 done via #132. Branch protection requires `trailer-check` and `golden-samples-validation`. |
 | Phase 1.6 — RFC-001 Foundation rebuild (W1→W4) | ✅ Done 2026-04-26 → 2026-04-27 (#68-#82) | Buckets A/B/C/D + Layer-2/3 schema + CalculiX adapter + L1→L4 producers + report-cli driver. |
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
@@ -23,7 +23,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ---
 
-## Phase 1.5 — Foundation-Freeze final tally (closed except FF-08/09)
+## Phase 1.5 — Foundation-Freeze final tally
 
 | Task | Status | PR | Commit | Notes |
 |------|--------|----|--------|-------|
@@ -37,7 +37,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | ADR-013 — Branch protection enforcement | ✅ Merged 2026-04-26 01:02Z | #25 | `303233c` | 3-layer wrapper (PR template + CI `--check` workflow + `gh api` protection script). |
 | FF-07 — CI commit-trailer presence + claim-id format check (HF5) | ✅ Merged 2026-05-06 · Claude Opus APPROVE · CI green | #129 | `e62a4e7` | Supersedes blocked PR #27 and closed duplicate #117. Adds trusted-main trailer validator, `pull_request_target` workflow, branch-protection `trailer-check` context, PR template merge trailers, and docs/ADR sync. Branch protection applied 2026-05-06; `trailer-check` is now required on `main`. |
 | FF-08 — `golden_samples/<id>` registry schema validation (HF3) | ✅ Merged 2026-05-06 · Claude Opus APPROVE · CI green · Linear ENG-17 Done | #131 | `0913792` | Adds trusted signed-registry validator, always-on `golden-samples-validation` workflow, ADR-011/013 sync, symlink-bypass fix, and branch-protection context update. Old #28 closed as superseded. |
-| FF-09 — README ↔ ADR-011 sync (Golden Rules vs 5 dev rules) | 🟡 In review · Codex-owned replacement PR #132 · Claude Opus APPROVE · local verification green | #132 | `401eef9` (PR branch tip) | Syncs README quick rules, ADR-011 maturity/cross-reference text, and `docs/governance/` routing/onboarding with Codex-primary workflow truth. Old #26 remains open until #132 lands, then should be closed as superseded. |
+| FF-09 — README ↔ ADR-011 sync (Golden Rules vs 5 dev rules) | ✅ Merged 2026-05-06 · Claude Opus APPROVE · CI green · Linear ENG-18 Done | #132 | `a5c3dc4` | Syncs README quick rules, ADR-011 maturity/cross-reference text, and `docs/governance/` routing/onboarding with Codex-primary workflow truth. Old #26 closed as superseded. |
 
 ---
 
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == 0913792` (post FF-08 PR #131 merge, 2026-05-06).
+`main == origin/main == a5c3dc4` (post FF-09 PR #132 merge, 2026-05-06).
 
 ---
 
@@ -73,12 +73,13 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | #129 | `codex/ff-07-hf5-trailer-enforcement` | MERGED 2026-05-06 · FF-07 / ENG-16 | Landed HF5 trailer validator/workflow/docs; branch protection now requires `trailer-check`. |
 | #130 | `codex/ff-07-state-closeout` | MERGED 2026-05-06 · FF-07 closeout | Verified `trailer-check` as a required branch-protection context on a follow-up PR and refreshed repo state. |
 | #131 | `codex/ff-08-gs-registry-validation` | MERGED 2026-05-06 · FF-08 / ENG-17 | Landed HF3 golden-sample registry validator and `golden-samples-validation`; branch protection now requires the check. Old #28 closed as superseded. |
+| #132 | `codex/ff-09-readme-adr-routing-sync` | MERGED 2026-05-06 · FF-09 / ENG-18 | Synced README, ADR-011, and `docs/governance/` with current Codex-primary workflow truth. Old #26 closed as superseded. |
 
 ### Active Codex Foundation-Freeze PRs
 
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
-| #132 | `codex/ff-09-readme-adr-routing-sync` | OPEN · FF-09 / ENG-18 | Codex-owned replacement for old #26. Syncs README, ADR-011, and `docs/governance/` with current Codex-primary workflow truth. |
+| — | — | None | FF-07/08/09 governance closeout path is complete. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
@@ -97,7 +98,7 @@ All 6 fail `calibration-cap-check` for the same reason as #121's first failure (
 
 | PR | Branch | Status |
 |----|--------|--------|
-| #26 | `feature/AI-FEA-FF-09-readme-adr-011-sync` | OPEN · superseded by Codex replacement #132 once #132 lands |
+| #26 | `feature/AI-FEA-FF-09-readme-adr-011-sync` | CLOSED · superseded by Codex replacement #132 |
 | #27 | `feature/AI-FEA-FF-07-trailer-check` | CLOSED · **SUPERSEDED by #129** |
 | #28 | `feature/AI-FEA-FF-08-gs-registry` | CLOSED · superseded by Codex replacement #131 |
 
@@ -155,7 +156,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 
 ## Carry-overs (still open)
 
-1. **FF-09**: in review via Codex-owned PR #132. Its required-check set should include `golden-samples-validation`, proving FF-08 branch-protection adoption on the next PR. After #132 lands, close old #26 as superseded and write ENG-18 proof/state. Gated on completion alone — **no date deadline applies** per project policy.
+1. **Foundation-Freeze governance gate path**: FF-07/08/09 are merged, old #26/#28 are closed, ENG-17/18 are Done, and required checks now include `trailer-check` + `golden-samples-validation`. Next work should choose a non-governance issue from the remaining backlog unless the user explicitly asks for mirror cleanup.
 2. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
 3. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
 4. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
