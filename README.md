@@ -80,11 +80,50 @@ See [`docs/well_harness_architecture.md`](docs/well_harness_architecture.md).
 
 ## Development Rules
 
-1. All code lands via **PR** — no direct push to `main`.
-2. Linear issues define scoped work, acceptance, blockers, and proof.
-3. Codex is the primary implementation agent; local Claude Opus is reviewer/auditor.
-4. **No local absolute paths** in commits, PRs, Linear proof comments, or Notion writebacks.
-5. Notion is patched only as an architecture/control mirror after repo and Linear truth are settled.
+> **Canonical ruleset:** [ADR-011](docs/adr/ADR-011-pivot-claude-code-takeover.md),
+> [ADR-012](docs/adr/ADR-012-calibration-cap-for-t1-self-pass-rate.md), and
+> [ADR-013](docs/adr/ADR-013-branch-protection-enforcement.md). This section is
+> only a quick-reference; if it drifts from those ADRs, the ADRs win.
+
+**Truth and roles**
+
+1. GitHub/repo is the code truth. All code and governance changes land by PR;
+   never direct-push to `main`.
+2. Linear `Engineering` issues are the work-control truth: scope, acceptance,
+   blockers, evidence, proof comments, and state live there.
+3. Codex is the primary implementation agent. Local Claude Opus 4.7 is the
+   reviewer/auditor, not the default executor or repo owner.
+4. Notion is an architecture/control mirror after repo and Linear truth settle.
+   Do not make Notion-first truth changes.
+
+**Gates and traceability**
+
+5. Use the PR template. The `Self-pass-rate` claim must come from
+   `python3 scripts/compute_calibration_cap.py --human`, not intuition.
+6. Current required checks on `main`: `lint-and-test (3.11)`,
+   `calibration-cap-check`, `trailer-check`, and `golden-samples-validation`.
+7. Linear-controlled commits carry `Execution-by: codex-primary`,
+   `Codex-verified: <claim-id>@<sha>`, `Reviewed-by: claude-opus47 APPROVE ...`
+   when review is required, and `Linear-Issue: ENG-<id>`.
+8. External writes are gated: show dry-run payloads before Linear comments/state
+   transitions, GitHub PR comments/close/merge actions, branch-protection
+   mutations, or Notion updates.
+9. Do not commit local absolute paths, secrets, raw env dumps, or machine-only
+   credentials in commits, PRs, Linear proof comments, or Notion mirrors.
+
+**Safety floors**
+
+10. Treat `golden_samples/**` as read-only unless a signed validation issue
+   explicitly authorizes a change. Unsigned smoke/demo fixtures are not signed
+   validation samples.
+11. No golden-standard reference means `insufficient_evidence`, not regression
+    evidence. `scripts/validate_golden_samples.py` enforces signed `GS-###`
+    registry shape.
+12. CalculiX is the numerical truth source unless a new ADR and gate approve a
+    different solver truth source.
+13. Keep decisions reversible: architecture changes go through ADRs, schema
+    changes are schema-first, and the four-layer import direction in ADR-011
+    remains binding.
 
 ## Naming Conventions
 
