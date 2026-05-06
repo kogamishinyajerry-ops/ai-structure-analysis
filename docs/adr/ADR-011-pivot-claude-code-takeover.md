@@ -184,11 +184,13 @@ ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附
 
 ```
 Execution-by: codex-primary
+Codex-verified: <claim-id>@<7-40 hex sha>
 Reviewed-by: claude-opus47 <verdict-or-proof-ref>
 Linear-Issue: ENG-<id>
 ```
 
 - `Execution-by` 必填，标明 Codex-primary execution path.
+- `Codex-verified` 必填于 HF5 claim-proof path，格式为 `<claim-id>@<7-40 hex sha>`；不得使用 `HEAD` / `<sha>` / `pending` 等可变或占位值.
 - `Reviewed-by` 在 M1-M5 或 calibration-mandatory review gates 触发时必填，引用 Claude Opus verdict or proof artifact.
 - `Linear-Issue` 必填于 Linear-controlled work，保持 work-control traceability.
 

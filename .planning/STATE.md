@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `ENG-33-aeron-l0-protocol-salvage-2026-05-06 · main=0a2f84b`
-> **Last updated:** 2026-05-06 (after PR #127 merge; PR #126 blocker comment posted; ENG-33 AERON L0 protocol salvage PR #128 opened)
+> **Stamp:** `FF-07-hf5-trailer-enforcement-2026-05-06 · main=b9e0b69 · pr=#129`
+> **Last updated:** 2026-05-06 (after PR #128 merge; PR #126 closed; FF-07 Codex-owned PR #129 opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -13,7 +13,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Foundation | ✅ Done (Sprint 2) | See `docs/PHASE1_SPRINT2_COMPLETION.md` and `PHASE1_SPRINT1_COMPLETION.md`. |
-| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. ENG-33 AERON L0 protocol salvage in progress. FF-07/08/09 still OPEN as separate PRs. |
+| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. ENG-33 AERON L0 protocol salvage done via #128. FF-07 is in Codex-owned review via #129; FF-08/09 still OPEN as separate PRs. |
 | Phase 1.6 — RFC-001 Foundation rebuild (W1→W4) | ✅ Done 2026-04-26 → 2026-04-27 (#68-#82) | Buckets A/B/C/D + Layer-2/3 schema + CalculiX adapter + L1→L4 producers + report-cli driver. |
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
@@ -35,7 +35,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | FF-06 — pre-commit path-guard for HF1 forbidden zone | ✅ Merged 2026-04-25 | #22 | `ac98fc3` | `scripts/hf1_path_guard.py` + 30 tests. R1 CR → R2 APPROVE. |
 | ADR-012 — Calibration cap for T1 self-pass-rate | ✅ Merged 2026-04-26 01:01Z | #24 | `6f660ba` | Mechanical 5-PR rolling-window ceiling. CI workflow `.github/workflows/calibration-cap-check.yml` enforces on every PR. |
 | ADR-013 — Branch protection enforcement | ✅ Merged 2026-04-26 01:02Z | #25 | `303233c` | 3-layer wrapper (PR template + CI `--check` workflow + `gh api` protection script). |
-| FF-07 — CI commit-trailer presence + claim-id format check (HF5) | 🟡 OPEN (PR #27, lint fixed 2026-05-03; **R1 BLOCKER, work parked**, see issue #124) | #27 | — | Gated on full Codex R1 fix arc per backlog issue #124 (3 BLOCKER + 2 HIGH + 1 MEDIUM). Pre-merge Codex remains MANDATORY (HF1.9 zone). No date deadline — gated on completion alone. |
+| FF-07 — CI commit-trailer presence + claim-id format check (HF5) | 🟡 IN REVIEW (Codex-owned PR #129; Claude Opus audit APPROVE; local/uv full suite PASS) | #129 | — | Supersedes blocked PR #27 and closed duplicate #117. Adds trusted-main trailer validator, `pull_request_target` workflow, branch-protection context wiring, PR template merge trailers, and docs/ADR sync. Branch-protection mutation remains a separate post-merge external-write gate. |
 | FF-08 — `golden_samples/<id>` registry schema validation (HF3) | 🟡 OPEN (PR #28, MERGEABLE, ✓2/✗0) | #28 | — | Needs Self-pass-rate + body refresh + Codex review. No date deadline — gated on completion alone. |
 | FF-09 — README ↔ ADR-011 sync (Golden Rules vs 5 dev rules) | 🟡 OPEN (PR #26, MERGEABLE, ✓1/✗0) | #26 | — | Bundled with FF-03/FF-04 governance docs sync. |
 
@@ -58,18 +58,24 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == 0a2f84b` (post #127 merge, 2026-05-06).
+`main == origin/main == b9e0b69` (post #128 merge, 2026-05-06).
 
 ---
 
 ## Open PRs
 
-### In flight / blocked by WF-00
+### Current control PRs
 
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
-| #126 | `claude/L0-protocol` | OPEN · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Blocker comment posted 2026-05-06. Salvage AERON protocol code only via Codex-owned ENG-33 branch. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
-| #128 | `codex/aeron-l0-protocol-salvage` | OPEN · CI pending · Claude Opus audit APPROVE · ENG-33 | Salvages only the AERON L0 protocol package and packaging/tests from blocked #126. Does not inherit #126 root `AGENTS.md`. |
+| #129 | `codex/ff-07-hf5-trailer-enforcement` | OPEN · FF-07 / ENG-16 · Claude Opus audit APPROVE · CI pending | Review CI. Do not merge until required checks are green and merge trailers are preserved. After merge, dry-run branch-protection update before running `scripts/apply_branch_protection.sh`. |
+
+### Recently resolved / superseded
+
+| PR | Branch | Status | Notes |
+|----|--------|--------|-------|
+| #126 | `claude/L0-protocol` | CLOSED 2026-05-06 · **BLOCKED/SUPERSEDED** | Closed after #127 governance and #128 protocol salvage. Do not merge as-is. |
+| #128 | `codex/aeron-l0-protocol-salvage` | MERGED 2026-05-06 · ENG-33 | Salvaged only the AERON L0 protocol package and packaging/tests from blocked #126. Does not inherit #126 root `AGENTS.md`. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
@@ -89,7 +95,7 @@ All 6 fail `calibration-cap-check` for the same reason as #121's first failure (
 | PR | Branch | Status |
 |----|--------|--------|
 | #26 | `feature/AI-FEA-FF-09-readme-adr-011-sync` | OPEN · MERGEABLE · ✓1/✗0 |
-| #27 | `feature/AI-FEA-FF-07-trailer-check` | OPEN · MERGEABLE · ✓1/✗1 (lint-and-test failing) |
+| #27 | `feature/AI-FEA-FF-07-trailer-check` | OPEN · **BLOCKED/SUPERSEDED by #129** |
 | #28 | `feature/AI-FEA-FF-08-gs-registry` | OPEN · MERGEABLE · ✓2/✗0 |
 
 ### Surrogate hint scaffolding stack (post-pivot, P1-07 line)
@@ -146,12 +152,12 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 
 ## Carry-overs (still open)
 
-1. **FF-07 PR #27** parked at R1=BLOCKER per backlog issue #124. Lint-only fix landed 2026-05-03; structural rewrite (3 BLOCKER + 2 HIGH + 1 MEDIUM) gated on dependency completion, not date.
+1. **FF-07 PR #129** is the active Codex-owned fix arc. Old PR #27 remains open but blocked/superseded; close it only after #129 lands or with explicit user confirmation.
 2. **FF-08 / FF-09** stalled in OPEN since 2026-04-25. Need PR-body refresh (Self-pass-rate) + Codex review. Gated on completion alone — **no date deadline applies** per project policy.
 3. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
 4. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
 5. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-6. **ENG-33 AERON L0 protocol salvage**: PR #126 is blocked as-is. PR #127 landed the Codex-primary governance baseline. Salvage only the protocol package via `codex/aeron-l0-protocol-salvage`; do not inherit #126 root `AGENTS.md`.
+6. **ENG-33 AERON L0 protocol salvage**: Done via PR #128. PR #126 is closed as blocked/superseded. Further AERON work must proceed through Codex-owned Linear issues/PRs after workflow gates are reliable.
 
 ---
 
