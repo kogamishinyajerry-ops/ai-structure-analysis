@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `eng39-lean-validation-workflow-2026-05-06 · main=8a38b20`
-> **Last updated:** 2026-05-06 (ENG-39 workflow adjustment branch opened from current main)
+> **Stamp:** `eng40-fm01-operator-shell-2026-05-07 · main=b885226`
+> **Last updated:** 2026-05-07 (after ENG-39 PR #143 merge; ENG-40/FM-01 branch opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`origin/main == 8a38b20` (post ENG-37 state closeout PR #140 merge, 2026-05-06).
+`origin/main == b885226` (post ENG-39 PR #143 merge, 2026-05-07).
 
 ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 
@@ -66,10 +66,13 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 - Tier 1 engineering-candidate work uses compact reproducibility manifests and automatic read-only Claude Opus review when triggered.
 - Tier 2 signed validation remains strict at the physical-claim boundary: benchmark, metrics, tolerance comparison, convergence, hashes, and reviewer/signoff.
 - This change is governance/documentation only and does not mutate `golden_samples/**`, solver decks, schemas, protocols, CI, dependencies, or signed-validation evidence.
-- PR #143 opened 2026-05-07 for ENG-39. The same branch now also introduces
+- PR #143 merged 2026-05-07 for ENG-39. The same branch introduced
   `.planning/ROADMAP.md` and `docs/governance/goal_driven_development.md` so
   future feature work is organized as Linear-backed milestone `/goal` runs with
   Claude Opus read-only review gates.
+- ENG-40 / FM-01 is now the first executable milestone issue. Branch
+  `codex/ENG-40-fm01-operator-shell` starts from `b885226` and is limited to a
+  Tier 0 Web Console operator shell/status surface.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
@@ -123,6 +126,7 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 | #137 | `codex/ENG-36-aeron-solver-backend-wiring` | MERGED 2026-05-06 · AERON-02 / ENG-36 | Wires `CalculiXFEABackend` into `agents.solver.run()` with HF1 override, Opus approval, GitHub review fix, and CI green. |
 | #138 | `codex/ENG-36-state-closeout` | MERGED 2026-05-06 · ENG-36 closeout | Refreshed STATE after #137 and confirmed AERON-02 Done. |
 | #139 | `codex/ENG-37-aeron-graph-provenance` | MERGED 2026-05-06 · AERON-03 / ENG-37 | Surfaces additive `solve_metadata.backend` provenance through the graph cold-smoke path with HF1 override, Opus approval, and CI green. |
+| #143 | `codex/ENG-39-lean-validation-workflow` | MERGED 2026-05-07 · ENG-39 | Adds ADR-023 lean validation workflow plus feature milestone `/goal` run structure. CI green, Linear ENG-39 Done, Notion mirror updated. |
 | #117 | `codex/ENG-16-hf5-commit-trailers` | CLOSED · superseded by #129 | Old draft duplicate; do not reopen. |
 | #118 | `codex/ENG-17-hf3-gs-registry` | CLOSED · superseded by #131 | Old draft duplicate; do not reopen. |
 | #120 | `codex/ENG-18-routing-sync-plan` | CLOSED · superseded by #132 | Old draft duplicate; do not reopen. |
@@ -132,7 +136,7 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 
 | PR | Branch | Status | Notes |
 |----|--------|--------|-------|
-| #143 | `codex/ENG-39-lean-validation-workflow` | OPEN · ENG-39 | Adds ADR-023 lean validation workflow plus feature milestone `/goal` run structure. CI pending at PR creation. |
+| — | — | None | ENG-40/FM-01 implementation branch is active but no PR is open yet. |
 
 ### Remaining Codex/ENG-* draft backlog (blocked, no current merge path)
 

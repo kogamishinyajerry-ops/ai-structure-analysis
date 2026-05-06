@@ -80,8 +80,22 @@ interface CopilotActionResult {
   message?: string;
 }
 
+interface OperatorStatusItem {
+  label: string;
+  value: string;
+  tone?: 'accent' | 'warning' | 'muted';
+}
+
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
+
+const operatorStatus: OperatorStatusItem[] = [
+  { label: 'Milestone', value: 'FM-01 Web Console Operator Shell', tone: 'accent' },
+  { label: 'Linear issue', value: 'ENG-40' },
+  { label: 'Claim tier', value: 'Tier 0 sandbox/demo', tone: 'warning' },
+  { label: 'Backend provenance', value: 'AERON L0 / CalculiX path, shown when run metadata is available' },
+  { label: 'Next action', value: 'Select or upload a case, then run a software-path smoke only' },
+];
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -426,6 +440,8 @@ function App() {
             </header>
 
             <div style={{ padding: '40px', flex: 1 }}>
+            <OperatorStatusPanel items={operatorStatus} />
+
             <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />
                 <TabButton active={activeTab === 'report'} onClick={() => setActiveTab('report')} label="Narrative" icon={<Activity size={16} />} />
@@ -529,6 +545,36 @@ function App() {
         )}
       </div>
     </div>
+  );
+}
+
+function OperatorStatusPanel({ items }: { items: OperatorStatusItem[] }) {
+  const toneColor = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'var(--accent)';
+    if (tone === 'warning') return '#f59e0b';
+    return 'var(--text-primary)';
+  };
+
+  return (
+    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Operator workflow status">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Operator status</div>
+          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Milestone control surface</h2>
+        </div>
+        <div style={{ color: '#f59e0b', fontSize: '0.78rem', fontWeight: 700, border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(245, 158, 11, 0.08)' }}>
+          software-path evidence only
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
+        {items.map((item) => (
+          <div key={item.label} style={{ background: 'rgba(15, 23, 42, 0.55)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', minHeight: '70px' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
+            <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35 }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
