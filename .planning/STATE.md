@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `aeron-03-closeout-2026-05-06 · main=059f21e`
-> **Last updated:** 2026-05-06 (after PR #139 merge; ENG-37 AERON-03 code landed)
+> **Stamp:** `aeron-04-well-harness-graph-2026-05-06 · branch=codex/ENG-38-aeron-well-harness-graph`
+> **Last updated:** 2026-05-06 (ENG-38 AERON-04 implementation branch)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -18,7 +18,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
 | Phase 1.9 — RFC-001 3D viewport + live bake (W8) | ✅ Done 2026-04-29 (#111-#114) | OpenRadioss → VTU exporter + PyVista viewport + live streaming + Electron live-bake orchestration. |
-| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed. AERON-01 landed the first concrete AERON L0 backend adapter in PR #135; AERON-02 wired that backend into exactly one solver caller path in PR #137; AERON-03 surfaced backend provenance through graph cold-smoke in PR #139. |
+| Phase 2 — Web Console hardening | 🟡 Active candidate lane (not yet reactivated) | Frontend build-smoke restoration landed in PR #121. Governance/workflow gates are closed. AERON-01 landed the first concrete AERON L0 backend adapter in PR #135; AERON-02 wired that backend into exactly one solver caller path in PR #137; AERON-03 surfaced backend provenance through graph cold-smoke in PR #139; ENG-38 / AERON-04 is the current branch exposing that path through the well-harness CLI. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
 ---
@@ -90,6 +90,15 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 - PR #139 added additive `solve_metadata.backend` provenance.
 - `tests/test_cold_smoke_e2e.py` proves `compile_graph().invoke(...)` exposes the AERON backend provenance without real `ccx`.
 - This slice intentionally avoided `aeron/protocols/*`, `schemas/*`, `agents/graph.py`, Web/API services, report-cli, UI/workbench, golden samples, GS101, signed-validation artifacts, Notion sync, and CI/governance workflows.
+
+AERON-04 / ENG-38 is now adding one user-runnable adoption point:
+
+- `codex/ENG-38-aeron-well-harness-graph` adds an additive `--executor graph` mode to the well-harness CLI.
+- The graph executor runs `agents.graph.compile_graph()` with replay/dummy external surfaces, proves `solve_metadata.backend=calculix`, and persists the normal well-harness `project_state` bundle.
+- This branch intentionally avoids `schemas/*`, `aeron/protocols/*`, `golden_samples/**`, GS101, signed-validation artifacts, API routes, frontend, Notion mutations, and workflow-policy changes.
+- Local branch verification run 2026-05-06: `ruff check` on touched well-harness Python files, `git diff --check`, `pytest backend/tests/test_well_harness.py`, `pytest tests/test_cold_smoke_e2e.py`, and `python run_well_harness.py GS-001 --executor graph --no-notion-sync`.
+- Review/proof packet prepared at `reports/codex_tool_reports/eng38_aeron_well_harness_graph_packet.md`; Claude Opus audit returned `APPROVE` in `reports/codex_tool_reports/eng38_aeron_well_harness_graph_claude_audit.md`; external writes remain dry-run until explicitly confirmed.
+- Full `pytest backend/tests` is still blocked before this slice runs by existing dependency drift: OpenAI 1.6.1 / httpx 0.28.1 rejects `proxies`; with `OPENAI_API_KEY=` it next fails in FastAPI/Starlette `TestClient` because httpx 0.28.1 rejects `app`.
 
 ---
 
@@ -198,7 +207,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 2. **Codex/ENG-* DRAFT lane**: remaining open drafts are ENG-20 (#119 planning doc) and ENG-23 (#115 real GS-101-adjacent code). Recommended: close or refresh #119 under a new issue; keep #115 only if ENG-22/GS101 acceptance is explicitly contracted.
 3. **Pre-pivot P1-* (#11-#16) and surrogate stack (#30/#36/#37)** disposition deferred since 2026-04-25. These PRs predate ADR-011/012/013 and should not be merged without a separate Codex-owned triage/rebuild issue.
 4. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-5. **AERON L0 adoption**: ENG-33 / PR #128 salvaged the protocol package; ENG-35 / PR #135 landed the first concrete `CalculiXFEABackend`; ENG-36 / PR #137 wired that backend into `agents.solver.run()` while preserving the existing solver-node `SimState -> dict` contract; ENG-37 / PR #139 surfaced backend provenance through the graph cold-smoke path without starting GS101 or signed-validation work. Next AERON work should be an explicit Linear contract for one user-facing adoption point, not GS101 or signed validation by implication.
+5. **AERON L0 adoption**: ENG-33 / PR #128 salvaged the protocol package; ENG-35 / PR #135 landed the first concrete `CalculiXFEABackend`; ENG-36 / PR #137 wired that backend into `agents.solver.run()` while preserving the existing solver-node `SimState -> dict` contract; ENG-37 / PR #139 surfaced backend provenance through the graph cold-smoke path without starting GS101 or signed-validation work. ENG-38 / AERON-04 is now exposing that path through one user-runnable well-harness CLI smoke, still explicitly outside GS101 and signed validation.
 
 ---
 
