@@ -105,6 +105,9 @@ function App() {
   const [logs, setLogs] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [currentJobStatus, setCurrentJobStatus] = useState<'idle' | 'starting' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'connection_lost'>('idle');
+  const [currentJobAnalysis, setCurrentJobAnalysis] = useState<'static' | 'modal' | 'buckling'>('static');
   const [activeExperiment, setActiveExperiment] = useState<ExperimentStatus | null>(null);
   const [comparedIndices, setComparedIndices] = useState<[number, number] | null>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -126,11 +129,18 @@ function App() {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
+  const clearJobContext = () => {
+    setCurrentJobId(null);
+    setCurrentJobStatus('idle');
+    setCurrentJobAnalysis(analysisType);
+  };
+
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       setActiveCaseId(null);
+      clearJobContext();
       await generateReportFromFile(selectedFile);
     }
   };
@@ -163,12 +173,15 @@ function App() {
     }
   };
 
-  const selectCase = async (c: CaseMetadata) => {
+  const selectCase = async (c: CaseMetadata, options: { preserveJob?: boolean } = {}) => {
     setLoading(true);
     setFile(null);
     setActiveCaseId(c.id);
     setActiveExperiment(null);
     setComparedIndices(null);
+    if (!options.preserveJob) {
+      clearJobContext();
+    }
     
     const formData = new FormData();
     formData.append('case_id', c.id);
@@ -195,6 +208,9 @@ function App() {
     setSolving(true);
     setLogs([]);
     setShowConsole(true);
+    setCurrentJobId(null);
+    setCurrentJobStatus('starting');
+    setCurrentJobAnalysis(analysisType);
     
     try {
       const response = await fetch(`${API_BASE}/solver/run`, {
@@ -208,10 +224,16 @@ function App() {
       });
       const data = await response.json();
       if (data.job_id) {
+        setCurrentJobId(data.job_id);
+        setCurrentJobStatus('running');
         connectToLogs(data.job_id);
+      } else {
+        setCurrentJobStatus('failed');
+        setSolving(false);
       }
     } catch (err) {
       console.error("Solver start failed", err);
+      setCurrentJobStatus('failed');
       setSolving(false);
     }
   };
@@ -240,19 +262,16 @@ function App() {
   };
 
   const stopSolver = async () => {
-    // 假设我们存储了当前的 jobId，或者从 logs/status 中获取
-    // 这里简化处理，通过解析 logs 最后的 job_id 或状态获取
-    const lastJobLog = logs.find(l => l.includes("Starting Solver Job"));
-    if (!lastJobLog) return;
+    if (!currentJobId) return;
     
     setLogs(prev => [...prev, "[SYSTEM] Requesting stop..."]);
-    // 提取 jobId
-    const jobId = lastJobLog.split("Job ")[1].split(":")[0];
+    setCurrentJobStatus('stop_requested');
     
     try {
-      await fetch(`${API_BASE}/solver/stop/${jobId}`, { method: 'POST' });
+      await fetch(`${API_BASE}/solver/stop/${currentJobId}`, { method: 'POST' });
     } catch (err) {
       console.error("Stop failed", err);
+      setCurrentJobStatus('failed');
     }
   };
 
@@ -262,11 +281,12 @@ function App() {
       setLogs(prev => [...prev, event.data]);
       if (event.data.includes("--- Process Finished")) {
         setSolving(false);
+        setCurrentJobStatus(event.data.includes("status: COMPLETED") ? 'completed' : 'failed');
         if (event.data.includes("status: COMPLETED")) {
             setTimeout(() => {
                 if (activeCaseId) {
                    const matchedCase = availableCases.find(c => c.id === activeCaseId);
-                   if (matchedCase) selectCase(matchedCase);
+                   if (matchedCase) selectCase(matchedCase, { preserveJob: true });
                 }
             }, 1000);
         }
@@ -274,6 +294,7 @@ function App() {
     };
     ws.onerror = () => {
       setLogs(prev => [...prev, "[ERROR] WebSocket connection died"]);
+      setCurrentJobStatus('connection_lost');
       setSolving(false);
     };
   };
@@ -320,6 +341,9 @@ function App() {
       const data = await res.json() as CopilotActionResult;
       
       if (data.job_id) {
+          setCurrentJobId(data.job_id);
+          setCurrentJobStatus('running');
+          setCurrentJobAnalysis(analysisType);
           setShowConsole(true);
           setSolving(true);
           connectToLogs(data.job_id);
@@ -340,7 +364,12 @@ function App() {
     : file
       ? `Uploaded FRD / ${file.name}`
       : 'No active case';
-  const runState = solving
+  const jobStatusLabel = currentJobStatus.replace('_', ' ');
+  const analysisModeLabel = `${currentJobAnalysis} analysis`;
+  const currentJobLabel = currentJobId ? `${currentJobId} / ${jobStatusLabel}` : 'No solver job started';
+  const runState = currentJobId
+    ? `${analysisModeLabel} / ${jobStatusLabel}`
+    : solving
     ? `Running ${analysisType} solver`
     : activeExperiment
       ? `Study ${activeExperiment.status}`
@@ -349,12 +378,19 @@ function App() {
         : report
           ? 'Report loaded'
           : 'Idle';
-  const evidenceState = report
+  const evidenceState = currentJobId && logs.length > 0
+    ? `Job console stream for ${currentJobId}; not signed validation`
+    : currentJobId
+      ? `Job id received from /solver/run; not signed validation`
+      : report
     ? `Software-path report ${report.metrics.status}; not signed validation`
     : logs.length > 0
       ? 'Solver log stream only; not signed validation'
       : 'No run evidence yet';
   const latestEvent = logs.length > 0 ? logs[logs.length - 1].slice(0, 96) : 'No runtime log event';
+  const backendProvenance = currentJobId
+    ? `Existing /solver/run CalculiX path, job ${currentJobId}; software-path evidence only`
+    : 'AERON L0 / CalculiX path awaits a solver job response';
   const nextAction = solving
     ? 'Watch the solver console or stop the job; do not promote evidence'
     : loading
@@ -368,12 +404,14 @@ function App() {
             : 'Review the uploaded report; select a gallery case before solver run';
   const operatorStatus: OperatorStatusItem[] = [
     { label: 'Milestone', value: 'FM-01 Web Console Operator Shell', tone: 'accent' },
-    { label: 'Linear issue', value: 'ENG-42' },
+    { label: 'Linear issue', value: 'ENG-43' },
     { label: 'Claim tier', value: 'Tier 0 sandbox/demo', tone: 'warning' },
     { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
+    { label: 'Analysis mode', value: analysisModeLabel },
+    { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
     { label: 'Run state', value: runState, tone: solving || activeExperiment ? 'accent' : 'muted' },
     { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
-    { label: 'Backend provenance', value: 'AERON L0 / CalculiX path, shown when run metadata is available' },
+    { label: 'Backend provenance', value: backendProvenance },
     { label: 'Latest event', value: latestEvent },
     { label: 'Next action', value: nextAction, tone: 'accent' },
   ];
@@ -606,7 +644,7 @@ function OperatorStatusPanel({ items }: { items: OperatorStatusItem[] }) {
         {items.map((item) => (
           <div key={item.label} style={{ background: 'rgba(15, 23, 42, 0.55)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', minHeight: '70px' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
-            <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35 }}>{item.value}</div>
+            <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
           </div>
         ))}
       </div>
