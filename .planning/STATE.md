@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `WF-00-codex-primary-pilot-2026-05-06 · main=ef57c3d`
-> **Last updated:** 2026-05-06 (after PR #121/#122/#123/#125 merges; ENG-32 WF-00 pilot opened; PR #126 blocked by Codex disposition + Claude Opus audit; PR #127 opened for Codex-primary governance)
+> **Stamp:** `ENG-33-aeron-l0-protocol-salvage-2026-05-06 · main=0a2f84b`
+> **Last updated:** 2026-05-06 (after PR #127 merge; PR #126 blocker comment posted; ENG-33 AERON L0 protocol salvage opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -13,7 +13,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Foundation | ✅ Done (Sprint 2) | See `docs/PHASE1_SPRINT2_COMPLETION.md` and `PHASE1_SPRINT1_COMPLETION.md`. |
-| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. FF-07/08/09 still OPEN as separate PRs. |
+| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. ENG-33 AERON L0 protocol salvage in progress. FF-07/08/09 still OPEN as separate PRs. |
 | Phase 1.6 — RFC-001 Foundation rebuild (W1→W4) | ✅ Done 2026-04-26 → 2026-04-27 (#68-#82) | Buckets A/B/C/D + Layer-2/3 schema + CalculiX adapter + L1→L4 producers + report-cli driver. |
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`main == origin/main == ef57c3d` (post #121/#122/#123/#125 merges, 2026-05-03).
+`main == origin/main == 0a2f84b` (post #127 merge, 2026-05-06).
 
 ---
 
@@ -68,8 +68,8 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
-| #126 | `claude/L0-protocol` | OPEN · CI green · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Rewrite governance in Codex-owned PR, then salvage AERON protocol code separately. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
-| #127 | `codex/wf-00-codex-primary-pilot` | OPEN · CI green · Claude Opus governance audit APPROVE · Codex-owned governance PR for ENG-32 | Establishes Codex-primary governance patch and WF-00 evidence. No auto-merge; review remains mandatory at 50% calibration. |
+| #126 | `claude/L0-protocol` | OPEN · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Blocker comment posted 2026-05-06. Salvage AERON protocol code only via Codex-owned ENG-33 branch. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
+| local | `codex/aeron-l0-protocol-salvage` | In progress for ENG-33 | Salvages only the AERON L0 protocol package and packaging/tests from blocked #126. Does not inherit #126 root `AGENTS.md`. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
@@ -151,7 +151,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 3. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
 4. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
 5. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-6. **WF-00 governance split**: PR #126 is blocked as-is. PR #127 is the Codex-owned governance PR. After #127 passes review, salvage AERON protocol code separately if still desired.
+6. **ENG-33 AERON L0 protocol salvage**: PR #126 is blocked as-is. PR #127 landed the Codex-primary governance baseline. Salvage only the protocol package via `codex/aeron-l0-protocol-salvage`; do not inherit #126 root `AGENTS.md`.
 
 ---
 

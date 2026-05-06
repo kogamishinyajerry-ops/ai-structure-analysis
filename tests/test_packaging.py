@@ -197,3 +197,13 @@ def test_pyproject_advertises_correct_package_layout() -> None:
     find_cfg = data["tool"]["setuptools"]["packages"]["find"]
     assert "backend" in find_cfg["where"], find_cfg
     assert any(pat == "app*" or pat.startswith("app") for pat in find_cfg["include"]), find_cfg
+
+
+def test_pyproject_includes_aeron_protocol_package() -> None:
+    """The AERON L0 package must be included in installed artifacts."""
+    import tomllib
+
+    pyproject = REPO_ROOT / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    find_cfg = data["tool"]["setuptools"]["packages"]["find"]
+    assert "aeron*" in find_cfg["include"], find_cfg
