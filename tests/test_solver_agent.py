@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from aeron.protocols import CasePackage, ResultBundle, SolveOutcome, SolveStatus, SolveStatusCode
 from schemas.sim_plan import (
     AnalysisType,
     BCSpec,
@@ -78,6 +79,54 @@ class TestRenderInpDeck:
 
 
 class TestSolverAgent:
+    def test_solver_delegates_through_aeron_backend_boundary(self, solver_state, tmp_path):
+        from agents.solver import run as solver_run
+
+        calls = []
+
+        class FakeBackend:
+            def prepare_case(self, plan):
+                calls.append(("prepare_case", plan.case_id))
+                case_dir = tmp_path / "solver"
+                case_dir.mkdir()
+                primary_input = case_dir / "solve.inp"
+                primary_input.write_text("*INCLUDE, INPUT=model.inp\n", encoding="utf-8")
+                return CasePackage(
+                    case_id=plan.case_id,
+                    case_dir=case_dir,
+                    primary_input=primary_input,
+                )
+
+            def solve(self, case, opts):
+                calls.append(("solve", case.case_id, opts.dry_run))
+                return SolveOutcome(
+                    case_id=case.case_id,
+                    status=SolveStatus(code=SolveStatusCode.OK, returncode=0),
+                    wall_clock_s=0.25,
+                    raw_outputs={"frd": case.case_dir / "solve.frd"},
+                    metadata={"ccx_version": "fake-2.21", "converged": True},
+                )
+
+            def parse_results(self, outcome):
+                calls.append(("parse_results", outcome.case_id))
+                return ResultBundle(
+                    case_id=outcome.case_id,
+                    fields=outcome.raw_outputs,
+                    scalars={},
+                    extras={},
+                )
+
+        fake_backend = FakeBackend()
+
+        with patch("agents.solver._build_calculix_backend", return_value=fake_backend) as build:
+            result = solver_run(solver_state)
+
+        build.assert_called_once()
+        assert [call[0] for call in calls] == ["prepare_case", "solve", "parse_results"]
+        assert result["fault_class"] == FaultClass.NONE
+        assert result["frd_path"].endswith("solve.frd")
+        assert result["solve_metadata"]["ccx_version"] == "fake-2.21"
+
     def test_successful_solve(self, solver_state, tmp_path):
         from agents.solver import run as solver_run
 
@@ -129,6 +178,29 @@ class TestSolverAgent:
         assert result["fault_class"] == FaultClass.SOLVER_TIMESTEP
         assert result["retry_budgets"] == {"solver": 1}
         assert result["history"][0]["fault_class"] == FaultClass.SOLVER_TIMESTEP.value
+
+    def test_timeout_failure_retries_solver(self, solver_state):
+        from agents.solver import run as solver_run
+
+        with patch(
+            "agents.solver.run_solve",
+            return_value={
+                "frd_path": None,
+                "dat_path": None,
+                "sta_path": None,
+                "converged": False,
+                "wall_time_s": 600.0,
+                "returncode": -1,
+                "ccx_version": "2.21",
+                "fault_class": FaultClass.SOLVER_TIMESTEP,
+                "failure_reason": "CalculiX solve timed out.",
+            },
+        ):
+            result = solver_run(solver_state)
+
+        assert result["fault_class"] == FaultClass.SOLVER_TIMESTEP
+        assert result["retry_budgets"] == {"solver": 1}
+        assert result["history"][0]["returncode"] == -1
 
     def test_version_gate_failure_does_not_retry(self, solver_state):
         from agents.solver import run as solver_run
