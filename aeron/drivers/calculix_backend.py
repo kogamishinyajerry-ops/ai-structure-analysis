@@ -17,12 +17,12 @@ from aeron.protocols import (
     SolveStatus,
     SolveStatusCode,
 )
-from agents.solver import _render_inp_deck
 from schemas.sim_plan import SimPlan, SolverBackend
 from schemas.sim_state import FaultClass
 from tools import calculix_driver
 
 RunSolve = Callable[..., dict[str, Any]]
+RenderDeck = Callable[[SimPlan, str, Path], Path]
 
 
 class CalculiXFEABackend:
@@ -41,10 +41,14 @@ class CalculiXFEABackend:
         work_root: Path | str,
         mesh_input: Path | str,
         run_solve: RunSolve = calculix_driver.run_solve,
+        render_deck: RenderDeck | None = None,
+        case_dir_name: str | None = None,
     ) -> None:
         self.work_root = Path(work_root)
         self.mesh_input = Path(mesh_input)
         self._run_solve = run_solve
+        self._render_deck = render_deck
+        self._case_dir_name = case_dir_name
 
     def prepare_case(self, plan: SimPlan) -> CasePackage:
         """Render ``solve.inp`` from ``plan`` and a constructor-provided mesh."""
@@ -58,14 +62,14 @@ class CalculiXFEABackend:
         if self.mesh_input.suffix.lower() != ".inp":
             raise ValueError(f"mesh_input must be a .inp file: {self.mesh_input}")
 
-        case_dir = self.work_root / plan.case_id
+        case_dir = self.work_root / (self._case_dir_name or plan.case_id)
         case_dir.mkdir(parents=True, exist_ok=True)
 
         mesh_dst = case_dir / self.mesh_input.name
         if self.mesh_input.resolve() != mesh_dst.resolve():
             shutil.copy2(self.mesh_input, mesh_dst)
 
-        primary_input = _render_inp_deck(plan, mesh_dst.name, case_dir)
+        primary_input = self._get_render_deck()(plan, mesh_dst.name, case_dir)
         return CasePackage(
             case_id=plan.case_id,
             case_dir=case_dir,
@@ -76,6 +80,14 @@ class CalculiXFEABackend:
                 "source_mesh": str(self.mesh_input),
             },
         )
+
+    def _get_render_deck(self) -> RenderDeck:
+        if self._render_deck is not None:
+            return self._render_deck
+
+        from agents.solver import _render_inp_deck
+
+        return _render_inp_deck
 
     def solve(self, case: CasePackage, opts: SolveOptions) -> SolveOutcome:
         """Run CalculiX through the existing driver, or preflight only."""
