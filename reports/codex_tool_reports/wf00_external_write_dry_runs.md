@@ -2,15 +2,17 @@
 
 **Issue:** ENG-32
 **Date:** 2026-05-06
-**Status:** Dry-run only except for the already-created Linear issue and Linear proof comment.
+**Status:** Governance PR creation executed after user confirmation; remaining external writes are dry-run only except for the already-created Linear issue and Linear proof comment.
 
-## GitHub Governance PR Creation Dry Run
+## GitHub Governance PR Creation
 
 Target repository: `kogamishinyajerry-ops/ai-structure-analysis`
 
 Branch: `codex/wf-00-codex-primary-pilot`
 
-Command withheld until explicit confirmation:
+Executed after explicit user continuation confirmation:
+
+Result: `https://github.com/kogamishinyajerry-ops/ai-structure-analysis/pull/127`
 
 ```bash
 gh pr create \

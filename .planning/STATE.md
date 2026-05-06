@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
 > **Stamp:** `WF-00-codex-primary-pilot-2026-05-06 · main=ef57c3d`
-> **Last updated:** 2026-05-06 (after PR #121/#122/#123/#125 merges; ENG-32 WF-00 pilot opened; PR #126 blocked by Codex disposition + Claude Opus audit)
+> **Last updated:** 2026-05-06 (after PR #121/#122/#123/#125 merges; ENG-32 WF-00 pilot opened; PR #126 blocked by Codex disposition + Claude Opus audit; PR #127 opened for Codex-primary governance)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -69,7 +69,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
 | #126 | `claude/L0-protocol` | OPEN · CI green · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Rewrite governance in Codex-owned PR, then salvage AERON protocol code separately. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
-| local | `codex/wf-00-codex-primary-pilot` | In progress | Creates Codex-primary governance patch and WF-00 evidence for ENG-32. |
+| #127 | `codex/wf-00-codex-primary-pilot` | OPEN · CI in progress · Codex-owned governance PR for ENG-32 | Establishes Codex-primary governance patch and WF-00 evidence. No auto-merge; review remains mandatory at 50% calibration. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
@@ -151,7 +151,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 3. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
 4. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
 5. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-6. **WF-00 governance split**: PR #126 is blocked as-is. Need a Codex-owned governance PR first, then a separate Codex-owned AERON protocol salvage PR if still desired.
+6. **WF-00 governance split**: PR #126 is blocked as-is. PR #127 is the Codex-owned governance PR. After #127 passes review, salvage AERON protocol code separately if still desired.
 
 ---
 
