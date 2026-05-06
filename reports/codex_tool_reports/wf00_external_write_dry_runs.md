@@ -42,6 +42,13 @@ Proposed PR body:
 - `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`
 - Current calibration cap: 50%, independent review mandatory.
 
+## Self-pass-rate (mechanically derived)
+
+50%
+
+Derived from `python3 scripts/compute_calibration_cap.py --human`.
+Codex pre-merge gate is MANDATORY.
+
 ## Verification
 
 - `python3 scripts/compute_calibration_cap.py --human`
