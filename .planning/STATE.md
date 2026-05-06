@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `eng43-fm01-job-provenance-2026-05-07 · main=222e9f4`
-> **Last updated:** 2026-05-07 (after ENG-42 PR #146 merge; ENG-43/FM-01 branch opened)
+> **Stamp:** `eng44-fm01-candidate-acceptance-packet-2026-05-07 · main=f133f5a`
+> **Last updated:** 2026-05-07 (after ENG-43 PR #147 merge; ENG-44/FM-01 candidate packet branch opened)
 > **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -58,7 +58,7 @@ This file is the **repo-side execution status snapshot**. Linear is the work-con
 
 ## Repo state
 
-`origin/main == 222e9f4` (post ENG-42 PR #146 merge, 2026-05-07).
+`origin/main == f133f5a` (post ENG-43 PR #147 merge, 2026-05-07).
 
 ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 
@@ -81,10 +81,13 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
 - ENG-42 / FM-01 merged in PR #146 at `222e9f4`. It made the operator shell
   derive case/run/evidence/next-action values from existing frontend session
   state. Linear ENG-42 is Done as an issue-level slice.
-- ENG-43 / FM-01 is the active Web Console slice. Branch
-  `codex/ENG-43-fm01-job-provenance` starts from `222e9f4` and is limited to
-  showing the current solver job id, active analysis mode, and software-path
-  backend provenance from existing frontend session state.
+- ENG-43 / FM-01 merged in PR #147 at `f133f5a`. It added current solver job
+  id/status, active analysis mode, and software-path backend provenance to the
+  operator shell from existing frontend session state. Linear ENG-43 is Done.
+- ENG-44 / FM-01 is the active candidate-acceptance packet issue. Branch
+  `codex/ENG-44-fm01-acceptance-packet` starts from `f133f5a` and is limited
+  to preparing repo-local milestone evidence for human experience review.
+  FM-01 is not user-accepted until the human milestone checkpoint records it.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
