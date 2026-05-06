@@ -1,15 +1,16 @@
-# ADR-011: Pivot to Claude Code CLI Single-Path Governance
+# ADR-011: Codex-Primary Linear/Symphony Governance
 
-- **Status:** Accepted (amended 2026-04-25 per AR-2026-04-25-001; amended 2026-05-03 per AR-2026-05-03-001)
-- **Decider:** Claude Code CLI (Opus 4.7, 1M context) — human-confirmed
-- **Date:** 2026-04-25 (R5 APPROVE), amended 2026-04-25 (AR-2026-04-25-001), amended 2026-05-03 (AR-2026-05-03-001)
+- **Status:** Accepted (amended 2026-04-25 per AR-2026-04-25-001; amended 2026-05-03 per AR-2026-05-03-001; amended 2026-05-06 per AR-2026-05-06-001)
+- **Decider:** Human owner — Codex-primary workflow ratified by ENG-32 pilot and local Claude Opus audit
+- **Date:** 2026-04-25 (R5 APPROVE), amended 2026-04-25, 2026-05-03, and 2026-05-06
 - **Supersedes:** ADR-000 template's `Decider: Antigravity / Gemini 3.1 Pro` line; prior routing memos (TBD by main session — placeholder until FF-03 inventory completes)
 - **Related Phase:** 1.5 Foundation-Freeze (FF-01)
-- **Branch:** `feature/AI-FEA-ADR-011-pivot-claude-code-takeover` (R5 APPROVE) ; `feature/AI-FEA-ADR-011-amendments-AR-2026-04-25-001` (prior amendment cycle) ; `feature/ADR-011-amendment-AR-2026-05-03-001-no-date-deadlines` (this amendment cycle)
+- **Branch:** `feature/AI-FEA-ADR-011-pivot-claude-code-takeover` (R5 APPROVE) ; `feature/AI-FEA-ADR-011-amendments-AR-2026-04-25-001` ; `feature/ADR-011-amendment-AR-2026-05-03-001-no-date-deadlines` ; `codex/wf-00-codex-primary-pilot`
 - **Amendment cycles:**
   - 2026-04-25 R1→R5 — original Codex review arc (FF-01 baseline)
   - **2026-04-25 AR-2026-04-25-001** — T0 ratified amendments to §T2 (Codex role rewording), §HF2 (subagent activity-type split), §HF1 (zone narrowing — `docs/adr/`/`docs/governance/` moved to PR-protected zone, `scripts/hf1_path_guard.py` self-protection + `.github/workflows/**` added), §Enforcement Maturity (post-FF-06 state model + CI port deferred to ADR-013), §Rollback (weighted-zone table updated to HF1.1-HF1.9 + separate PR-protected-zone bypass metric), §Known Gaps (ADR-012/013 number reassignment), §Cross-References (import-linter reference unbound), and §Calibration Mode (note that ADR-012 supersedes self-pass-rate honor-system)
   - **2026-05-03 AR-2026-05-03-001** — User directive: **all date-based deadlines are removed from project policy**. Gates may only be dependency- or task-completion-driven. Primary affected ADR sections: §HF1 (HF2 Detection column "calibration window through 2026-05-23" → "calibration window remains open until …"), §Enforcement Maturity (HF2/HF3/HF5 Status column dates removed; FF-07/FF-08/FF-09 hard prerequisites added — must merge before Phase 2 activation, before Calibration Mode close-out, and before any PR may claim HF5/HF3 automation; §"In summary" date removed), §Calibration Mode (calendar window replaced with explicit Boolean close-out predicate `((entries≥20 AND T0-accepted retro) OR T0 explicit close-out OR Phase_2_Gate_queued)` where `Phase_2_Gate_queued` is the single canonical event term defined inline in §Calibration Mode), §Rollback ("观察窗口 4 周" replaced with rolling Calibration window; HF2 post-close-out rate-of-occurrence trigger restated as "first 10 post-close-out T1 sessions/PRs" per Codex R1; date-anchored audit-log path replaced with `reports/hf_audit.md` rolling log + `reports/archive/hf_audit_window-NNN.md` monotonic counter naming rule), §Risks #4 ("终止日期 2026-05-23 不可滑动" rule deleted — HF2 calibration ends when close-out predicate is true, not when a calendar passes). Companion edits in same amendment cycle: ADR header metadata (lines 3-8 — Status / Date / Branch / Amendment cycles updated) and `reports/hf2_calibration.md` header line (calendar window → predicate-driven). No semantic change to HF1-HF5 trigger conditions, HF2 numerical thresholds (5 turns / 40k tokens / 3 files / 500 LOC), Rollback weighted-zone math, or M1-M5 trigger taxonomy — only the calendar-anchor is removed in favor of completion-anchor.
+  - **2026-05-06 AR-2026-05-06-001** — User directive: Codex becomes the primary implementation agent for this repo; local Claude Opus 4.7 becomes reviewer/auditor, not owner/executor. Linear is the work-control truth; GitHub/repo is code truth; Notion is an architecture/control mirror after repo and Linear truth are settled. ENG-32 / WF-00 validated the chain on PR #126: Codex disposition + local Claude Opus audit both returned BLOCKER because PR #126's proposed root `AGENTS.md` would have reintroduced Apex/Claude ownership and Codex-as-delegated-worker policy. This amendment supersedes stale wording that says Claude Code CLI is the sole execution path or that Codex is verify-only.
 
 ---
 
@@ -32,25 +33,22 @@ AI-Structure-FEA was bootstrapped on a triple-model split: Antigravity (Claude S
 
 ## Decision
 
-收敛到 **三层路由 (T0 / T1 / T2)**，每一层职责单一、入口唯一：
+收敛到 **Codex-primary + Linear work-control + Claude audit**：
 
-- **T0 — Architecture Gate**：Claude Opus 4.7（fallback 4.6），仅通过 Notion 异步会话调用，**人工触发**。负责跨阶段架构决策、ADR 终审、HF 规则争议裁决。不接管日常开发。
-- **T1 — Primary Execution**：**Claude Code CLI (Opus 4.7, 1M context)** — 项目内**唯一强制开发入口**。所有 Edit / Write / Bash 必须从这里发起；所有 commit 必须带 `Execution-by` trailer。1M 上下文允许它一次性持有 `agents/` + `schemas/` + `runs/` 全景，消除三模型时代的 context fragmentation。
-- **T2 — Codex GPT-5.4-xhigh · Independent Reality-Check Anchor + Joint Dev Peer** (rewritten per AR-2026-04-25-001 §4)
-  - **Primary role**: Independent fact-checker against T1's semantic and factual claims. Empirical anchor: session 2026-04-25 produced 5/5 factual/semantic findings, 0/5 stylistic; the framing of "code review 60% + research 40%" systematically under-described Codex's actual value.
-  - **Explicitly NOT a role**: Naming, style, code organization. T1 owns those. `ruff` owns the mechanical part. Codex's bandwidth is too valuable to spend on bikeshed.
-  - **Mandatory pre-merge Codex tool-report (BLOCKING) on**:
-    - **M1.** PRs touching governance text (`docs/adr/**`, `docs/governance/**`, `docs/failure_patterns/**`, ADR amendments)
-    - **M2.** PRs with non-trivial executable assertion (reverts, sign/direction math, CI claims, factual numerical computations)
-    - **M3.** PRs claiming HF zone compliance (HF1/HF4 scope verification)
-    - **M4.** PRs translating governance text into enforcement code (hooks, CI, validators, lints, schemas)
-    - **M5.** Any PR opened while calibration ceiling ≤ 50% (per ADR-012)
-  - **Codex output expected**: sign/direction correctness on diffs and math · factual claim verification (CI status, file counts, scope, "all-files-touched") · technical semantics (library/CLI behavior — pre-commit `pass_filenames` footgun is exhibit A) · cross-reference integrity (ADR footnote ↔ script path, STATE.md ↔ repo HEAD, ADR number ↔ filename, etc.)
-  - **Codex output explicitly NOT expected**: naming bikeshed · style nits already covered by `ruff` · subjective architecture preference
-  - **Anti-shenanigans operational note**: Future T1 sessions that "skip Codex because the change looks small" must check the M1-M5 list first. The 0/5 stylistic vs 5/5 factual distribution from session 2026-04-25 is the empirical anchor; Codex is the anti-shenanigans backstop, not a polish layer.
-  - **Constraint preserved**: Codex still **不允许直接对 main-code 提交**. 验证结果以 `Codex-verified: <claim-id>@<sha>` trailer 形式回写，由 T1 在 commit 时引用。
+- **Work-Control Truth — Linear**：Linear `Engineering` issues define scoped work, acceptance, blockers, evidence requirements, and proof/status comments. One eligible issue maps to one bounded run. Missing issue outcome, repository, acceptance, boundaries, or evidence makes the run ineligible until clarified.
+- **Code Truth — GitHub/repo**：this repository is the code truth. All code and governance changes land through branches and PRs. No direct push to `main`, no self-approval, and no auto-merge.
+- **Primary Execution — Codex**：Codex is the default implementation agent. Codex may edit repo files, run tests, prepare proof packets, and open PRs within explicit issue/user scope. Codex does not self-merge and does not claim completion beyond evidence.
+- **Reviewer/Auditor — local Claude Opus 4.7**：Claude Opus reviews prepared packets, diffs, or high-risk decisions and returns `APPROVE`, `CHANGES_REQUIRED`, or `BLOCKER`. Claude Opus is not the default executor, not repo owner, and not a substitute for Linear/GitHub truth.
+- **Architecture/Control Mirror — Notion**：Notion mirrors architecture and control-plane state after repo and Linear truth are settled. Notion writes require explicit confirmation and must not precede code/work-control truth.
+- **Mandatory review triggers** still apply:
+  - **M1.** PRs touching governance text (`AGENTS.md`, `docs/adr/**`, `docs/governance/**`, `docs/failure_patterns/**`, ADR amendments)
+  - **M2.** PRs with non-trivial executable assertion (reverts, sign/direction math, CI claims, factual numerical computations)
+  - **M3.** PRs claiming HF zone compliance (HF1/HF4 scope verification)
+  - **M4.** PRs translating governance text into enforcement code (hooks, CI, validators, lints, schemas)
+  - **M5.** Any PR opened while calibration ceiling ≤ 50% (per ADR-012)
+- **Review output expected**：sign/direction correctness on diffs and math · factual claim verification (CI status, file counts, scope, "all-files-touched") · technical semantics · cross-reference integrity (ADR footnote ↔ script path, STATE.md ↔ repo HEAD, ADR number ↔ filename, Linear issue ↔ proof).
 
-**Banned routes (硬禁止)：** Antigravity (任何模型) / Opus 直接开发 / MiniMax-2.7 / GPT 直接执行 / Codex 直接 main-code 提交。
+**Banned routes (硬禁止)：** Antigravity as default executor / Opus direct development by default / MiniMax for code execution / GLM-series default routing / direct main-code commits / Notion-first truth changes.
 
 **Subagent 隔离规则 (amended per AR-2026-04-25-001 §5 — activity-type split)：**
 
@@ -168,12 +166,12 @@ ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附
 
 ## 9 Golden Rules
 
-1. **Three-tier SSOT immutable** — Code SSOT = `github.com/kogamishinyajerry-ops/ai-structure-analysis`；Process SSOT = Notion 项目中枢；Runtime SSOT = `runs/` + CI artifacts。三者冲突时以 git 为准，反向修 Notion / runs。
+1. **Truth hierarchy immutable** — Code truth = `github.com/kogamishinyajerry-ops/ai-structure-analysis`; work-control truth = Linear issues; runtime truth = `runs/` + CI artifacts; architecture/control mirror = Notion. When they conflict, git/repo truth wins for code and Linear wins for work state; Notion is patched after the fact.
 2. **CalculiX is the only numerical truth source** — 任何"等价求解器"声明必须先经 ADR + Gate。
 3. **Every architecture decision lands as ADR immediately** — 沿用本仓库 `docs/adr/ADR-{nnn}-{slug}.md` 轻量约定（不复制 cfd-harness-unified DEC frontmatter）。
 4. **Handoffs cannot bypass Notion** — 阶段间交接必须有可点开的 Notion Handoff 页。
 5. **No golden-standard → no test** — 没有 GS 引用的样本一律 `insufficient_evidence`，不进 regression lane。
-6. **Sessions fully traced** — 每个 commit 带 `Execution-by` trailer；subagent 任务带 `Subagent: <id>` 子项。
+6. **Sessions fully traced** — 每个 commit 带 `Execution-by` trailer；Claude audit evidence uses `Reviewed-by` / PR proof links when applicable.
 7. **Schema-first** — Pydantic v2 strict validation per `schemas/`；schema 变更先 ADR、再代码。
 8. **Reversibility** — 每个决策必须文档化 rollback 路径（见各 ADR 的 Rollback 节）。
 9. **Four-layer architecture** — Control / Execution / Knowledge / Evaluation；import 方向单向：Control 可读全部；Execution 仅依赖 Knowledge；Evaluation 独立于 Execution（不允许反向 import）。
@@ -185,12 +183,14 @@ ADR-011 v1 在 §Hard-Floor 表述 "STOP" 同时在 Risks §4 允许 4 周内附
 所有进入 main 的 commit 必须携带：
 
 ```
-Execution-by: claude-code-opus47 [· Subagent: <id>]
-Codex-verified: <claim-id>@<sha>
+Execution-by: codex-primary
+Reviewed-by: claude-opus47 <verdict-or-proof-ref>
+Linear-Issue: ENG-<id>
 ```
 
-- `Execution-by` 必填。无 subagent 时省略 `· Subagent:` 段。
-- `Codex-verified` 在涉及 critical claim（数值正确性、schema 兼容性、forbidden-zone 边界）时必填；纯文档/格式 commit 可省略，但需在 PR body 说明。`<claim-id>` 在尚未生成时保留字面占位 `<claim-id>`，由 main session 在 review 阶段补齐。
+- `Execution-by` 必填，标明 Codex-primary execution path.
+- `Reviewed-by` 在 M1-M5 或 calibration-mandatory review gates 触发时必填，引用 Claude Opus verdict or proof artifact.
+- `Linear-Issue` 必填于 Linear-controlled work，保持 work-control traceability.
 
 ---
 
@@ -202,7 +202,7 @@ Codex-verified: <claim-id>@<sha>
 2. **协调延迟下降** — 三模型 → 单模型，消除"等另一边 review 完才能动"的串行等待。
 3. **审计可闭合** — commit trailer + Notion ADR + `runs/` 三件套构成最小可审计单元。
 4. **上下文窗口压力解耦** — 1M 主上下文 + subagent 隔离取代"频繁 context reset"，长任务可持续推进。
-5. **盲点验证职责清晰** — Codex 只验不写，避免"既是开发者又是审查者"的角色冲突。
+5. **盲点验证职责清晰** — Codex executes; Claude Opus audits gated packets/diffs without taking over execution.
 
 ### Risks
 
@@ -245,14 +245,14 @@ FF-06/07/08 落地后转为自动统计。
 
 ## Routing Comparison
 
-| Aspect | Before (Antigravity 三模型) | After (Claude Code single-path) |
+| Aspect | Before (Claude Code single-path) | After (Codex-primary Linear/Symphony) |
 |--------|------------------------------|----------------------------------|
-| Primary driver | Antigravity (Sonnet 4.6) | Claude Code CLI (Opus 4.7, 1M) |
-| Architecture review | Gemini 3.1 Pro (同步, 内嵌开发流) | Opus 4.7 via Notion (T0, 异步, 人工触发) |
-| Independent verification | 无（review 与开发同源） | Codex GPT-5.4-xhigh (T2, verify-only) |
-| Fast-path assistant | Gemini 3 Flash | Subagent (T1 内部委派, 同模型族) |
-| Commit accountability | 多源, trailer 缺失 | 强制 `Execution-by` + 可选 `Codex-verified` |
-| Context capacity | ~200k, 频繁 reset | 1M 主上下文 + subagent 隔离 |
+| Primary driver | Claude Code CLI (Opus 4.7) | Codex |
+| Work-control truth | Notion / repo-side snapshots | Linear issues |
+| Code truth | GitHub/repo | GitHub/repo |
+| Independent review | Codex verify-only | Local Claude Opus reviewer/auditor |
+| Architecture mirror | Notion as process SSOT | Notion as mirror after Linear/repo truth |
+| Commit accountability | `Execution-by: claude-code-opus47` + optional `Codex-verified` | `Execution-by: codex-primary` + `Reviewed-by: claude-opus47` when gated + `Linear-Issue` |
 
 ---
 

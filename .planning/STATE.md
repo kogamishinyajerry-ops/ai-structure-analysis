@@ -1,10 +1,10 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `post-RFC-001-W8d-merge-2026-04-29 · ENG-31-in-flight · 2026-05-03 refresh`
-> **Last updated:** 2026-05-03 (after PR #114 W8d merge; main = `a254a23`; PR #121 ENG-31 in flight, Codex R1 APPROVE, awaiting CI re-run)
-> **Maintained by:** T1 (Claude Code CLI · Opus 4.7 1M ctx) per ADR-011 §6 Sessions fully traced.
+> **Stamp:** `WF-00-codex-primary-pilot-2026-05-06 · main=ef57c3d`
+> **Last updated:** 2026-05-06 (after PR #121/#122/#123/#125 merges; ENG-32 WF-00 pilot opened; PR #126 blocked by Codex disposition + Claude Opus audit)
+> **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
 
-This file is the **repo-side execution status snapshot**. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is the human-facing process SSOT. When they conflict, **git is authoritative**; STATE.md is updated to match git, and Notion is patched from STATE.md.
+This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
 ---
 
@@ -13,12 +13,12 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Foundation | ✅ Done (Sprint 2) | See `docs/PHASE1_SPRINT2_COMPLETION.md` and `PHASE1_SPRINT1_COMPLETION.md`. |
-| Phase 1.5 — Foundation-Freeze (post-pivot) | ✅ Governance baseline closed (FF-01/02/05/06 + ADR-011/012/013 merged). FF-07/08/09 still OPEN as separate PRs. |
+| Phase 1.5 — Foundation-Freeze (post-pivot) | 🟡 Governance baseline amended by WF-00 / ENG-32: Codex-primary + Linear work-control + Claude Opus audit. FF-07/08/09 still OPEN as separate PRs. |
 | Phase 1.6 — RFC-001 Foundation rebuild (W1→W4) | ✅ Done 2026-04-26 → 2026-04-27 (#68-#82) | Buckets A/B/C/D + Layer-2/3 schema + CalculiX adapter + L1→L4 producers + report-cli driver. |
 | Phase 1.7 — RFC-001 Workbench shell (W5) | ✅ Done 2026-04-27 (#83-#90) | Electron shell + GS-001 quick-start + violation panel + --doctor + viz tracking. |
 | Phase 1.8 — RFC-001 Reporting libs + GS-101 ballistic (W6+W7) | ✅ Done 2026-04-28 (#91-#110) | Material/allowable_stress/verdict/BC/model-overview libs + DOCX wiring; OpenRadioss adapter + ballistic derivations + Dockerfile + Electron --kind=ballistic. |
 | Phase 1.9 — RFC-001 3D viewport + live bake (W8) | ✅ Done 2026-04-29 (#111-#114) | OpenRadioss → VTU exporter + PyVista viewport + live streaming + Electron live-bake orchestration. |
-| Phase 2 — Web Console hardening | 🟡 Active (ENG-31 / PR #121 in flight) | Frontend build-smoke restoration; Codex R1 APPROVE 2026-05-03; awaiting CI green to merge. |
+| Phase 2 — Web Console hardening | 🟡 Active (ENG-31 done; activation still gated) | Frontend build-smoke restoration landed in PR #121. Phase 2 activation still depends on governance/workflow gates. |
 | Phase 3 — Nonlinear & adaptive mesh | ⚪ Planned | No dates committed. |
 
 ---
@@ -58,17 +58,18 @@ This file is the **repo-side execution status snapshot**. Notion 项目控制塔
 
 ## Repo state
 
-`main == origin/main == a254a23` (post #114 W8d merge, 2026-04-29 02:38Z).
+`main == origin/main == ef57c3d` (post #121/#122/#123/#125 merges, 2026-05-03).
 
 ---
 
 ## Open PRs
 
-### In flight (this session)
+### In flight / blocked by WF-00
 
 | PR | Branch | Status | Owner action |
 |----|--------|--------|--------------|
-| #121 | `codex/ENG-31-ui-launch-build-fixes` | DRAFT · MERGEABLE · 1 push since 2026-04-29 (Codex R1 APPROVE archived in commit `0ec6be5`, body refreshed with Self-pass-rate=30%) | Awaiting calibration-cap-check re-run on push `0ec6be5`; if green, mark Ready & merge. |
+| #126 | `claude/L0-protocol` | OPEN · CI green · **BLOCKER** under WF-00 because root `AGENTS.md` reverses Codex-primary workflow | Do not merge as-is. Rewrite governance in Codex-owned PR, then salvage AERON protocol code separately. Evidence: `reports/codex_tool_reports/pr126_wf00_codex_primary_disposition.md` and `reports/codex_tool_reports/pr126_wf00_claude_opus_audit.md`. |
+| local | `codex/wf-00-codex-primary-pilot` | In progress | Creates Codex-primary governance patch and WF-00 evidence for ENG-32. |
 
 ### Codex/ENG-* DRAFT backlog (all blocked on missing Self-pass-rate section)
 
@@ -145,15 +146,12 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 
 ## Carry-overs (still open)
 
-1. **Calibration state file backfill** (PR #123 in flight): adds 12 R1 entries (#64-#111) so ceiling can recover from 30% trap. Out-of-scope: 38 of 51 merged PRs in window have no R1 report on disk — separate audit needed.
-2. **FF-07 PR #27** parked at R1=BLOCKER per backlog issue #124. Lint-only fix landed 2026-05-03; structural rewrite (3 BLOCKER + 2 HIGH + 1 MEDIUM) gated on dependency completion, not date.
-3. **FF-08 / FF-09** stalled in OPEN since 2026-04-25. Need PR-body refresh (Self-pass-rate) + Codex review. Gated on completion alone — **no date deadline applies** per project policy (2026-05-03 update: date-based gating removed).
-4. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
-5. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
-6. **W6e #103** — closed 2026-05-03 as stale (subsumed by #109+#110).
-7. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
-8. **Self-pass-rate honor-system replacement**: ADR-012 + ADR-013 are live and enforcing; calibration_state.json backfill (#1 above) is the residual gap.
-9. **Date-based deadline policy removed** (2026-05-03 directive): no task may be gated by a calendar date. All gates must be dependency- or task-completion-driven. ADR-011 §Calibration Mode and §Enforcement Maturity contain "2026-05-23" deadlines that need a separate ADR amendment (HF1.9 zone, Codex R1 mandatory).
+1. **FF-07 PR #27** parked at R1=BLOCKER per backlog issue #124. Lint-only fix landed 2026-05-03; structural rewrite (3 BLOCKER + 2 HIGH + 1 MEDIUM) gated on dependency completion, not date.
+2. **FF-08 / FF-09** stalled in OPEN since 2026-04-25. Need PR-body refresh (Self-pass-rate) + Codex review. Gated on completion alone — **no date deadline applies** per project policy.
+3. **Codex/ENG-* DRAFT lane** — closed 2026-05-03: ENG-16/17/18 (#117/#118/#120) closed as dups of FF-07/08/09. Remaining: ENG-11 (#116, empty probe), ENG-20 (#119, planning doc), ENG-23 (#115, real adjacent code) — disposition pending evaluation.
+4. **Pre-pivot P1-* (#11-#16)** disposition deferred since 2026-04-25. No action item committed yet.
+5. **GS-001/002/003 status flip** to `insufficient_evidence` (proposed in FP-001/002/003) — Notion control-plane status field still not changed.
+6. **WF-00 governance split**: PR #126 is blocked as-is. Need a Codex-owned governance PR first, then a separate Codex-owned AERON protocol salvage PR if still desired.
 
 ---
 
