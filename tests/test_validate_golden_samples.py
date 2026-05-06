@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -72,6 +73,19 @@ def test_discovery_includes_only_signed_gs_id_directories(mod, tmp_path: Path) -
 
     assert result.ok, result.errors
     assert result.sample_ids == ["GS-900"]
+
+
+def test_symlinked_signed_sample_directory_is_rejected(mod, tmp_path: Path) -> None:
+    external_root = tmp_path / "external"
+    target = _write_sample(external_root, "GS-900")
+    golden_root = tmp_path / "golden_samples"
+    golden_root.mkdir()
+    os.symlink(target, golden_root / "GS-900", target_is_directory=True)
+
+    result = mod.validate_registry(tmp_path)
+
+    assert not result.ok
+    assert any("signed sample directory must not be a symlink" in error for error in result.errors)
 
 
 def test_insufficient_evidence_requires_failure_pattern_ref_and_reason(mod, tmp_path: Path) -> None:

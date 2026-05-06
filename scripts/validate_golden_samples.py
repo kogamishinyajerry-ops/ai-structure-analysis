@@ -55,7 +55,7 @@ def discover_sample_dirs(root: Path) -> list[Path]:
     return sorted(
         path
         for path in golden_root.iterdir()
-        if path.is_dir() and SIGNED_SAMPLE_RE.fullmatch(path.name)
+        if SIGNED_SAMPLE_RE.fullmatch(path.name) and not path.is_symlink() and path.is_dir()
     )
 
 
@@ -73,6 +73,14 @@ def validate_registry(root: str | Path) -> RegistryValidation:
 
     sample_dirs = discover_sample_dirs(root_path)
     sample_ids = [path.name for path in sample_dirs]
+    for path in sorted(golden_root.iterdir()):
+        if not SIGNED_SAMPLE_RE.fullmatch(path.name):
+            continue
+        if path.is_symlink():
+            errors.append(f"{path.name}: signed sample directory must not be a symlink")
+        elif not path.is_dir():
+            errors.append(f"{path.name}: signed sample entry must be a directory")
+
     if not sample_dirs:
         errors.append(f"{_display(golden_root)}: no signed GS-### sample directories found")
 
