@@ -12,12 +12,16 @@ import {
   ArrowRightLeft,
   BookOpen,
   MessageSquare,
-  Download
+  Download,
+  ShieldAlert,
+  Database,
+  ClipboardCheck,
+  AlertTriangle
 } from 'lucide-react';
 import './App.css';
 import { SensitivityForm } from './components/SensitivityForm';
 import { ComplianceBadge } from './components/ComplianceBadge';
-import { ChatPanel } from './components/ChatPanel';
+import { ChatPanel, type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
 
@@ -30,6 +34,15 @@ interface CaseMetadata {
   type: string;
   structure: string;
   frd_path: string;
+}
+
+interface CaseReferenceDetails {
+  case_id?: string;
+  case_name?: string;
+  status?: string;
+  status_reason?: string;
+  failure_pattern_ref?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface ReportData {
@@ -45,6 +58,7 @@ interface ReportData {
     error_percentage: number;
   };
   markdown: string;
+  candidate_report_spine?: CandidateReportSpine;
   increments?: {
     index: number;
     step: number;
@@ -53,6 +67,163 @@ interface ReportData {
     max_displacement: number;
     max_von_mises: number;
   }[];
+}
+
+interface CandidateArtifact {
+  kind: string;
+  status: string;
+  path: string;
+  file_name?: string;
+  sha256?: string;
+  size_bytes?: number;
+  description: string;
+  unavailable_reason?: string;
+  signals?: string[];
+}
+
+interface CandidateMeshEvidence {
+  status: string;
+  claim_impact: string;
+  result_mesh: {
+    source: string;
+    node_count: number;
+    element_count: number;
+    increment_count: number;
+  };
+  input_deck: {
+    status: string;
+    path?: string;
+    node_count?: number;
+    element_count?: number;
+    element_types?: Record<string, number>;
+    include_count?: number;
+    limitation?: string;
+    unavailable_reason?: string;
+  };
+  metadata: {
+    status: string;
+    source?: string;
+    artifacts: CandidateArtifact[];
+    generation_mode?: string | null;
+    mesh_level?: string | null;
+    element_order?: string | null;
+    thin_wall_detected?: boolean | null;
+    unavailable_reason?: string;
+  };
+  quality: {
+    status: string;
+    source?: string | null;
+    metrics: Record<string, unknown>;
+    thresholds?: Record<string, unknown>;
+    findings?: string[];
+    claim_impact?: string;
+    artifact_count?: number;
+    unavailable_reason?: string;
+  };
+  convergence_study: CandidateMeshConvergenceStudy;
+}
+
+interface CandidateMeshConvergenceStudy {
+  status: string;
+  source?: string;
+  study_status?: string;
+  parameter?: string;
+  metric?: string;
+  tolerance_pct?: number;
+  relative_change_pct?: number;
+  run_count?: number;
+  runs?: Record<string, unknown>[];
+  claim_boundary?: string;
+  claim_impact?: string;
+  unavailable_reason?: string;
+}
+
+interface CandidateConvergenceEvidence {
+  status: string;
+  claim_impact: string;
+  normal_termination: string;
+  latest_job_status?: string | null;
+  source_artifacts: CandidateArtifact[];
+  mesh_refinement_study?: CandidateMeshConvergenceStudy;
+  signals: string[];
+  missing_reasons: string[];
+}
+
+interface CandidateReportSpine {
+  schema_version: string;
+  claim_tier: string;
+  allowed_claim: string;
+  no_overclaim: string;
+  case: {
+    case_id: string;
+    case_name: string;
+    expected_results_status: string;
+    status_reason: string;
+    failure_pattern_ref: string;
+  };
+  provenance: {
+    report_surface: string;
+    parser: string;
+    result_file_name: string;
+    original_filename: string;
+    file_size_bytes: number;
+    parse_time_s: number;
+    is_binary_frd: boolean;
+    node_count: number;
+    element_count: number;
+    increment_count: number;
+    solver_truth_source: string;
+  };
+  solver: {
+    truth_source: string;
+    latest_job_id?: string | null;
+    latest_job_status?: string | null;
+    normal_termination_state: string;
+    logs: {
+      status: string;
+      line_count?: number | null;
+      tail: string[];
+      artifact_paths: string[];
+      unavailable_reason?: string;
+    };
+  };
+  assumptions: {
+    unit_system: {
+      status: string;
+      stress_unit: string;
+      length_unit: string;
+    };
+    material: {
+      status: string;
+      value?: unknown;
+      unavailable_reason?: string;
+    };
+    boundary_conditions: {
+      status: string;
+      value?: unknown;
+      unavailable_reason?: string;
+    };
+    contact: {
+      status: string;
+      unavailable_reason?: string;
+    };
+  };
+  mesh_evidence?: CandidateMeshEvidence;
+  convergence_evidence?: CandidateConvergenceEvidence;
+  artifact_manifest: {
+    manifest_id: string;
+    hash_algorithm: string;
+    hash_count: number;
+    items: CandidateArtifact[];
+  };
+  limitations: string[];
+  reviewer_summary: {
+    verdict: string;
+    summary: string;
+    blocked_findings: string[];
+    next_actions: string[];
+  };
+  tier2_blockers: string[];
 }
 
 interface ExperimentStatus {
@@ -83,7 +254,23 @@ interface CopilotActionResult {
 interface OperatorStatusItem {
   label: string;
   value: string;
-  tone?: 'accent' | 'warning' | 'muted';
+  tone?: 'accent' | 'warning' | 'muted' | 'danger';
+  detail?: string;
+}
+
+interface OperatorStatusSection {
+  title: string;
+  icon: ReactNode;
+  items: OperatorStatusItem[];
+}
+
+interface GoldenSampleQueueItem {
+  caseId: string;
+  name: string;
+  status: string;
+  reason: string;
+  failurePatternRef: string;
+  tone: OperatorStatusItem['tone'];
 }
 
 type JobStatus = 'idle' | 'starting' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'stopped' | 'connection_lost';
@@ -101,6 +288,34 @@ const SOLVER_FAILURE_MARKERS = [
 const isSolverFailureLog = (message: string) =>
   SOLVER_FAILURE_MARKERS.some(marker => message.includes(marker));
 
+const humanizeStatus = (status?: string) => {
+  if (!status) return 'Unknown';
+  return status
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const statusTone = (status?: string): OperatorStatusItem['tone'] => {
+  if (!status) return 'muted';
+  if (['pass', 'passed', 'completed', 'accept'].includes(status.toLowerCase())) return 'accent';
+  if (['fail', 'failed', 'critical', 'rejected'].includes(status.toLowerCase())) return 'danger';
+  return 'warning';
+};
+
+const compactText = (value?: string, fallback = 'No backend detail surfaced') =>
+  value && value.trim().length > 0 ? value : fallback;
+
+const compactJson = (value: unknown, fallback = 'Unavailable') => {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0) return fallback;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback;
+  }
+};
+
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
@@ -108,6 +323,7 @@ function App() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
   const [availableCases, setAvailableCases] = useState<CaseMetadata[]>([]);
+  const [caseDetailsById, setCaseDetailsById] = useState<Record<string, CaseReferenceDetails>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [analysisType, setAnalysisType] = useState<'static' | 'modal' | 'buckling'>('static');
   const [selectedModeIndex, setSelectedModeIndex] = useState(0);
@@ -135,6 +351,37 @@ function App() {
       .then(data => setAvailableCases(data))
       .catch(err => console.error("Failed to fetch cases", err));
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (availableCases.length === 0) {
+      setCaseDetailsById({});
+      return;
+    }
+
+    Promise.all(
+      availableCases.map(async (c) => {
+        try {
+          const res = await fetch(`${API_BASE}/cases/${encodeURIComponent(c.id)}`);
+          if (!res.ok) return [c.id, {}] as const;
+          const details = await res.json() as CaseReferenceDetails;
+          return [c.id, details] as const;
+        } catch (err) {
+          console.error(`Failed to fetch case details for ${c.id}`, err);
+          return [c.id, {}] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) {
+        setCaseDetailsById(Object.fromEntries(entries));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [availableCases]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -406,6 +653,7 @@ function App() {
   };
 
   const activeCase = activeCaseId ? availableCases.find(c => c.id === activeCaseId) : null;
+  const activeCaseDetails = activeCaseId ? caseDetailsById[activeCaseId] : undefined;
   const caseLabel = activeCase
     ? `${activeCase.id} / ${activeCase.name}`
     : file
@@ -425,7 +673,58 @@ function App() {
         : report
           ? 'Report loaded'
           : 'Idle';
-  const evidenceState = currentJobId && logs.length > 0
+  const referenceStatusRaw = activeCaseDetails?.status;
+  const referenceStatus = activeCaseId
+    ? humanizeStatus(referenceStatusRaw)
+    : 'No golden-sample reference selected';
+  const referenceReason = compactText(
+    activeCaseDetails?.status_reason,
+    activeCaseId ? 'Expected-results status is still loading or unavailable' : 'Select GS-001/002/003 to load expected_results.json'
+  );
+  const failurePatternRef = activeCaseDetails?.failure_pattern_ref ?? 'No FailurePattern reference surfaced';
+  const reportValidationStatus = report?.validation.status ? humanizeStatus(report.validation.status) : 'No report validation yet';
+  const referenceDeviation = typeof report?.validation.error_percentage === 'number'
+    ? `${report.validation.error_percentage}%`
+    : 'No report-side delta available';
+  const candidateSpine = report?.candidate_report_spine;
+  const candidateManifest = candidateSpine?.artifact_manifest;
+  const solverLogState = candidateSpine?.solver.logs;
+  const candidateReviewer = candidateSpine?.reviewer_summary;
+  const candidateAssumptions = candidateSpine?.assumptions;
+  const candidateMeshEvidence = candidateSpine?.mesh_evidence;
+  const candidateConvergenceEvidence = candidateSpine?.convergence_evidence;
+  const candidateLimitations = candidateSpine?.limitations ?? [];
+  const candidateTier2Blockers = candidateSpine?.tier2_blockers ?? [];
+  const claimTier = candidateSpine?.claim_tier ?? 'Tier 0 sandbox/demo';
+  const solverTruthSource = candidateSpine
+    ? candidateSpine.provenance.solver_truth_source
+    : currentJobId
+    ? 'CalculiX solver job requested through /solver/run'
+    : report
+      ? 'Backend report artifact; fresh solver truth not proven in this session'
+      : 'Unknown until a report or solver job exists';
+  const executionMode = currentJobId
+    ? 'fresh solver job requested'
+    : file
+      ? 'uploaded FRD artifact review'
+      : report
+        ? 'report-only artifact review'
+        : 'not started';
+  const manifestState = candidateManifest
+    ? `${candidateManifest.hash_count} ${candidateManifest.hash_algorithm} artifacts / ${candidateManifest.manifest_id}`
+    : currentJobId
+    ? 'Job console stream exists; manifest/hash is not surfaced in this UI slice'
+    : activeCaseId
+      ? 'expected_results.json reference loaded through /cases/:id'
+      : 'No artifact manifest loaded';
+  const allowedClaim = candidateSpine
+    ? `${candidateSpine.allowed_claim}; ${candidateSpine.no_overclaim}`
+    : currentJobStatus === 'completed' && report
+      ? 'demo-only software-path evidence; Tier 1 remains blocked until FM-03 manifest, hashes, solver logs, and limitations are attached'
+      : 'demo-only / software-path evidence only; not signed validation';
+  const evidenceState = candidateSpine
+    ? `${candidateSpine.schema_version}; ${candidateSpine.no_overclaim}`
+    : currentJobId && logs.length > 0
     ? `Job console stream for ${currentJobId}; not signed validation`
     : currentJobId
       ? `Job id received from /solver/run; not signed validation`
@@ -435,9 +734,82 @@ function App() {
       ? 'Solver log stream only; not signed validation'
       : 'No run evidence yet';
   const latestEvent = logs.length > 0 ? logs[logs.length - 1].slice(0, 96) : 'No runtime log event';
-  const backendProvenance = currentJobId
+  const backendProvenance = candidateSpine
+    ? `${candidateSpine.provenance.parser}; ${candidateSpine.provenance.node_count} nodes / ${candidateSpine.provenance.element_count} elements / ${candidateSpine.provenance.increment_count} increments`
+    : currentJobId
     ? `Existing /solver/run CalculiX path, job ${currentJobId}; software-path evidence only`
     : 'AERON L0 / CalculiX path awaits a solver job response';
+  const solverLogSummary = solverLogState
+    ? `${solverLogState.status}; ${solverLogState.artifact_paths.length} log artifact(s)`
+    : 'No solver logs surfaced';
+  const materialSummary = candidateAssumptions
+    ? `${candidateAssumptions.material.status}: ${compactJson(candidateAssumptions.material.value, candidateAssumptions.material.unavailable_reason)}`
+    : 'No material provenance surfaced';
+  const boundarySummary = candidateAssumptions
+    ? `${candidateAssumptions.boundary_conditions.status}: ${compactJson(candidateAssumptions.boundary_conditions.value, candidateAssumptions.boundary_conditions.unavailable_reason)}`
+    : 'No boundary-condition provenance surfaced';
+  const unitSummary = candidateAssumptions
+    ? `${candidateAssumptions.unit_system.stress_unit}; ${candidateAssumptions.unit_system.length_unit}`
+    : 'No unit assumptions surfaced';
+  const reviewerSummary = candidateReviewer
+    ? `${humanizeStatus(candidateReviewer.verdict)}; ${candidateReviewer.blocked_findings.length} blocker(s)`
+    : 'Pending until reviewer verdict is attached';
+  const tier2BlockerSummary = candidateTier2Blockers.length > 0
+    ? candidateTier2Blockers.join('; ')
+    : 'Benchmark, convergence, and signoff requirements are not attached';
+  const meshDeckElementTypes = candidateMeshEvidence?.input_deck.element_types
+    ? Object.entries(candidateMeshEvidence.input_deck.element_types).map(([name, count]) => `${name}:${count}`).join(', ')
+    : 'No element type inventory';
+  const meshTopologySummary = candidateMeshEvidence
+    ? `FRD ${candidateMeshEvidence.result_mesh.node_count} nodes / ${candidateMeshEvidence.result_mesh.element_count} elements; deck ${candidateMeshEvidence.input_deck.node_count ?? 'unknown'} nodes / ${candidateMeshEvidence.input_deck.element_count ?? 'unknown'} elements`
+    : 'No mesh evidence surfaced';
+  const meshArtifactSource = candidateMeshEvidence
+    ? [
+        candidateMeshEvidence.input_deck.path ? `deck ${candidateMeshEvidence.input_deck.path}` : candidateMeshEvidence.input_deck.unavailable_reason,
+        candidateMeshEvidence.metadata.source ? `mesh_meta ${candidateMeshEvidence.metadata.source}` : candidateMeshEvidence.metadata.unavailable_reason,
+      ].filter(Boolean).join('; ')
+    : 'No mesh artifact source surfaced';
+  const meshQualitySummary = candidateMeshEvidence
+    ? `${humanizeStatus(candidateMeshEvidence.quality.status)}; ${compactJson(candidateMeshEvidence.quality.metrics, candidateMeshEvidence.quality.unavailable_reason)}`
+    : 'Mesh quality evidence is not surfaced';
+  const meshClaimImpact = candidateMeshEvidence?.claim_impact ?? 'Tier 2 blocked until mesh evidence and reviewer signoff are attached';
+  const meshConvergenceStudy = candidateMeshEvidence?.convergence_study ?? candidateConvergenceEvidence?.mesh_refinement_study;
+  const meshConvergenceStudySummary = meshConvergenceStudy
+    ? meshConvergenceStudy.status === 'available'
+      ? `${humanizeStatus(meshConvergenceStudy.study_status ?? meshConvergenceStudy.status)}; ${meshConvergenceStudy.run_count ?? 0} ${meshConvergenceStudy.parameter ?? 'mesh'} run(s); ${meshConvergenceStudy.metric ?? 'metric'} delta ${meshConvergenceStudy.relative_change_pct ?? 'unknown'}%`
+      : `${humanizeStatus(meshConvergenceStudy.status)}; ${meshConvergenceStudy.unavailable_reason ?? 'mesh refinement study is not attached'}`
+    : 'Mesh refinement convergence study is not surfaced';
+  const meshConvergenceStudySource = meshConvergenceStudy?.source ?? 'No mesh convergence artifact source surfaced';
+  const meshConvergenceClaimImpact = meshConvergenceStudy?.claim_impact ?? 'Tier 2 blocked until a mesh-refinement convergence study, benchmark, and signoff are attached';
+  const convergenceArtifactList = candidateConvergenceEvidence?.source_artifacts.length
+    ? candidateConvergenceEvidence.source_artifacts.map((item) => `${item.kind}:${item.path}`).join('; ')
+    : 'No solver convergence/status artifact surfaced';
+  const convergenceSummary = candidateConvergenceEvidence
+    ? `${humanizeStatus(candidateConvergenceEvidence.status)}; normal termination ${candidateConvergenceEvidence.normal_termination}; ${candidateConvergenceEvidence.source_artifacts.length} artifact(s)`
+    : 'No convergence evidence surfaced';
+  const convergenceMissingSummary = candidateConvergenceEvidence?.missing_reasons.length
+    ? candidateConvergenceEvidence.missing_reasons.join('; ')
+    : 'No current convergence gaps surfaced; Tier 2 still requires benchmark and signoff';
+  const convergenceClaimImpact = candidateConvergenceEvidence?.claim_impact ?? 'Tier 2 blocked until convergence study and signoff are attached';
+  const goldenSampleQueue: GoldenSampleQueueItem[] = availableCases
+    .filter((c) => c.id.startsWith('GS-'))
+    .map((c) => {
+      const details = caseDetailsById[c.id];
+      const status = humanizeStatus(details?.status);
+      const tone = statusTone(details?.status);
+      return {
+        caseId: c.id,
+        name: c.name,
+        status,
+        reason: compactText(details?.status_reason, 'expected_results.json status not loaded yet'),
+        failurePatternRef: details?.failure_pattern_ref ?? 'No FailurePattern reference surfaced',
+        tone,
+      };
+    });
+  const goldenSampleReviewCount = goldenSampleQueue.filter((item) => item.tone !== 'accent').length;
+  const goldenSampleSummary = goldenSampleQueue.length > 0
+    ? `${goldenSampleReviewCount}/${goldenSampleQueue.length} need review or evidence`
+    : 'No golden samples loaded';
   const runStateTone = solving || activeExperiment
     ? 'accent'
     : currentJobStatus === 'failed' || currentJobStatus === 'connection_lost'
@@ -454,18 +826,155 @@ function App() {
           : activeCaseId
             ? 'Run a solver smoke or export the report with Tier 0 wording'
             : 'Review the uploaded report; select a gallery case before solver run';
-  const operatorStatus: OperatorStatusItem[] = [
-    { label: 'Milestone', value: 'FM-01 Web Console Operator Shell', tone: 'accent' },
-    { label: 'Linear issue', value: 'ENG-43' },
-    { label: 'Claim tier', value: 'Tier 0 sandbox/demo', tone: 'warning' },
-    { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
-    { label: 'Analysis mode', value: analysisModeLabel },
-    { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
-    { label: 'Run state', value: runState, tone: runStateTone },
-    { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
-    { label: 'Backend provenance', value: backendProvenance },
-    { label: 'Latest event', value: latestEvent },
-    { label: 'Next action', value: nextAction, tone: 'accent' },
+  const trustStrip: OperatorStatusItem[] = [
+    { label: 'Claim tier', value: claimTier, tone: 'warning', detail: allowedClaim },
+    { label: 'Solver truth', value: solverTruthSource, tone: candidateSpine || currentJobId ? 'accent' : 'warning' },
+    { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
+    { label: 'Validation status', value: reportValidationStatus, tone: report?.validation.status ? statusTone(report.validation.status) : statusTone(referenceStatusRaw) },
+    { label: 'Golden samples', value: goldenSampleSummary, tone: goldenSampleReviewCount > 0 ? 'warning' : 'accent' },
+    { label: 'Allowed claim', value: 'not signed validation', tone: 'danger', detail: allowedClaim },
+  ];
+  const trustSections: OperatorStatusSection[] = [
+    {
+      title: 'Overview',
+      icon: <LayoutDashboard size={16} />,
+      items: [
+        { label: 'Milestone', value: candidateSpine ? 'FM-03 Candidate Report Spine' : 'FM-01 Web Console Operator Shell', tone: 'accent' },
+        { label: 'Work control', value: 'User blueprint scope; no Linear/Notion external write in this local slice', tone: 'warning' },
+        { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
+        { label: 'Next action', value: nextAction, tone: 'accent' },
+      ],
+    },
+    {
+      title: 'Runtime',
+      icon: <Database size={16} />,
+      items: [
+        { label: 'Solver truth source', value: solverTruthSource, tone: candidateSpine || currentJobId ? 'accent' : 'warning' },
+        { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
+        { label: 'Analysis mode', value: analysisModeLabel },
+        { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
+        { label: 'Run state', value: runState, tone: runStateTone },
+        { label: 'Latest event', value: latestEvent },
+        { label: 'Solver logs', value: solverLogSummary, tone: solverLogState?.status === 'unavailable' ? 'warning' : candidateSpine ? 'accent' : 'muted', detail: solverLogState?.unavailable_reason },
+        { label: 'Solver convergence', value: convergenceSummary, tone: candidateConvergenceEvidence ? 'warning' : 'muted', detail: convergenceClaimImpact },
+      ],
+    },
+    {
+      title: 'Evidence',
+      icon: <ClipboardCheck size={16} />,
+      items: [
+        { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
+        { label: 'Manifest / hashes', value: manifestState, tone: candidateManifest ? 'accent' : currentJobId ? 'warning' : 'muted' },
+        { label: 'Backend provenance', value: backendProvenance },
+        { label: 'Artifact list', value: candidateManifest ? candidateManifest.items.map((item) => `${item.kind}:${item.status}`).join(', ') : 'No candidate artifact list surfaced', tone: candidateManifest ? 'accent' : 'muted' },
+        { label: 'Mesh artifact source', value: meshArtifactSource, tone: candidateMeshEvidence ? 'accent' : 'muted' },
+        { label: 'Convergence artifacts', value: convergenceArtifactList, tone: candidateConvergenceEvidence ? 'accent' : 'muted' },
+        { label: 'Mesh convergence study', value: meshConvergenceStudySource, tone: meshConvergenceStudy?.status === 'available' ? 'accent' : 'warning', detail: meshConvergenceClaimImpact },
+        { label: 'Runtime SSOT', value: 'runs/ directory + CI artifacts; UI only surfaces current session state', tone: 'muted' },
+      ],
+    },
+    {
+      title: 'Validation',
+      icon: <ShieldAlert size={16} />,
+      items: [
+        { label: 'Golden sample status', value: referenceStatus, tone: statusTone(referenceStatusRaw), detail: referenceReason },
+        { label: 'Reference deviation', value: referenceDeviation, tone: report?.validation.status ? statusTone(report.validation.status) : 'muted' },
+        { label: 'Report validation', value: reportValidationStatus, tone: report?.validation.status ? statusTone(report.validation.status) : 'muted' },
+        { label: 'Units', value: unitSummary, tone: candidateAssumptions ? 'accent' : 'warning' },
+        { label: 'Material', value: materialSummary, tone: candidateAssumptions?.material.status === 'declared' ? 'accent' : 'warning' },
+        { label: 'BC / loads', value: boundarySummary, tone: candidateAssumptions?.boundary_conditions.status === 'declared' ? 'accent' : 'warning' },
+        { label: 'Mesh topology', value: meshTopologySummary, tone: candidateMeshEvidence ? 'accent' : 'warning', detail: meshDeckElementTypes },
+        { label: 'Mesh quality', value: meshQualitySummary, tone: candidateMeshEvidence?.quality.status === 'available' ? 'accent' : 'warning', detail: candidateMeshEvidence?.quality.unavailable_reason ?? meshClaimImpact },
+        { label: 'Mesh convergence', value: meshConvergenceStudySummary, tone: meshConvergenceStudy?.status === 'available' ? 'accent' : 'warning', detail: meshConvergenceClaimImpact },
+        { label: 'Convergence gaps', value: convergenceMissingSummary, tone: 'warning' },
+        { label: 'FailurePattern', value: failurePatternRef, tone: failurePatternRef.startsWith('FP-') ? 'warning' : 'muted' },
+      ],
+    },
+    {
+      title: 'Gate',
+      icon: <AlertTriangle size={16} />,
+      items: [
+        { label: 'Reviewer gate', value: reviewerSummary, tone: candidateReviewer?.verdict === 'candidate_ready_for_review' ? 'accent' : 'warning', detail: candidateReviewer?.summary },
+        { label: 'Human / Claude handoff', value: 'Required before milestone acceptance or signed claim promotion', tone: 'warning' },
+        { label: 'Allowed claim', value: allowedClaim, tone: 'danger' },
+        { label: 'Limitations', value: candidateLimitations.length > 0 ? candidateLimitations.join('; ') : 'No candidate limitations surfaced', tone: 'warning' },
+        { label: 'Tier 2 blockers', value: tier2BlockerSummary, tone: 'danger' },
+      ],
+    },
+  ];
+  const caeReviewCards: CaeReviewCard[] = [
+    {
+      card_type: 'claim_boundary',
+      severity: 'warning',
+      finding: `${claimTier}; signed validation is not available from this surface.`,
+      evidence: candidateSpine ? `${candidateSpine.schema_version} from /report/generate` : 'ADR-023 + current FM-01 UI state',
+      recommended_action: candidateSpine ? 'Use this as a reviewer-ready candidate package; do not promote beyond Tier 1 without Tier 2 blockers resolved.' : 'Keep the result labeled as demo-only until a Tier 1/2 evidence packet exists.',
+      claim_impact: allowedClaim,
+    },
+    {
+      card_type: 'solver_truth',
+      severity: candidateSpine || currentJobId ? 'info' : 'warning',
+      finding: solverTruthSource,
+      evidence: candidateSpine ? `${solverLogSummary}; normal termination: ${candidateSpine.solver.normal_termination_state}` : currentJobId ? `solver job ${currentJobId}` : 'current frontend session has no fresh solver job id',
+      recommended_action: candidateSpine ? 'Inspect solver log status and artifact hashes before reviewer handoff.' : currentJobId ? 'Inspect solver logs and attach manifest/hash evidence before promotion.' : 'Run a solver smoke only after selecting a case; keep current report as artifact review.',
+      claim_impact: candidateSpine ? 'Tier 1 candidate evidence exists; Tier 2 remains blocked.' : currentJobId ? 'Fresh job evidence may support a candidate packet after manifest/hash capture.' : 'Tier 1 blocked; current evidence remains Tier 0.',
+    },
+    {
+      card_type: 'evidence_packet',
+      severity: candidateManifest ? 'info' : 'warning',
+      finding: manifestState,
+      evidence: candidateManifest ? candidateManifest.items.map((item) => `${item.kind}:${item.path}`).join('; ') : currentJobId ? 'WebSocket log stream' : activeCaseId ? '/cases/:id expected_results.json' : 'none',
+      recommended_action: candidateManifest ? 'Attach the candidate manifest and limitations to review evidence.' : 'Prepare FM-03 Candidate Report Spine before treating this as engineering-candidate evidence.',
+      claim_impact: candidateManifest ? 'Tier 1 evidence packet is available; Tier 2 remains blocked until benchmark/convergence/signoff.' : 'Tier 2 blocked; Tier 1 blocked until manifest, logs, units/material/BC provenance, hashes, and limitations are packaged.',
+    },
+    {
+      card_type: 'assumptions',
+      severity: candidateAssumptions?.material.status === 'declared' && candidateAssumptions.boundary_conditions.status === 'declared' ? 'info' : 'warning',
+      finding: `Units/material/BC: ${unitSummary}`,
+      evidence: `Material: ${materialSummary}; BC/loads: ${boundarySummary}`,
+      recommended_action: 'Resolve unavailable assumptions before making stronger engineering or validation claims.',
+      claim_impact: 'Tier 1 can carry explicit limitations; Tier 2 requires traceable assumptions and signoff.',
+    },
+    {
+      card_type: 'golden_sample_status',
+      severity: referenceStatusRaw && referenceStatusRaw !== 'pass' ? 'warning' : 'info',
+      finding: `${activeCaseId ? activeCaseId : 'No active GS case'}: ${referenceStatus}`,
+      evidence: activeCaseId ? `${activeCaseId}/expected_results.json via /cases/:id` : 'No active golden-sample reference',
+      recommended_action: activeCaseId ? referenceReason : 'Select GS-001, GS-002, or GS-003 to inspect current review blockers.',
+      claim_impact: referenceStatusRaw === 'insufficient_evidence' ? 'Signed validation is blocked by golden-sample evidence status.' : 'No signed claim is implied.',
+    },
+    {
+      card_type: 'reference_validation',
+      severity: report?.validation.status === 'FAIL' ? 'warning' : 'info',
+      finding: `Report validation: ${reportValidationStatus}; reference deviation: ${referenceDeviation}.`,
+      evidence: report ? 'backend /report/generate response' : 'no report response loaded',
+      recommended_action: report?.validation.status === 'FAIL' ? 'Route to reviewer/failure attribution before any claim promotion.' : 'Load or regenerate the report before review.',
+      claim_impact: report?.validation.status === 'PASS' ? 'Still not signed validation without Tier 2 packet.' : 'Claim boundary remains demo-only or needs review.',
+    },
+    {
+      card_type: 'mesh_quality',
+      severity: candidateMeshEvidence?.quality.status === 'available' ? 'info' : 'warning',
+      finding: candidateMeshEvidence ? `${meshTopologySummary}; quality ${humanizeStatus(candidateMeshEvidence.quality.status)}.` : 'Mesh evidence is not present in the current report payload.',
+      evidence: candidateMeshEvidence ? `${meshArtifactSource}; element types ${meshDeckElementTypes}` : 'current ReportData lacks mesh_evidence fields',
+      recommended_action: candidateMeshEvidence?.quality.status === 'available' ? 'Attach this evidence to reviewer handoff, but keep the claim at Tier 1.' : 'Attach scaled-Jacobian/aspect-ratio quality output or mesh_meta quality evidence before claiming mesh adequacy.',
+      claim_impact: meshClaimImpact,
+    },
+    {
+      card_type: 'mesh_convergence_study',
+      severity: meshConvergenceStudy?.status === 'available' ? 'info' : 'warning',
+      finding: meshConvergenceStudySummary,
+      evidence: meshConvergenceStudySource,
+      recommended_action: meshConvergenceStudy?.status === 'available' ? 'Use this as Tier 1 reviewer evidence; do not treat it as benchmark agreement.' : 'Attach mesh_convergence.json from a refinement sweep before claiming mesh convergence evidence.',
+      claim_impact: meshConvergenceClaimImpact,
+    },
+    {
+      card_type: 'convergence_evidence',
+      severity: candidateConvergenceEvidence?.status === 'job_completed' || candidateConvergenceEvidence?.status === 'solver_artifact_converged' ? 'info' : 'warning',
+      finding: convergenceSummary,
+      evidence: convergenceArtifactList,
+      recommended_action: candidateConvergenceEvidence ? `Resolve remaining gaps: ${convergenceMissingSummary}` : 'Attach .sta/.cvg/.dat or solver job status before reviewer handoff.',
+      claim_impact: convergenceClaimImpact,
+    },
   ];
 
   return (
@@ -566,7 +1075,11 @@ function App() {
             </header>
 
             <div style={{ padding: '40px', flex: 1 }}>
-            <OperatorStatusPanel items={operatorStatus} />
+            <OperatorStatusPanel
+              strip={trustStrip}
+              sections={trustSections}
+              goldenSamples={goldenSampleQueue}
+            />
 
             <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />
@@ -666,7 +1179,13 @@ function App() {
 
         {showChat && (
             <aside style={{ borderLeft: '1px solid var(--border)', background: 'var(--bg-sidebar)', zIndex: 5 }}>
-                <ChatPanel caseId={activeCaseId} onExecuteAction={handleExecuteCopilotAction} />
+                <ChatPanel
+                  caseId={activeCaseId}
+                  onExecuteAction={handleExecuteCopilotAction}
+                  reviewCards={caeReviewCards}
+                  claimTier={claimTier}
+                  allowedClaim={allowedClaim}
+                />
             </aside>
         )}
       </div>
@@ -674,31 +1193,96 @@ function App() {
   );
 }
 
-function OperatorStatusPanel({ items }: { items: OperatorStatusItem[] }) {
+function OperatorStatusPanel({
+  strip,
+  sections,
+  goldenSamples,
+}: {
+  strip: OperatorStatusItem[];
+  sections: OperatorStatusSection[];
+  goldenSamples: GoldenSampleQueueItem[];
+}) {
   const toneColor = (tone?: OperatorStatusItem['tone']) => {
     if (tone === 'accent') return 'var(--accent)';
     if (tone === 'warning') return '#f59e0b';
+    if (tone === 'danger') return '#ef4444';
     return 'var(--text-primary)';
   };
 
+  const toneBackground = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'rgba(16, 185, 129, 0.08)';
+    if (tone === 'warning') return 'rgba(245, 158, 11, 0.08)';
+    if (tone === 'danger') return 'rgba(239, 68, 68, 0.08)';
+    return 'rgba(15, 23, 42, 0.55)';
+  };
+
+  const toneBorder = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'rgba(16, 185, 129, 0.35)';
+    if (tone === 'warning') return 'rgba(245, 158, 11, 0.35)';
+    if (tone === 'danger') return 'rgba(239, 68, 68, 0.35)';
+    return 'var(--border)';
+  };
+
   return (
-    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Operator workflow status">
+    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Validation and trust center">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Operator status</div>
-          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Milestone control surface</h2>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
+          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Evidence-first workbench state</h2>
         </div>
-        <div style={{ color: '#f59e0b', fontSize: '0.78rem', fontWeight: 700, border: '1px solid rgba(245, 158, 11, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(245, 158, 11, 0.08)' }}>
-          software-path evidence only
+        <div style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(239, 68, 68, 0.08)' }}>
+          not signed validation
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
-        {items.map((item) => (
-          <div key={item.label} style={{ background: 'rgba(15, 23, 42, 0.55)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', minHeight: '70px' }}>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+        {strip.map((item) => (
+          <div key={item.label} style={{ background: toneBackground(item.tone), border: `1px solid ${toneBorder(item.tone)}`, borderRadius: '8px', padding: '12px', minHeight: '78px' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
             <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
+            {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
           </div>
         ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+        {sections.map((section) => (
+          <div key={section.title} style={{ background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px' }}>
+              <span style={{ color: 'var(--accent)', display: 'flex' }}>{section.icon}</span>
+              {section.title}
+            </div>
+            <div style={{ display: 'grid', gap: '9px' }}>
+              {section.items.map((item) => (
+                <div key={`${section.title}-${item.label}`} style={{ borderTop: '1px solid var(--border)', paddingTop: '9px' }}>
+                  <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>{item.label}</div>
+                  <div style={{ color: toneColor(item.tone), fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
+                  {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '4px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: '14px', background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+        <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ShieldAlert size={16} color="var(--accent)" />
+          Golden Sample Review Queue
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+          {goldenSamples.map((sample) => (
+            <div key={sample.caseId} style={{ border: `1px solid ${toneBorder(sample.tone)}`, background: toneBackground(sample.tone), borderRadius: '8px', padding: '12px', minHeight: '106px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem' }}>{sample.caseId}</div>
+                <div style={{ color: toneColor(sample.tone), fontWeight: 800, fontSize: '0.68rem', textTransform: 'uppercase' }}>{sample.status}</div>
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', lineHeight: 1.35, marginBottom: '6px' }}>{sample.name}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{sample.reason}</div>
+              <div style={{ color: toneColor(sample.tone), fontSize: '0.7rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{sample.failurePatternRef}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

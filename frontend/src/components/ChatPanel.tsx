@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Check, X, Sparkles, MessageSquare } from 'lucide-react';
+import { Send, Bot, User, Check, X, Sparkles, MessageSquare, ShieldAlert, FileText, Wrench } from 'lucide-react';
 
 interface Action {
   action_type: string;
@@ -9,6 +9,15 @@ interface Action {
 
 interface ExecuteActionResult {
   message?: string;
+}
+
+export interface CaeReviewCard {
+  card_type: string;
+  severity: 'info' | 'warning' | 'critical';
+  finding: string;
+  evidence: string;
+  recommended_action: string;
+  claim_impact: string;
 }
 
 interface Message {
@@ -21,14 +30,26 @@ interface Message {
 interface ChatPanelProps {
   caseId: string | null;
   onExecuteAction: (action: Action) => Promise<ExecuteActionResult>;
+  reviewCards?: CaeReviewCard[];
+  claimTier?: string;
+  allowedClaim?: string;
 }
 
-export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
+type CopilotTab = 'command' | 'review' | 'evidence' | 'fix';
+
+export function ChatPanel({
+  caseId,
+  onExecuteAction,
+  reviewCards = [],
+  claimTier = 'Tier 0 sandbox/demo',
+  allowedClaim = 'demo-only / software-path evidence only',
+}: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hello! I am your AI Design Copilot. How can I help you analyze this structure today?' }
+    { role: 'assistant', content: 'Trust-aware AI engineer online. I can run commands, review claim boundaries, and propose the next safe action for this case.' }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<CopilotTab>('command');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,13 +113,97 @@ export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
     setLoading(false);
   };
 
-  return (
-    <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <MessageSquare size={18} color="var(--accent)" />
-        <h3 style={{ margin: 0, fontSize: '0.9rem' }}>Design Copilot</h3>
+  const cardsForTab = reviewCards.filter((card) => {
+    if (activeTab === 'review') return ['reference_validation', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence', 'golden_sample_status'].includes(card.card_type);
+    if (activeTab === 'evidence') return ['claim_boundary', 'evidence_packet', 'solver_truth', 'assumptions', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence'].includes(card.card_type);
+    if (activeTab === 'fix') return true;
+    return false;
+  });
+
+  const severityColor = (severity: CaeReviewCard['severity']) => {
+    if (severity === 'critical') return '#ef4444';
+    if (severity === 'warning') return '#f59e0b';
+    return 'var(--accent)';
+  };
+
+  const renderReviewCards = () => (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'grid', gap: '8px' }}>
+        <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(15, 23, 42, 0.65)' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>Current claim boundary</div>
+          <div style={{ color: '#f59e0b', fontSize: '0.84rem', fontWeight: 700 }}>{claimTier}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '6px', lineHeight: 1.4 }}>{allowedClaim}</div>
+        </div>
       </div>
 
+      {cardsForTab.length === 0 ? (
+        <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.45, padding: '12px' }}>
+          No structured card is available for this view yet. Load a case or run/report a solver path before promoting evidence.
+        </div>
+      ) : (
+        cardsForTab.map((card) => (
+          <div key={`${card.card_type}-${card.finding}`} style={{ padding: '14px', borderRadius: '8px', border: `1px solid ${severityColor(card.severity)}`, background: 'rgba(2, 6, 23, 0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '0.68rem', color: severityColor(card.severity), textTransform: 'uppercase', fontWeight: 800 }}>{card.card_type.replace(/_/g, ' ')}</div>
+              <div style={{ color: severityColor(card.severity), fontSize: '0.68rem', fontWeight: 800 }}>{card.severity}</div>
+            </div>
+            <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.35 }}>{card.finding}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.45 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Evidence:</strong> {card.evidence}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.45 }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Action:</strong> {card.recommended_action}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '6px', lineHeight: 1.45 }}>
+              {card.claim_impact}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <MessageSquare size={18} color="var(--accent)" />
+          <h3 style={{ margin: 0, fontSize: '0.9rem' }}>Trust-aware AI Engineer</h3>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+          {[
+            { id: 'command', label: 'Command', icon: <MessageSquare size={12} /> },
+            { id: 'review', label: 'Review', icon: <ShieldAlert size={12} /> },
+            { id: 'evidence', label: 'Evidence', icon: <FileText size={12} /> },
+            { id: 'fix', label: 'Fix Plan', icon: <Wrench size={12} /> },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as CopilotTab)}
+              style={{
+                minWidth: 0,
+                padding: '7px 6px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: activeTab === tab.id ? 'var(--accent)' : 'rgba(15, 23, 42, 0.65)',
+                color: activeTab === tab.id ? '#000' : 'var(--text-secondary)',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+              }}
+            >
+              {tab.icon}
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === 'command' ? (
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', gap: '10px', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
@@ -131,7 +236,9 @@ export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
         ))}
         <div ref={scrollRef} />
       </div>
+      ) : renderReviewCards()}
 
+      {activeTab === 'command' && (
       <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
         <div style={{ position: 'relative' }}>
           <input 
@@ -150,6 +257,7 @@ export function ChatPanel({ caseId, onExecuteAction }: ChatPanelProps) {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }

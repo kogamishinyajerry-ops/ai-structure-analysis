@@ -1,8 +1,8 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `eng45-fm01-solver-failure-recovery-2026-05-07 · main=9d77042`
-> **Last updated:** 2026-05-07 (after ENG-44 PR #148 merge; ENG-45/FM-01 polish branch opened)
-> **Maintained by:** Codex primary executor; local Claude Opus 4.7 reviewer/auditor per ADR-011 AR-2026-05-06-001.
+> **Stamp:** `fm03-candidate-report-spine-2026-05-07 · main=de65d15`
+> **Last updated:** 2026-05-07 (FM-03 candidate report spine slice committed to `codex/evidence-first-workbench-trust-center`; FM-04a Tier 1 ballistic candidate full-flow milestone planning landed under user direct-execution authorization)
+> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07 the FM-03 closeout and FM-04a slices are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
@@ -92,7 +92,28 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   UX defect: a backend solver startup failure can leave the operator shell stuck
   in `running` / `stop requested` with `Run Solver` disabled. Branch
   `codex/ENG-45-fm01-solver-failure-recovery` starts from `9d77042` and is
-  limited to frontend state recovery plus repo-local evidence.
+  limited to frontend state recovery plus repo-local evidence. PR #149 merged
+  2026-05-07 at `de65d15`.
+- FM-03 candidate report spine slice committed locally on
+  `codex/evidence-first-workbench-trust-center` under user direct-execution
+  authorization 2026-05-07. Adds `backend/app/services/candidate_report_spine.py`,
+  the `mesh_quality.json` Tier 1 sidecar in `agents/mesh.py`, frontend Trust
+  Center / Copilot consumption of spine fields, and the
+  `reports/fm03_candidate_report_spine_source_map.md` source map. Claim tier:
+  Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+  Verification (re-run on this machine 2026-05-07): backend candidate-spine tests
+  3 passed; mesh agent tests 4 passed; frontend `tsc -b && vite build` clean;
+  `eslint .` clean; `git diff --check` clean; `git diff --name-only -- golden_samples`
+  empty. Forbidden-wording audit clean. PR / trailer rewrite is reserved for the
+  human user. No Linear/Notion mutation.
+- FM-04a Tier 1 ballistic candidate full-flow milestone authored under
+  user direct-execution authorization on 2026-05-07 to advance toward the
+  bullet-through-steel transient simulation goal. Plan stages P0 → P6 against
+  Børvik 2002 hemispherical Ø20mm projectile / 12mm Weldox 460E plate
+  parameters (parameters-only, ADR-024 lite). FM-04a does NOT promote any GS
+  sample to signed validation, does NOT claim benchmark agreement, and does NOT
+  start FM-04b (Tier 2 signed validation gate). The forbidden-wording set in
+  ADR-023 §Tier 0 still applies to every artifact in this milestone.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
