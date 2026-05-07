@@ -246,6 +246,7 @@ These predate ADR-011/012/013 governance. Disposition (rebase / close / merge un
 | ADR-021 | Accepted | `docs/adr/ADR-021-gs100-radioss-smoke-fixture.md` |
 | ADR-022 | Accepted | `docs/adr/ADR-022-gs101-demo-unsigned-fixture.md` |
 | ADR-023 | Accepted by user directive, implementation PR pending | `docs/adr/ADR-023-lean-validation-workflow.md` |
+| ADR-024 (lite) | Accepted under user direct-execution authorization 2026-05-07; lite scope = parameters-only Børvik 2002 citation for FM-04a Tier 1; full version reserved for FM-04b | `docs/adr/ADR-024-ballistic-benchmark-source-selection.md` |
 
 ---
 
