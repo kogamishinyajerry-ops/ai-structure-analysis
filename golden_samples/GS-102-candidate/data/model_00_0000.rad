@@ -1,0 +1,154 @@
+#RADIOSS STARTER
+#--------------------------------------------------------------------------------------------------|
+# GS-102-candidate / FM-04a Tier 1 ballistic candidate starter deck
+#
+# WORDING DISCIPLINE (per ADR-023 + ADR-024 lite):
+#   * Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+#   * JC plasticity / damage parameters cited from Børvik 2002 Part II Table 2 (Weldox 460E).
+#   * NOT validated against Børvik 2002; NOT "perforation completed";
+#     NOT "bullet-through-steel complete"; NOT "validated physics".
+#
+# SCOPE OF THIS DECK (deliberately narrow):
+#   * Geometry is INTENTIONALLY coarse: 1 hex projectile + 1 hex plate element.
+#     This is a SYNTAX demonstration so the OpenRadioss starter+engine + the
+#     FM-04a P4 adapter + the FM-04a P6 extractor can be exercised end-to-end.
+#     It is NOT a physics-quality mesh. Real refinement is reserved for FM-04b.
+#   * Material properties cite Børvik 2002 Part II Table 2 (Weldox 460E) for
+#     PLAS_JOHNS + JOHNSON damage. Projectile is approximated as elastic
+#     hardened steel.
+#   * Initial velocity V0 = 285 m/s is one Tier 1 candidate point sourced
+#     from Børvik 2002 Part I hemispherical-nose Ø20mm test set (parameters
+#     only, per ADR-024 lite).
+#   * Plate is fully clamped on the back face (single-element approximation
+#     of "outer rim clamped").
+#   * Units: kg / mm / ms (matches GS-101-demo-unsigned convention).
+#
+# FORBIDDEN to add to this deck without a fresh ADR cover:
+#   * Republished experimental tables from Børvik 2002 (citation compliance
+#     review reserved for ADR-024 full / FM-04b).
+#   * Refined mesh that would imply benchmark-quality geometry.
+#   * Any /TITLE or comment that claims Tier 2 status.
+#--------------------------------------------------------------------------------------------------|
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BEGIN
+gs102_candidate
+      2022         0
+                  kg                  mm                  ms
+                  kg                  mm                  ms
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/TITLE
+GS-102-candidate Tier 1 ballistic syntax demo (Børvik 2002 params, NOT validated)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  1. MATERIALS
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+# /MAT/PLAS_JOHNS/1 — projectile (hardened steel, treated as JC plasticity stand-in)
+/MAT/PLAS_JOHNS/1
+projectile_steel_hardened_candidate
+#              RHO_I
+              7.85E-6                   0
+#                  E                  Nu     Iflag
+                 204                  .33         0
+#                  a                   b                   n           EPS_p_max            SIG_max0
+                1500                 200                  .5                1E30                   0
+#                  c           EPS_DOT_0       ICC   Fsmooth               F_cut               Chard
+                   0                   0         0         0                   0                   0
+#                  m              T_melt              rhoC_p                 T_r
+                   0                   0                   0                   0
+# /MAT/PLAS_JOHNS/2 — Weldox 460E plate (Børvik 2002 Part II Table 2; cited values)
+/MAT/PLAS_JOHNS/2
+weldox_460E_plate_candidate
+#              RHO_I
+              7.85E-6                   0
+#                  E                  Nu     Iflag
+                 200                  .33         0
+#                  a                   b                   n           EPS_p_max            SIG_max0
+                 490                 383                 .45                1E30                   0
+#                  c           EPS_DOT_0       ICC   Fsmooth               F_cut               Chard
+              .01140                .0005         0         0                   0                   0
+#                  m              T_melt              rhoC_p                 T_r
+                 .94                1800                   0                 293
+# /FAIL/JOHNSON/2 — Weldox 460E damage (Børvik 2002 Part II Table 2; cited values)
+/FAIL/JOHNSON/2
+#                 D1                  D2                  D3                  D4                  D5
+              .07050               1.732                -.54               -.015                   0
+#              EPS_0  Ifail_sh  Ifail_so                                    Dadv               Ixfem
+                .001         2         1                                       0                   0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  2. NODES (Tier 1 syntax demo — 16 nodes, 1 projectile hex + 1 plate hex)
+#---1----|----2----|----3----|----4----|----5----|----6....|----7----|----8----|----9----|---10----|
+/NODE
+         1               -10.0                -5.0                -5.0
+         2                10.0                -5.0                -5.0
+         3                10.0                 5.0                -5.0
+         4               -10.0                 5.0                -5.0
+         5               -10.0                -5.0                 5.0
+         6                10.0                -5.0                 5.0
+         7                10.0                 5.0                 5.0
+         8               -10.0                 5.0                 5.0
+         9                30.0               -10.0               -10.0
+        10                42.0               -10.0               -10.0
+        11                42.0                10.0               -10.0
+        12                30.0                10.0               -10.0
+        13                30.0               -10.0                10.0
+        14                42.0               -10.0                10.0
+        15                42.0                10.0                10.0
+        16                30.0                10.0                10.0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  3. ELEMENTS (1 projectile hex, 1 plate hex)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BRICK/1
+         1         1         2         3         4         5         6         7         8
+/BRICK/2
+         2         9        10        11        12        13        14        15        16
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  4. PARTS / PROPERTIES
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/PART/1
+projectile
+         1         1
+/PART/2
+plate_weldox_460E
+         2         2
+/PROP/SOLID/1
+projectile_solid
+                   0                   0                   0
+/PROP/SOLID/2
+plate_solid
+                   0                   0                   0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  5. NODE GROUPS
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/GRNOD/NODE/100
+projectile_nodes
+         1         2         3         4         5         6         7         8
+/GRNOD/NODE/101
+plate_back_face_clamped
+        10        11        14        15
+/GRNOD/NODE/102
+all_nodes_for_inivel
+         1         2         3         4         5         6         7         8
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  6. INITIAL VELOCITY  (V0 along +X, sourced from Børvik 2002 Part I; not benchmark agreement)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/INIVEL/TRA/1
+projectile_initial_velocity_candidate
+#                 Vx                  Vy                  Vz
+                .285                   0                   0
+       102
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  7. BOUNDARY CONDITIONS  (plate back face clamped — single-element approx of rim clamp)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BCS/1
+plate_back_face_clamped
+#  Tra_x   Tra_y   Tra_z   Rot_x   Rot_y   Rot_z   Skew_id  Grnod_id
+       1       1       1       0       0       0          0       101
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  8. CONTACT  (projectile-plate self-contact with element deletion enabled)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/INTER/TYPE7/1
+projectile_plate_contact
+#  Slv_id  Mst_id  Iset    Igap   Multi    Ibag    Idel
+       100     101       0       0       0       0       2
+#  Fric    Gapmin  Tstart  Tstop   Iform   Sens_ID Iadhe
+   0.30        0       0       0       0         0       0
+/END

@@ -38,7 +38,7 @@
   no obliquity, no spaced plates, no layered targets.
 - Solver: OpenRadioss explicit dynamics path via `aeron.drivers` (RFC-001 W7).
 
-## What is in this directory at FM-04a P3 closeout
+## What is in this directory at FM-04a P10 closeout
 
 - `expected_results.json` — Tier 1 candidate metadata. `status =
   insufficient_evidence`, `status_reason` reaffirms FM-04b deferral,
@@ -46,10 +46,23 @@
   `projectile_initial_velocity_m_per_s` so the FM-03 spine (v2) can fall back to
   it before any runtime sidecar exists.
 - `README.md` — this file.
-- `data/PLACEHOLDER.md` — placeholder for the deck content. The actual JC
-  plasticity / damage / element-deletion deck is authored in **FM-04a P4**
-  alongside the OpenRadioss adapter extension (ADR-011 §HF1 override required for
-  `agents/solver.py` per ENG-36 precedent).
+- `data/model_00_0000.rad` — OpenRadioss starter deck. JC plasticity / damage
+  parameters cited from Børvik 2002 Part II Table 2 per ADR-024 lite. Mesh is
+  intentionally a 1-projectile-hex + 1-plate-hex syntax demonstration; it is
+  NOT a physics-quality mesh and is NOT a benchmark-agreement claim.
+- `data/model_00_0001.rad` — OpenRadioss engine deck. 0.5 ms run-time,
+  animation cadence 0.05 ms, NODA constant time-step. Tier 1 candidate
+  values.
+- `data/NOTES.md` — explicit honesty notes + Docker / native-install run
+  instructions. Reaffirms that no experimental data table from Børvik 2002
+  appears in this repo.
+
+The actual JC plasticity / damage / element-deletion path through the
+OpenRadioss adapter (FM-04a P4 `aeron.drivers.OpenRadiossFEABackend`) now has
+real deck content to consume. P10 also lands `scripts/openradioss_starter_docker.sh`
++ `scripts/openradioss_engine_docker.sh` + `scripts/openradioss_image_setup.sh`
+so the deck can run in a `linux/amd64` Docker container on macOS Apple Silicon
+(no native binaries required).
 
 ## What is *not* in this directory and why
 
