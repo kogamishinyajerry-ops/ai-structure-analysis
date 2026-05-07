@@ -119,3 +119,32 @@ This rule is purely a Tier 1 candidate health indicator. It is **not**:
 - This slice does not produce convergence studies; it only consumes the sidecars when present.
 - `candidate_observed_stable` does **not** mean "convergence has been demonstrated" or "Tier 2 tolerance has been met". It is a candidate health flag only.
 - `candidate_observed_unstable` does **not** mean the candidate run is wrong; it means the relative change exceeded the candidate's own tolerance and a reviewer should look. Tier 2 tolerance comparison remains reserved for FM-04b.
+
+## FM-04a P6 — Residual velocity / perforation metric extraction + frontend Trust Center surfacing
+
+### New module
+
+`backend/app/services/ballistics/metric_extraction.py` — pure-Python writer that produces the `ballistic_metrics.json` sidecar consumed by the spine. The writer:
+
+- Takes a flat structured input (`BallisticExtractionInput` with `BallisticTimeSample[]` + `BallisticEnergyAudit`). It does **not** parse `.h3d` / `.anim` / `.A001` files; that reader-aware tier remains in `backend.app.domain.ballistics`.
+- Computes `projectile_initial_velocity_m_per_s` (magnitude of first sample), `residual_velocity_candidate_m_per_s` (magnitude of last sample), `perforation_marker` ∈ closed set `{still, embedded_candidate, perforated_candidate, stopped_candidate, unknown}`, and `energy_balance` (Tier 1 candidate health indicator only).
+- Honours a `residual_velocity_floor_m_per_s` (default 5.0 m/s) so a grazing crossing with near-zero residual speed is honestly marked `stopped_candidate` rather than `perforated_candidate`.
+- Always writes `claim_boundary = "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"` and an `extraction_metadata.claim_impact` line that re-affirms "Tier 1 candidate ballistic metrics; not benchmark agreement; not signed validation".
+
+### Tests
+
+- `backend/tests/test_ballistic_metric_extraction.py` (7 cases): perforated_candidate / embedded_candidate / stopped_candidate / grazing-cross-with-low-speed paths, marker-set closure, input validation, plus an end-to-end test that runs the extractor and then verifies the spine consumes the resulting sidecar (`ballistic.status = candidate_observed`, `residual_velocity_candidate.value_m_per_s` matches, `energy_ratio = 1.0` when the audit balances, and `limitations` no longer carries "ballistic candidate evidence is unavailable").
+
+### Frontend Trust Center surfacing (App.tsx + ChatPanel.tsx)
+
+- `App.tsx` adds a `CandidateBallisticEvidence` TS interface and consumes the new `candidate_report_spine.ballistic` block.
+- New `Ballistic candidate` operator status section with eight items: ballistic block status, initial velocity, residual velocity, perforation marker, energy balance, animation manifest, time-step convergence (with candidate stability colour cue), and ballistic Tier 2 blockers list.
+- Three new Copilot review cards: `ballistic_candidate`, `ballistic_perforation`, `time_step_convergence_study`. Every card carries explicit "NOT benchmark agreement", "NOT signed validation", and "NOT 'perforation completed'" wording.
+- `ChatPanel.tsx` filter sets extended so the new card types surface under the `Review` and `Evidence` tabs (the `Fix` tab continues to show all cards).
+
+### Explicit non-claims (P6 specific)
+
+- The extractor produces a Tier 1 *candidate* sidecar. It is **not** a benchmark agreement test, **not** a Tier 2 tolerance comparison, and **not** signed validation.
+- The extractor is intentionally agnostic to OpenRadioss output formats; the parser layer remains in `backend.app.domain.ballistics` and is not changed by this slice.
+- The frontend never invents ballistic values. When the spine reports `status=unavailable` (no sidecar present), the UI shows `Not surfaced` plus the explicit `unavailable_reason`. There is no fallback that fabricates residual velocity or perforation marker.
+- `perforated_candidate` in the UI is colour-coded `warning` (not `accent`) precisely because Tier 1 candidate evidence must not feel like a victory verdict.

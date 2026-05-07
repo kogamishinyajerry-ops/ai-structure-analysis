@@ -149,6 +149,77 @@ interface CandidateConvergenceEvidence {
   missing_reasons: string[];
 }
 
+interface CandidateBallisticEvidence {
+  status: string;
+  claim_impact: string;
+  claim_boundary: string;
+  projectile_initial_velocity: {
+    status: string;
+    value_m_per_s?: number | null;
+    source?: string;
+    unavailable_reason?: string;
+  };
+  residual_velocity_candidate: {
+    status: string;
+    value_m_per_s?: number | null;
+    extraction_source?: string;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  perforation_marker: {
+    status: string;
+    evidence_path?: string | null;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  energy_balance_candidate: {
+    status: string;
+    source?: string;
+    initial_kinetic_energy_j?: number | null;
+    plastic_dissipation_j?: number | null;
+    contact_friction_j?: number | null;
+    hourglass_energy_j?: number | null;
+    residual_kinetic_energy_j?: number | null;
+    energy_ratio?: number | null;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  animation_manifest: {
+    status: string;
+    path?: string;
+    sha256?: string;
+    size_bytes?: number;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  time_step_series_summary: {
+    status: string;
+    source?: string;
+    step_count?: number | null;
+    min_dt_s?: number | null;
+    max_dt_s?: number | null;
+    mean_dt_s?: number | null;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  time_step_convergence_study: {
+    status: string;
+    source?: string;
+    study_status?: string;
+    parameter?: string;
+    metric?: string;
+    tolerance_pct?: number | null;
+    relative_change_pct?: number | null;
+    candidate_stability?: string;
+    run_count?: number;
+    runs?: Record<string, unknown>[];
+    claim_boundary?: string;
+    claim_impact?: string;
+    unavailable_reason?: string;
+  };
+  tier2_blockers_ballistic: string[];
+}
+
 interface CandidateReportSpine {
   schema_version: string;
   claim_tier: string;
@@ -210,6 +281,7 @@ interface CandidateReportSpine {
   };
   mesh_evidence?: CandidateMeshEvidence;
   convergence_evidence?: CandidateConvergenceEvidence;
+  ballistic?: CandidateBallisticEvidence;
   artifact_manifest: {
     manifest_id: string;
     hash_algorithm: string;
@@ -695,6 +767,7 @@ function App() {
   const candidateConvergenceEvidence = candidateSpine?.convergence_evidence;
   const candidateLimitations = candidateSpine?.limitations ?? [];
   const candidateTier2Blockers = candidateSpine?.tier2_blockers ?? [];
+  const candidateBallistic = candidateSpine?.ballistic;
   const claimTier = candidateSpine?.claim_tier ?? 'Tier 0 sandbox/demo';
   const solverTruthSource = candidateSpine
     ? candidateSpine.provenance.solver_truth_source
@@ -791,6 +864,57 @@ function App() {
     ? candidateConvergenceEvidence.missing_reasons.join('; ')
     : 'No current convergence gaps surfaced; Tier 2 still requires benchmark and signoff';
   const convergenceClaimImpact = candidateConvergenceEvidence?.claim_impact ?? 'Tier 2 blocked until convergence study and signoff are attached';
+  const ballisticInitialVelocityValue = candidateBallistic?.projectile_initial_velocity.value_m_per_s;
+  const ballisticInitialVelocitySummary = candidateBallistic
+    ? candidateBallistic.projectile_initial_velocity.status === 'declared' && typeof ballisticInitialVelocityValue === 'number'
+      ? `${ballisticInitialVelocityValue.toFixed(1)} m/s (${candidateBallistic.projectile_initial_velocity.source ?? 'source unknown'})`
+      : candidateBallistic.projectile_initial_velocity.unavailable_reason ?? 'Initial velocity is unavailable'
+    : 'Ballistic block is not present in the report payload';
+  const ballisticResidualVelocityValue = candidateBallistic?.residual_velocity_candidate.value_m_per_s;
+  const ballisticResidualVelocitySummary = candidateBallistic
+    ? candidateBallistic.residual_velocity_candidate.status === 'candidate_observed' && typeof ballisticResidualVelocityValue === 'number'
+      ? `${ballisticResidualVelocityValue.toFixed(1)} m/s (Tier 1 candidate; not benchmark agreement)`
+      : candidateBallistic.residual_velocity_candidate.unavailable_reason ?? 'Residual velocity is unavailable'
+    : 'No ballistic residual velocity surfaced';
+  const ballisticPerforationMarker = candidateBallistic?.perforation_marker.status ?? 'unknown';
+  const ballisticPerforationSummary = candidateBallistic
+    ? `${humanizeStatus(ballisticPerforationMarker)}${ballisticPerforationMarker === 'unknown' && candidateBallistic.perforation_marker.unavailable_reason ? `; ${candidateBallistic.perforation_marker.unavailable_reason}` : ''}`
+    : 'No perforation marker surfaced';
+  const ballisticEnergyRatio = candidateBallistic?.energy_balance_candidate.energy_ratio ?? null;
+  const ballisticEnergySummary = candidateBallistic
+    ? candidateBallistic.energy_balance_candidate.status === 'available'
+      ? `Initial KE ${candidateBallistic.energy_balance_candidate.initial_kinetic_energy_j ?? '?'} J; ratio ${typeof ballisticEnergyRatio === 'number' ? ballisticEnergyRatio.toFixed(3) : 'unknown'} (Tier 1 health indicator)`
+      : candidateBallistic.energy_balance_candidate.unavailable_reason ?? 'Energy balance is unavailable'
+    : 'No energy balance surfaced';
+  const ballisticEnergyTone: OperatorStatusItem['tone'] = candidateBallistic && candidateBallistic.energy_balance_candidate.status === 'available'
+    ? typeof ballisticEnergyRatio === 'number' && (ballisticEnergyRatio < 0.95 || ballisticEnergyRatio > 1.05)
+      ? 'warning'
+      : 'accent'
+    : 'muted';
+  const ballisticPerforationTone: OperatorStatusItem['tone'] = ballisticPerforationMarker === 'perforated_candidate' || ballisticPerforationMarker === 'embedded_candidate'
+    ? 'warning'
+    : ballisticPerforationMarker === 'stopped_candidate'
+      ? 'accent'
+      : 'muted';
+  const ballisticTimeStepStudy = candidateBallistic?.time_step_convergence_study;
+  const ballisticTimeStepStudySummary = ballisticTimeStepStudy
+    ? ballisticTimeStepStudy.status === 'available'
+      ? `${humanizeStatus(ballisticTimeStepStudy.candidate_stability ?? ballisticTimeStepStudy.study_status ?? 'available')}; ${ballisticTimeStepStudy.run_count ?? 0} dt run(s); Δ ${typeof ballisticTimeStepStudy.relative_change_pct === 'number' ? ballisticTimeStepStudy.relative_change_pct : 'unknown'}% vs ${typeof ballisticTimeStepStudy.tolerance_pct === 'number' ? ballisticTimeStepStudy.tolerance_pct : 'unknown'}% tol`
+      : ballisticTimeStepStudy.unavailable_reason ?? 'Time-step convergence study is not attached'
+    : 'No time-step convergence study surfaced';
+  const ballisticTimeStepStudyTone: OperatorStatusItem['tone'] = ballisticTimeStepStudy?.status === 'available'
+    ? ballisticTimeStepStudy.candidate_stability === 'candidate_observed_unstable'
+      ? 'warning'
+      : 'accent'
+    : 'muted';
+  const ballisticTier2BlockerSummary = candidateBallistic && candidateBallistic.tier2_blockers_ballistic.length > 0
+    ? candidateBallistic.tier2_blockers_ballistic.join('; ')
+    : 'Ballistic Tier 2 blockers are not surfaced (no ballistic block).';
+  const ballisticAnimationSummary = candidateBallistic
+    ? candidateBallistic.animation_manifest.status === 'available'
+      ? `${candidateBallistic.animation_manifest.path ?? 'animation_manifest.json'} (sha256 ${candidateBallistic.animation_manifest.sha256?.slice(0, 12) ?? '...'})`
+      : candidateBallistic.animation_manifest.unavailable_reason ?? 'Animation manifest is unavailable'
+    : 'No animation manifest surfaced';
   const goldenSampleQueue: GoldenSampleQueueItem[] = availableCases
     .filter((c) => c.id.startsWith('GS-'))
     .map((c) => {
@@ -891,6 +1015,20 @@ function App() {
       ],
     },
     {
+      title: 'Ballistic candidate',
+      icon: <ShieldAlert size={16} />,
+      items: [
+        { label: 'Ballistic block', value: candidateBallistic ? humanizeStatus(candidateBallistic.status) : 'Not surfaced', tone: candidateBallistic?.status === 'candidate_observed' ? 'warning' : 'muted', detail: candidateBallistic?.claim_impact ?? 'Tier 1 candidate; not signed validation; not benchmark agreement' },
+        { label: 'Initial velocity', value: ballisticInitialVelocitySummary, tone: candidateBallistic?.projectile_initial_velocity.status === 'declared' ? 'accent' : 'muted' },
+        { label: 'Residual velocity', value: ballisticResidualVelocitySummary, tone: candidateBallistic?.residual_velocity_candidate.status === 'candidate_observed' ? 'warning' : 'muted', detail: 'Tier 1 candidate; not benchmark agreement' },
+        { label: 'Perforation marker', value: ballisticPerforationSummary, tone: ballisticPerforationTone, detail: 'perforated_candidate is NOT "perforation completed"' },
+        { label: 'Energy balance', value: ballisticEnergySummary, tone: ballisticEnergyTone, detail: candidateBallistic?.energy_balance_candidate.claim_impact ?? 'energy ratio is a Tier 1 candidate health indicator only' },
+        { label: 'Animation manifest', value: ballisticAnimationSummary, tone: candidateBallistic?.animation_manifest.status === 'available' ? 'accent' : 'muted' },
+        { label: 'Time-step convergence', value: ballisticTimeStepStudySummary, tone: ballisticTimeStepStudyTone, detail: ballisticTimeStepStudy?.claim_impact ?? 'Tier 2 dt convergence is reserved for FM-04b' },
+        { label: 'Ballistic Tier 2 blockers', value: ballisticTier2BlockerSummary, tone: 'danger' },
+      ],
+    },
+    {
       title: 'Gate',
       icon: <AlertTriangle size={16} />,
       items: [
@@ -974,6 +1112,38 @@ function App() {
       evidence: convergenceArtifactList,
       recommended_action: candidateConvergenceEvidence ? `Resolve remaining gaps: ${convergenceMissingSummary}` : 'Attach .sta/.cvg/.dat or solver job status before reviewer handoff.',
       claim_impact: convergenceClaimImpact,
+    },
+    {
+      card_type: 'ballistic_candidate',
+      severity: candidateBallistic?.status === 'candidate_observed' ? 'warning' : 'info',
+      finding: candidateBallistic
+        ? `${humanizeStatus(candidateBallistic.status)}: V0 ${ballisticInitialVelocitySummary}; vR ${ballisticResidualVelocitySummary}.`
+        : 'Ballistic block not present; FM-04a P1+ spine v2 is not loaded yet.',
+      evidence: candidateBallistic ? `claim_boundary: ${candidateBallistic.claim_boundary}` : 'no ballistic block in candidate_report_spine response',
+      recommended_action: candidateBallistic
+        ? 'Treat residual velocity / energy balance / perforation marker as Tier 1 candidate evidence ONLY. Do NOT promote to "benchmark agreement" or "perforation completed".'
+        : 'Run a ballistic candidate case through the FM-04a P4 OpenRadioss adapter and write a ballistic_metrics.json sidecar before reviewing.',
+      claim_impact: candidateBallistic?.claim_impact ?? 'Tier 1 candidate ballistic evidence only; not benchmark agreement; not signed validation',
+    },
+    {
+      card_type: 'ballistic_perforation',
+      severity: ballisticPerforationMarker === 'perforated_candidate' || ballisticPerforationMarker === 'embedded_candidate' ? 'warning' : 'info',
+      finding: `Perforation marker: ${ballisticPerforationSummary}.`,
+      evidence: candidateBallistic?.perforation_marker.evidence_path ?? 'no candidate perforation evidence path surfaced',
+      recommended_action: 'Reaffirm in any reviewer-facing wording that perforated_candidate is NOT "steel perforation completed" / "bullet-through-steel complete" / "signed GS101" / "validated physics".',
+      claim_impact: 'Tier 1 candidate marker only; benchmark agreement and signed perforation claims are reserved for FM-04b (ADR-024 full).',
+    },
+    {
+      card_type: 'time_step_convergence_study',
+      severity: ballisticTimeStepStudy?.candidate_stability === 'candidate_observed_unstable' ? 'critical' : ballisticTimeStepStudy?.status === 'available' ? 'info' : 'warning',
+      finding: `Time-step convergence: ${ballisticTimeStepStudySummary}`,
+      evidence: ballisticTimeStepStudy?.source ?? 'no time_step_convergence.json sidecar surfaced',
+      recommended_action: ballisticTimeStepStudy?.candidate_stability === 'candidate_observed_unstable'
+        ? 'Treat dt-axis as unstable; tighten dt and re-run before any reviewer handoff. The candidate-stability rule is NOT a Tier 2 tolerance comparison.'
+        : ballisticTimeStepStudy?.status === 'available'
+          ? 'Tier 1 candidate dt convergence indicator only; do not promote to benchmark agreement.'
+          : 'Attach a 3-level dt sweep sidecar (time_step_convergence.json) under project_state/.../ballistic/ to surface candidate stability.',
+      claim_impact: ballisticTimeStepStudy?.claim_impact ?? 'Tier 2 dt convergence and benchmark tolerance are reserved for FM-04b.',
     },
   ];
 

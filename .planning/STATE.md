@@ -114,6 +114,19 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   sample to signed validation, does NOT claim benchmark agreement, and does NOT
   start FM-04b (Tier 2 signed validation gate). The forbidden-wording set in
   ADR-023 §Tier 0 still applies to every artifact in this milestone.
+- FM-04a all six phases (P1 ballistic spine extension, P2-lite ADR-024,
+  P3 GS-102-candidate registration, P4 OpenRadioss AERON adapter,
+  P5 mesh × time-step convergence study scaffold, P6 residual-velocity /
+  perforation metric extraction + frontend Trust Center surfacing) are
+  committed locally on `claude/FM-04a-tier1-ballistic-candidate` (descended
+  from `codex/evidence-first-workbench-trust-center`). Verification gates
+  re-ran on this workstation after every phase: backend candidate-spine and
+  ballistic-extractor tests passed; mesh agent + OpenRadioss adapter tests
+  passed; full repo-root pytest passed (1138 / 9 skipped); frontend
+  `tsc -b && vite build` and `eslint .` clean throughout. No PR opened, no
+  Linear issue created, no Notion mutation, no merge to main. Trailer
+  rewrite for `trailer-check` / `calibration-cap-check` / ADR-013 PR template
+  is reserved for the human user when the branches are pushed.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
