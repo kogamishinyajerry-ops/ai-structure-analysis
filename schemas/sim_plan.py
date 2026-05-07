@@ -34,6 +34,7 @@ class SolverBackend(StrEnum):
 
     CALCULIX = "calculix"
     FENICS = "fenics"
+    OPENRADIOSS = "openradioss"
 
 
 class ElementOrder(StrEnum):
