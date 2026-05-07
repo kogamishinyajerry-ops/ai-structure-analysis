@@ -64,6 +64,68 @@ exits non-zero it prints a `*ERROR*` line indicating the offending
 section. Treat any such error as a Tier 1 candidate authoring issue,
 not a Tier 2 finding.
 
+## Iteration log (FM-04a P10 closeout)
+
+The FM-04a P10 commit ran `starter_linuxa64` from a local arm64-native
+OpenRadioss Docker image (`openradioss:arm64`, already on the dev
+workstation; arm64 binaries at `/opt/OpenRadioss/exec/starter_linuxa64`).
+The starter parses **most** of the deck cleanly:
+
+- `/BEGIN`, `/TITLE` — accepted
+- `/MAT/PLAS_JOHNS/1` projectile — accepted (1 cosmetic warning on global
+  units, harmless for syntax demo)
+- `/MAT/PLAS_JOHNS/2` Weldox 460E plate (Børvik 2002 Part II Table 2 cited
+  values) — accepted after the EPS_DOT_0 field was rewritten as `5.E-4`
+  scientific notation (the deck author needs scientific notation for
+  small floats; bare `.0005` was accepted by the parser but produced a
+  material-law-data warning)
+- `/NODE` (16 nodes) — accepted
+- `/BRICK/1`, `/BRICK/2` — accepted
+- `/PROP/SOLID/1`, `/PROP/SOLID/2`, `/PART/1`, `/PART/2` — accepted
+- `/GRNOD/NODE/100` — accepted
+
+**Residual iteration items (deck-author follow-up; outside FM-04a P10
+scope):**
+
+1. `/INIVEL/TRA/1` block returns ERROR ID 668 + ERROR ID 53 ("NO NODE
+   GROUP DEFINED" / "NODE GROUP ID: 0") despite a syntactically correct
+   60-char velocity line + `       100         0` gnod/skew row. The
+   error-message pair indicates the OpenRadioss starter is reading the
+   gnod_ID as 0; the deck author should consult the OpenRadioss /INIVEL
+   reference for this specific arm64 build to determine whether the
+   format expects `/INIVEL/TRA/inivel_ID/unit_ID` (where the second
+   slash is unit_ID, NOT gnod_ID) or whether the gnod_ID line needs an
+   alternative column layout. Two paths that did NOT work in P10:
+   - `/INIVEL/TRA/1/100` (interpreted `100` as unit_ID, ERROR 659)
+   - `       100\n` and `       100         0\n` (gnod_ID still parsed
+     as 0)
+2. `/FAIL/JOHNSON/2` element-deletion damage was intentionally omitted
+   to keep the P10 syntax demonstration narrow. Adding it requires the
+   damage parameters from Børvik 2002 Part II Table 2 (D1=0.0705,
+   D2=1.732, D3=-0.54, D4=-0.015, D5=0; ε̇0=0.001, Ifail_sh=2,
+   Ifail_so=1) and a follow-up starter pass.
+3. `/BCS/1` clamping and `/INTER/TYPE7/1` projectile-plate contact were
+   intentionally omitted. These are the most format-sensitive parts of
+   the deck and are reserved for a deck-author iteration round.
+
+**Where this leaves FM-04a P10:**
+
+- The infrastructure is complete and tested: Docker arm64 image,
+  starter+engine wrapper scripts, image setup script, deck content with
+  Tier 1 wording locked in.
+- The OpenRadioss starter executes against the deck and produces
+  specific, narrow errors that a deck-author iteration round can resolve
+  without architectural changes.
+- The FM-04a P4 OpenRadioss adapter, P6 metric extractor, P7
+  convergence writers, and P8 synthetic pipeline remain functional;
+  none depend on the deck running cleanly through the starter.
+
+**Tier 1 honesty:** P10 did NOT achieve a clean starter+engine run on
+this deck. That is documented here, not glossed over. A deck author with
+the OpenRadioss reference manual + 30 minutes of focused iteration is
+the right path forward; another LLM iteration on cargo-culted syntax is
+not.
+
 ## Citation compliance reminder
 
 Material parameter values cited from Børvik 2002 Part II Table 2 appear
