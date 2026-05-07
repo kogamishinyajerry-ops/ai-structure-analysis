@@ -42,6 +42,7 @@ def build_candidate_report_spine(
     ballistic_metrics_artifacts = _find_ballistic_metrics_artifacts(case_id)
     animation_manifest_artifacts = _find_animation_manifest_artifacts(case_id)
     time_step_series_artifacts = _find_time_step_series_artifacts(case_id)
+    time_step_convergence_artifacts = _find_time_step_convergence_artifacts(case_id)
 
     artifacts = []
     if source_path is not None:
@@ -115,6 +116,14 @@ def build_candidate_report_spine(
         )
         for path in time_step_series_artifacts
     )
+    artifacts.extend(
+        _artifact_record(
+            "time_step_convergence",
+            path,
+            "Ballistic time-step refinement convergence-study sidecar",
+        )
+        for path in time_step_convergence_artifacts
+    )
 
     artifact_hashes = [item for item in artifacts if item["status"] == "available"]
     manifest_id = _manifest_id(case_id, source_path, artifact_hashes)
@@ -137,6 +146,7 @@ def build_candidate_report_spine(
         ballistic_metrics_artifacts,
         animation_manifest_artifacts,
         time_step_series_artifacts,
+        time_step_convergence_artifacts,
     )
     reviewer_summary = _build_reviewer_summary(
         expected,
@@ -294,6 +304,16 @@ def _find_animation_manifest_artifacts(case_id: Optional[str]) -> list[Path]:
         manifest_path = search_dir / "animation_manifest.json"
         if manifest_path.exists():
             matches.append(manifest_path)
+    return _dedupe_paths(matches)
+
+
+def _find_time_step_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
+    matches: list[Path] = []
+    for search_dir in _case_runtime_dirs(case_id, "ballistic"):
+        for file_name in ("time_step_convergence.json", "dt_refinement_convergence.json"):
+            study_path = search_dir / file_name
+            if study_path.exists():
+                matches.append(study_path)
     return _dedupe_paths(matches)
 
 
@@ -642,6 +662,10 @@ def _mesh_convergence_study_summary(mesh_convergence_artifacts: list[Path]) -> d
         }
 
     runs = payload.get("runs") if isinstance(payload, Mapping) else None
+    tolerance_pct = payload.get("tolerance_pct") if isinstance(payload, Mapping) else None
+    relative_change_pct = (
+        payload.get("relative_change_pct") if isinstance(payload, Mapping) else None
+    )
     return {
         "status": "available",
         "source": _safe_path(path),
@@ -649,12 +673,100 @@ def _mesh_convergence_study_summary(mesh_convergence_artifacts: list[Path]) -> d
         "study_status": str(payload.get("status", "candidate_observed")),
         "parameter": payload.get("parameter"),
         "metric": payload.get("metric"),
-        "tolerance_pct": payload.get("tolerance_pct"),
-        "relative_change_pct": payload.get("relative_change_pct"),
+        "tolerance_pct": tolerance_pct,
+        "relative_change_pct": relative_change_pct,
+        "candidate_stability": _candidate_stability_verdict(tolerance_pct, relative_change_pct),
         "run_count": len(runs) if isinstance(runs, list) else 0,
         "runs": runs if isinstance(runs, list) else [],
         "claim_boundary": str(payload.get("claim_boundary", "tier1_engineering_candidate; not_signed_validation")),
         "claim_impact": "Tier 1 candidate convergence evidence only; benchmark agreement and signed validation remain blocked",
+    }
+
+
+def _candidate_stability_verdict(
+    tolerance_pct: Any, relative_change_pct: Any
+) -> str:
+    """Tier 1 candidate stability rule.
+
+    Returns one of:
+      - "candidate_observed_stable" when |relative_change_pct| <= tolerance_pct
+        and both values are numeric and tolerance_pct > 0.
+      - "candidate_observed_unstable" when |relative_change_pct| > tolerance_pct.
+      - "unknown" when either value is missing or non-numeric.
+
+    This is a *candidate* health indicator only; it is NOT a benchmark agreement
+    test, NOT signed validation, and NOT a tolerance comparison against any
+    public benchmark. The Tier 2 tolerance comparison is reserved for FM-04b.
+    """
+    if not isinstance(tolerance_pct, (int, float)) or tolerance_pct <= 0:
+        return "unknown"
+    if not isinstance(relative_change_pct, (int, float)):
+        return "unknown"
+    if abs(float(relative_change_pct)) > float(tolerance_pct):
+        return "candidate_observed_unstable"
+    return "candidate_observed_stable"
+
+
+def _time_step_convergence_study_summary(
+    time_step_convergence_artifacts: list[Path],
+) -> dict[str, Any]:
+    if not time_step_convergence_artifacts:
+        return {
+            "status": "unavailable",
+            "unavailable_reason": (
+                "ballistic time-step refinement convergence-study artifact is not attached"
+            ),
+        }
+
+    path = time_step_convergence_artifacts[0]
+    artifact = _artifact_record(
+        "time_step_convergence",
+        path,
+        "Ballistic time-step refinement convergence-study artifact",
+    )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {
+            "status": "unavailable",
+            "source": _safe_path(path),
+            "artifact": artifact,
+            "unavailable_reason": f"time-step convergence artifact is unreadable: {exc}",
+        }
+
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "unavailable",
+            "source": _safe_path(path),
+            "artifact": artifact,
+            "unavailable_reason": "time-step convergence artifact is not a JSON object",
+        }
+
+    runs = payload.get("runs")
+    tolerance_pct = payload.get("tolerance_pct")
+    relative_change_pct = payload.get("relative_change_pct")
+    return {
+        "status": "available",
+        "source": _safe_path(path),
+        "artifact": artifact,
+        "study_status": str(payload.get("status", "candidate_observed")),
+        "parameter": payload.get("parameter", "time_step_dt"),
+        "metric": payload.get("metric"),
+        "tolerance_pct": tolerance_pct,
+        "relative_change_pct": relative_change_pct,
+        "candidate_stability": _candidate_stability_verdict(tolerance_pct, relative_change_pct),
+        "run_count": len(runs) if isinstance(runs, list) else 0,
+        "runs": runs if isinstance(runs, list) else [],
+        "claim_boundary": str(
+            payload.get(
+                "claim_boundary",
+                "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+            )
+        ),
+        "claim_impact": (
+            "Tier 1 candidate time-step convergence evidence only; "
+            "benchmark agreement and signed validation remain blocked"
+        ),
     }
 
 
@@ -806,6 +918,7 @@ def _build_ballistic_evidence(
     metrics_artifacts: list[Path],
     animation_manifest_artifacts: list[Path],
     time_step_series_artifacts: list[Path],
+    time_step_convergence_artifacts: list[Path],
 ) -> dict[str, Any]:
     metrics_payload = _read_first_json(metrics_artifacts)
     metrics_source = _safe_path(metrics_artifacts[0]) if metrics_artifacts else None
@@ -816,6 +929,9 @@ def _build_ballistic_evidence(
     energy_balance = _ballistic_energy_balance(metrics_payload, metrics_source)
     animation_manifest = _ballistic_animation_manifest(animation_manifest_artifacts)
     time_step_series = _ballistic_time_step_series(time_step_series_artifacts)
+    time_step_convergence_study = _time_step_convergence_study_summary(
+        time_step_convergence_artifacts
+    )
 
     has_metrics = metrics_payload is not None and isinstance(metrics_payload, Mapping)
     status = "candidate_observed" if has_metrics else "unavailable"
@@ -830,6 +946,15 @@ def _build_ballistic_evidence(
         tier2_blockers_ballistic.insert(
             0,
             "no ballistic_metrics.json sidecar visible to the report path",
+        )
+    if time_step_convergence_study["status"] != "available":
+        tier2_blockers_ballistic.append(
+            "time-step refinement convergence-study artifact is not attached"
+        )
+    elif time_step_convergence_study.get("candidate_stability") == "candidate_observed_unstable":
+        tier2_blockers_ballistic.append(
+            "time-step refinement candidate-stability indicator is unstable; "
+            "review dt/grid before any benchmark comparison"
         )
 
     return {
@@ -846,6 +971,7 @@ def _build_ballistic_evidence(
         "energy_balance_candidate": energy_balance,
         "animation_manifest": animation_manifest,
         "time_step_series_summary": time_step_series,
+        "time_step_convergence_study": time_step_convergence_study,
         "tier2_blockers_ballistic": tier2_blockers_ballistic,
     }
 

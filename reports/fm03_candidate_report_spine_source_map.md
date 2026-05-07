@@ -79,3 +79,43 @@ The schema is bumped to `fm03-candidate-report-spine.v2`. The bump adds a top-le
 - `energy_ratio ∈ [0.95, 1.05]` is explicitly a Tier 1 candidate health indicator and **not** benchmark agreement.
 - `perforation_marker = "perforated_candidate"` is **not** the same as "steel perforation completed", "bullet-through-steel complete", "signed GS101", or "validated physics" (all forbidden by ADR-023).
 - ADR-024 (lite) supplies parameters only; no public benchmark agreement is claimed in P1.
+
+## FM-04a P5 — Mesh × time-step convergence study scaffold
+
+### New consumed surfaces (read-only)
+
+- `project_state/graph_executor/<case_id>/ballistic/time_step_convergence.json` (or `dt_refinement_convergence.json`) — optional Tier 1 candidate dt-refinement study sidecar. Schema (when present): `status`, `parameter` (defaults to `time_step_dt`), `metric`, `tolerance_pct`, `relative_change_pct`, `runs[]`, `claim_boundary`. Not produced by this slice.
+- `project_state/runs/<case_id>/*/executor/ballistic/time_step_convergence.json` — alternative runtime location.
+
+### New surfaced fields under `ballistic`
+
+- `time_step_convergence_study{ status, source, artifact, study_status, parameter, metric, tolerance_pct, relative_change_pct, candidate_stability, run_count, runs[], claim_boundary, claim_impact | unavailable_reason }`. The shape mirrors `mesh_evidence.convergence_study` so reviewers can compare mesh-axis and dt-axis stability symmetrically.
+
+### Tier 1 candidate-stability rule (applied to BOTH mesh and dt convergence studies)
+
+- `candidate_stability = "candidate_observed_stable"` when `tolerance_pct > 0`, both `tolerance_pct` and `relative_change_pct` are numeric, and `|relative_change_pct| <= tolerance_pct`.
+- `candidate_stability = "candidate_observed_unstable"` when both numeric and `|relative_change_pct| > tolerance_pct`.
+- `candidate_stability = "unknown"` when either value is missing or non-numeric.
+
+This rule is purely a Tier 1 candidate health indicator. It is **not**:
+
+- benchmark agreement;
+- a tolerance comparison against any public benchmark;
+- a substitute for the FM-04b Tier 2 tolerance specification (which is reserved for ADR-024 full).
+
+### Tier 2 blocker propagation
+
+- When `time_step_convergence_study.status != "available"`, `tier2_blockers_ballistic` gains "time-step refinement convergence-study artifact is not attached".
+- When `time_step_convergence_study.candidate_stability == "candidate_observed_unstable"`, `tier2_blockers_ballistic` gains "time-step refinement candidate-stability indicator is unstable; review dt/grid before any benchmark comparison".
+
+### Recommended 3 × 3 (mesh × dt) matrix posture (documentation only)
+
+- The intended FM-04a candidate study sweeps three mesh levels × three dt values for nine candidate runs.
+- The matrix is **not** encoded in the spine schema. Each axis has its own sidecar; the matrix layout lives in deck/runner conventions.
+- Each cell's metric values feed the per-axis `runs[]` array and the per-axis `relative_change_pct`. Cross-axis consistency is left to the reviewer; the spine does not synthesize a cross-axis stability claim.
+
+### Explicit non-claims (P5 specific)
+
+- This slice does not produce convergence studies; it only consumes the sidecars when present.
+- `candidate_observed_stable` does **not** mean "convergence has been demonstrated" or "Tier 2 tolerance has been met". It is a candidate health flag only.
+- `candidate_observed_unstable` does **not** mean the candidate run is wrong; it means the relative change exceeded the candidate's own tolerance and a reviewer should look. Tier 2 tolerance comparison remains reserved for FM-04b.

@@ -40,7 +40,12 @@ def test_candidate_report_spine_exposes_tier1_payload_shape() -> None:
     assert ballistic["energy_balance_candidate"]["status"] == "unavailable"
     assert ballistic["animation_manifest"]["status"] == "unavailable"
     assert ballistic["time_step_series_summary"]["status"] == "unavailable"
+    assert ballistic["time_step_convergence_study"]["status"] == "unavailable"
     assert any("public ballistic benchmark" in blocker for blocker in ballistic["tier2_blockers_ballistic"])
+    assert any(
+        "time-step refinement convergence-study artifact is not attached" in blocker
+        for blocker in ballistic["tier2_blockers_ballistic"]
+    )
     assert "ballistic candidate evidence is unavailable" in spine["limitations"]
 
     assert spine["case"]["case_id"] == "GS-001"
@@ -443,3 +448,167 @@ def test_candidate_report_spine_ballistic_consumes_animation_and_time_step_sidec
     # 90 + 5 + 2 + 0 = 97; ratio 0.97
     assert energy["energy_ratio"] is not None
     assert abs(energy["energy_ratio"] - 0.97) < 1e-6
+
+
+def test_time_step_convergence_study_stable_within_tolerance(tmp_path, monkeypatch) -> None:
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-DT-STABLE"
+    sidecar = {
+        "status": "candidate_observed",
+        "projectile_initial_velocity_m_per_s": 285.0,
+        "perforation_marker": "perforated_candidate",
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+    runtime_dir = tmp_path / "project_state" / "graph_executor" / case_id / "ballistic"
+    (runtime_dir / "time_step_convergence.json").write_text(
+        json.dumps(
+            {
+                "status": "candidate_observed",
+                "parameter": "time_step_dt",
+                "metric": "residual_velocity_candidate_m_per_s",
+                "tolerance_pct": 5.0,
+                "relative_change_pct": 1.2,
+                "runs": [
+                    {"label": "dt_baseline", "dt_s": 8.0e-9, "metric_value": 142.0},
+                    {"label": "dt_half", "dt_s": 4.0e-9, "metric_value": 141.0},
+                    {"label": "dt_quarter", "dt_s": 2.0e-9, "metric_value": 140.5},
+                ],
+                "claim_boundary": (
+                    "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    ballistic = report.candidate_report_spine["ballistic"]
+    study = ballistic["time_step_convergence_study"]
+    assert study["status"] == "available"
+    assert study["candidate_stability"] == "candidate_observed_stable"
+    assert study["parameter"] == "time_step_dt"
+    assert study["metric"] == "residual_velocity_candidate_m_per_s"
+    assert study["run_count"] == 3
+    assert "Tier 1 candidate time-step convergence evidence only" in study["claim_impact"]
+    # tier2 blockers should not cite the time-step study as missing or unstable
+    assert not any(
+        "time-step refinement convergence-study artifact is not attached" in blocker
+        for blocker in ballistic["tier2_blockers_ballistic"]
+    )
+    assert not any(
+        "candidate-stability indicator is unstable" in blocker
+        for blocker in ballistic["tier2_blockers_ballistic"]
+    )
+
+
+def test_time_step_convergence_study_unstable_above_tolerance(tmp_path, monkeypatch) -> None:
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-DT-UNSTABLE"
+    sidecar = {
+        "status": "candidate_observed",
+        "projectile_initial_velocity_m_per_s": 285.0,
+        "perforation_marker": "embedded_candidate",
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+    runtime_dir = tmp_path / "project_state" / "graph_executor" / case_id / "ballistic"
+    (runtime_dir / "time_step_convergence.json").write_text(
+        json.dumps(
+            {
+                "status": "candidate_observed",
+                "parameter": "time_step_dt",
+                "metric": "residual_velocity_candidate_m_per_s",
+                "tolerance_pct": 5.0,
+                "relative_change_pct": 12.7,
+                "runs": [
+                    {"label": "dt_baseline", "dt_s": 1.0e-8, "metric_value": 110.0},
+                    {"label": "dt_half", "dt_s": 5.0e-9, "metric_value": 124.0},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    ballistic = report.candidate_report_spine["ballistic"]
+    study = ballistic["time_step_convergence_study"]
+    assert study["status"] == "available"
+    assert study["candidate_stability"] == "candidate_observed_unstable"
+    # blocker propagated
+    assert any(
+        "candidate-stability indicator is unstable" in blocker
+        for blocker in ballistic["tier2_blockers_ballistic"]
+    )
+
+
+def test_mesh_convergence_study_stability_indicator_when_within_tolerance(tmp_path, monkeypatch) -> None:
+    """Ensure the new candidate_stability hook also fires on the mesh study path."""
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    monkeypatch.setattr(spine_module, "REPO_ROOT", tmp_path)
+    case_id = "CASE-MESH-STABLE"
+    case_dir = tmp_path / "golden_samples" / case_id
+    case_dir.mkdir(parents=True)
+    (case_dir / "expected_results.json").write_text(
+        json.dumps(
+            {
+                "case_id": case_id,
+                "case_name": "Mesh stability indicator fixture",
+                "status": "insufficient_evidence",
+                "status_reason": "test fixture",
+                "failure_pattern_ref": "FP-TEST",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (case_dir / "model.inp").write_text(
+        "*NODE\n1,0,0,0\n*ELEMENT, TYPE=C3D4\n1,1,1,1,1\n", encoding="utf-8"
+    )
+    runtime_mesh_dir = tmp_path / "project_state" / "graph_executor" / case_id / "mesh"
+    runtime_mesh_dir.mkdir(parents=True)
+    (runtime_mesh_dir / "mesh_convergence.json").write_text(
+        json.dumps(
+            {
+                "status": "candidate_observed",
+                "parameter": "mesh_level",
+                "metric": "max_von_mises",
+                "tolerance_pct": 5.0,
+                "relative_change_pct": 0.6,
+                "runs": [
+                    {"label": "coarse", "metric_value": 100.0},
+                    {"label": "medium", "metric_value": 100.6},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    study = report.candidate_report_spine["mesh_evidence"]["convergence_study"]
+    assert study["status"] == "available"
+    assert study["candidate_stability"] == "candidate_observed_stable"
