@@ -39,6 +39,9 @@ def build_candidate_report_spine(
     mesh_meta_artifacts = _find_mesh_meta_artifacts(case_id)
     mesh_quality_artifacts = _find_mesh_quality_artifacts(case_id)
     mesh_convergence_artifacts = _find_mesh_convergence_artifacts(case_id)
+    ballistic_metrics_artifacts = _find_ballistic_metrics_artifacts(case_id)
+    animation_manifest_artifacts = _find_animation_manifest_artifacts(case_id)
+    time_step_series_artifacts = _find_time_step_series_artifacts(case_id)
 
     artifacts = []
     if source_path is not None:
@@ -88,6 +91,30 @@ def build_candidate_report_spine(
         )
         for path in mesh_convergence_artifacts
     )
+    artifacts.extend(
+        _artifact_record(
+            "ballistic_metrics",
+            path,
+            "Ballistic candidate metrics sidecar visible to the report path",
+        )
+        for path in ballistic_metrics_artifacts
+    )
+    artifacts.extend(
+        _artifact_record(
+            "animation_manifest",
+            path,
+            "Ballistic animation manifest sidecar visible to the report path",
+        )
+        for path in animation_manifest_artifacts
+    )
+    artifacts.extend(
+        _artifact_record(
+            "time_step_series",
+            path,
+            "Ballistic time-step series sidecar visible to the report path",
+        )
+        for path in time_step_series_artifacts
+    )
 
     artifact_hashes = [item for item in artifacts if item["status"] == "available"]
     manifest_id = _manifest_id(case_id, source_path, artifact_hashes)
@@ -105,6 +132,12 @@ def build_candidate_report_spine(
         solver_log_artifacts,
         mesh_evidence["convergence_study"],
     )
+    ballistic_evidence = _build_ballistic_evidence(
+        expected,
+        ballistic_metrics_artifacts,
+        animation_manifest_artifacts,
+        time_step_series_artifacts,
+    )
     reviewer_summary = _build_reviewer_summary(
         expected,
         validation,
@@ -112,10 +145,11 @@ def build_candidate_report_spine(
         solver_logs,
         mesh_evidence,
         convergence_evidence,
+        ballistic_evidence,
     )
 
     return {
-        "schema_version": "fm03-candidate-report-spine.v1",
+        "schema_version": "fm03-candidate-report-spine.v2",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "claim_tier": "Tier 1 engineering candidate",
         "allowed_claim": "engineering candidate, not signed validation",
@@ -150,6 +184,7 @@ def build_candidate_report_spine(
         "assumptions": assumptions,
         "mesh_evidence": mesh_evidence,
         "convergence_evidence": convergence_evidence,
+        "ballistic": ballistic_evidence,
         "metrics": {
             "output_metric_keys": sorted(str(key) for key in metrics.keys()),
             "values": dict(metrics),
@@ -162,7 +197,13 @@ def build_candidate_report_spine(
             "hash_count": len(artifact_hashes),
             "items": artifacts,
         },
-        "limitations": _build_limitations(assumptions, solver_logs, mesh_evidence, convergence_evidence),
+        "limitations": _build_limitations(
+            assumptions,
+            solver_logs,
+            mesh_evidence,
+            convergence_evidence,
+            ballistic_evidence,
+        ),
         "reviewer_summary": reviewer_summary,
         "tier2_blockers": [
             "public benchmark/source is not attached",
@@ -235,6 +276,33 @@ def _find_mesh_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
             study_path = search_dir / file_name
             if study_path.exists():
                 matches.append(study_path)
+    return _dedupe_paths(matches)
+
+
+def _find_ballistic_metrics_artifacts(case_id: Optional[str]) -> list[Path]:
+    matches: list[Path] = []
+    for search_dir in _case_runtime_dirs(case_id, "ballistic"):
+        metrics_path = search_dir / "ballistic_metrics.json"
+        if metrics_path.exists():
+            matches.append(metrics_path)
+    return _dedupe_paths(matches)
+
+
+def _find_animation_manifest_artifacts(case_id: Optional[str]) -> list[Path]:
+    matches: list[Path] = []
+    for search_dir in _case_runtime_dirs(case_id, "ballistic"):
+        manifest_path = search_dir / "animation_manifest.json"
+        if manifest_path.exists():
+            matches.append(manifest_path)
+    return _dedupe_paths(matches)
+
+
+def _find_time_step_series_artifacts(case_id: Optional[str]) -> list[Path]:
+    matches: list[Path] = []
+    for search_dir in _case_runtime_dirs(case_id, "ballistic"):
+        series_path = search_dir / "time_step_series.json"
+        if series_path.exists():
+            matches.append(series_path)
     return _dedupe_paths(matches)
 
 
@@ -721,11 +789,266 @@ def _normal_termination_state(solver_job_status: Optional[Mapping[str, Any]]) ->
     return "not_finished"
 
 
+_BALLISTIC_CLAIM_IMPACT = (
+    "Tier 1 candidate ballistic evidence only; not benchmark agreement; not signed validation"
+)
+_BALLISTIC_PERFORATION_STATES = {
+    "still",
+    "embedded_candidate",
+    "perforated_candidate",
+    "stopped_candidate",
+    "unknown",
+}
+
+
+def _build_ballistic_evidence(
+    expected: Mapping[str, Any],
+    metrics_artifacts: list[Path],
+    animation_manifest_artifacts: list[Path],
+    time_step_series_artifacts: list[Path],
+) -> dict[str, Any]:
+    metrics_payload = _read_first_json(metrics_artifacts)
+    metrics_source = _safe_path(metrics_artifacts[0]) if metrics_artifacts else None
+
+    initial_velocity = _ballistic_initial_velocity(expected, metrics_payload)
+    residual_velocity = _ballistic_residual_velocity(metrics_payload, metrics_source)
+    perforation_marker = _ballistic_perforation_marker(metrics_payload, metrics_source)
+    energy_balance = _ballistic_energy_balance(metrics_payload, metrics_source)
+    animation_manifest = _ballistic_animation_manifest(animation_manifest_artifacts)
+    time_step_series = _ballistic_time_step_series(time_step_series_artifacts)
+
+    has_metrics = metrics_payload is not None and isinstance(metrics_payload, Mapping)
+    status = "candidate_observed" if has_metrics else "unavailable"
+
+    tier2_blockers_ballistic = [
+        "public ballistic benchmark/source not attached (defer to ADR-024 full / FM-04b)",
+        "tolerance comparison vs benchmark residual velocity not attached",
+        "independent reviewer/signoff for ballistic claim not attached",
+        "this payload is explicitly not benchmark agreement and not signed validation",
+    ]
+    if status == "unavailable":
+        tier2_blockers_ballistic.insert(
+            0,
+            "no ballistic_metrics.json sidecar visible to the report path",
+        )
+
+    return {
+        "status": status,
+        "claim_impact": _BALLISTIC_CLAIM_IMPACT,
+        "claim_boundary": (
+            metrics_payload.get("claim_boundary")
+            if has_metrics and isinstance(metrics_payload.get("claim_boundary"), str)
+            else "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"
+        ),
+        "projectile_initial_velocity": initial_velocity,
+        "residual_velocity_candidate": residual_velocity,
+        "perforation_marker": perforation_marker,
+        "energy_balance_candidate": energy_balance,
+        "animation_manifest": animation_manifest,
+        "time_step_series_summary": time_step_series,
+        "tier2_blockers_ballistic": tier2_blockers_ballistic,
+    }
+
+
+def _read_first_json(paths: list[Path]) -> Optional[Mapping[str, Any]]:
+    if not paths:
+        return None
+    try:
+        return json.loads(paths[0].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _ballistic_initial_velocity(
+    expected: Mapping[str, Any],
+    metrics_payload: Optional[Mapping[str, Any]],
+) -> dict[str, Any]:
+    expected_velocity = None
+    if isinstance(expected, Mapping):
+        ballistic_block = expected.get("ballistic")
+        if isinstance(ballistic_block, Mapping):
+            expected_velocity = ballistic_block.get("projectile_initial_velocity_m_per_s")
+        if expected_velocity is None:
+            expected_velocity = expected.get("projectile_initial_velocity_m_per_s")
+
+    metrics_velocity = None
+    if isinstance(metrics_payload, Mapping):
+        metrics_velocity = metrics_payload.get("projectile_initial_velocity_m_per_s")
+
+    if isinstance(metrics_velocity, (int, float)):
+        return {
+            "status": "declared",
+            "value_m_per_s": float(metrics_velocity),
+            "source": "ballistic_metrics.json",
+        }
+    if isinstance(expected_velocity, (int, float)):
+        return {
+            "status": "declared",
+            "value_m_per_s": float(expected_velocity),
+            "source": "expected_results.json (ADR-024 cite expected)",
+        }
+    return {
+        "status": "unavailable",
+        "value_m_per_s": None,
+        "unavailable_reason": "no projectile initial velocity is declared in expected_results.json or ballistic_metrics.json",
+    }
+
+
+def _ballistic_residual_velocity(
+    metrics_payload: Optional[Mapping[str, Any]],
+    metrics_source: Optional[str],
+) -> dict[str, Any]:
+    if not isinstance(metrics_payload, Mapping):
+        return {
+            "status": "unavailable",
+            "value_m_per_s": None,
+            "unavailable_reason": "no ballistic_metrics.json sidecar visible to the report path",
+        }
+    value = metrics_payload.get("residual_velocity_candidate_m_per_s")
+    if not isinstance(value, (int, float)):
+        return {
+            "status": "unavailable",
+            "value_m_per_s": None,
+            "unavailable_reason": "ballistic_metrics.json does not declare residual_velocity_candidate_m_per_s",
+        }
+    return {
+        "status": "candidate_observed",
+        "value_m_per_s": float(value),
+        "extraction_source": metrics_source,
+        "claim_impact": _BALLISTIC_CLAIM_IMPACT,
+    }
+
+
+def _ballistic_perforation_marker(
+    metrics_payload: Optional[Mapping[str, Any]],
+    metrics_source: Optional[str],
+) -> dict[str, Any]:
+    if not isinstance(metrics_payload, Mapping):
+        return {
+            "status": "unknown",
+            "evidence_path": None,
+            "unavailable_reason": "no ballistic_metrics.json sidecar visible to the report path",
+        }
+    raw = metrics_payload.get("perforation_marker")
+    if isinstance(raw, str) and raw in _BALLISTIC_PERFORATION_STATES:
+        return {
+            "status": raw,
+            "evidence_path": metrics_source,
+            "claim_impact": _BALLISTIC_CLAIM_IMPACT,
+        }
+    return {
+        "status": "unknown",
+        "evidence_path": metrics_source,
+        "unavailable_reason": (
+            "ballistic_metrics.json does not declare a perforation_marker in "
+            f"{sorted(_BALLISTIC_PERFORATION_STATES)}"
+        ),
+    }
+
+
+def _ballistic_energy_balance(
+    metrics_payload: Optional[Mapping[str, Any]],
+    metrics_source: Optional[str],
+) -> dict[str, Any]:
+    if not isinstance(metrics_payload, Mapping):
+        return {
+            "status": "unavailable",
+            "unavailable_reason": "no ballistic_metrics.json sidecar visible to the report path",
+        }
+    payload = metrics_payload.get("energy_balance")
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "unavailable",
+            "unavailable_reason": "ballistic_metrics.json does not declare an energy_balance object",
+        }
+
+    def _coerce(key: str) -> Optional[float]:
+        value = payload.get(key)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    initial = _coerce("initial_kinetic_energy_j")
+    plastic = _coerce("plastic_dissipation_j")
+    contact = _coerce("contact_friction_j")
+    hourglass = _coerce("hourglass_energy_j")
+    residual = _coerce("residual_kinetic_energy_j")
+
+    energy_ratio: Optional[float] = None
+    if initial and initial > 0:
+        accounted = sum(value for value in (plastic, contact, hourglass, residual) if value is not None)
+        energy_ratio = round(accounted / initial, 6)
+
+    return {
+        "status": "available",
+        "source": metrics_source,
+        "initial_kinetic_energy_j": initial,
+        "plastic_dissipation_j": plastic,
+        "contact_friction_j": contact,
+        "hourglass_energy_j": hourglass,
+        "residual_kinetic_energy_j": residual,
+        "energy_ratio": energy_ratio,
+        "claim_impact": (
+            "energy ratio is a Tier 1 candidate health indicator only; energy_ratio inside [0.95, 1.05] does not prove benchmark agreement or signed validation"
+        ),
+    }
+
+
+def _ballistic_animation_manifest(animation_manifest_artifacts: list[Path]) -> dict[str, Any]:
+    if not animation_manifest_artifacts:
+        return {
+            "status": "unavailable",
+            "unavailable_reason": "no animation_manifest.json sidecar visible to the report path",
+        }
+    record = _artifact_record(
+        "animation_manifest",
+        animation_manifest_artifacts[0],
+        "Ballistic animation manifest sidecar",
+    )
+    return {
+        "status": record["status"],
+        "path": record["path"],
+        "sha256": record.get("sha256"),
+        "size_bytes": record.get("size_bytes"),
+        "claim_impact": _BALLISTIC_CLAIM_IMPACT,
+    }
+
+
+def _ballistic_time_step_series(time_step_series_artifacts: list[Path]) -> dict[str, Any]:
+    if not time_step_series_artifacts:
+        return {
+            "status": "unavailable",
+            "unavailable_reason": "no time_step_series.json sidecar visible to the report path",
+        }
+    path = time_step_series_artifacts[0]
+    payload = _read_first_json([path])
+    if not isinstance(payload, Mapping):
+        return {
+            "status": "unavailable",
+            "source": _safe_path(path),
+            "unavailable_reason": "time_step_series.json is unreadable or not a JSON object",
+        }
+
+    def _coerce(key: str) -> Optional[float]:
+        value = payload.get(key)
+        return float(value) if isinstance(value, (int, float)) else None
+
+    step_count = payload.get("step_count")
+    return {
+        "status": "available",
+        "source": _safe_path(path),
+        "step_count": int(step_count) if isinstance(step_count, int) else None,
+        "min_dt_s": _coerce("min_dt_s"),
+        "max_dt_s": _coerce("max_dt_s"),
+        "mean_dt_s": _coerce("mean_dt_s"),
+        "claim_impact": _BALLISTIC_CLAIM_IMPACT,
+    }
+
+
 def _build_limitations(
     assumptions: Mapping[str, Any],
     solver_logs: Mapping[str, Any],
     mesh_evidence: Mapping[str, Any],
     convergence_evidence: Mapping[str, Any],
+    ballistic_evidence: Mapping[str, Any],
 ) -> list[str]:
     limitations = [
         "not signed validation",
@@ -744,6 +1067,8 @@ def _build_limitations(
         limitations.append("mesh convergence evidence is not attached")
     if convergence_evidence["status"] not in {"job_completed", "solver_artifact_converged"}:
         limitations.append("solver convergence evidence is incomplete")
+    if ballistic_evidence["status"] != "candidate_observed":
+        limitations.append("ballistic candidate evidence is unavailable")
     return limitations
 
 
@@ -754,6 +1079,7 @@ def _build_reviewer_summary(
     solver_logs: Mapping[str, Any],
     mesh_evidence: Mapping[str, Any],
     convergence_evidence: Mapping[str, Any],
+    ballistic_evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     blockers: list[str] = []
     if expected.get("status") == "insufficient_evidence":
@@ -770,6 +1096,8 @@ def _build_reviewer_summary(
         blockers.append("mesh quality metric evidence unavailable")
     if "mesh refinement convergence study is not attached" in convergence_evidence["missing_reasons"]:
         blockers.append("mesh refinement convergence study unavailable")
+    if ballistic_evidence["status"] != "candidate_observed":
+        blockers.append("ballistic candidate metrics unavailable")
 
     verdict = "candidate_ready_for_review" if not blockers else "needs_review"
     return {

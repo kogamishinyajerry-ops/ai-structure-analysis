@@ -26,10 +26,22 @@ def test_candidate_report_spine_exposes_tier1_payload_shape() -> None:
     )
 
     spine = report.candidate_report_spine
-    assert spine["schema_version"] == "fm03-candidate-report-spine.v1"
+    assert spine["schema_version"] == "fm03-candidate-report-spine.v2"
     assert spine["claim_tier"] == "Tier 1 engineering candidate"
     assert spine["no_overclaim"] == "not signed validation"
     assert spine["allowed_claim"] == "engineering candidate, not signed validation"
+
+    ballistic = spine["ballistic"]
+    assert ballistic["status"] == "unavailable"
+    assert "not benchmark agreement" in ballistic["claim_impact"]
+    assert ballistic["projectile_initial_velocity"]["status"] == "unavailable"
+    assert ballistic["residual_velocity_candidate"]["status"] == "unavailable"
+    assert ballistic["perforation_marker"]["status"] == "unknown"
+    assert ballistic["energy_balance_candidate"]["status"] == "unavailable"
+    assert ballistic["animation_manifest"]["status"] == "unavailable"
+    assert ballistic["time_step_series_summary"]["status"] == "unavailable"
+    assert any("public ballistic benchmark" in blocker for blocker in ballistic["tier2_blockers_ballistic"])
+    assert "ballistic candidate evidence is unavailable" in spine["limitations"]
 
     assert spine["case"]["case_id"] == "GS-001"
     assert spine["case"]["expected_results_status"] == "insufficient_evidence"
@@ -224,3 +236,210 @@ def test_candidate_report_spine_consumes_mesh_refinement_convergence_study(
     )
     assert "mesh refinement convergence study is not attached" not in spine["convergence_evidence"]["missing_reasons"]
     assert "mesh convergence evidence is not attached" not in spine["limitations"]
+
+
+def _seed_case_with_ballistic(tmp_path, monkeypatch, case_id: str, sidecar: dict) -> Path:
+    monkeypatch.setattr(spine_module, "REPO_ROOT", tmp_path)
+    case_dir = tmp_path / "golden_samples" / case_id
+    case_dir.mkdir(parents=True)
+    (case_dir / "expected_results.json").write_text(
+        json.dumps(
+            {
+                "case_id": case_id,
+                "case_name": "Ballistic candidate fixture",
+                "status": "insufficient_evidence",
+                "status_reason": (
+                    "Tier 1 candidate; benchmark agreement deferred to FM-04b"
+                ),
+                "failure_pattern_ref": "FP-TEST-BALLISTIC",
+                "ballistic": {"projectile_initial_velocity_m_per_s": 270.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (case_dir / "model.inp").write_text("*NODE\n1,0,0,0\n*ELEMENT, TYPE=C3D4\n1,1,1,1,1\n", encoding="utf-8")
+    runtime_ballistic_dir = tmp_path / "project_state" / "graph_executor" / case_id / "ballistic"
+    runtime_ballistic_dir.mkdir(parents=True)
+    (runtime_ballistic_dir / "ballistic_metrics.json").write_text(json.dumps(sidecar), encoding="utf-8")
+    return case_dir
+
+
+def test_candidate_report_spine_ballistic_consumes_metrics_sidecar(tmp_path, monkeypatch) -> None:
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-BALLISTIC"
+    sidecar = {
+        "status": "candidate_observed",
+        "projectile_initial_velocity_m_per_s": 285.0,
+        "residual_velocity_candidate_m_per_s": 142.0,
+        "perforation_marker": "perforated_candidate",
+        "energy_balance": {
+            "initial_kinetic_energy_j": 162.45,
+            "plastic_dissipation_j": 110.0,
+            "contact_friction_j": 8.0,
+            "hourglass_energy_j": 4.0,
+            "residual_kinetic_energy_j": 40.0,
+        },
+        "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    spine = report.candidate_report_spine
+    ballistic = spine["ballistic"]
+    assert ballistic["status"] == "candidate_observed"
+    assert "not benchmark agreement" in ballistic["claim_impact"]
+    assert ballistic["claim_boundary"] == sidecar["claim_boundary"]
+    # metrics sidecar wins over expected_results.json on initial velocity
+    assert ballistic["projectile_initial_velocity"]["status"] == "declared"
+    assert ballistic["projectile_initial_velocity"]["value_m_per_s"] == 285.0
+    assert ballistic["projectile_initial_velocity"]["source"] == "ballistic_metrics.json"
+    assert ballistic["residual_velocity_candidate"]["status"] == "candidate_observed"
+    assert ballistic["residual_velocity_candidate"]["value_m_per_s"] == 142.0
+    assert ballistic["perforation_marker"]["status"] == "perforated_candidate"
+    energy = ballistic["energy_balance_candidate"]
+    assert energy["status"] == "available"
+    assert energy["initial_kinetic_energy_j"] == 162.45
+    # 110 + 8 + 4 + 40 = 162; ratio close to 0.998
+    assert energy["energy_ratio"] is not None
+    assert 0.99 <= energy["energy_ratio"] <= 1.0
+    assert "energy ratio is a Tier 1 candidate health indicator only" in energy["claim_impact"]
+    assert ballistic["animation_manifest"]["status"] == "unavailable"
+    assert ballistic["time_step_series_summary"]["status"] == "unavailable"
+
+    # spine-level integration
+    assert "ballistic candidate evidence is unavailable" not in spine["limitations"]
+    assert spine["reviewer_summary"]["verdict"] == "needs_review"
+    assert "ballistic candidate metrics unavailable" not in spine["reviewer_summary"]["blocked_findings"]
+    artifact_kinds = {item["kind"] for item in spine["artifact_manifest"]["items"]}
+    assert "ballistic_metrics" in artifact_kinds
+
+
+def test_candidate_report_spine_ballistic_initial_velocity_from_expected_results(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """When ballistic_metrics.json omits initial velocity, expected_results.json supplies it."""
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-BALLISTIC-FALLBACK"
+    sidecar = {
+        "status": "candidate_observed",
+        "perforation_marker": "embedded_candidate",
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    ballistic = report.candidate_report_spine["ballistic"]
+    assert ballistic["projectile_initial_velocity"]["status"] == "declared"
+    assert ballistic["projectile_initial_velocity"]["value_m_per_s"] == 270.0
+    assert ballistic["projectile_initial_velocity"]["source"].startswith("expected_results.json")
+    assert ballistic["residual_velocity_candidate"]["status"] == "unavailable"
+    assert ballistic["perforation_marker"]["status"] == "embedded_candidate"
+    assert ballistic["energy_balance_candidate"]["status"] == "unavailable"
+
+
+def test_candidate_report_spine_ballistic_invalid_marker_falls_back_to_unknown(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-BALLISTIC-BAD-MARKER"
+    sidecar = {
+        "status": "candidate_observed",
+        "projectile_initial_velocity_m_per_s": 250.0,
+        "perforation_marker": "perforated",  # not in the allowed candidate set
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    marker = report.candidate_report_spine["ballistic"]["perforation_marker"]
+    assert marker["status"] == "unknown"
+    assert "does not declare a perforation_marker" in marker["unavailable_reason"]
+
+
+def test_candidate_report_spine_ballistic_consumes_animation_and_time_step_sidecars(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    if not GS001_FRD.exists():
+        pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+
+    case_id = "CASE-BALLISTIC-FULL"
+    sidecar = {
+        "status": "candidate_observed",
+        "projectile_initial_velocity_m_per_s": 300.0,
+        "residual_velocity_candidate_m_per_s": 0.0,
+        "perforation_marker": "stopped_candidate",
+        "energy_balance": {
+            "initial_kinetic_energy_j": 100.0,
+            "plastic_dissipation_j": 90.0,
+            "contact_friction_j": 5.0,
+            "hourglass_energy_j": 2.0,
+            "residual_kinetic_energy_j": 0.0,
+        },
+    }
+    case_dir = _seed_case_with_ballistic(tmp_path, monkeypatch, case_id, sidecar)
+    runtime_dir = tmp_path / "project_state" / "graph_executor" / case_id / "ballistic"
+    (runtime_dir / "animation_manifest.json").write_text(
+        json.dumps({"frames": ["frame_0001.h3d", "frame_0002.h3d"]}),
+        encoding="utf-8",
+    )
+    (runtime_dir / "time_step_series.json").write_text(
+        json.dumps(
+            {
+                "step_count": 1200,
+                "min_dt_s": 5.0e-9,
+                "max_dt_s": 8.0e-9,
+                "mean_dt_s": 6.5e-9,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    parsed = FRDParser().parse(str(GS001_FRD))
+    report = ReportGenerator(case_dir.parent).generate(
+        parsed,
+        case_id=case_id,
+        source_path=GS001_FRD,
+        original_filename="gs001_result.frd",
+    )
+
+    ballistic = report.candidate_report_spine["ballistic"]
+    assert ballistic["animation_manifest"]["status"] == "available"
+    assert ballistic["animation_manifest"]["sha256"] is not None
+    assert len(ballistic["animation_manifest"]["sha256"]) == 64
+    summary = ballistic["time_step_series_summary"]
+    assert summary["status"] == "available"
+    assert summary["step_count"] == 1200
+    assert summary["min_dt_s"] == 5.0e-9
+    assert summary["mean_dt_s"] == 6.5e-9
+    energy = ballistic["energy_balance_candidate"]
+    # 90 + 5 + 2 + 0 = 97; ratio 0.97
+    assert energy["energy_ratio"] is not None
+    assert abs(energy["energy_ratio"] - 0.97) < 1e-6

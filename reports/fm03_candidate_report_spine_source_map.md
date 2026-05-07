@@ -42,3 +42,40 @@ Claim tier: Tier 1 engineering candidate, not signed validation.
 - Solver status artifacts are not the same as a mesh-refinement convergence study.
 - `mesh_convergence.json` is candidate convergence evidence only; it still does not prove public benchmark agreement, tolerance compliance, or independent signoff.
 - Tier 2 remains blocked until benchmark/source, tolerance comparison, convergence study evidence, artifact hashes, and independent reviewer/signoff are attached.
+
+## FM-04a P1 — Ballistic Candidate Block (schema v2, additive)
+
+The schema is bumped to `fm03-candidate-report-spine.v2`. The bump adds a top-level `ballistic` key. The bump is purely additive: every other field, status, and wording from v1 is preserved.
+
+### Inspected / consumed surfaces (read-only)
+
+- `project_state/graph_executor/<case_id>/ballistic/ballistic_metrics.json` — optional Tier 1 candidate metrics sidecar. Schema (when present): `status`, `projectile_initial_velocity_m_per_s`, `residual_velocity_candidate_m_per_s`, `perforation_marker ∈ {still, embedded_candidate, perforated_candidate, stopped_candidate, unknown}`, `energy_balance{ initial_kinetic_energy_j, plastic_dissipation_j, contact_friction_j, hourglass_energy_j, residual_kinetic_energy_j }`, `claim_boundary`. **Not produced by this slice.** Will be authored by P6 after the OpenRadioss adapter (P4) yields a concrete candidate run.
+- `project_state/graph_executor/<case_id>/ballistic/animation_manifest.json` — optional ballistic animation manifest sidecar. Hash + size + safe path are surfaced; frame contents are not parsed.
+- `project_state/graph_executor/<case_id>/ballistic/time_step_series.json` — optional time-step series summary sidecar (`step_count`, `min_dt_s`, `max_dt_s`, `mean_dt_s`).
+- `expected_results.json` ballistic fallback: `expected_results.ballistic.projectile_initial_velocity_m_per_s` is consumed only when the runtime metrics sidecar omits initial velocity. ADR-024 (lite) governs which value is allowed here.
+
+### Surfaced fields under `ballistic`
+
+- `status`: `unavailable` (no metrics sidecar) | `candidate_observed` (metrics sidecar present and parseable).
+- `claim_impact`: constant `Tier 1 candidate ballistic evidence only; not benchmark agreement; not signed validation`.
+- `claim_boundary`: from sidecar when present, otherwise constant `tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement`.
+- `projectile_initial_velocity{ status, value_m_per_s, source | unavailable_reason }`. Sidecar wins over `expected_results.json` when both declare a value.
+- `residual_velocity_candidate{ status, value_m_per_s, extraction_source, claim_impact | unavailable_reason }`.
+- `perforation_marker{ status, evidence_path, claim_impact | unavailable_reason }`. Unknown when sidecar absent or marker not in the allowed candidate set.
+- `energy_balance_candidate{ status, initial_kinetic_energy_j, plastic_dissipation_j, contact_friction_j, hourglass_energy_j, residual_kinetic_energy_j, energy_ratio, claim_impact | unavailable_reason }`. `energy_ratio = (plastic + contact + hourglass + residual) / initial` when initial > 0; only used as a Tier 1 candidate health indicator.
+- `animation_manifest{ status, path, sha256, size_bytes, claim_impact | unavailable_reason }`.
+- `time_step_series_summary{ status, source, step_count, min_dt_s, max_dt_s, mean_dt_s, claim_impact | unavailable_reason }`.
+- `tier2_blockers_ballistic[]`: explicit list of what blocks any Tier 2 ballistic claim — public benchmark/source not attached, tolerance comparison not attached, independent reviewer/signoff not attached, payload is explicitly not benchmark agreement and not signed validation. When the metrics sidecar is missing, "no ballistic_metrics.json sidecar" is added as the first blocker.
+
+### Spine-level integrations triggered by the ballistic block
+
+- `_build_limitations` adds `ballistic candidate evidence is unavailable` whenever `ballistic.status != "candidate_observed"`.
+- `_build_reviewer_summary` adds `ballistic candidate metrics unavailable` to `blocked_findings` when the metrics sidecar is missing.
+- `artifact_manifest.items` includes `ballistic_metrics`, `animation_manifest`, `time_step_series` records (status `available` | `unavailable`) so reviewers can hash and audit them.
+
+### Explicit non-claims (P1 specific)
+
+- This slice does not produce any ballistic sidecar; it only consumes them when present.
+- `energy_ratio ∈ [0.95, 1.05]` is explicitly a Tier 1 candidate health indicator and **not** benchmark agreement.
+- `perforation_marker = "perforated_candidate"` is **not** the same as "steel perforation completed", "bullet-through-steel complete", "signed GS101", or "validated physics" (all forbidden by ADR-023).
+- ADR-024 (lite) supplies parameters only; no public benchmark agreement is claimed in P1.
