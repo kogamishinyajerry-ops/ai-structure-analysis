@@ -114,19 +114,27 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   sample to signed validation, does NOT claim benchmark agreement, and does NOT
   start FM-04b (Tier 2 signed validation gate). The forbidden-wording set in
   ADR-023 §Tier 0 still applies to every artifact in this milestone.
-- FM-04a all six phases (P1 ballistic spine extension, P2-lite ADR-024,
+- FM-04a all nine phases (P1 ballistic spine extension, P2-lite ADR-024,
   P3 GS-102-candidate registration, P4 OpenRadioss AERON adapter,
   P5 mesh × time-step convergence study scaffold, P6 residual-velocity /
-  perforation metric extraction + frontend Trust Center surfacing) are
-  committed locally on `claude/FM-04a-tier1-ballistic-candidate` (descended
-  from `codex/evidence-first-workbench-trust-center`). Verification gates
-  re-ran on this workstation after every phase: backend candidate-spine and
-  ballistic-extractor tests passed; mesh agent + OpenRadioss adapter tests
-  passed; full repo-root pytest passed (1138 / 9 skipped); frontend
+  perforation metric extraction + frontend Trust Center surfacing,
+  P7 Tier 1 convergence sidecar writers, P8 end-to-end synthetic pipeline,
+  P9 FM-04b readiness doc) are committed locally on
+  `claude/FM-04a-tier1-ballistic-candidate` (descended from
+  `codex/evidence-first-workbench-trust-center`). Verification gates re-ran
+  on this workstation after every phase: backend candidate-spine, extractor,
+  and convergence-writer tests passed (26 cases total in those three test
+  files); mesh agent + OpenRadioss adapter + synthetic-pipeline tests
+  passed; full repo-root pytest passed (1141 / 9 skipped); frontend
   `tsc -b && vite build` and `eslint .` clean throughout. No PR opened, no
   Linear issue created, no Notion mutation, no merge to main. Trailer
-  rewrite for `trailer-check` / `calibration-cap-check` / ADR-013 PR template
-  is reserved for the human user when the branches are pushed.
+  rewrite for `trailer-check` / `calibration-cap-check` / ADR-013 PR
+  template is reserved for the human user when the branches are pushed.
+- `.planning/FM-04B_READINESS.md` authored at FM-04a P9 closeout
+  documents what FM-04a delivered, what it deliberately deferred, what
+  Tier 2 needs that is still missing, and the FM-04b path. The document is
+  preparation material only; it does NOT promote any artifact to Tier 2 and
+  does NOT authorize FM-04b to start.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
