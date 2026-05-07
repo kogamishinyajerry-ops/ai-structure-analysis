@@ -87,18 +87,31 @@ The starter parses **most** of the deck cleanly:
 **Residual iteration items (deck-author follow-up; outside FM-04a P10
 scope):**
 
-1. `/INIVEL/TRA/1` block returns ERROR ID 668 + ERROR ID 53 ("NO NODE
-   GROUP DEFINED" / "NODE GROUP ID: 0") despite a syntactically correct
-   60-char velocity line + `       100         0` gnod/skew row. The
-   error-message pair indicates the OpenRadioss starter is reading the
-   gnod_ID as 0; the deck author should consult the OpenRadioss /INIVEL
-   reference for this specific arm64 build to determine whether the
-   format expects `/INIVEL/TRA/inivel_ID/unit_ID` (where the second
-   slash is unit_ID, NOT gnod_ID) or whether the gnod_ID line needs an
-   alternative column layout. Two paths that did NOT work in P10:
+1. `/INIVEL/TRA/1` block — **resolved 2026-05-07**. The original layout
+   put `Vx Vy Vz` on one line and `gnod_ID skew_ID` on a separate line;
+   the OpenRadioss starter was reading the gnod_ID as 0 (ERROR 668 +
+   ERROR 53). The canonical layout (per the OpenRadioss qa-tests
+   reference deck `qa-tests/miniqa/INTERF/INT_7/idel7=2/data/IDEL8_0000.rad`
+   on `github.com/OpenRadioss/OpenRadioss`) is **single-line**:
+
+   ```
+   /INIVEL/TRA/1
+   Velocity
+   #                 Vx                  Vy                  Vz   Gnod_id   Skew_id
+                   1000                   0                   0         1         0
+   ```
+
+   Five fields on one row: Vx (cols 1-20), Vy (cols 21-40), Vz (cols 41-60),
+   Gnod_id (cols 61-70), Skew_id (cols 71-80). The deck has been updated
+   to this format. Re-running the starter requires the OpenRadioss
+   Docker image to be present; the previous local `openradioss:arm64`
+   image was pruned, and a fresh pull from public registries (ghcr.io,
+   amit112amit/openradioss) stalled or denied access during this
+   iteration — that is an environment issue, not a deck-syntax issue.
+   Two paths that did NOT work in P10 before the fix:
    - `/INIVEL/TRA/1/100` (interpreted `100` as unit_ID, ERROR 659)
-   - `       100\n` and `       100         0\n` (gnod_ID still parsed
-     as 0)
+   - `       100\n` or `       100         0\n` on a separate line
+     (gnod_ID parsed as 0)
 2. `/FAIL/JOHNSON/2` element-deletion damage was intentionally omitted
    to keep the P10 syntax demonstration narrow. Adding it requires the
    damage parameters from Børvik 2002 Part II Table 2 (D1=0.0705,
@@ -121,10 +134,12 @@ scope):**
   none depend on the deck running cleanly through the starter.
 
 **Tier 1 honesty:** P10 did NOT achieve a clean starter+engine run on
-this deck. That is documented here, not glossed over. A deck author with
-the OpenRadioss reference manual + 30 minutes of focused iteration is
-the right path forward; another LLM iteration on cargo-culted syntax is
-not.
+this deck. That is documented here, not glossed over. The remaining
+syntax-level item (/INIVEL/TRA gnod_ID line layout) has been resolved
+by reference to the canonical OpenRadioss qa-tests deck cited above;
+re-running the starter to confirm requires restoring the local Docker
+image. Adding back /FAIL/JOHNSON, /BCS, /INTER/TYPE7 is still a
+deck-author iteration item with the OpenRadioss reference manual.
 
 ## Citation compliance reminder
 

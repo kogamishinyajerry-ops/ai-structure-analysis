@@ -121,6 +121,6 @@ projectile_nodes_for_inivel
 #---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
 /INIVEL/TRA/1
 projectile_initial_velocity_candidate
-                .285                   0                   0
-       100         0
+#                 Vx                  Vy                  Vz   Gnod_id   Skew_id
+                .285                   0                   0       100         0
 /END
