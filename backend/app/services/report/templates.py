@@ -178,7 +178,9 @@ BALLISTIC_PENETRATION_SUMMARY = TemplateSpec(
     name="弹道穿透时程摘要 / Ballistic-penetration time-history summary",
     description=(
         "Multi-state report for explicit-dynamics impact / penetration "
-        "runs. Emits the run duration, the peak nodal displacement across "
+        "runs. Until the ENG-22 solver-truth carve-out is approved this "
+        "template is validation-candidate/demo-safe, not a signed GS-101 "
+        "claim. Emits the run duration, the peak nodal displacement across "
         "the time axis, the eroded element count (when the adapter "
         "supports element deletion — OpenRadioss does, CalculiX does "
         "not), and a perforation-event step when erosion was actually "

@@ -16,11 +16,18 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ..core.types import FieldMetadata
+from ..core.types import (
+    CanonicalField,
+    ComponentType,
+    FieldLocation,
+    FieldMetadata,
+    UnitSystem,
+)
 
 
 class EvidenceType(str, Enum):
@@ -225,3 +232,20 @@ class EvidenceBundle(BaseModel):
 
     def get_evidence_by_type(self, evidence_type: EvidenceType) -> List[EvidenceItem]:
         return [item for item in self.evidence_items if item.evidence_type == evidence_type]
+
+
+_FIELD_METADATA_TYPES = {
+    "CanonicalField": CanonicalField,
+    "ComponentType": ComponentType,
+    "FieldLocation": FieldLocation,
+    "Path": Path,
+    "Union": Union,
+    "UnitSystem": UnitSystem,
+}
+
+# Pydantic v2 does not always resolve the nested stdlib dataclass
+# annotations on FieldMetadata when evidence models are imported through
+# package re-exports. Rebuild once with the exact Layer-2 namespace so an
+# empty EvidenceBundle is constructible without call-site workarounds.
+EvidenceItem.model_rebuild(_types_namespace=_FIELD_METADATA_TYPES)
+EvidenceBundle.model_rebuild(_types_namespace=_FIELD_METADATA_TYPES)

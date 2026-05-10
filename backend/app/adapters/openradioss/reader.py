@@ -156,6 +156,31 @@ class _ORVectorFieldData:
         return self.values()
 
 
+class _ORArrayFieldData:
+    """``FieldData`` Protocol for native OpenRadioss arrays.
+
+    This class surfaces raw arrays only. It does not extrapolate,
+    average, derive von Mises, or translate part/material semantics.
+    Element-located data therefore returns its natural array from
+    ``at_nodes()`` as a conservative no-op; Layer 3 must decide whether
+    a consumer is allowed to use a non-nodal field.
+    """
+
+    def __init__(
+        self,
+        metadata: FieldMetadata,
+        values: "npt.NDArray[np.float64]",
+    ) -> None:
+        self.metadata = metadata
+        self._values = np.asarray(values, dtype=np.float64)
+
+    def values(self) -> "npt.NDArray[np.float64]":
+        return self._values.copy()
+
+    def at_nodes(self) -> "npt.NDArray[np.float64]":
+        return self.values()
+
+
 # ---------------------------------------------------------------------------
 # Reader
 # ---------------------------------------------------------------------------
@@ -287,13 +312,14 @@ class OpenRadiossReader:
             # Tensor fields likewise: STRESS_TENSOR / STRAIN_TENSOR
             # surface only when the engine actually wrote them. The
             # GS-100 smoke fixture has none; GS-101 will.
-            t_names = [str(t).strip() for t in (a.get("tTextA") or [])]
-            for tn in t_names:
-                tu = tn.upper()
-                if "STRESS" in tu and CanonicalField.STRESS_TENSOR not in avail:
-                    avail.append(CanonicalField.STRESS_TENSOR)
-                if "STRAIN" in tu and CanonicalField.STRAIN_TENSOR not in avail:
-                    avail.append(CanonicalField.STRAIN_TENSOR)
+            if self._native_tensor_values(
+                a, ("STRESS",), expected_width=6
+            ) is not None:
+                avail.append(CanonicalField.STRESS_TENSOR)
+            if self._native_tensor_values(
+                a, ("STRAIN",), expected_width=6
+            ) is not None:
+                avail.append(CanonicalField.STRAIN_TENSOR)
             self._available_per_state[idx] = tuple(avail)
             self._states.append(
                 SolutionState(
@@ -349,9 +375,10 @@ class OpenRadiossReader:
             return None
         if name is CanonicalField.DISPLACEMENT:
             return self._displacement_for(step_id)
-        # Stress / strain tensor: TODO in a follow-up commit on top of
-        # GS-101. Keeping the path explicit so the failure mode is a
-        # clear None (per ADR-003) rather than a silent broken array.
+        if name is CanonicalField.STRESS_TENSOR:
+            return self._tensor_field_for(step_id, ("STRESS",), name)
+        if name is CanonicalField.STRAIN_TENSOR:
+            return self._tensor_field_for(step_id, ("STRAIN",), name)
         return None
 
     def close(self) -> None:
@@ -384,6 +411,56 @@ class OpenRadiossReader:
         _, arrays = self._read_frame(step_id)
         delE = np.asarray(arrays.get("delEltA", []), dtype=np.int8)
         return delE
+
+    def nodal_velocity_for(
+        self, step_id: int
+    ) -> "npt.NDArray[np.float64] | None":
+        """Return raw nodal velocity vectors when written by OpenRadioss.
+
+        Velocity is not a ``CanonicalField`` member, so it is exposed as
+        an optional capability for Layer-3 candidate metrics. ``None``
+        means the run did not write a native velocity array; it is not a
+        license to fabricate zeros.
+        """
+        self._check_open()
+        if step_id not in self._decompressed:
+            raise KeyError(f"unknown step_id {step_id!r}")
+        _, arrays = self._read_frame(step_id)
+        found = self._native_vector_values(arrays, ("VELOCITY", "VELO"))
+        if found is None:
+            return None
+        values, _, _ = found
+        return values.copy()
+
+    def element_part_ids_for(
+        self, step_id: int
+    ) -> "npt.NDArray[np.int64] | None":
+        """Return solver-native element part/material IDs if present.
+
+        The legacy animation files often carry integer labels such as
+        ``materialTypeA``. They are useful for projectile/plate
+        partitioning, but they are not material cards; this method
+        deliberately returns raw IDs only.
+        """
+        self._check_open()
+        if step_id not in self._decompressed:
+            raise KeyError(f"unknown step_id {step_id!r}")
+        _, arrays = self._read_frame(step_id)
+        for key in (
+            "partIdA",
+            "partIDA",
+            "partId3DA",
+            "materialTypeA",
+            "materialIdA",
+            "materialType3DA",
+        ):
+            raw = arrays.get(key)
+            if raw is None:
+                continue
+            values = np.asarray(raw, dtype=np.int64).reshape(-1)
+            if values.size:
+                return values.copy()
+        return None
 
     @property
     def rootname(self) -> str:
@@ -468,6 +545,139 @@ class OpenRadiossReader:
         path = self._decompressed[idx]
         rr = RadiossReader(str(path))
         return rr.raw_header, rr.raw_arrays
+
+    @staticmethod
+    def _text_labels(raw: Any) -> list[str]:
+        if raw is None:
+            return []
+        arr = np.asarray(raw).reshape(-1)
+        labels: list[str] = []
+        for item in arr.tolist():
+            if isinstance(item, bytes):
+                labels.append(item.decode("utf-8", errors="ignore").strip())
+            else:
+                labels.append(str(item).strip())
+        return labels
+
+    @staticmethod
+    def _label_index(labels: list[str], needles: tuple[str, ...]) -> int | None:
+        for i, label in enumerate(labels):
+            upper = label.upper()
+            if any(needle in upper for needle in needles):
+                return i
+        return None
+
+    @staticmethod
+    def _slice_labeled_values(
+        raw: Any,
+        *,
+        label_index: int,
+        n_labels: int,
+        expected_width: int,
+    ) -> "npt.NDArray[np.float64] | None":
+        arr = np.asarray(raw, dtype=np.float64)
+        if arr.size == 0:
+            return None
+        if arr.ndim == 3:
+            # Vortex/lasso arrays normally put the entity axis first and
+            # the text-label axis second: (n_entities, n_labels, width).
+            # Check that form first so small synthetic fixtures where
+            # n_entities == n_labels do not get sliced on the wrong axis.
+            if arr.shape[1] == n_labels and arr.shape[2] >= expected_width:
+                return np.asarray(
+                    arr[:, label_index, :expected_width],
+                    dtype=np.float64,
+                )
+            if arr.shape[0] == n_labels and arr.shape[2] >= expected_width:
+                return np.asarray(
+                    arr[label_index, :, :expected_width],
+                    dtype=np.float64,
+                )
+            if n_labels == 1 and arr.shape[-1] >= expected_width:
+                return np.asarray(
+                    arr.reshape(-1, arr.shape[-1])[:, :expected_width],
+                    dtype=np.float64,
+                )
+        if arr.ndim == 2:
+            if n_labels == 1 and arr.shape[1] >= expected_width:
+                return np.asarray(arr[:, :expected_width], dtype=np.float64)
+            if arr.shape[0] == n_labels and arr.shape[1] % expected_width == 0:
+                return np.asarray(
+                    arr[label_index].reshape(-1, expected_width),
+                    dtype=np.float64,
+                )
+        if arr.ndim == 1 and n_labels == 1 and arr.size % expected_width == 0:
+            return np.asarray(arr.reshape(-1, expected_width), dtype=np.float64)
+        return None
+
+    def _native_vector_values(
+        self, arrays: dict[str, Any], needles: tuple[str, ...]
+    ) -> tuple["npt.NDArray[np.float64]", str, str] | None:
+        labels = self._text_labels(arrays.get("vTextA"))
+        idx = self._label_index(labels, needles)
+        if idx is None:
+            return None
+        for key in ("vectValA", "vectVal3DA", "vValA", "vectorValA"):
+            raw = arrays.get(key)
+            if raw is None:
+                continue
+            values = self._slice_labeled_values(
+                raw, label_index=idx, n_labels=len(labels), expected_width=3
+            )
+            if values is not None:
+                return values, key, labels[idx]
+        return None
+
+    def _native_tensor_values(
+        self,
+        arrays: dict[str, Any],
+        needles: tuple[str, ...],
+        *,
+        expected_width: int,
+    ) -> tuple["npt.NDArray[np.float64]", str, str] | None:
+        labels = self._text_labels(arrays.get("tTextA"))
+        idx = self._label_index(labels, needles)
+        if idx is None:
+            return None
+        for key in ("tensValA", "tensVal3DA", "tValA", "tensorValA"):
+            raw = arrays.get(key)
+            if raw is None:
+                continue
+            values = self._slice_labeled_values(
+                raw,
+                label_index=idx,
+                n_labels=len(labels),
+                expected_width=expected_width,
+            )
+            if values is not None:
+                return values, key, labels[idx]
+        return None
+
+    def _tensor_field_for(
+        self,
+        step_id: int,
+        needles: tuple[str, ...],
+        name: CanonicalField,
+    ) -> FieldData | None:
+        _, arrays = self._read_frame(step_id)
+        found = self._native_tensor_values(
+            arrays, needles, expected_width=6
+        )
+        if found is None:
+            return None
+        values, key, label = found
+        meta = FieldMetadata(
+            name=name,
+            location=FieldLocation.ELEMENT,
+            component_type=ComponentType.TENSOR_SYM_3D,
+            unit_system=self._unit_system,
+            source_solver=self.SOURCE_SOLVER,
+            source_field_name=f"{key}:{label}",
+            source_file=self._frame_paths[step_id],
+            coordinate_system=CoordinateSystemKind.GLOBAL.value,
+            was_averaged=False,
+        )
+        return _ORArrayFieldData(meta, values)
 
     def _displacement_for(self, step_id: int) -> _ORVectorFieldData:
         _, a_now = self._read_frame(step_id)
