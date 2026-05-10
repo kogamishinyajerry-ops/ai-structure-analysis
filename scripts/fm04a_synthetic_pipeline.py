@@ -55,12 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     from app.parsers.frd_parser import FRDParser  # noqa: E402  (intentional after sys.path)
     from app.services import candidate_report_spine as spine_module  # noqa: E402
     from app.services.ballistics import (  # noqa: E402
+        BallisticAnimationInput,
         BallisticEnergyAudit,
         BallisticExtractionInput,
         BallisticTimeSample,
         ConvergenceRun,
         MeshConvergenceInput,
         TimeStepConvergenceInput,
+        write_ballistic_animation,
         write_ballistic_metrics,
         write_mesh_convergence,
         write_time_step_convergence,
@@ -146,6 +148,25 @@ def main(argv: list[str] | None = None) -> int:
         f"  - wrote mesh_convergence.json: "
         f"{(mesh_dir / 'mesh_convergence.json').relative_to(repo_root)}"
     )
+
+    # 4b. Optional Tier 1 candidate animation (side-view kinematic sketch).
+    #     Written before the spine call so the spine picks up the manifest
+    #     and surfaces it in animation_manifest as "available".
+    if args.write_animation:
+        anim_manifest_path = write_ballistic_animation(
+            BallisticAnimationInput(
+                case_id=case_id,
+                samples=samples,
+                plate_back_face_x_m=0.012,
+                plate_thickness_m=0.012,
+            ),
+            ballistic_dir,
+        )
+        print(f"  - wrote animation_manifest.json: {anim_manifest_path.relative_to(repo_root)}")
+        print(
+            f"  - wrote candidate_animation.gif: "
+            f"{(ballistic_dir / 'candidate_animation.gif').relative_to(repo_root)}"
+        )
 
     # 5. Drive the spine through ReportGenerator using a real GS-001 FRD as the parsed
     #    input. The spine reads expected_results.json from the synthetic case dir;
@@ -264,6 +285,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "Render the candidate spine as a Tier 1 Markdown report and "
             "write it to project_state/graph_executor/<case>/candidate_report.md "
             "(strictly Tier 1; never claims benchmark agreement or signed validation)"
+        ),
+    )
+    parser.add_argument(
+        "--write-animation",
+        action="store_true",
+        help=(
+            "Render a Tier 1 side-view kinematic GIF and animation_manifest.json "
+            "into project_state/graph_executor/<case>/ballistic/ (illustrative "
+            "only; not benchmark agreement; not signed validation)"
         ),
     )
     return parser.parse_args(argv)

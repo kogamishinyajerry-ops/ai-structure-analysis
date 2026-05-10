@@ -21,6 +21,10 @@ Decoupling keeps two concerns explicit:
    discipline is preserved end to end.
 """
 
+from .animation_writer import (
+    BallisticAnimationInput,
+    write_ballistic_animation,
+)
 from .convergence_writers import (
     ConvergenceRun,
     MeshConvergenceInput,
@@ -36,12 +40,14 @@ from .metric_extraction import (
 )
 
 __all__ = [
+    "BallisticAnimationInput",
     "BallisticEnergyAudit",
     "BallisticExtractionInput",
     "BallisticTimeSample",
     "ConvergenceRun",
     "MeshConvergenceInput",
     "TimeStepConvergenceInput",
+    "write_ballistic_animation",
     "write_ballistic_metrics",
     "write_mesh_convergence",
     "write_time_step_convergence",
