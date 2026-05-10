@@ -21,6 +21,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "fm04a_synthetic_pipeline.py"
 GS001_FRD = REPO_ROOT / "golden_samples" / "GS-001" / "gs001_result.frd"
+BACKEND_APP = REPO_ROOT / "backend" / "app"
 
 
 def _load_pipeline_module():
@@ -34,9 +35,17 @@ def _load_pipeline_module():
 
 
 def _seed_repo(tmp_path: Path) -> Path:
-    """Seed a minimal fake repo root containing the GS-001 FRD fixture."""
+    """Seed a minimal fake repo root containing the GS-001 FRD fixture.
+
+    The pipeline script's _ensure_paths(repo_root) inserts <repo>/backend
+    into sys.path, then imports app.parsers.frd_parser / app.services.*. So
+    the fake repo also needs a backend/app tree visible at that path; we
+    symlink the real one to avoid copying.
+    """
     if not GS001_FRD.exists():
         pytest.skip(f"GS-001 FRD fixture missing at {GS001_FRD}")
+    if not BACKEND_APP.exists():
+        pytest.skip(f"backend/app tree missing at {BACKEND_APP}")
 
     repo_root = tmp_path / "fake_repo"
     gs001_dir = repo_root / "golden_samples" / "GS-001"
@@ -44,6 +53,13 @@ def _seed_repo(tmp_path: Path) -> Path:
     target = gs001_dir / "gs001_result.frd"
     # Use a hard symlink to avoid copying ~MB of FRD bytes per test invocation
     target.symlink_to(GS001_FRD)
+
+    # Mirror backend/app so `from app.* import ...` resolves against the
+    # script-supplied --repo-root (script contract: each repo root is
+    # self-contained for imports).
+    backend_dir = repo_root / "backend"
+    backend_dir.mkdir()
+    (backend_dir / "app").symlink_to(BACKEND_APP)
     return repo_root
 
 
