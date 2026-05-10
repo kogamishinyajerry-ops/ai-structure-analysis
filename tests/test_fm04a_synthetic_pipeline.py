@@ -133,3 +133,35 @@ def test_synthetic_pipeline_carries_tier1_wording_in_payload(tmp_path: Path) -> 
     assert payload["status"] == "insufficient_evidence"
     assert "Tier 2 promotion deferred to FM-04b" in payload["status_reason"]
     assert payload["analysis_type"] == "explicit_dynamics_ballistic_candidate"
+
+
+def test_synthetic_pipeline_write_markdown_produces_tier1_report(tmp_path: Path) -> None:
+    repo_root = _seed_repo(tmp_path)
+    module = _load_pipeline_module()
+
+    rc = module.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--case-id",
+            "CASE-FM04A-MD-OUT",
+            "--write-markdown",
+        ]
+    )
+    assert rc == 0
+
+    md_path = (
+        repo_root / "project_state" / "graph_executor" / "CASE-FM04A-MD-OUT" / "candidate_report.md"
+    )
+    assert md_path.exists()
+    md_text = md_path.read_text(encoding="utf-8")
+    # Header + boundary tokens
+    assert "# Candidate Report — " in md_text
+    assert "Tier 1 engineering candidate" in md_text
+    assert "not signed validation" in md_text
+    # Spine evidence rendered
+    assert "perforated_candidate" in md_text
+    assert "candidate_observed_stable" in md_text
+    assert "## Tier 2 blockers" in md_text
+    # Sanity: report is non-trivial in size
+    assert len(md_text.splitlines()) > 50

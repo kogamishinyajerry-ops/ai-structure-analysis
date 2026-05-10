@@ -35,7 +35,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT_DEFAULT = Path(__file__).resolve().parents[1]
 
 
@@ -203,6 +202,17 @@ def main(argv: list[str] | None = None) -> int:
         print("Full spine payload:")
         print(json.dumps(spine, indent=2, sort_keys=True))
 
+    if args.write_markdown:
+        from app.services.candidate_report_markdown import (  # noqa: E402
+            render_candidate_report,
+        )
+
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        md_path = runtime_root / "candidate_report.md"
+        md_path.write_text(render_candidate_report(spine), encoding="utf-8")
+        print()
+        print(f"  - wrote candidate_report.md: {md_path.relative_to(repo_root)}")
+
     if ballistic["status"] != "candidate_observed":
         print(
             "\nERROR: spine ballistic block is not candidate_observed; pipeline failed.",
@@ -246,6 +256,15 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--print-spine",
         action="store_true",
         help="Print the full spine payload as JSON after the summary",
+    )
+    parser.add_argument(
+        "--write-markdown",
+        action="store_true",
+        help=(
+            "Render the candidate spine as a Tier 1 Markdown report and "
+            "write it to project_state/graph_executor/<case>/candidate_report.md "
+            "(strictly Tier 1; never claims benchmark agreement or signed validation)"
+        ),
     )
     return parser.parse_args(argv)
 
