@@ -29,6 +29,7 @@ dependencies = [
     "pyyaml>=6.0",
     "httpx>=0.25",
     "python-docx>=1.1",
+    "pyvista>=0.47.3",
 ]
 
 [project.optional-dependencies]

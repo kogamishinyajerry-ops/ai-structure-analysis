@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 # RFC-001 §6.1 Bucket B: services.visualization frozen → _frozen.sprint2.visualization.
@@ -18,6 +19,7 @@ from ._viz_helpers import (
     _fallback_html_unavailable_pyvista,
     _is_under_allowed_root,
     _resolve_frd_path,
+    _resolve_result_mesh_artifact_path,
     _validate_case_id,
 )
 
@@ -34,6 +36,7 @@ __all__ = [
     "_fallback_html_unavailable_pyvista",
     "_is_under_allowed_root",
     "_resolve_frd_path",
+    "_resolve_result_mesh_artifact_path",
     "_validate_case_id",
 ]
 
@@ -82,6 +85,31 @@ def get_viz_service():
         from app._frozen.sprint2.visualization import get_visualization_service
         _viz_service = get_visualization_service()
     return _viz_service
+
+
+@router.get("/result-mesh/{case_id}")
+async def get_result_mesh_payload(case_id: str):
+    """Serve the Text-to-CAE-style dynamic result payload for one case."""
+    try:
+        artifact = _resolve_result_mesh_artifact_path(case_id, "result_mesh.json")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not artifact:
+        raise HTTPException(status_code=404, detail="result_mesh.json not found")
+    return FileResponse(artifact, media_type="application/json")
+
+
+@router.get("/result-mesh/{case_id}/{artifact_path:path}")
+async def get_result_mesh_artifact(case_id: str, artifact_path: str):
+    """Serve whitelisted dynamic result sidecars for one case."""
+    try:
+        artifact = _resolve_result_mesh_artifact_path(case_id, artifact_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not artifact:
+        raise HTTPException(status_code=404, detail="result-mesh artifact not found")
+    media_type = "application/xml" if artifact.suffix == ".vtu" else "application/json"
+    return FileResponse(artifact, media_type=media_type)
 
 
 @router.get("/plot")
@@ -188,7 +216,7 @@ async def create_visualization(request: VisualizeRequest):
         output_path = Path(f"/tmp/visualization_{result.file_name}.{request.output_format}")
 
         if request.output_format == "html":
-             # We generate HTML by skipping the usual image builders and calling export_scene_as_html
+             # Generate HTML by skipping image builders and exporting the scene directly.
              html_str = viz.export_scene_as_html(
                  parse_result=result,
                  field=request.component if request.plot_type == "stress" else "VonMises"
@@ -255,7 +283,7 @@ async def create_visualization(request: VisualizeRequest):
         raise
     except Exception as e:
         logger.error(f"Visualization error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.get("/delta")
 async def get_delta_visualization(file1: str, file2: str, component: str = "VonMises"):
@@ -305,7 +333,7 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
         # Preserve intentional 4xx codes raised above (Codex R1 MEDIUM-1).
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 
