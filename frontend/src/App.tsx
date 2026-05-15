@@ -28,7 +28,21 @@ import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
 import { BulletPlateBlueprintPanel } from './components/BulletPlateBlueprintPanel';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 import { CandidateCasePicker } from './components/CandidateCasePicker';
-import { FALLBACK_CANDIDATE_CASES } from './candidateCaseRegistry';
+import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
+import {
+    TIER1_BANNER,
+    candidateCaseSelectionLabel,
+    candidateCaseSelectionTone,
+    convergenceLabel,
+    convergenceTone,
+    energyBalanceLabel,
+    energyBalanceTone,
+} from './trustCenterSummary';
+import type {
+    CandidateCaseSelectionSummary,
+    ConvergenceStudySummary,
+    EnergyBalanceSummary,
+} from './trustCenterSummary';
 
 
 // --- Types ---
@@ -931,6 +945,81 @@ function App() {
       : candidateBallistic.animation_manifest.unavailable_reason ?? 'Animation manifest is unavailable'
     : 'No animation manifest surfaced';
   const blueprintSummary = buildBulletPlateBlueprintSummary();
+
+  // FM-04a Phase 2 D — Trust Center industrial review card summaries.
+  const phase2EnergyBalanceSummary: EnergyBalanceSummary = candidateBallistic
+    ? {
+        status:
+          candidateBallistic.energy_balance_candidate.status === 'available'
+            ? 'partial_candidate'
+            : 'unavailable',
+        initialKineticEnergyJ:
+          candidateBallistic.energy_balance_candidate.initial_kinetic_energy_j ?? null,
+        residualKineticEnergyJ:
+          candidateBallistic.energy_balance_candidate.residual_kinetic_energy_j ?? null,
+        aggregateInternalEnergyJ: null,
+        externalWorkJ: null,
+        energyBalanceErrorPct: null,
+        claimImpact:
+          candidateBallistic.energy_balance_candidate.unavailable_reason ??
+          'Tier 1 partial energy audit: kinetic energies only; aggregate ' +
+            'internal energy and external work require the engine .out energy ' +
+            'table (FM-04a Phase 2 A); not signed validation; not benchmark agreement.',
+      }
+    : {
+        status: 'unavailable',
+        initialKineticEnergyJ: null,
+        residualKineticEnergyJ: null,
+        aggregateInternalEnergyJ: null,
+        externalWorkJ: null,
+        energyBalanceErrorPct: null,
+        claimImpact: 'Energy audit unavailable: no candidate ballistic spine in scope',
+      };
+  const phase2EnergyBalanceTone = energyBalanceTone(phase2EnergyBalanceSummary);
+  const phase2EnergyBalanceLabel = energyBalanceLabel(phase2EnergyBalanceSummary);
+
+  const phase2ConvergenceSummary: ConvergenceStudySummary = ballisticTimeStepStudy && ballisticTimeStepStudy.status === 'available'
+    ? {
+        combinedVerdict:
+          ballisticTimeStepStudy.candidate_stability ?? 'insufficient_data',
+        meshSweepStability: 'unknown',
+        dtSweepStability: ballisticTimeStepStudy.candidate_stability ?? 'unknown',
+        rowCount: ballisticTimeStepStudy.run_count ?? 0,
+        tolerancePct:
+          typeof ballisticTimeStepStudy.tolerance_pct === 'number'
+            ? ballisticTimeStepStudy.tolerance_pct
+            : 5,
+      }
+    : {
+        combinedVerdict: 'insufficient_data',
+        meshSweepStability: 'unknown',
+        dtSweepStability: 'unknown',
+        rowCount: 0,
+        tolerancePct: 5,
+      };
+  const phase2ConvergenceTone = convergenceTone(phase2ConvergenceSummary);
+  const phase2ConvergenceLabel = convergenceLabel(phase2ConvergenceSummary);
+
+  const phase2CandidateCase = findCandidateCase(
+    FALLBACK_CANDIDATE_CASES,
+    selectedCandidateCaseId,
+  );
+  const phase2CandidateCaseSummary: CandidateCaseSelectionSummary = {
+    caseId: phase2CandidateCase?.caseId ?? null,
+    starterDeckRelpath: phase2CandidateCase?.starterDeckRelpath ?? null,
+    engineDeckRelpath: phase2CandidateCase?.engineDeckRelpath ?? null,
+    generatorScriptRelpath: phase2CandidateCase?.generatorScriptRelpath ?? null,
+    // Best-effort: the picker fetch resolves live vs fallback at runtime; for
+    // the Trust Center card we expose the static-list source unless a refined
+    // live-source flag is plumbed through.
+    source: 'fallback',
+  };
+  const phase2CandidateCaseTone = candidateCaseSelectionTone(
+    phase2CandidateCaseSummary,
+  );
+  const phase2CandidateCaseLabel = candidateCaseSelectionLabel(
+    phase2CandidateCaseSummary,
+  );
   const goldenSampleQueue: GoldenSampleQueueItem[] = availableCases
     .filter((c) => c.id.startsWith('GS-'))
     .map((c) => {
@@ -1080,6 +1169,83 @@ function App() {
       evidence: `${blueprintSummary.imagePath}; case ${blueprintSummary.evidenceCaseId}; ${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount} anchors covered; ${blueprintSummary.availableEvidenceCount}/${blueprintSummary.evidenceCount} evidence refs available`,
       recommended_action: 'Use the blueprint as the Workbench target map. The real OpenRadioss evidence is indexed for Tier 1 review; attach independent review/signoff before any stronger claim.',
       claim_impact: blueprintSummary.allowedClaim,
+    },
+    // FM-04a Phase 2 D — three industrial Trust Center cards.
+    {
+      card_type: 'energy_balance_status',
+      severity:
+        phase2EnergyBalanceTone === 'danger'
+          ? 'critical'
+          : phase2EnergyBalanceTone === 'warning'
+            ? 'warning'
+            : 'info',
+      finding: `Tier 1 energy audit: ${phase2EnergyBalanceLabel}.`,
+      evidence: (() => {
+        const parts: string[] = [];
+        if (phase2EnergyBalanceSummary.initialKineticEnergyJ !== null) {
+          parts.push(
+            `KE_initial=${phase2EnergyBalanceSummary.initialKineticEnergyJ.toExponential(3)}`,
+          );
+        }
+        if (phase2EnergyBalanceSummary.residualKineticEnergyJ !== null) {
+          parts.push(
+            `KE_residual=${phase2EnergyBalanceSummary.residualKineticEnergyJ.toExponential(3)}`,
+          );
+        }
+        if (phase2EnergyBalanceSummary.aggregateInternalEnergyJ !== null) {
+          parts.push(
+            `I_internal=${phase2EnergyBalanceSummary.aggregateInternalEnergyJ.toExponential(3)}`,
+          );
+        }
+        if (phase2EnergyBalanceSummary.energyBalanceErrorPct !== null) {
+          parts.push(
+            `balance_err=${phase2EnergyBalanceSummary.energyBalanceErrorPct.toFixed(3)}%`,
+          );
+        }
+        return parts.length > 0 ? parts.join('; ') : 'No energy audit data attached.';
+      })(),
+      recommended_action:
+        phase2EnergyBalanceSummary.status === 'closed_aggregate'
+          ? 'Closed aggregate audit; per-term plastic / contact / hourglass split requires /TH/PART cards in the starter — track as a FM-04b prerequisite, do not promote Tier 1 evidence as benchmark agreement.'
+          : phase2EnergyBalanceSummary.status === 'partial_candidate'
+            ? 'Partial audit (KE only). Run scripts/gs102_transient_candidate_pipeline.py so the engine .out energy table is parsed alongside ballistic metrics.'
+            : 'No energy audit available; load a candidate spine from a real OpenRadioss run before drawing energy conclusions.',
+      claim_impact: phase2EnergyBalanceSummary.claimImpact,
+    },
+    {
+      card_type: 'convergence_study_status',
+      severity:
+        phase2ConvergenceTone === 'danger'
+          ? 'critical'
+          : phase2ConvergenceTone === 'warning'
+            ? 'warning'
+            : 'info',
+      finding: `Tier 1 convergence study: ${phase2ConvergenceLabel}.`,
+      evidence:
+        phase2ConvergenceSummary.rowCount > 0
+          ? `combined_verdict=${phase2ConvergenceSummary.combinedVerdict}; mesh=${phase2ConvergenceSummary.meshSweepStability}; dt=${phase2ConvergenceSummary.dtSweepStability}; tolerance=±${phase2ConvergenceSummary.tolerancePct}%; rows=${phase2ConvergenceSummary.rowCount}`
+          : 'No convergence study attached; run scripts/gs102_convergence_sweep.py against existing project_state runs.',
+      recommended_action:
+        phase2ConvergenceSummary.combinedVerdict === 'candidate_observed_stable'
+          ? 'Both mesh and dt sweeps stable inside tolerance; Tier 1 convergence evidence is supportable but is NOT benchmark agreement and NOT signed validation.'
+          : phase2ConvergenceSummary.combinedVerdict === 'candidate_observed_unstable'
+            ? 'Sweep crosses tolerance; refine the sweep grid and re-run before drawing any convergence conclusion. Do not promote Tier 1 unstable evidence.'
+            : 'Insufficient data; add additional mesh / dt rows to the sweep before reporting a verdict.',
+      claim_impact: TIER1_BANNER,
+    },
+    {
+      card_type: 'candidate_case_selection',
+      severity: phase2CandidateCaseTone === 'warning' ? 'warning' : 'info',
+      finding: `Workbench candidate-case picker: ${phase2CandidateCaseLabel}.`,
+      evidence:
+        `starter=${phase2CandidateCaseSummary.starterDeckRelpath ?? 'n/a'}; ` +
+        `engine=${phase2CandidateCaseSummary.engineDeckRelpath ?? 'n/a'}; ` +
+        `generator=${phase2CandidateCaseSummary.generatorScriptRelpath ?? 'n/a'}; ` +
+        `source=${phase2CandidateCaseSummary.source}`,
+      recommended_action: phase2CandidateCaseSummary.caseId
+        ? 'Switch the candidate case from the picker above to drive blueprint anchor evidence + result-mesh playback for a different fixture.'
+        : 'Pick a Tier 1 candidate case from the picker above to surface deck paths and generator script provenance.',
+      claim_impact: TIER1_BANNER,
     },
     {
       card_type: 'claim_boundary',
