@@ -207,8 +207,13 @@ def extract_candidate_metrics(config: PipelineConfig, anim_files: Sequence[Path]
         raise ValueError("no OpenRadioss .A### animation files found for metric extraction")
 
     _ensure_backend_path(config.repo_root)
+    from app.services.ballistics.energy_audit_extractor import (  # noqa: E402
+        build_energy_audit_from_engine_out,
+    )
+    from app.services.ballistics.engine_energy_history import (  # noqa: E402
+        parse_engine_out_energy_history,
+    )
     from app.services.ballistics.metric_extraction import (  # noqa: E402
-        BallisticEnergyAudit,
         BallisticExtractionInput,
         BallisticTimeSample,
         write_ballistic_metrics,
@@ -223,6 +228,15 @@ def extract_candidate_metrics(config: PipelineConfig, anim_files: Sequence[Path]
     plate_front_m, plate_back_m = _plate_faces_m(
         frame_arrays[0],
         config.projectile_node_max_id,
+    )
+
+    # Phase A: build the energy audit from the engine `.out` progress table
+    # before write_ballistic_metrics so the sidecar receives closed_aggregate
+    # status when the .out file exists and partial_candidate otherwise.
+    engine_out_path = config.run_data_dir / "model_00_0001.out"
+    engine_history = parse_engine_out_energy_history(engine_out_path)
+    energy_audit = build_energy_audit_from_engine_out(
+        engine_out_path, history=engine_history
     )
 
     metrics_dir = config.graph_case_dir / "ballistic"
@@ -241,7 +255,7 @@ def extract_candidate_metrics(config: PipelineConfig, anim_files: Sequence[Path]
                 for sample in samples
             ],
             impact_axis="x",
-            energy_audit=BallisticEnergyAudit(),
+            energy_audit=energy_audit,
         ),
         metrics_dir,
     )
@@ -251,6 +265,7 @@ def extract_candidate_metrics(config: PipelineConfig, anim_files: Sequence[Path]
         plate_front_m=plate_front_m,
         plate_back_m=plate_back_m,
         impact_axis="x",
+        engine_history=engine_history,
     )
     return metrics_path
 
@@ -292,9 +307,18 @@ def enrich_metrics_sidecar(
     plate_front_m: float,
     plate_back_m: float,
     impact_axis: str,
+    engine_history: object | None = None,
 ) -> None:
     if not samples:
         raise ValueError("cannot enrich metrics without projectile frame samples")
+
+    _ensure_backend_path(Path(__file__).resolve().parents[1])
+    from app.services.ballistics.energy_audit_extractor import (  # noqa: E402
+        assess_energy_audit,
+    )
+    from app.services.ballistics.metric_extraction import (  # noqa: E402
+        BallisticEnergyAudit,
+    )
 
     payload = json.loads(metrics_path.read_text(encoding="utf-8"))
     payload["crossing_evidence"] = _crossing_evidence(
@@ -304,7 +328,24 @@ def enrich_metrics_sidecar(
         impact_axis=impact_axis,
     )
     payload["residual_velocity_trace"] = _residual_velocity_trace(samples, impact_axis)
-    payload["partial_energy_audit"] = _partial_energy_audit(payload.get("energy_balance"))
+
+    # Phase A: emit the new closed_aggregate / partial_candidate / unavailable
+    # audit block alongside the legacy ``partial_energy_audit`` block so the
+    # 33 existing GS-102 reports still read their expected keys.
+    audit_from_sidecar = _audit_from_energy_balance(payload.get("energy_balance"))
+    energy_audit_block = assess_energy_audit(
+        audit_from_sidecar
+        if engine_history is None
+        else BallisticEnergyAudit(
+            initial_kinetic_energy_j=audit_from_sidecar.initial_kinetic_energy_j,
+            residual_kinetic_energy_j=audit_from_sidecar.residual_kinetic_energy_j,
+        ),
+        history=engine_history,  # type: ignore[arg-type]
+    )
+    payload["energy_audit"] = energy_audit_block
+    payload["partial_energy_audit"] = _legacy_partial_energy_audit(
+        payload.get("energy_balance"), energy_audit_block
+    )
     metrics_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
@@ -440,7 +481,39 @@ def _residual_velocity_trace(
     }
 
 
-def _partial_energy_audit(energy_balance: object) -> dict:
+def _audit_from_energy_balance(energy_balance: object) -> object:
+    """Reconstruct a ``BallisticEnergyAudit`` from a metrics-sidecar block.
+
+    Used to feed ``assess_energy_audit`` when an explicit ``BallisticEnergyAudit``
+    is not available (e.g. on existing sidecars without an engine `.out` file).
+    """
+    _ensure_backend_path(Path(__file__).resolve().parents[1])
+    from app.services.ballistics.metric_extraction import (  # noqa: E402
+        BallisticEnergyAudit,
+    )
+
+    if not isinstance(energy_balance, dict):
+        return BallisticEnergyAudit()
+    return BallisticEnergyAudit(
+        initial_kinetic_energy_j=energy_balance.get("initial_kinetic_energy_j"),
+        residual_kinetic_energy_j=energy_balance.get("residual_kinetic_energy_j"),
+        plastic_dissipation_j=energy_balance.get("plastic_dissipation_j"),
+        contact_friction_j=energy_balance.get("contact_friction_j"),
+        hourglass_energy_j=energy_balance.get("hourglass_energy_j"),
+    )
+
+
+def _legacy_partial_energy_audit(
+    energy_balance: object, energy_audit_block: dict
+) -> dict:
+    """Preserve the legacy ``partial_energy_audit`` shape for backward compat.
+
+    The 33 existing GS-102 reports read ``status`` / ``missing_terms`` /
+    ``claim_impact`` / the 5 ``*_energy_j`` keys from this block. Phase A
+    keeps the keys; the ``status`` value is upgraded from ``available`` to
+    ``closed_aggregate`` when the new audit can prove aggregate internal
+    energy + external work alongside kinetic energies.
+    """
     if not isinstance(energy_balance, dict):
         return {
             "status": "unavailable",
@@ -460,7 +533,20 @@ def _partial_energy_audit(energy_balance: object) -> dict:
         "hourglass_energy_j",
     ]
     missing_terms = [key for key in optional_terms if energy_balance.get(key) is None]
-    status = "partial_candidate" if missing_terms else "available"
+    status_from_audit = energy_audit_block.get("status", "")
+    if status_from_audit == "closed_aggregate":
+        status = "closed_aggregate"
+    elif missing_terms:
+        status = "partial_candidate"
+    else:
+        status = "available"
+    claim_impact = energy_audit_block.get(
+        "claim_impact",
+        (
+            "Partial Tier 1 energy audit; missing terms prevent any validation "
+            "or benchmark-agreement claim"
+        ),
+    )
     return {
         "status": status,
         "initial_kinetic_energy_j": energy_balance.get("initial_kinetic_energy_j"),
@@ -469,10 +555,7 @@ def _partial_energy_audit(energy_balance: object) -> dict:
         "contact_friction_j": energy_balance.get("contact_friction_j"),
         "hourglass_energy_j": energy_balance.get("hourglass_energy_j"),
         "missing_terms": missing_terms,
-        "claim_impact": (
-            "Partial Tier 1 energy audit; missing terms prevent any validation "
-            "or benchmark-agreement claim"
-        ),
+        "claim_impact": claim_impact,
     }
 
 
@@ -630,7 +713,14 @@ def write_run_report(
     crossing = metrics.get("crossing_evidence", {})
     velocity_trace = metrics.get("residual_velocity_trace", {})
     energy = metrics.get("partial_energy_audit", {})
+    energy_audit = metrics.get("energy_audit", {})
     missing_energy_terms = ", ".join(energy.get("missing_terms", [])) or "none"
+    energy_balance_error = energy_audit.get("energy_balance_error_pct")
+    energy_balance_error_str = (
+        f"{energy_balance_error:.3f}%"
+        if isinstance(energy_balance_error, (int, float))
+        else "unavailable"
+    )
     result_mesh_rel = (
         _rel(result_mesh_path, config.repo_root) if result_mesh_path else "not exported"
     )
@@ -695,6 +785,10 @@ This script refuses runtime writes inside `golden_samples/**`.
 - `velocity_trace_final_speed_m_per_s`: `{velocity_trace.get("final_speed_m_per_s")}`
 - `partial_energy_audit_status`: `{energy.get("status")}`
 - `partial_energy_missing_terms`: `{missing_energy_terms}`
+- `energy_audit_status` (Phase A · closed_aggregate/partial_candidate/unavailable): `{energy_audit.get("status", "unavailable")}`
+- `aggregate_internal_energy_j`: `{energy_audit.get("aggregate_internal_energy_j")}`
+- `external_work_j`: `{energy_audit.get("external_work_j")}`
+- `energy_balance_error_pct`: `{energy_balance_error_str}`
 
 ## Visualization artifacts
 
@@ -722,8 +816,10 @@ This script refuses runtime writes inside `golden_samples/**`.
 - Tier 1 only: no signed validation, no benchmark comparison, no tolerance
   agreement, and no independent reviewer signoff.
 - This is a candidate workflow proof, not a locked validation configuration.
-- Energy audit is partial unless future extraction adds plastic dissipation,
-  hourglass energy, and contact friction to the metrics sidecar.
+- Phase A energy audit reports aggregate internal energy (plastic + elastic +
+  hourglass combined into OpenRadioss I-ENERGY column). Per-term breakdown
+  requires `/TH/PART` or `/TH/MAT` cards in the starter; that breakdown
+  remains deferred to a future Tier 1 slice and ultimately FM-04b.
 """
     report_path.write_text(text, encoding="utf-8")
     return report_path

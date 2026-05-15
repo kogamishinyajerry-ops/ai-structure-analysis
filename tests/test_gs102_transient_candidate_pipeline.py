@@ -289,6 +289,101 @@ def test_enrich_metrics_sidecar_adds_crossing_trace_and_partial_energy(
     ]
 
 
+def test_enrich_metrics_sidecar_upgrades_to_closed_aggregate_with_engine_history(
+    tmp_path: Path,
+) -> None:
+    """Phase A: when an engine `.out` history is threaded in, the metrics
+    sidecar carries a closed_aggregate ``energy_audit`` block alongside the
+    legacy ``partial_energy_audit`` block (preserves 33-report read contract)."""
+
+    import sys
+
+    backend_root = Path(__file__).resolve().parents[1] / "backend"
+    if str(backend_root) not in sys.path:
+        sys.path.insert(0, str(backend_root))
+
+    from app.services.ballistics.engine_energy_history import (
+        parse_engine_out_energy_history,
+    )
+
+    module = _load_pipeline_module()
+    metrics_path = tmp_path / "ballistic_metrics.json"
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "energy_balance": {
+                    "initial_kinetic_energy_j": 904.32,
+                    "residual_kinetic_energy_j": 6.97,
+                    "plastic_dissipation_j": None,
+                    "contact_friction_j": None,
+                    "hourglass_energy_j": None,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    samples = [
+        module.ProjectileFrameSample(
+            sample_index=0,
+            t_s=0.0,
+            position_m=(0.02, 0.0, 0.0),
+            velocity_m_per_s=(600.0, 0.0, 0.0),
+        ),
+        module.ProjectileFrameSample(
+            sample_index=1,
+            t_s=0.01,
+            position_m=(0.041, 0.0, 0.0),
+            velocity_m_per_s=(50.0, 0.0, 0.0),
+        ),
+    ]
+
+    header = (
+        "   CYCLE    TIME      TIME-STEP  ELEMENT          ERROR  "
+        "I-ENERGY    K-ENERGY T  K-ENERGY R  EXT-WORK     MAS.ERR     "
+        "TOTAL MASS  MASS ADDED"
+    )
+    engine_out = tmp_path / "model_00_0001.out"
+    engine_out.write_text(
+        "OpenRadioss banner\n"
+        f"{header}\n"
+        "       0   0.000      1.0E-04   INTER          1   0.0%   0.0   "
+        "1.0E+03   0.0   0.0   0.0   1.0E+04   0.0\n"
+        "    1000  1.0E-02    1.0E-05   NODE           1   1.0%   2.0E+02 "
+        "8.0E+02   0.0   0.0   0.0   1.0E+04   0.0\n",
+        encoding="utf-8",
+    )
+    history = parse_engine_out_energy_history(engine_out)
+
+    module.enrich_metrics_sidecar(
+        metrics_path=metrics_path,
+        samples=samples,
+        plate_front_m=0.03,
+        plate_back_m=0.036,
+        impact_axis="x",
+        engine_history=history,
+    )
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+
+    audit = payload["energy_audit"]
+    assert audit["status"] == "closed_aggregate"
+    assert audit["aggregate_internal_energy_j"] == pytest.approx(2.0e2)
+    assert audit["external_work_j"] == pytest.approx(0.0)
+    assert audit["energy_balance_error_pct"] == pytest.approx(0.0, abs=1e-6)
+    assert audit["breakdown_status"] == "aggregated_into_internal_energy"
+    assert "Tier 1" in audit["claim_impact"]
+
+    legacy = payload["partial_energy_audit"]
+    assert legacy["status"] == "closed_aggregate", (
+        "Legacy partial_energy_audit must upgrade its status when the new "
+        "audit reports closed_aggregate so older readers see the closure."
+    )
+    assert legacy["missing_terms"] == [
+        "plastic_dissipation_j",
+        "contact_friction_j",
+        "hourglass_energy_j",
+    ]
+
+
 def test_append_solver_evidence_to_metrics_sidecar(tmp_path: Path) -> None:
     module = _load_pipeline_module()
     metrics_path = tmp_path / "ballistic_metrics.json"
