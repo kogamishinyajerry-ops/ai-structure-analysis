@@ -15,6 +15,7 @@ from .api.routes import (
     sensitivity,
     projects,
     candidate_cases,
+    tier1_report,
 )
 
 from .db.session import init_db, get_db
@@ -67,6 +68,8 @@ app.include_router(sensitivity.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 # FM-04a Phase 2 C — Tier 1 candidate-case picker (golden_samples/*-candidate/)
 app.include_router(candidate_cases.router, prefix="/api/v1")
+# FM-04a Phase 2 E — Tier 1 candidate report packet downloader.
+app.include_router(tier1_report.router, prefix="/api/v1")
 
 
 @app.get("/")
