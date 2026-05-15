@@ -24,6 +24,9 @@ import { ComplianceBadge } from './components/ComplianceBadge';
 import { ChatPanel, type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
+import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
+import { BulletPlateBlueprintPanel } from './components/BulletPlateBlueprintPanel';
+import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 
 
 // --- Types ---
@@ -915,6 +918,7 @@ function App() {
       ? `${candidateBallistic.animation_manifest.path ?? 'animation_manifest.json'} (sha256 ${candidateBallistic.animation_manifest.sha256?.slice(0, 12) ?? '...'})`
       : candidateBallistic.animation_manifest.unavailable_reason ?? 'Animation manifest is unavailable'
     : 'No animation manifest surfaced';
+  const blueprintSummary = buildBulletPlateBlueprintSummary();
   const goldenSampleQueue: GoldenSampleQueueItem[] = availableCases
     .filter((c) => c.id.startsWith('GS-'))
     .map((c) => {
@@ -956,6 +960,7 @@ function App() {
     { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
     { label: 'Validation status', value: reportValidationStatus, tone: report?.validation.status ? statusTone(report.validation.status) : statusTone(referenceStatusRaw) },
     { label: 'Golden samples', value: goldenSampleSummary, tone: goldenSampleReviewCount > 0 ? 'warning' : 'accent' },
+    { label: 'Blueprint target', value: blueprintSummary.label, tone: 'warning', detail: `${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount} anchors covered by ${blueprintSummary.availableEvidenceCount} available evidence ref(s); ${blueprintSummary.allowedClaim}` },
     { label: 'Allowed claim', value: 'not signed validation', tone: 'danger', detail: allowedClaim },
   ];
   const trustSections: OperatorStatusSection[] = [
@@ -1015,6 +1020,21 @@ function App() {
       ],
     },
     {
+      title: 'Blueprint target',
+      icon: <ClipboardCheck size={16} />,
+      items: [
+        { label: 'Blueprint memory', value: blueprintSummary.imagePath, tone: 'accent' },
+        { label: 'Evidence case', value: blueprintSummary.evidenceCaseId, tone: 'accent' },
+        { label: 'Claim tier', value: blueprintSummary.claimTier, tone: 'warning', detail: blueprintSummary.allowedClaim },
+        { label: 'Visual anchors', value: `${blueprintSummary.anchorCount} evidence-mapped anchor(s)`, tone: 'accent' },
+        { label: 'Available evidence', value: `${blueprintSummary.availableEvidenceCount}/${blueprintSummary.evidenceCount} indexed evidence ref(s)`, tone: blueprintSummary.availableEvidenceCount > 0 ? 'accent' : 'warning' },
+        { label: 'Covered anchors', value: `${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount}`, tone: blueprintSummary.coveredAnchorCount === blueprintSummary.anchorCount ? 'accent' : 'warning' },
+        { label: 'Started slices', value: `${blueprintSummary.startedSlices} local frontend/docs slice(s) started`, tone: 'accent' },
+        { label: 'Next deferred slice', value: blueprintSummary.nextSlice, tone: 'warning' },
+        { label: 'Tier 2 blockers', value: `${blueprintSummary.blockerCount} blocker(s) still active`, tone: 'danger' },
+      ],
+    },
+    {
       title: 'Ballistic candidate',
       icon: <ShieldAlert size={16} />,
       items: [
@@ -1041,6 +1061,14 @@ function App() {
     },
   ];
   const caeReviewCards: CaeReviewCard[] = [
+    {
+      card_type: 'blueprint_target',
+      severity: 'info',
+      finding: `${blueprintSummary.label}: ${blueprintSummary.claimTier}.`,
+      evidence: `${blueprintSummary.imagePath}; case ${blueprintSummary.evidenceCaseId}; ${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount} anchors covered; ${blueprintSummary.availableEvidenceCount}/${blueprintSummary.evidenceCount} evidence refs available`,
+      recommended_action: 'Use the blueprint as the Workbench target map. The real OpenRadioss evidence is indexed for Tier 1 review; attach independent review/signoff before any stronger claim.',
+      claim_impact: blueprintSummary.allowedClaim,
+    },
     {
       card_type: 'claim_boundary',
       severity: 'warning',
@@ -1257,6 +1285,8 @@ function App() {
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
             </div>
 
+            {activeTab === 'visual' && <BulletPlateBlueprintPanel />}
+
             <div style={{ padding: '0', flex: 1 }}>
                 {activeTab === 'explore' ? (
                     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 500px) 1fr', gap: '32px' }}>
@@ -1285,9 +1315,34 @@ function App() {
                         <div className="shimmer-active" style={{ height: '400px', width: '100%', borderRadius: '12px', background: 'var(--bg-surface)' }}></div>
                     ) : report ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                            <div className="glass-panel" style={{ minHeight: '600px', padding: '0', overflow: 'hidden' }}>
+                            <div className="glass-panel" style={{ minHeight: activeTab === 'visual' && activeCaseId ? '820px' : '600px', padding: '0', overflow: 'hidden' }}>
                                 {activeTab === 'visual' ? (
-                                    <div style={{ position: 'relative', width: '100%', height: '600px' }}>
+                                    <div
+                                      style={{
+                                        display: 'grid',
+                                        gridTemplateRows: activeCaseId ? '400px minmax(300px, 1fr)' : '1fr',
+                                        gap: activeCaseId ? '12px' : 0,
+                                        padding: activeCaseId ? '12px' : 0,
+                                        minHeight: activeCaseId ? '820px' : '600px',
+                                      }}
+                                    >
+                                        {activeCaseId && (
+                                          <ResultMeshPlaybackPanel
+                                            caseId={activeCaseId}
+                                            apiBase={API_BASE}
+                                            enabled={activeTab === 'visual'}
+                                          />
+                                        )}
+                                        <div
+                                          style={{
+                                            position: 'relative',
+                                            width: '100%',
+                                            minHeight: '300px',
+                                            overflow: 'hidden',
+                                            border: activeCaseId ? '1px solid var(--border)' : 'none',
+                                            borderRadius: activeCaseId ? '8px' : 0,
+                                          }}
+                                        >
                                         <iframe 
                                             src={comparedIndices && comparedIndices[1] !== -1 
                                                 ? `${API_BASE}/visualize/delta?file1=${activeExperiment?.runs[comparedIndices[0]].inp_path.replace('.inp','.frd')}&file2=${activeExperiment?.runs[comparedIndices[1]].inp_path.replace('.inp','.frd')}` 
@@ -1306,6 +1361,7 @@ function App() {
                                                 />
                                             </div>
                                         )}
+                                        </div>
                                     </div>
                                 ) : (
                                 <div style={{ padding: '40px', color: 'var(--text-secondary)' }} className="report-markdown">

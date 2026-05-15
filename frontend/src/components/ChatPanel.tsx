@@ -114,8 +114,8 @@ export function ChatPanel({
   };
 
   const cardsForTab = reviewCards.filter((card) => {
-    if (activeTab === 'review') return ['reference_validation', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence', 'golden_sample_status', 'ballistic_candidate', 'ballistic_perforation', 'time_step_convergence_study'].includes(card.card_type);
-    if (activeTab === 'evidence') return ['claim_boundary', 'evidence_packet', 'solver_truth', 'assumptions', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence', 'ballistic_candidate', 'time_step_convergence_study'].includes(card.card_type);
+    if (activeTab === 'review') return ['blueprint_target', 'reference_validation', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence', 'golden_sample_status', 'ballistic_candidate', 'ballistic_perforation', 'time_step_convergence_study'].includes(card.card_type);
+    if (activeTab === 'evidence') return ['blueprint_target', 'claim_boundary', 'evidence_packet', 'solver_truth', 'assumptions', 'mesh_quality', 'mesh_convergence_study', 'convergence_evidence', 'ballistic_candidate', 'time_step_convergence_study'].includes(card.card_type);
     if (activeTab === 'fix') return true;
     return false;
   });
