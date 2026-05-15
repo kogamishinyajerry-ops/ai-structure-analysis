@@ -10,6 +10,7 @@ from .api import nl_router
 from .api.routes import (
     acceptance_packet,
     candidate_cases,
+    case_comparison,
     cases,
     frd,
     projects,
@@ -72,6 +73,8 @@ app.include_router(candidate_cases.router, prefix="/api/v1")
 app.include_router(tier1_report.router, prefix="/api/v1")
 # FM-04a Phase 3 A — Tier 1 candidate acceptance evidence packet.
 app.include_router(acceptance_packet.router, prefix="/api/v1")
+# FM-04a Phase 3 B — Tier 1 candidate case-vs-case comparison.
+app.include_router(case_comparison.router, prefix="/api/v1")
 
 
 @app.get("/")
