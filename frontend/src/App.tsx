@@ -33,6 +33,8 @@ import { CaseComparisonPanel } from './components/CaseComparisonPanel';
 import { ConvergenceStudyViewer } from './components/ConvergenceStudyViewer';
 import { CohortDashboardPanel } from './components/CohortDashboardPanel';
 import { CaseCompletenessCard } from './components/CaseCompletenessCard';
+import { ReviewerBundlePanel } from './components/ReviewerBundlePanel';
+import { ArchivedPacketDiffPanel } from './components/ArchivedPacketDiffPanel';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -1589,6 +1591,8 @@ function App() {
                             }
                         }}
                     />
+                    <ReviewerBundlePanel apiBase={API_BASE} />
+                    <ArchivedPacketDiffPanel apiBase={API_BASE} />
                     <BulletPlateBlueprintPanel />
                 </div>
             )}
