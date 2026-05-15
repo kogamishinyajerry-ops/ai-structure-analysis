@@ -27,6 +27,8 @@ import { ModeSelector } from './components/ModeSelector';
 import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
 import { BulletPlateBlueprintPanel } from './components/BulletPlateBlueprintPanel';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
+import { CandidateCasePicker } from './components/CandidateCasePicker';
+import { FALLBACK_CANDIDATE_CASES } from './candidateCaseRegistry';
 
 
 // --- Types ---
@@ -394,6 +396,16 @@ const compactJson = (value: unknown, fallback = 'Unavailable') => {
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  // FM-04a Phase 2 C — Tier 1 candidate-case picker selection (parallel to
+  // backend DB case selection; drives blueprint label + trust-center cards).
+  const [selectedCandidateCaseId, setSelectedCandidateCaseId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null;
+    try {
+      return window.localStorage.getItem('fm04a.candidateCaseId') ?? (FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null);
+    } catch {
+      return FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null;
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
@@ -1285,7 +1297,23 @@ function App() {
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
             </div>
 
-            {activeTab === 'visual' && <BulletPlateBlueprintPanel />}
+            {activeTab === 'visual' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <CandidateCasePicker
+                        apiBase={API_BASE}
+                        selectedCaseId={selectedCandidateCaseId}
+                        onSelect={(id) => {
+                            setSelectedCandidateCaseId(id);
+                            try {
+                                window.localStorage.setItem('fm04a.candidateCaseId', id);
+                            } catch {
+                                /* no-op when storage is unavailable */
+                            }
+                        }}
+                    />
+                    <BulletPlateBlueprintPanel />
+                </div>
+            )}
 
             <div style={{ padding: '0', flex: 1 }}>
                 {activeTab === 'explore' ? (

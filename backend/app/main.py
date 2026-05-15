@@ -6,7 +6,16 @@ from .core.config import settings
 from .api import nl_router
 # RFC-001 §6.1 Bucket B: routes.knowledge moved to _frozen/sprint2/route_knowledge.py.
 # The /api/v1/knowledge/* surface is unregistered until post-MVP redesign.
-from .api.routes import visualization, frd, report, cases, solver, sensitivity, projects
+from .api.routes import (
+    visualization,
+    frd,
+    report,
+    cases,
+    solver,
+    sensitivity,
+    projects,
+    candidate_cases,
+)
 
 from .db.session import init_db, get_db
 from .models import persistence # Ensure models are loaded for create_all
@@ -56,6 +65,8 @@ app.include_router(cases.router, prefix="/api/v1")
 app.include_router(solver.router, prefix="/api/v1")
 app.include_router(sensitivity.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
+# FM-04a Phase 2 C — Tier 1 candidate-case picker (golden_samples/*-candidate/)
+app.include_router(candidate_cases.router, prefix="/api/v1")
 
 
 @app.get("/")
