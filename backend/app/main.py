@@ -1,28 +1,27 @@
 """FastAPI主应用"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .core.config import settings
 from .api import nl_router
+
 # RFC-001 §6.1 Bucket B: routes.knowledge moved to _frozen/sprint2/route_knowledge.py.
 # The /api/v1/knowledge/* surface is unregistered until post-MVP redesign.
 from .api.routes import (
-    visualization,
-    frd,
-    report,
-    cases,
-    solver,
-    sensitivity,
-    projects,
+    acceptance_packet,
     candidate_cases,
+    cases,
+    frd,
+    projects,
+    report,
+    sensitivity,
+    solver,
     tier1_report,
+    visualization,
 )
-
-from .db.session import init_db, get_db
-from .models import persistence # Ensure models are loaded for create_all
+from .core.config import settings
+from .db.session import init_db
 from .services.case_service import get_case_service
-
-
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -30,20 +29,21 @@ app = FastAPI(
     version=settings.app_version,
     description="有限元分析后处理智能助手API",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
 )
+
 
 @app.on_event("startup")
 async def startup_event():
     """应用启动时初始化数据库并导入样本"""
     await init_db()
-    
+
     # 自动导入黄金样本
     from .db.session import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         case_svc = get_case_service()
         await case_svc.auto_import_golden_samples(db)
-
 
 
 # CORS配置
@@ -70,6 +70,8 @@ app.include_router(projects.router, prefix="/api/v1")
 app.include_router(candidate_cases.router, prefix="/api/v1")
 # FM-04a Phase 2 E — Tier 1 candidate report packet downloader.
 app.include_router(tier1_report.router, prefix="/api/v1")
+# FM-04a Phase 3 A — Tier 1 candidate acceptance evidence packet.
+app.include_router(acceptance_packet.router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -79,7 +81,7 @@ async def root():
         "name": settings.app_name,
         "version": settings.app_version,
         "status": "running",
-        "docs": "/docs"
+        "docs": "/docs",
     }
 
 
@@ -91,9 +93,5 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
