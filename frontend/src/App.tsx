@@ -31,6 +31,8 @@ import { CandidateCasePicker } from './components/CandidateCasePicker';
 import { AcceptancePacketPanel } from './components/AcceptancePacketPanel';
 import { CaseComparisonPanel } from './components/CaseComparisonPanel';
 import { ConvergenceStudyViewer } from './components/ConvergenceStudyViewer';
+import { CohortDashboardPanel } from './components/CohortDashboardPanel';
+import { CaseCompletenessCard } from './components/CaseCompletenessCard';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -1267,6 +1269,19 @@ function App() {
         : 'Pick a Tier 1 candidate case from the picker above to surface deck paths and generator script provenance.',
       claim_impact: TIER1_BANNER,
     },
+    // FM-04a Phase 4 E — cohort completeness review card.
+    {
+      card_type: 'cohort_completeness_status',
+      severity: 'info',
+      finding:
+        'Cohort dashboard surfaces every *-candidate/ case with completeness score, perforation marker, residual velocity, audit / convergence verdict, last-modified.',
+      evidence:
+        'GET /api/v1/cohort-overview (Phase 4 B); per-case drill into GET /api/v1/case-completeness/<id> (Phase 4 A); CohortDashboardPanel + CaseCompletenessCard rendered above the Phase 3 panels.',
+      recommended_action:
+        'Use the score as an *evidence-presence* gate, NOT a validation-quality gate; even a 100/100 score does NOT authorize Tier 2 promotion — every FM-04b blocker remains gated per the rendered tier2_blockers_remaining list.',
+      claim_impact:
+        TIER1_BANNER + '; completeness score is evidence-presence only — not validation quality.',
+    },
     // FM-04a Phase 3 C — two reviewer-experience review cards.
     {
       card_type: 'acceptance_packet_status',
@@ -1516,6 +1531,22 @@ function App() {
 
             {activeTab === 'visual' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <CohortDashboardPanel
+                        apiBase={API_BASE}
+                        selectedCaseId={selectedCandidateCaseId}
+                        onSelectCase={(id) => {
+                            setSelectedCandidateCaseId(id);
+                            try {
+                                window.localStorage.setItem('fm04a.candidateCaseId', id);
+                            } catch {
+                                /* no-op when storage is unavailable */
+                            }
+                        }}
+                    />
+                    <CaseCompletenessCard
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
                     <CandidateCasePicker
                         apiBase={API_BASE}
                         selectedCaseId={selectedCandidateCaseId}
