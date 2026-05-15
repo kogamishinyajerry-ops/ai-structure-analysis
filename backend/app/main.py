@@ -12,6 +12,7 @@ from .api.routes import (
     candidate_cases,
     case_comparison,
     cases,
+    convergence_study,
     frd,
     projects,
     report,
@@ -75,6 +76,8 @@ app.include_router(tier1_report.router, prefix="/api/v1")
 app.include_router(acceptance_packet.router, prefix="/api/v1")
 # FM-04a Phase 3 B — Tier 1 candidate case-vs-case comparison.
 app.include_router(case_comparison.router, prefix="/api/v1")
+# FM-04a Phase 3 D — Tier 1 candidate convergence study sidecar.
+app.include_router(convergence_study.router, prefix="/api/v1")
 
 
 @app.get("/")

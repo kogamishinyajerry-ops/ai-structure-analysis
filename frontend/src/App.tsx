@@ -30,6 +30,7 @@ import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 import { CandidateCasePicker } from './components/CandidateCasePicker';
 import { AcceptancePacketPanel } from './components/AcceptancePacketPanel';
 import { CaseComparisonPanel } from './components/CaseComparisonPanel';
+import { ConvergenceStudyViewer } from './components/ConvergenceStudyViewer';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -1528,6 +1529,10 @@ function App() {
                         }}
                     />
                     <AcceptancePacketPanel
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
+                    <ConvergenceStudyViewer
                         apiBase={API_BASE}
                         caseId={selectedCandidateCaseId}
                     />
