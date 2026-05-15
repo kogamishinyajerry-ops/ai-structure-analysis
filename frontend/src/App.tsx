@@ -28,6 +28,8 @@ import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
 import { BulletPlateBlueprintPanel } from './components/BulletPlateBlueprintPanel';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 import { CandidateCasePicker } from './components/CandidateCasePicker';
+import { AcceptancePacketPanel } from './components/AcceptancePacketPanel';
+import { CaseComparisonPanel } from './components/CaseComparisonPanel';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -418,6 +420,23 @@ function App() {
       return window.localStorage.getItem('fm04a.candidateCaseId') ?? (FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null);
     } catch {
       return FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null;
+    }
+  });
+  // FM-04a Phase 3 C — Case-vs-case comparison pair selection.
+  const [comparisonCaseA, setComparisonCaseA] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null;
+    try {
+      return window.localStorage.getItem('fm04a.comparisonCaseA') ?? (FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null);
+    } catch {
+      return FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null;
+    }
+  });
+  const [comparisonCaseB, setComparisonCaseB] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return FALLBACK_CANDIDATE_CASES[1]?.caseId ?? null;
+    try {
+      return window.localStorage.getItem('fm04a.comparisonCaseB') ?? (FALLBACK_CANDIDATE_CASES[1]?.caseId ?? null);
+    } catch {
+      return FALLBACK_CANDIDATE_CASES[1]?.caseId ?? null;
     }
   });
   const [loading, setLoading] = useState(false);
@@ -1247,6 +1266,37 @@ function App() {
         : 'Pick a Tier 1 candidate case from the picker above to surface deck paths and generator script provenance.',
       claim_impact: TIER1_BANNER,
     },
+    // FM-04a Phase 3 C — two reviewer-experience review cards.
+    {
+      card_type: 'acceptance_packet_status',
+      severity: selectedCandidateCaseId ? 'info' : 'warning',
+      finding: selectedCandidateCaseId
+        ? `Acceptance evidence packet available for ${selectedCandidateCaseId} via /api/v1/acceptance-packet/${selectedCandidateCaseId}.`
+        : 'No candidate case selected; acceptance packet endpoint cannot be exercised.',
+      evidence: selectedCandidateCaseId
+        ? `Download URL: /api/v1/acceptance-packet/${selectedCandidateCaseId}; rendered by AcceptancePacketPanel above the blueprint.`
+        : 'Pick a Tier 1 candidate case from the picker above to enable the acceptance packet download.',
+      recommended_action: selectedCandidateCaseId
+        ? 'Download the JSON, archive the artifact hashes, and treat it as a Tier 1 candidate manifest only — NOT a sealed FM-04b P8 packet.'
+        : 'Select a candidate case so the AcceptancePacketPanel can fetch the manifest.',
+      claim_impact: TIER1_BANNER + '; acceptance packet is Tier 1 manifest, not a sealed Tier 2 bundle.',
+    },
+    {
+      card_type: 'case_comparison_status',
+      severity: comparisonCaseA && comparisonCaseB && comparisonCaseA !== comparisonCaseB ? 'info' : 'warning',
+      finding: comparisonCaseA && comparisonCaseB
+        ? (comparisonCaseA === comparisonCaseB
+          ? `Comparison A and B point at the same case (${comparisonCaseA}); pick two different candidate cases to see structured diffs.`
+          : `Case-vs-case comparison available for A=${comparisonCaseA}, B=${comparisonCaseB} via /api/v1/case-comparison.`)
+        : 'Comparison pair not fully selected; pick both A and B in the comparison panel above.',
+      evidence: comparisonCaseA && comparisonCaseB
+        ? `Endpoint: /api/v1/case-comparison?a=${comparisonCaseA}&b=${comparisonCaseB}; rendered by CaseComparisonPanel.`
+        : 'CaseComparisonPanel shows the picker; nothing fetched until both A and B are set.',
+      recommended_action: comparisonCaseA && comparisonCaseB && comparisonCaseA !== comparisonCaseB
+        ? 'Inspect the structured diff; tone-coded cells flag deltas > 15% as danger. Comparison is case-vs-case only, NOT case-vs-benchmark.'
+        : 'Select two different candidate cases in the comparison panel to surface the structured diff.',
+      claim_impact: TIER1_BANNER + '; comparison is case-vs-case only (not vs experimental benchmark data).',
+    },
     {
       card_type: 'claim_boundary',
       severity: 'warning',
@@ -1472,6 +1522,32 @@ function App() {
                             setSelectedCandidateCaseId(id);
                             try {
                                 window.localStorage.setItem('fm04a.candidateCaseId', id);
+                            } catch {
+                                /* no-op when storage is unavailable */
+                            }
+                        }}
+                    />
+                    <AcceptancePacketPanel
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
+                    <CaseComparisonPanel
+                        apiBase={API_BASE}
+                        cases={FALLBACK_CANDIDATE_CASES}
+                        caseA={comparisonCaseA}
+                        caseB={comparisonCaseB}
+                        onSelectA={(id) => {
+                            setComparisonCaseA(id);
+                            try {
+                                window.localStorage.setItem('fm04a.comparisonCaseA', id);
+                            } catch {
+                                /* no-op when storage is unavailable */
+                            }
+                        }}
+                        onSelectB={(id) => {
+                            setComparisonCaseB(id);
+                            try {
+                                window.localStorage.setItem('fm04a.comparisonCaseB', id);
                             } catch {
                                 /* no-op when storage is unavailable */
                             }
