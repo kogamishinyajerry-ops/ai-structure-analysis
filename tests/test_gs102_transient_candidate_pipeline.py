@@ -132,8 +132,15 @@ def test_write_run_report_carries_tier1_evidence_without_overclaim(tmp_path: Pat
     metrics_path = config.graph_case_dir / "ballistic" / "ballistic_metrics.json"
     manifest_path = config.graph_case_dir / "visualization" / "openradioss_animation_manifest.json"
     gif_path = config.graph_case_dir / "visualization" / "openradioss_animation.gif"
+    result_mesh_path = (
+        repo_root / "project_state" / "visualizations" / config.case_id / "result_mesh.json"
+    )
+    vtu_manifest_path = (
+        repo_root / "project_state" / "visualizations" / config.case_id / "vtu_manifest.json"
+    )
     metrics_path.parent.mkdir(parents=True)
     manifest_path.parent.mkdir(parents=True)
+    result_mesh_path.parent.mkdir(parents=True)
     metrics_path.write_text(
         json.dumps(
             {
@@ -168,6 +175,11 @@ def test_write_run_report_carries_tier1_evidence_without_overclaim(tmp_path: Pat
     )
     manifest_path.write_text("{}", encoding="utf-8")
     gif_path.write_bytes(b"GIF89a")
+    result_mesh_path.write_text(json.dumps({"schemaVersion": 1}), encoding="utf-8")
+    vtu_manifest_path.write_text(
+        json.dumps({"schema_version": "openradioss-dynamic-vtu-manifest.v1"}),
+        encoding="utf-8",
+    )
     summary = module.SolverSummary(
         starter_error_count=0,
         starter_warning_count=6,
@@ -185,6 +197,8 @@ def test_write_run_report_carries_tier1_evidence_without_overclaim(tmp_path: Pat
         metrics_path=metrics_path,
         manifest_path=manifest_path,
         gif_path=gif_path,
+        result_mesh_path=result_mesh_path,
+        vtu_manifest_path=vtu_manifest_path,
     )
     text = report.read_text(encoding="utf-8")
 
@@ -196,6 +210,9 @@ def test_write_run_report_carries_tier1_evidence_without_overclaim(tmp_path: Pat
     assert "## Crossing and energy evidence" in text
     assert "first_back_face_crossing_t_s" in text
     assert "partial_candidate" in text
+    assert "Text-to-CAE result mesh" in text
+    assert "project_state/visualizations/CASE-GS102-PIPELINE/result_mesh.json" in text
+    assert "project_state/visualizations/CASE-GS102-PIPELINE/vtu_manifest.json" in text
     assert "validated physics" not in text
     assert "benchmark agreement achieved" not in text
     assert "bullet-through-steel complete" not in text
@@ -307,3 +324,106 @@ def test_append_solver_evidence_to_metrics_sidecar(tmp_path: Path) -> None:
         {"element_id": "29", "time_ms": "2.1788E-02"},
     ]
     assert "not signed validation" in evidence["claim_impact"]
+
+
+def test_run_pipeline_exports_text_to_cae_result_mesh_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_pipeline_module()
+    repo_root = tmp_path / "repo"
+    source = _seed_source_case(repo_root)
+    config = _config(module, repo_root, source)
+    anim_files = (
+        config.run_data_dir / "model_00A001",
+        config.run_data_dir / "model_00A002",
+    )
+    metrics_path = config.graph_case_dir / "ballistic" / "ballistic_metrics.json"
+    manifest_path = config.graph_case_dir / "visualization" / "openradioss_animation_manifest.json"
+    gif_path = config.graph_case_dir / "visualization" / "openradioss_animation.gif"
+    result_mesh_path = (
+        repo_root / "project_state" / "visualizations" / config.case_id / "result_mesh.json"
+    )
+    vtu_manifest_path = (
+        repo_root / "project_state" / "visualizations" / config.case_id / "vtu_manifest.json"
+    )
+    called: dict[str, object] = {}
+
+    def fake_prepare_runtime_decks(_config):
+        _config.run_data_dir.mkdir(parents=True, exist_ok=True)
+        (_config.run_data_dir / "model_00_0000.rad").write_text("starter", encoding="utf-8")
+        (_config.run_data_dir / "model_00_0001.rad").write_text("engine", encoding="utf-8")
+        return (
+            _config.run_data_dir / "model_00_0000.rad",
+            _config.run_data_dir / "model_00_0001.rad",
+        )
+
+    def fake_extract_candidate_metrics(_config, _anim_files):
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_path.write_text(
+            json.dumps(
+                {
+                    "perforation_marker": "perforated_candidate",
+                    "crossing_evidence": {},
+                    "residual_velocity_trace": {},
+                    "partial_energy_audit": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return metrics_path
+
+    def fake_render_real_animation(_config, _anim_files):
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text("{}", encoding="utf-8")
+        gif_path.write_bytes(b"GIF89a")
+        return manifest_path
+
+    def fake_export_text_to_cae_result_mesh(_config, _anim_files):
+        called["config"] = _config
+        called["anim_files"] = tuple(_anim_files)
+        result_mesh_path.parent.mkdir(parents=True, exist_ok=True)
+        result_mesh_path.write_text(json.dumps({"schemaVersion": 1}), encoding="utf-8")
+        vtu_manifest_path.write_text(
+            json.dumps({"schema_version": "openradioss-dynamic-vtu-manifest.v1"}),
+            encoding="utf-8",
+        )
+        return result_mesh_path, vtu_manifest_path
+
+    monkeypatch.setattr(module, "prepare_runtime_decks", fake_prepare_runtime_decks)
+    monkeypatch.setattr(module, "discover_animation_files", lambda _run_data_dir: anim_files)
+    monkeypatch.setattr(module, "extract_candidate_metrics", fake_extract_candidate_metrics)
+    monkeypatch.setattr(module, "render_real_animation", fake_render_real_animation)
+    monkeypatch.setattr(
+        module,
+        "summarize_solver_evidence",
+        lambda _config, _anim_files: module.SolverSummary(
+            starter_error_count=0,
+            starter_warning_count=0,
+            engine_normal_termination=True,
+            engine_cycle_count=1,
+            animation_frame_count=len(_anim_files),
+            deleted_elements=[],
+            live_solid_count=80,
+            total_solid_count=80,
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "append_solver_evidence_to_metrics_sidecar",
+        lambda _metrics_path, _summary: None,
+    )
+    monkeypatch.setattr(
+        module,
+        "export_text_to_cae_result_mesh",
+        fake_export_text_to_cae_result_mesh,
+        raising=False,
+    )
+
+    artifacts = module.run_pipeline(config, skip_solver=True)
+
+    assert called == {"config": config, "anim_files": anim_files}
+    assert artifacts["result_mesh"] == result_mesh_path
+    assert artifacts["vtu_manifest"] == vtu_manifest_path
+    assert result_mesh_path.is_file()
+    assert vtu_manifest_path.is_file()

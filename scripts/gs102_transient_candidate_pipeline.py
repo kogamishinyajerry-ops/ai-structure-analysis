@@ -527,6 +527,34 @@ def render_real_animation(config: PipelineConfig, anim_files: Sequence[Path]) ->
     )
 
 
+def export_text_to_cae_result_mesh(
+    config: PipelineConfig,
+    anim_files: Sequence[Path],
+) -> tuple[Path, Path]:
+    """Publish Text-to-CAE-style playback artifacts for real A-frame output."""
+
+    if not anim_files:
+        raise ValueError("no OpenRadioss .A### animation files found for result_mesh export")
+
+    output_dir = config.repo_root / "project_state" / "visualizations" / config.case_id
+    _assert_safe_output_path(output_dir, config.repo_root)
+    _ensure_backend_path(config.repo_root)
+    from app.viz.openradioss_dynamic_result_exporter import (  # noqa: E402
+        export_dynamic_result_mesh_from_frames,
+        read_openradioss_dynamic_frames,
+    )
+
+    result = export_dynamic_result_mesh_from_frames(
+        read_openradioss_dynamic_frames(anim_files),
+        output_dir=output_dir,
+        case_id=config.case_id,
+        field="von_mises",
+        source_root=str(config.run_data_dir),
+        write_vtu=True,
+    )
+    return result.result_mesh_path, result.vtu_manifest_path
+
+
 def summarize_solver_evidence(
     config: PipelineConfig,
     anim_files: Sequence[Path],
@@ -582,6 +610,8 @@ def write_run_report(
     metrics_path: Path,
     manifest_path: Path,
     gif_path: Path,
+    result_mesh_path: Path | None = None,
+    vtu_manifest_path: Path | None = None,
 ) -> Path:
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     report_dir = config.repo_root / "reports"
@@ -601,6 +631,22 @@ def write_run_report(
     velocity_trace = metrics.get("residual_velocity_trace", {})
     energy = metrics.get("partial_energy_audit", {})
     missing_energy_terms = ", ".join(energy.get("missing_terms", [])) or "none"
+    result_mesh_rel = (
+        _rel(result_mesh_path, config.repo_root) if result_mesh_path else "not exported"
+    )
+    vtu_manifest_rel = (
+        _rel(vtu_manifest_path, config.repo_root) if vtu_manifest_path else "not exported"
+    )
+    result_mesh_hash = (
+        _hash_line(result_mesh_path, config.repo_root)
+        if result_mesh_path
+        else "not exported  result_mesh.json"
+    )
+    vtu_manifest_hash = (
+        _hash_line(vtu_manifest_path, config.repo_root)
+        if vtu_manifest_path
+        else "not exported  vtu_manifest.json"
+    )
 
     text = f"""# GS-102 transient candidate run - {config.case_id}
 
@@ -654,6 +700,8 @@ This script refuses runtime writes inside `golden_samples/**`.
 
 - GIF: `{_rel(gif_path, config.repo_root)}`
 - Visualization manifest: `{_rel(manifest_path, config.repo_root)}`
+- Text-to-CAE result mesh: `{result_mesh_rel}`
+- Text-to-CAE VTU manifest: `{vtu_manifest_rel}`
 
 ## Artifact hashes
 
@@ -665,6 +713,8 @@ This script refuses runtime writes inside `golden_samples/**`.
 {_hash_line(metrics_path, config.repo_root)}
 {_hash_line(manifest_path, config.repo_root)}
 {_hash_line(gif_path, config.repo_root)}
+{result_mesh_hash}
+{vtu_manifest_hash}
 ```
 
 ## Limitations
@@ -701,6 +751,7 @@ def run_pipeline(config: PipelineConfig, *, skip_solver: bool = False) -> dict[s
     anim_files = discover_animation_files(config.run_data_dir)
     metrics_path = extract_candidate_metrics(config, anim_files)
     manifest_path = render_real_animation(config, anim_files)
+    result_mesh_path, vtu_manifest_path = export_text_to_cae_result_mesh(config, anim_files)
     gif_path = manifest_path.parent / "openradioss_animation.gif"
     summary = summarize_solver_evidence(config, anim_files)
     append_solver_evidence_to_metrics_sidecar(metrics_path, summary)
@@ -710,11 +761,15 @@ def run_pipeline(config: PipelineConfig, *, skip_solver: bool = False) -> dict[s
         metrics_path=metrics_path,
         manifest_path=manifest_path,
         gif_path=gif_path,
+        result_mesh_path=result_mesh_path,
+        vtu_manifest_path=vtu_manifest_path,
     )
     return {
         "metrics": metrics_path,
         "manifest": manifest_path,
         "gif": gif_path,
+        "result_mesh": result_mesh_path,
+        "vtu_manifest": vtu_manifest_path,
         "report": report_path,
     }
 

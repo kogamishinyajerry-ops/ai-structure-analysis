@@ -8,19 +8,18 @@
 # Real refinement is reserved for FM-04b under ADR-024 (full).
 #--------------------------------------------------------------------------------------------------|
 /RUN/gs102_candidate/1/
-  0.5
+  80.0
 #
 /PRINT/-1000
 #
-# Animation frame cadence — FM-04a P6 / P10 expects to ingest these
+# Animation frame cadence — projectile traverses 20 mm gap at V0=0.285 mm/ms
+# in ~70 ms; capture frame every 0.5 ms → ~160 frames over full ballistic arc.
 /ANIM/DT
-0.0  0.05
+0.0  0.5
 /ANIM/BRICK/EPSP
 /ANIM/BRICK/TENS/STRESS
 /ANIM/VECT/VEL
 #
 # Time-step controls — Tier 1 candidate values; tighten in FM-04b
 /DT/NODA/CST/0
-0.66 0.0
-#
-/STOP
+0.9 0.0

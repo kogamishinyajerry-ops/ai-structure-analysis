@@ -258,6 +258,19 @@ Proposed exporter:
 scripts/gs102_export_text_to_cae_result_mesh.py
 ```
 
+Current implementation:
+
+- `backend/app/viz/openradioss_dynamic_result_exporter.py` converts
+  OpenRadioss A-frame arrays into a Text-to-CAE-style `result_mesh.json`.
+- `scripts/gs102_export_text_to_cae_result_mesh.py` is the GS-102 CLI wrapper.
+- Output defaults to `project_state/visualizations/<case_id>/` and refuses
+  `golden_samples/**`.
+- The exporter writes `dynamicFrames`, `modelTree`, real solver projectile and
+  plate part surfaces, first-class alive/deleted status, and optional per-frame
+  ASCII VTU sidecars with `part_id`, `alive`, and selected field cell data.
+- Claim tier remains Tier 1 engineering candidate; not signed validation and
+  not benchmark agreement.
+
 Input:
 
 - `project_state/runs/<case_id>/data/model_00A###`
