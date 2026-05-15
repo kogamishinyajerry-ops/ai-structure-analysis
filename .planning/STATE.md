@@ -1,8 +1,8 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm03-candidate-report-spine-2026-05-07 · main=de65d15`
-> **Last updated:** 2026-05-07 (FM-03 candidate report spine slice committed to `codex/evidence-first-workbench-trust-center`; FM-04a Tier 1 ballistic candidate full-flow milestone planning landed under user direct-execution authorization)
-> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07 the FM-03 closeout and FM-04a slices are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
+> **Stamp:** `fm04a-phase2-industrial-polish-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@477c529`
+> **Last updated:** 2026-05-16 (FM-04a Phase 2 A-F industrial closure shipped locally under user direct-execution authorization; STATE refresh + retrospective in Phase G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
+> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), and the FM-04a Phase 2 industrial polish (`b3c97ef..477c529` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
@@ -135,6 +135,35 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   Tier 2 needs that is still missing, and the FM-04b path. The document is
   preparation material only; it does NOT promote any artifact to Tier 2 and
   does NOT authorize FM-04b to start.
+- FM-04a local-arc closure (commits `61857f5..88362ad`, 2026-05-16) wrapped
+  the 2026-05-12 GS-102 velocity-bracket / mechanism-diagnostic exploration
+  into seven atomic commits: gitignore for GS-001 local report output;
+  OpenRadioss dynamic result-mesh exporter + viewer endpoint; frontend
+  result-mesh playback panel + bullet-plate blueprint surfaces; GS-102
+  candidate deck refinement (JC damage + BCS clamp + TYPE7 contact + engine
+  retune) with the pipeline result-mesh wiring; new `GS-102-hifi-candidate`
+  + `GS-102-refined-candidate` deck variants + generators; 33 GS-102
+  transient candidate run reports (synthesis + per-run). Two HF1 path-guard
+  overrides cited ADR-011 §HF1.7 + FM-04a P3 precedent (`-candidate` suffix
+  is registry-excluded). All Tier 1 candidate evidence; no `^GS-\d{3}$`
+  mutation; no Linear / Notion writes; no PR opened.
+- `.planning/FM-04A_PHASE2_BLUEPRINT.md` authored at `7d7e5c6` (2026-05-16)
+  as the local execution plan for closing four industrial-readiness gaps
+  surfaced by the exploration arc.
+- FM-04a Phase 2 A-F shipped 2026-05-16 (commits `b3c97ef..477c529`):
+  * **Phase A** (`b3c97ef`) — `backend/app/services/ballistics/{engine_energy_history,energy_audit_extractor}.py` graduate the energy audit from `partial_candidate` to `closed_aggregate` by parsing the OpenRadioss `model_00_0001.out` progress table. 17 new tests. Pipeline emits the new `energy_audit` block alongside the legacy `partial_energy_audit` so the 33 historical reports keep their read contract.
+  * **Phase B** (`346c32a`) — `backend/app/services/ballistics/convergence_orchestrator.py` + `scripts/gs102_convergence_sweep.py` build a 2-axis mesh × dt convergence study from existing `ballistic_metrics.json` sidecars with a combined `candidate_observed_stable / unstable / insufficient_data` verdict. 14 new tests. CLI smoke against the CFL diagnostic series correctly flagged dt-axis instability (56% jump between cfl_0.95 and cfl_1.00).
+  * **Phase C** (`3476280`) — `/api/v1/candidate-cases` endpoint + `frontend/src/candidateCaseRegistry.ts` + `CandidateCasePicker.tsx` let users switch between the three `*-candidate` decks. 7 backend + 7 frontend tests. Signed `^GS-\d{3}$` registry never exposed through the picker.
+  * **Phase D** (`4a52a1a`) — `frontend/src/trustCenterSummary.ts` adds 3 Trust Center review cards (energy_balance_status, convergence_study_status, candidate_case_selection) with pure tone helpers; ChatPanel filter updated. 15 new frontend tests.
+  * **Phase E** (`15b671f`) — `backend/app/services/reporting/tier1_candidate_report.py` + `/api/v1/tier1-report/<case-id>` endpoint + `scripts/export_tier1_candidate_report.py` CLI build a structured markdown + DOCX packet consolidating every Phase 2 surface plus artifact hashes + Tier 1 banner. 10 new tests. Build-time forbidden-wording audit.
+  * **Phase F** (`477c529`) — `tests/test_fm04a_phase2_e2e.py` proves the full A → B → C → E loop on synthetic inputs in one 0.5s test, including the combined forbidden-wording audit across markdown + study payload + picker payload + audit block.
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`:
+  backend pytest **1293 passed / 8 skipped**; frontend node:test **29
+  passed**; `tsc -b` + `vite build` clean. Branch is 21 commits ahead of
+  the most recently authored Codex baseline (`de65d15`) without any push,
+  PR, Linear, or Notion write. Trailer rewrite for `trailer-check` /
+  `calibration-cap-check` / ADR-013 PR template remains reserved for the
+  human user when the branch is pushed.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
