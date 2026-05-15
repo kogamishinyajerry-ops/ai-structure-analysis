@@ -47,6 +47,10 @@ runs/*
 # CalculiX solver output (large binary files)
 *.frd
 *.dat
+
+# GS-001 local static report output (regeneratable; not signed evidence)
+golden_samples/GS-001/gs001_result_static.docx
+golden_samples/GS-001/gs001_result_static.figs/
 *.sta
 *.cvg
 spooles.out
