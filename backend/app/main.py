@@ -9,6 +9,7 @@ from .api import nl_router
 # The /api/v1/knowledge/* surface is unregistered until post-MVP redesign.
 from .api.routes import (
     acceptance_packet,
+    archived_packet_diff,
     candidate_cases,
     case_comparison,
     case_completeness,
@@ -87,6 +88,8 @@ app.include_router(case_completeness.router, prefix="/api/v1")
 app.include_router(cohort_overview.router, prefix="/api/v1")
 # FM-04a Phase 4 C — Tier 1 reviewer bundle (multi-case zip).
 app.include_router(reviewer_bundle.router, prefix="/api/v1")
+# FM-04a Phase 4 D — Tier 1 archived acceptance packet diff.
+app.include_router(archived_packet_diff.router, prefix="/api/v1")
 
 
 @app.get("/")
