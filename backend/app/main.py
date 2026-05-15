@@ -13,6 +13,7 @@ from .api.routes import (
     case_comparison,
     case_completeness,
     cases,
+    cohort_overview,
     convergence_study,
     frd,
     projects,
@@ -81,6 +82,8 @@ app.include_router(case_comparison.router, prefix="/api/v1")
 app.include_router(convergence_study.router, prefix="/api/v1")
 # FM-04a Phase 4 A — Tier 1 candidate evidence completeness score.
 app.include_router(case_completeness.router, prefix="/api/v1")
+# FM-04a Phase 4 B — Tier 1 candidate cohort overview.
+app.include_router(cohort_overview.router, prefix="/api/v1")
 
 
 @app.get("/")
