@@ -18,6 +18,7 @@ from .api.routes import (
     frd,
     projects,
     report,
+    reviewer_bundle,
     sensitivity,
     solver,
     tier1_report,
@@ -84,6 +85,8 @@ app.include_router(convergence_study.router, prefix="/api/v1")
 app.include_router(case_completeness.router, prefix="/api/v1")
 # FM-04a Phase 4 B — Tier 1 candidate cohort overview.
 app.include_router(cohort_overview.router, prefix="/api/v1")
+# FM-04a Phase 4 C — Tier 1 reviewer bundle (multi-case zip).
+app.include_router(reviewer_bundle.router, prefix="/api/v1")
 
 
 @app.get("/")
