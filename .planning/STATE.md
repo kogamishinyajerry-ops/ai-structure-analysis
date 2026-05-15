@@ -1,8 +1,8 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase2-industrial-polish-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@477c529`
-> **Last updated:** 2026-05-16 (FM-04a Phase 2 A-F industrial closure shipped locally under user direct-execution authorization; STATE refresh + retrospective in Phase G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
-> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), and the FM-04a Phase 2 industrial polish (`b3c97ef..477c529` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
+> **Stamp:** `fm04a-phase3-reviewer-workbench-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@de3e90d`
+> **Last updated:** 2026-05-16 (FM-04a Phase 3 A-E reviewer-experience closure shipped locally under user direct-execution authorization; STATE refresh + retrospective in Phase F; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
+> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), and the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
@@ -157,13 +157,31 @@ ENG-39 created 2026-05-06 to adopt a lean validation workflow:
   * **Phase D** (`4a52a1a`) — `frontend/src/trustCenterSummary.ts` adds 3 Trust Center review cards (energy_balance_status, convergence_study_status, candidate_case_selection) with pure tone helpers; ChatPanel filter updated. 15 new frontend tests.
   * **Phase E** (`15b671f`) — `backend/app/services/reporting/tier1_candidate_report.py` + `/api/v1/tier1-report/<case-id>` endpoint + `scripts/export_tier1_candidate_report.py` CLI build a structured markdown + DOCX packet consolidating every Phase 2 surface plus artifact hashes + Tier 1 banner. 10 new tests. Build-time forbidden-wording audit.
   * **Phase F** (`477c529`) — `tests/test_fm04a_phase2_e2e.py` proves the full A → B → C → E loop on synthetic inputs in one 0.5s test, including the combined forbidden-wording audit across markdown + study payload + picker payload + audit block.
-- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`:
-  backend pytest **1293 passed / 8 skipped**; frontend node:test **29
-  passed**; `tsc -b` + `vite build` clean. Branch is 21 commits ahead of
-  the most recently authored Codex baseline (`de65d15`) without any push,
-  PR, Linear, or Notion write. Trailer rewrite for `trailer-check` /
-  `calibration-cap-check` / ADR-013 PR template remains reserved for the
-  human user when the branch is pushed.
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 2 closure: backend pytest **1293 passed / 8 skipped**;
+  frontend node:test **29 passed**; `tsc -b` + `vite build` clean.
+
+`.planning/FM-04A_PHASE3_BLUEPRINT.md` authored at `f22f619` (2026-05-16)
+as the local execution plan for closing five reviewer-experience gaps
+identified after the Phase 2 industrial-readiness pass:
+R1 acceptance evidence packet; R2 case comparison; R3 reviewer panel;
+R4 convergence study viewer; R5 HTTP-layer endpoint tests.
+
+- FM-04a Phase 3 A-E shipped 2026-05-16 (commits `7f726bb..de3e90d`):
+  * **Phase A** (`7f726bb`) — `backend/app/services/reporting/acceptance_packet.py` + `/api/v1/acceptance-packet/<case-id>` + `scripts/export_acceptance_packet.py` build a structured Tier 1 candidate manifest with deck/evidence/visualization artifact hashes, ballistic / energy / convergence summaries, assumptions, limitations, and an explicit 8-tuple of FM-04b blockers remaining. 9 new tests. `_assert_no_overclaim` refuses to emit any positive claim; `_assert_not_in_golden_samples` refuses to write under `golden_samples/**`.
+  * **Phase B** (`c7d71eb`) — `backend/app/services/reporting/case_comparison.py` + `/api/v1/case-comparison?a=<id>&b=<id>` diff two acceptance packets across residual velocity, perforation marker, energy balance error, energy audit status, convergence verdict, deck artifacts, and evidence artifacts (with shared / a-only / b-only / hash-changed buckets). 9 new tests. Comparison is case-vs-case (not vs experimental benchmark data).
+  * **Phase C** (`73c4b3d`) — `frontend/src/{acceptancePacketClient,caseComparisonClient}.ts` typed clients + `frontend/src/components/{AcceptancePacketPanel,CaseComparisonPanel}.tsx` reviewer panels wired into the Visual tab between the candidate picker and blueprint. 15 new frontend tests. Two new Trust Center review cards (`acceptance_packet_status`, `case_comparison_status`) surface the boundary in the operator strip.
+  * **Phase D** (`2796a20`) — `backend/app/api/routes/convergence_study.py` (NEW sidecar endpoint) + `frontend/src/convergenceStudyClient.ts` + `frontend/src/components/ConvergenceStudyViewer.tsx` render the orchestrator payload as two stacked tables (mesh sweep + dt sweep) with per-axis verdict badges + tone-coded rows + a combined verdict badge. 6 backend + 10 frontend tests. `axisTone` + `combinedVerdictTone` route through `trustCenterSummary.convergenceTone` so viewer + Trust Center card stay aligned.
+  * **Phase E** (`de3e90d`) — `tests/test_api_endpoints_integration.py` drives every Phase 2 / Phase 3 endpoint through a real HTTP client (httpx.AsyncClient + ASGITransport, the supported migration path now that starlette.testclient is incompatible with httpx >= 0.28). 16 new tests covering status codes, content-types, Content-Disposition, Tier 1 boundary in body, and a cross-endpoint positive-claim audit.
+
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 3 closure: backend pytest **1333 passed / 8 skipped**;
+  frontend node:test **54 passed**; `tsc -b` + `vite build` clean
+  (1739 modules; 325.96 kB / 95.13 kB gzipped). Branch is 27 commits
+  ahead of the most recently authored Codex baseline (`de65d15`)
+  without any push, PR, Linear, or Notion write. Trailer rewrite for
+  `trailer-check` / `calibration-cap-check` / ADR-013 PR template
+  remains reserved for the human user when the branch is pushed.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
