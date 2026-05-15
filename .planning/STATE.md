@@ -1,8 +1,8 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase3-reviewer-workbench-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@de3e90d`
-> **Last updated:** 2026-05-16 (FM-04a Phase 3 A-E reviewer-experience closure shipped locally under user direct-execution authorization; STATE refresh + retrospective in Phase F; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
-> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), and the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
+> **Stamp:** `fm04a-phase4-cohort-operations-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@3e2de76`
+> **Last updated:** 2026-05-16 (FM-04a Phase 4 A-G cohort-operations closure shipped locally with a binding 8-axis scoring rubric; cumulative score 97.86/100, every axis ≥91% of weight; STATE refresh + retrospective in Phase H; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
+> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), and the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
@@ -177,11 +177,80 @@ R4 convergence study viewer; R5 HTTP-layer endpoint tests.
 - Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
   after Phase 3 closure: backend pytest **1333 passed / 8 skipped**;
   frontend node:test **54 passed**; `tsc -b` + `vite build` clean
-  (1739 modules; 325.96 kB / 95.13 kB gzipped). Branch is 27 commits
+  (1739 modules; 325.96 kB / 95.13 kB gzipped).
+
+`.planning/FM-04A_PHASE4_BLUEPRINT.md` authored at `2399c11`
+(2026-05-16) as the local execution plan for a Tier 1 cohort-
+operations layer above the single-case Phase 3 surface. The blueprint
+publishes a binding 8-axis scoring rubric (B/M/T/C/X/D/A/E weighted
+to 100; target ≥95 with no axis below 90% of its weight) that every
+Phase 4 commit must publish against in a SCORECARD block. Every
+Phase 4 commit's SCORECARD is preserved in `git log`.
+
+- FM-04a Phase 4 A-G shipped 2026-05-16 (commits `7f0a52a` and peers
+  in `7f726bb..3e2de76`):
+  * **Phase A** (`137511e`) — `backend/app/services/reporting/case_completeness.py`
+    + `/api/v1/case-completeness/<id>` deterministic 100-point
+    evidence-presence rubric (15+15+20+15+15+5+5+5+5 = 100) with
+    explicit `claim_impact` stating "100/100 does NOT authorize
+    promotion to Tier 2". 9 new unit tests. SCORECARD: 96/100.
+  * **Phase B** (`4b5f39b`) — `backend/app/services/reporting/cohort_overview.py`
+    + `/api/v1/cohort-overview` scans `golden_samples/*-candidate/`,
+    scores each via Phase 4 A, emits aggregate + distribution
+    buckets. Signed `^GS-\d{3}$` registry shape rejected at scanner
+    level (defense in depth on top of the `-candidate` suffix
+    filter). 7 new unit tests. SCORECARD: 97/100.
+  * **Phase C** (`a02ba39`) — `backend/app/services/reporting/reviewer_bundle.py`
+    + `/api/v1/reviewer-bundle?ids=<csv>` + `scripts/export_reviewer_bundle.py`
+    in-memory multi-case zip exporter composing acceptance packet +
+    convergence study + Tier 1 markdown + completeness scorecard
+    per case plus a top-level `BUNDLE_MANIFEST.json`. 32-case cap
+    on the endpoint; cross-member positive-claim audit at build
+    time. 8 new unit tests. SCORECARD: 98/100.
+  * **Phase D** (`f0b7364`) — `backend/app/services/reporting/archived_packet_diff.py`
+    + `/api/v1/archived-packet-diff?a=<relpath>&b=<relpath>`
+    archive-vs-archive diff anchored under `reports/`; rejects any
+    packet whose `claim_boundary` lacks `tier1_engineering_candidate`;
+    rejects path traversal into `golden_samples/**` as defense in
+    depth. 6 new unit tests. SCORECARD: 97/100.
+  * **Phase E** (`7f0a52a`) — `frontend/src/cohortOverviewClient.ts`
+    + `frontend/src/caseCompletenessClient.ts` +
+    `frontend/src/components/CohortDashboardPanel.tsx` +
+    `frontend/src/components/CaseCompletenessCard.tsx` surface the
+    Phase A/B endpoints as the new top-of-Visual-tab panels with
+    sortable leaderboard + drill-down + rubric breakdown card +
+    new `cohort_completeness_status` Trust Center card. 18 new
+    frontend tests. SCORECARD: 98/100.
+  * **Phase F** (`e9441cc`) — `frontend/src/reviewerBundleClient.ts`
+    + `frontend/src/archivedPacketDiffClient.ts` +
+    `frontend/src/components/ReviewerBundlePanel.tsx` +
+    `frontend/src/components/ArchivedPacketDiffPanel.tsx` surface
+    the Phase C/D endpoints as multi-select export + diff form
+    panels. 13 new frontend tests. SCORECARD: 98/100.
+  * **Phase G** (`3e2de76`) — `tests/test_phase4_endpoints_integration.py`
+    drives every Phase 4 endpoint through httpx ASGITransport
+    (status, content-type, content-disposition, body audit) with
+    explicit path-traversal rejection test;
+    `tests/test_fm04a_phase4_reviewer_workflow_e2e.py` is the one
+    6-step load-bearing reviewer-cohort workflow proof on synthetic
+    3-case fixture (seed → score → cohort overview → bundle → audit
+    → archive-vs-current diff with engineered drift). 12 new tests
+    total. SCORECARD: 100/100.
+
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 4 closure: backend pytest **1375 passed / 8 skipped**;
+  frontend node:test **85 passed**; `tsc -b` + `vite build` clean
+  (1739 modules; 347.46 kB / 98.29 kB gzipped). Branch is 35 commits
   ahead of the most recently authored Codex baseline (`de65d15`)
   without any push, PR, Linear, or Notion write. Trailer rewrite for
   `trailer-check` / `calibration-cap-check` / ADR-013 PR template
   remains reserved for the human user when the branch is pushed.
+- Phase 4 cumulative scorecard: **97.86/100**, every axis ≥91% of
+  weight. Per-axis: B 15.00/15 (100%), M 15.00/15 (100%),
+  T 14.14/15 (94.3%), C 10.00/10 (100%), X 10.00/10 (100%),
+  D 10.00/10 (100%), A 10.00/10 (100%), E 13.71/15 (91.4%). Stop
+  conditions satisfied per Phase 4 blueprint rubric: ≥95 total AND
+  every axis ≥90% of weight.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
