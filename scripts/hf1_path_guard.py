@@ -89,6 +89,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -196,7 +197,21 @@ ZONE: tuple[ZoneEntry, ...] = (
 # name ever shows up).
 _GOLDEN_SAMPLES_PREFIX = "golden_samples/"
 _CANDIDATE_SUFFIX = "-candidate"
-_SIGNED_REGISTRY_RE = __import__("re").compile(r"^GS-\d{3}$")
+_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
+# Phase 13 E slice-D MEDIUM-1 closure: a `GS-NNN-candidate` first
+# segment fails the `^GS-\d{3}$` fullmatch (because of the trailing
+# `-candidate`), but the carve-out helper SHOULD STILL reject it —
+# the helper's docstring + the slice-D TAA report named "defense in
+# depth via signed-registry pattern winning over carve-out suffix".
+# The closure pin: a separate PREFIX regex `^GS-\d{3}-` matches any
+# case-directory that STARTS with a signed-registry shape regardless
+# of the suffix. The helper now rejects on EITHER the fullmatch
+# (canonical signed registry) OR the prefix (signed-registry-shape
+# collision with `-candidate` suffix). Test
+# `test_candidate_carveout_rejects_signed_registry_candidate_collision`
+# in `tests/test_hf1_path_guard_candidate_carveout.py` flipped from
+# "documents the gap" to "pins the closure".
+_SIGNED_REGISTRY_PREFIX_RE = re.compile(r"^GS-\d{3}-")
 
 
 def _is_candidate_carveout(path: str) -> bool:
@@ -210,12 +225,21 @@ def _is_candidate_carveout(path: str) -> bool:
         That segment is the case directory.
       * Returns True iff the case directory:
           (a) ends in `-candidate`, AND
-          (b) does NOT match `^GS-\\d{3}$` (signed-registry shape).
-      * Defense in depth: a hypothetical `GS-101-candidate` path
-        passes (a) but fails (b) — the signed-registry pattern wins,
-        and HF1.7a remains in force. Symmetrically a path like
-        `golden_samples/cylinder-pv-collapsed-candidate/data/file.json`
-        is INSIDE a `*-candidate` directory and passes both checks.
+          (b) does NOT match `^GS-\\d{3}$` (signed-registry shape) AND
+          (c) does NOT START with the signed-registry prefix shape
+              `^GS-\\d{3}-` (Phase 13 E slice-D MEDIUM-1 closure: a
+              hypothetical `GS-101-candidate` case-directory fails
+              (b) because of the trailing `-candidate`, but the
+              prefix check (c) still rejects it. Defense in depth:
+              even if the signed-registry pattern is ever colliding
+              with a `-candidate` suffix in some future naming
+              convention, the carve-out helper REJECTS it).
+
+    Symmetrically a path like
+    `golden_samples/cylinder-pv-collapsed-candidate/data/file.json`
+    is INSIDE a `*-candidate` directory and passes all three checks
+    (the case_dir is `cylinder-pv-collapsed-candidate`, which does
+    NOT start with `GS-\\d{3}-`).
 
     The case directory MUST be the first path segment; paths like
     `golden_samples/some-candidate/sub/file.txt` are checked against
@@ -233,7 +257,11 @@ def _is_candidate_carveout(path: str) -> bool:
     if not case_dir.endswith(_CANDIDATE_SUFFIX):
         return False
     if _SIGNED_REGISTRY_RE.fullmatch(case_dir):
-        # signed-registry pattern overrides the carve-out suffix
+        # Canonical signed-registry shape — hard-stop wins.
+        return False
+    if _SIGNED_REGISTRY_PREFIX_RE.match(case_dir):
+        # Phase 13 E MEDIUM-1 closure: signed-registry prefix collision
+        # (e.g., GS-101-candidate) — hard-stop wins. Defense in depth.
         return False
     return True
 

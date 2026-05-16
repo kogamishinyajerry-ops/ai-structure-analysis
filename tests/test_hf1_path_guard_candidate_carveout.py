@@ -150,24 +150,70 @@ def test_candidate_carveout_allows_phase12c_modal_fixtures() -> None:
 def test_candidate_carveout_rejects_signed_registry_candidate_collision() -> None:
     """A hypothetical `GS-101-candidate` (signed-registry shape WITH
     `-candidate` suffix) MUST be hard-stop, not carve-out. Defense in
-    depth: the signed-registry regex anchors on the WHOLE first
-    segment so the suffix check loses to the registry check."""
+    depth via the signed-registry PREFIX regex `^GS-\\d{3}-` that the
+    helper checks alongside the canonical `^GS-\\d{3}$` fullmatch.
+
+    Phase 13 E slice-D MEDIUM-1 closure: the previous test version
+    DOCUMENTED the gap (the helper allowed `GS-NNN-candidate` because
+    the fullmatch rejected the trailing `-candidate` suffix); the
+    slice-D TAA flagged this as a doc-vs-code inconsistency. The
+    helper now rejects on the prefix regex as well; this test
+    pins the closure.
+    """
     path = "golden_samples/GS-101-candidate/data/anything.json"
-    # The first segment `GS-101-candidate` does NOT match
-    # `^GS-\d{3}$` because the regex is anchored to the WHOLE
-    # segment, not just a prefix. So the carve-out check returns
-    # True for this path. But: a real signed-registry collision
-    # (e.g. `GS-101/data/...`) is the threat we ACTUALLY guard
-    # against, and it's covered by the signed-registry test above.
-    # This test PINS the helper's behavior on the boundary case so a
-    # future regex relaxation (e.g., changing `fullmatch` to
-    # `match`) gets caught.
     first_seg = "GS-101-candidate"
+    # The first segment doesn't fullmatch the canonical signed-
+    # registry shape (because of the trailing suffix), but it DOES
+    # match the prefix shape, which the helper now also rejects.
     assert not _SIGNED_REGISTRY_RE.fullmatch(first_seg)
-    # The helper's carve-out logic uses fullmatch, so this passes
-    # carve-out. The actual signed-registry collision is
-    # `GS-101/...` (no `-candidate`), which is covered above.
-    assert _is_candidate_carveout(path) is True
+    # The helper REJECTS the collision per the slice-D MEDIUM-1
+    # closure: signed-registry prefix wins over `-candidate` suffix.
+    assert _is_candidate_carveout(path) is False
+    # And the path lands in find_violations as a true HF1 hit.
+    violations = find_violations([path])
+    assert len(violations) == 1
+
+
+def test_candidate_carveout_rejects_signed_registry_prefix_collisions() -> None:
+    """Broader pin: any case-directory that STARTS with the
+    signed-registry prefix shape `^GS-\\d{3}-` is rejected by the
+    carve-out helper, regardless of what comes after the `-`. This
+    is the structural defense added in Phase 13 E MEDIUM-1 closure.
+    """
+    for collision_dir in (
+        "GS-001-candidate",
+        "GS-101-candidate",
+        "GS-999-candidate",
+        "GS-001-extended-candidate",
+        "GS-102-mocked-candidate",
+    ):
+        path = f"golden_samples/{collision_dir}/data/anything.json"
+        assert _is_candidate_carveout(path) is False, (
+            f"signed-registry prefix collision {collision_dir!r} should be "
+            f"rejected by the carve-out helper (Phase 13 E MEDIUM-1 closure)"
+        )
+        violations = find_violations([path])
+        assert len(violations) == 1
+
+
+def test_candidate_carveout_accepts_non_signed_registry_candidate_names() -> None:
+    """Negative-of-the-negative pin: `*-candidate` directory names
+    that do NOT start with the signed-registry prefix shape are
+    still in the carve-out. Closure of slice-D MEDIUM-1 should NOT
+    accidentally widen the rejection surface."""
+    for ok_dir in (
+        "cylinder-pv-collapsed-candidate",
+        "modal-cantilever-candidate",
+        "modal-cantilever-stiff-candidate",
+        "cylinder-pv-extended-candidate",
+        "some-candidate",
+        "GSX-001-candidate",  # not signed-registry prefix (GSX != GS)
+        "gs-001-candidate",  # lowercase, not signed-registry prefix
+    ):
+        path = f"golden_samples/{ok_dir}/data/anything.json"
+        assert _is_candidate_carveout(path) is True, (
+            f"non-collision *-candidate name {ok_dir!r} should pass the carve-out helper"
+        )
 
 
 def test_candidate_carveout_actual_signed_registry_collision_is_blocked() -> None:
