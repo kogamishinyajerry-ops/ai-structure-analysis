@@ -272,35 +272,61 @@ def _score_convergence_axis(
             weighted=0,
             rationale="convergence_study.json absent; cannot judge mesh/dt stability",
         )
+    # Phase 11 A — honor the convergence_kind discriminator. For
+    # linear_static cases there is no time integration so the dt_sweep
+    # axis is N/A; we score on mesh stability alone instead of penalizing
+    # the absent dt sweep.
+    convergence_kind = payload.get("convergence_kind") or "explicit_dynamics"
     mesh_stable = _stability_label(payload.get("mesh_sweep"))
     dt_stable = _stability_label(payload.get("dt_sweep"))
-    if (
-        mesh_stable == "candidate_observed_stable"
-        and dt_stable == "candidate_observed_stable"
-    ):
-        raw = 100
-        rationale = "both mesh and dt sweeps reported candidate_observed_stable"
-    elif (
-        mesh_stable == "candidate_observed_unstable"
-        and dt_stable == "candidate_observed_unstable"
-    ):
-        raw = 30
-        rationale = "both mesh and dt sweeps reported candidate_observed_unstable"
-    elif (
-        "candidate_observed_stable" in (mesh_stable, dt_stable)
-        and "candidate_observed_unstable" in (mesh_stable, dt_stable)
-    ):
-        raw = 60
-        rationale = (
-            "one sweep stable, one unstable — partial credit reflects "
-            "discordant per-axis verdicts"
-        )
-    elif "candidate_observed_stable" in (mesh_stable, dt_stable):
-        raw = 60
-        rationale = "one sweep stable, the other inconclusive"
+
+    if convergence_kind == "linear_static":
+        if mesh_stable == "candidate_observed_stable":
+            raw = 100
+            rationale = (
+                "linear_static convergence_kind; mesh_sweep stable; "
+                "dt_sweep N/A (no time integration)"
+            )
+        elif mesh_stable == "candidate_observed_unstable":
+            raw = 30
+            rationale = (
+                "linear_static convergence_kind; mesh_sweep unstable; "
+                "dt_sweep N/A"
+            )
+        else:
+            raw = 0
+            rationale = (
+                "linear_static convergence_kind; mesh_sweep inconclusive"
+            )
     else:
-        raw = 0
-        rationale = "convergence study present but neither axis reached a stable verdict"
+        # Original two-axis scoring for explicit_dynamics / nonlinear_static / modal.
+        if (
+            mesh_stable == "candidate_observed_stable"
+            and dt_stable == "candidate_observed_stable"
+        ):
+            raw = 100
+            rationale = "both mesh and dt sweeps reported candidate_observed_stable"
+        elif (
+            mesh_stable == "candidate_observed_unstable"
+            and dt_stable == "candidate_observed_unstable"
+        ):
+            raw = 30
+            rationale = "both mesh and dt sweeps reported candidate_observed_unstable"
+        elif (
+            "candidate_observed_stable" in (mesh_stable, dt_stable)
+            and "candidate_observed_unstable" in (mesh_stable, dt_stable)
+        ):
+            raw = 60
+            rationale = (
+                "one sweep stable, one unstable — partial credit reflects "
+                "discordant per-axis verdicts"
+            )
+        elif "candidate_observed_stable" in (mesh_stable, dt_stable):
+            raw = 60
+            rationale = "one sweep stable, the other inconclusive"
+        else:
+            raw = 0
+            rationale = "convergence study present but neither axis reached a stable verdict"
     weighted = int(round(raw * CONVERGENCE_WEIGHT / 100))
     return TrustScoreBreakdownEntry(
         axis="convergence_stability",

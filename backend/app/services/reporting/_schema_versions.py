@@ -78,10 +78,20 @@ ACCEPTANCE_PACKET_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.acceptance_packet``.
 """
 
-CASE_COMPLETENESS_SCHEMA_VERSION = "1.0.0"
+CASE_COMPLETENESS_SCHEMA_VERSION = "1.1.0"
 """``<case>_completeness_scorecard.json`` top-level dict.
 
 Builder: ``backend.app.services.reporting.case_completeness``.
+
+Bump history:
+* ``1.0.0`` (Phase 5 A) — initial release with the ballistic-only rubric.
+* ``1.1.0`` (Phase 11 A, MINOR per bump policy) — added top-level
+  ``analysis_type`` envelope field. Default value ``"ballistic"`` preserves
+  back-compat: a consumer reading the 1.0.0 fields continues to work,
+  and a 1.0.0-era payload that omits the key materializes as the
+  ballistic rubric via the dataclass default. Closes the e2e-demo gap
+  surfaced by the cylinder-pv-candidate case (PV linear-static
+  evidence was being scored against an irrelevant rubric).
 """
 
 COHORT_OVERVIEW_SCHEMA_VERSION = "1.0.0"
@@ -108,10 +118,22 @@ REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.reviewer_bundle``.
 """
 
-CONVERGENCE_STUDY_SCHEMA_VERSION = "1.0.0"
+CONVERGENCE_STUDY_SCHEMA_VERSION = "1.1.0"
 """``convergence_study.json`` payload.
 
 Builder: ``backend.app.services.ballistics.convergence_orchestrator``.
+
+Bump history:
+* ``1.0.0`` (Phase 5 A) — initial release with mesh_sweep + dt_sweep
+  axes assumed.
+* ``1.1.0`` (Phase 11 A, MINOR per bump policy) — added optional
+  top-level ``convergence_kind`` discriminator ∈ {``explicit_dynamics``,
+  ``nonlinear_static``, ``linear_static``, ``modal``} naming which
+  axes are meaningful. For ``linear_static`` cases the ``dt_sweep``
+  is N/A (no time integration) and the trust-score convergence
+  scorer treats its absence as "not applicable", not as failure.
+  Consumers reading the 1.0.0 fields continue to work. Closes the
+  e2e-demo gap surfaced by the cylinder-pv-candidate case.
 """
 
 # ----- Phase 5 B/C/D NEW contracts -----
