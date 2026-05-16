@@ -125,6 +125,7 @@ exclude = [
     "run_well_harness.py",
     "sync_well_harness_approvals.py",
     ".venv/",
+    "demo_cylinder_pv/",
 ]
 
 [tool.ruff.lint]
