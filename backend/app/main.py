@@ -19,6 +19,7 @@ from .api.routes import (
     cohort_overview,
     cohort_snapshot_diff,
     cohort_snapshots,
+    cohort_trend_anomalies,
     convergence_study,
     frd,
     projects,
@@ -123,6 +124,8 @@ app.include_router(trust_score_provenance.router, prefix="/api/v1")
 app.include_router(cohort_executive_summary.router, prefix="/api/v1")
 # FM-04a Phase 8 E — Tier 1 cohort anomaly detection.
 app.include_router(cohort_anomalies.router, prefix="/api/v1")
+# FM-04a Phase 9 D — Tier 1 cohort trend-slope anomaly detection.
+app.include_router(cohort_trend_anomalies.router, prefix="/api/v1")
 
 
 @app.get("/")

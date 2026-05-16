@@ -286,6 +286,26 @@ Bump history:
   fields continue to work because the new row is additive.
 """
 
+COHORT_TREND_ANOMALIES_SCHEMA_VERSION = "1.0.0"
+"""``cohort_trend_anomalies`` HTTP response (Phase 9 D).
+
+Builder: ``backend.app.services.reporting.cohort_trend_anomalies``.
+
+Tier 1 candidate cohort trend outliers: for each ``*-candidate``
+case + each of the 4 trust-score axes, computes a least-squares
+slope across the case's snapshot timeline (treating point index
+``0..N-1`` as the x-axis), and flags negative drift below named
+thresholds. Orthogonal to the Phase 8 E z-score anomaly endpoint —
+that one walks the cohort's latest snapshot; this one walks each
+case's own timeline through time. Severity buckets at slope <=
+-0.5 / -1.5 / -3.0 weighted-points per snapshot. Cohort point-count
+floor 3. Explicit ``claim_impact``: "trend anomalies surface
+within-case degradation over time; they do NOT diagnose root
+cause, validate physics, or authorize Tier 2 promotion."
+
+Closes Phase 8 retrospective carry-forward §4.
+"""
+
 SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"
 """``signoff_record.json`` (Phase 8 A).
 
