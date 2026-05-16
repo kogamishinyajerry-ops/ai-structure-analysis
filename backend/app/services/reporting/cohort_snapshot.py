@@ -72,7 +72,14 @@ _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 @dataclass(frozen=True)
 class SnapshotCaseInput:
-    """One case to capture inside a cohort snapshot."""
+    """One case to capture inside a cohort snapshot.
+
+    Phase 12 D — added ``analysis_type`` so the per-case completeness
+    scorecard inside the snapshot dispatches against the correct rubric
+    (modal cases were previously scored against the ballistic rubric,
+    artificially lowering their trust score). Default is ``"ballistic"``
+    to preserve back-compat with every existing FM-04a snapshot caller.
+    """
 
     case_id: str
     starter_deck_path: Path | None = None
@@ -83,6 +90,7 @@ class SnapshotCaseInput:
     result_mesh_path: Path | None = None
     generator_script_path: Path | None = None
     notes_path: Path | None = None
+    analysis_type: str = "ballistic"
 
 
 @dataclass
@@ -120,9 +128,7 @@ def write_cohort_snapshot(
 
     label = snapshot_label or utc_snapshot_label()
     if not SNAPSHOT_LABEL_RE.fullmatch(label):
-        raise ValueError(
-            f"invalid snapshot label {label!r}; expected YYYY-MM-DDTHHMMSSZ"
-        )
+        raise ValueError(f"invalid snapshot label {label!r}; expected YYYY-MM-DDTHHMMSSZ")
 
     out_root = snapshots_root(repo_root)
     _assert_not_in_golden_samples(out_root)
@@ -171,6 +177,11 @@ def write_cohort_snapshot(
                 result_mesh_path=case.result_mesh_path,
                 generator_script_path=case.generator_script_path,
                 notes_path=case.notes_path,
+                # Phase 12 D — dispatch on the case's actual analysis_type
+                # so modal cases hit the modal rubric, not the ballistic
+                # default. Back-compat: existing callers omit
+                # analysis_type and fall through to "ballistic".
+                analysis_type=case.analysis_type,
             )
         )
         score_json = render_case_completeness_json(score)
@@ -197,17 +208,10 @@ def write_cohort_snapshot(
     # silently skipped (the diff will fall back to "no numerical_deltas"
     # for that case rather than raising).
     for case in cases:
-        if (
-            case.ballistic_metrics_path is not None
-            and case.ballistic_metrics_path.is_file()
-        ):
+        if case.ballistic_metrics_path is not None and case.ballistic_metrics_path.is_file():
             raw = case.ballistic_metrics_path.read_text(encoding="utf-8")
-            _assert_no_overclaim_text(
-                f"metrics/{case.case_id}.json", raw
-            )
-            (out_dir / "metrics" / f"{case.case_id}.json").write_text(
-                raw, encoding="utf-8"
-            )
+            _assert_no_overclaim_text(f"metrics/{case.case_id}.json", raw)
+            (out_dir / "metrics" / f"{case.case_id}.json").write_text(raw, encoding="utf-8")
             members.append(f"metrics/{case.case_id}.json")
 
     # 3c. Phase 7 A — copy the case's raw convergence_study.json into
@@ -215,17 +219,10 @@ def write_cohort_snapshot(
     # semantics as metrics/: missing files are silently skipped and
     # downstream consumers (diff, timeline) gracefully degrade.
     for case in cases:
-        if (
-            case.convergence_study_path is not None
-            and case.convergence_study_path.is_file()
-        ):
+        if case.convergence_study_path is not None and case.convergence_study_path.is_file():
             raw = case.convergence_study_path.read_text(encoding="utf-8")
-            _assert_no_overclaim_text(
-                f"convergence/{case.case_id}.json", raw
-            )
-            (out_dir / "convergence" / f"{case.case_id}.json").write_text(
-                raw, encoding="utf-8"
-            )
+            _assert_no_overclaim_text(f"convergence/{case.case_id}.json", raw)
+            (out_dir / "convergence" / f"{case.case_id}.json").write_text(raw, encoding="utf-8")
             members.append(f"convergence/{case.case_id}.json")
 
     # 3d. Phase 9 B — copy the case's generator_script_path bytes into
@@ -236,10 +233,7 @@ def write_cohort_snapshot(
     # with errors="replace" so a binary or non-UTF-8 generator never
     # crashes the snapshot writer; the SHA + present=True still ship.
     for case in cases:
-        if (
-            case.generator_script_path is not None
-            and case.generator_script_path.is_file()
-        ):
+        if case.generator_script_path is not None and case.generator_script_path.is_file():
             raw_bytes = case.generator_script_path.read_bytes()
             decoded = raw_bytes.decode("utf-8", errors="replace")
             _assert_no_overclaim_text(f"generator/{case.case_id}.py", decoded)
@@ -261,8 +255,7 @@ def write_cohort_snapshot(
             notes_path=c.notes_path,
         )
         for c in cases
-        if c.ballistic_metrics_path is not None
-        and c.ballistic_metrics_path.is_file()
+        if c.ballistic_metrics_path is not None and c.ballistic_metrics_path.is_file()
     ]
     if bundle_cases:
         bundle_bytes = build_reviewer_bundle(bundle_cases, repo_root=repo_root)
@@ -327,9 +320,7 @@ def list_cohort_snapshots(repo_root: Path) -> list[dict[str, Any]]:
                 "claim_boundary": manifest.get("claim_boundary", CLAIM_BOUNDARY),
                 "cohort_count": manifest.get("cohort_count", 0),
                 "cases": list(manifest.get("cases", [])),
-                "reviewer_bundle_written": bool(
-                    manifest.get("reviewer_bundle_written", False)
-                ),
+                "reviewer_bundle_written": bool(manifest.get("reviewer_bundle_written", False)),
                 "schema_version": manifest.get("schema_version", ""),
             }
         )

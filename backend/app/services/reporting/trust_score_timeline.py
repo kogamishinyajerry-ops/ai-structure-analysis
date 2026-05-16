@@ -84,9 +84,7 @@ class TrustScoreTimeline:
     claim_impact: str
 
 
-def build_trust_score_timeline(
-    case_id: str, repo_root: Path
-) -> TrustScoreTimeline:
+def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimeline:
     """Walk reports/snapshots/<*>/ and compose a trust score timeline
     for ``case_id``.
 
@@ -141,18 +139,12 @@ def _build_point(case_id: str, snapshot_dir: Path) -> TimelinePoint | None:
 
     manifest = _load_optional_json(manifest_path) or {}
     completeness = _load_optional_json(completeness_path) or {}
-    repro = _load_optional_json(
-        snapshot_dir / "reproducibility" / f"{case_id}.json"
-    )
-    metrics = _load_optional_json(
-        snapshot_dir / "metrics" / f"{case_id}.json"
-    )
+    repro = _load_optional_json(snapshot_dir / "reproducibility" / f"{case_id}.json")
+    metrics = _load_optional_json(snapshot_dir / "metrics" / f"{case_id}.json")
     # Phase 7 A — prefer the captured convergence/<case>.json (real
     # convergence_study.json shape with mesh_sweep/dt_sweep blocks)
     # over the metrics-inlined convergence_summary fallback.
-    captured_convergence = _load_optional_json(
-        snapshot_dir / "convergence" / f"{case_id}.json"
-    )
+    captured_convergence = _load_optional_json(snapshot_dir / "convergence" / f"{case_id}.json")
     convergence = captured_convergence or _convergence_block_from_metrics(metrics)
 
     completeness_w = _completeness_weighted(completeness)
@@ -205,19 +197,39 @@ def _convergence_block_from_metrics(metrics: dict[str, Any] | None) -> dict[str,
 def _convergence_weighted(block: dict[str, Any] | None) -> int:
     if not isinstance(block, dict):
         return 0
+    # Phase 11 A — honor convergence_kind discriminator (linear_static).
+    # Phase 12 D — extend to modal (single mode_count_sweep axis).
+    # Mirrors the dispatch in trust_score._score_convergence_axis so a
+    # snapshot's timeline reflects the same convergence judgment the
+    # one-shot trust_score builder would compute.
+    kind = block.get("convergence_kind") or "explicit_dynamics"
     mesh = _stability_label(block.get("mesh_sweep"))
     dt = _stability_label(block.get("dt_sweep"))
-    if mesh == "candidate_observed_stable" and dt == "candidate_observed_stable":
-        raw = 100
-    elif (
-        mesh == "candidate_observed_unstable"
-        and dt == "candidate_observed_unstable"
-    ):
-        raw = 30
-    elif "candidate_observed_stable" in (mesh, dt):
-        raw = 60
+    mode_count = _stability_label(block.get("mode_count_sweep"))
+
+    if kind == "linear_static":
+        if mesh == "candidate_observed_stable":
+            raw = 100
+        elif mesh == "candidate_observed_unstable":
+            raw = 30
+        else:
+            raw = 0
+    elif kind == "modal":
+        if mode_count == "candidate_observed_stable":
+            raw = 100
+        elif mode_count == "candidate_observed_unstable":
+            raw = 30
+        else:
+            raw = 0
     else:
-        raw = 0
+        if mesh == "candidate_observed_stable" and dt == "candidate_observed_stable":
+            raw = 100
+        elif mesh == "candidate_observed_unstable" and dt == "candidate_observed_unstable":
+            raw = 30
+        elif "candidate_observed_stable" in (mesh, dt):
+            raw = 60
+        else:
+            raw = 0
     return int(round(raw * CONVERGENCE_WEIGHT / 100))
 
 
@@ -312,6 +324,4 @@ def _assert_no_overclaim(timeline: TrustScoreTimeline) -> None:
     haystack = json.dumps(_timeline_to_dict(timeline), default=str).lower()
     for token in forbidden:
         if token in haystack:
-            raise ValueError(
-                f"Trust score timeline contains forbidden positive claim: {token!r}"
-            )
+            raise ValueError(f"Trust score timeline contains forbidden positive claim: {token!r}")
