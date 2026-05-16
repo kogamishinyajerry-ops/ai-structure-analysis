@@ -32,6 +32,7 @@ import { AcceptancePacketPanel } from './components/AcceptancePacketPanel';
 import { CaseComparisonPanel } from './components/CaseComparisonPanel';
 import { ConvergenceStudyViewer } from './components/ConvergenceStudyViewer';
 import { CohortDashboardPanel } from './components/CohortDashboardPanel';
+import { CohortSubstantiationPanel } from './components/CohortSubstantiationPanel';
 import { CaseCompletenessCard } from './components/CaseCompletenessCard';
 import { ReviewerBundlePanel } from './components/ReviewerBundlePanel';
 import { ArchivedPacketDiffPanel } from './components/ArchivedPacketDiffPanel';
@@ -1565,6 +1566,21 @@ function App() {
                             }
                         }}
                     />
+                    {/*
+                        FM-04a Phase 12 I — Cohort substantiation panel.
+                        Consumes the Phase 12 E `cohortDashboardClient.ts`
+                        orchestrator + its load-bearing X:-2 defensive
+                        parsers. Rendered as a SECOND cohort surface
+                        alongside (not replacing) the legacy
+                        CohortDashboardPanel; the two surfaces serve
+                        different blueprints (#04 vs #07) and Phase 13
+                        may unify them once both are observed-stable.
+                        Component-level contract pinned by
+                        `frontend/test/CohortSubstantiationPanel.test.tsx`;
+                        visual integration requires running dev-server
+                        smoke (deferred as Phase 13 carry-forward).
+                    */}
+                    <CohortSubstantiationPanel apiBase={API_BASE} />
                     <CaseCompletenessCard
                         apiBase={API_BASE}
                         caseId={selectedCandidateCaseId}
