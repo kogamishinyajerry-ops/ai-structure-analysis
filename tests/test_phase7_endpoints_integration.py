@@ -301,3 +301,155 @@ def test_diff_endpoint_recovers_convergence_verdict_from_captured_file(
     verdict_pair = numerical["convergence_combined_verdict"]
     assert verdict_pair["a"] == "candidate_observed_stable"
     assert verdict_pair["b"] == "candidate_observed_unstable"
+
+
+# ---------------------------------------------------------------------
+# Slice-G TAA fixup batch — close the ≥14 integration floor (was 9).
+# Per TAA report .planning/phase7_audit_reports/G.md, the named gaps:
+#   - narrative envelope disclaimer round-trip
+#   - cross-locale forbidden-claim audit at HTTP boundary
+#   - stable-cohort no-alarms positive
+#   - 3 severity boundary pins (info_min=10, warn_min=25, danger_min=40)
+# ---------------------------------------------------------------------
+
+
+def test_narrative_endpoint_envelope_carries_tier1_disclaimer_trio(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — the narrative envelope round-trips the Tier 1
+    disclaimer trio through both locales (envelope strings stay English
+    even when locale=zh-CN per Phase 7 B claim_impact policy)."""
+    _seed_snapshot(fake_repo, "2026-05-16T100000Z", completeness=70)
+    _seed_snapshot(fake_repo, "2026-05-16T200000Z", completeness=90)
+    for locale in ("en-US", "zh-CN"):
+        res = client.get(
+            "/api/v1/snapshot-narrative",
+            params={
+                "a": "2026-05-16T100000Z",
+                "b": "2026-05-16T200000Z",
+                "locale": locale,
+            },
+        )
+        payload = res.json()
+        assert payload["claim_tier"] == "Tier 1 engineering candidate"
+        assert "not signed validation" in payload["claim_impact"]
+        assert "not benchmark agreement" in payload["claim_impact"]
+
+
+def test_narrative_endpoint_no_forbidden_claim_in_zh_cn_body(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — at the HTTP boundary, the zh-CN narrative
+    must not surface any of the forbidden positive claims even in
+    translated form. Cross-locale forbidden-claim audit."""
+    _seed_snapshot(fake_repo, "2026-05-16T100000Z", completeness=60)
+    _seed_snapshot(fake_repo, "2026-05-16T200000Z", completeness=95)
+    res = client.get(
+        "/api/v1/snapshot-narrative",
+        params={
+            "a": "2026-05-16T100000Z",
+            "b": "2026-05-16T200000Z",
+            "locale": "zh-CN",
+        },
+    )
+    body_lower = res.text.lower()
+    # All four envelope-forbidden tokens must be absent (the disclaimer
+    # form "not <claim>" only legitimately surfaces "signed validation"
+    # and "benchmark agreement" — those are EXCLUDED from this audit
+    # per the slice-B post-fix two-list design)
+    for token in (
+        "validated against",
+        "perforation completed",
+        "bullet-through-steel complete",
+        "validated physics",
+    ):
+        assert token not in body_lower
+
+
+def test_alerts_endpoint_no_alarms_when_cohort_stable(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — stable-cohort positive: 3 snapshots with
+    identical scores produce alert_count=0 and the Tier 1 disclaimer
+    is still present on the empty payload."""
+    for label in (
+        "2026-05-16T100000Z",
+        "2026-05-16T200000Z",
+        "2026-05-16T300000Z",
+    ):
+        _seed_snapshot(fake_repo, label, completeness=80)
+    res = client.get(
+        "/api/v1/trust-score-alerts/GS-A-candidate",
+        params={"threshold_delta": 1},
+    )
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["alert_count"] == 0
+    assert payload["alerts"] == []
+    body_lower = res.text.lower()
+    assert "tier 1 engineering candidate" in body_lower
+    assert "not authorize tier 2" in body_lower
+
+
+def test_alerts_endpoint_severity_info_at_boundary(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — severity boundary pin at info_min=10.
+
+    Trust-score arithmetic: completeness 100 → 80 with all other axes
+    held constant produces a delta of exactly 10 weighted points
+    (50 - 40 = 10). The severity must be 'info'.
+    """
+    _seed_snapshot(fake_repo, "2026-05-16T100000Z", completeness=100)
+    _seed_snapshot(fake_repo, "2026-05-16T200000Z", completeness=80)
+    res = client.get(
+        "/api/v1/trust-score-alerts/GS-A-candidate",
+        params={"threshold_delta": 1},
+    )
+    payload = res.json()
+    assert payload["alert_count"] == 1
+    alert = payload["alerts"][0]
+    assert alert["delta"] == 10
+    assert alert["severity"] == "info"
+
+
+def test_alerts_endpoint_severity_warn_at_boundary(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — severity boundary pin at warn_min=25.
+
+    completeness 100 → 50 produces a delta of exactly 25 weighted
+    points (50 - 25 = 25). The severity must be 'warn'.
+    """
+    _seed_snapshot(fake_repo, "2026-05-16T100000Z", completeness=100)
+    _seed_snapshot(fake_repo, "2026-05-16T200000Z", completeness=50)
+    res = client.get(
+        "/api/v1/trust-score-alerts/GS-A-candidate",
+        params={"threshold_delta": 1},
+    )
+    payload = res.json()
+    assert payload["alert_count"] == 1
+    alert = payload["alerts"][0]
+    assert alert["delta"] == 25
+    assert alert["severity"] == "warn"
+
+
+def test_alerts_endpoint_severity_danger_at_boundary(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Slice-G TAA fixup — severity boundary pin at danger_min=40.
+
+    completeness 100 → 20 produces a delta of exactly 40 weighted
+    points (50 - 10 = 40). The severity must be 'danger'.
+    """
+    _seed_snapshot(fake_repo, "2026-05-16T100000Z", completeness=100)
+    _seed_snapshot(fake_repo, "2026-05-16T200000Z", completeness=20)
+    res = client.get(
+        "/api/v1/trust-score-alerts/GS-A-candidate",
+        params={"threshold_delta": 1},
+    )
+    payload = res.json()
+    assert payload["alert_count"] == 1
+    alert = payload["alerts"][0]
+    assert alert["delta"] == 40
+    assert alert["severity"] == "danger"
