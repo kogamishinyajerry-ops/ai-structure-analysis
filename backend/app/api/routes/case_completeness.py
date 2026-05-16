@@ -1,12 +1,20 @@
-"""Tier 1 candidate evidence completeness endpoint (FM-04a Phase 4 A).
+"""Tier 1 candidate evidence completeness endpoint (FM-04a Phase 4 A; Phase 11 D analysis-type extension).
 
 Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
-``GET /api/v1/case-completeness/<case-id>`` reads the case's evidence
-inventory off disk and returns a structured completeness score.
+``GET /api/v1/case-completeness/<case-id>?analysis_type=<type>`` reads
+the case's evidence inventory off disk and returns a structured
+completeness score against the rubric for the chosen analysis type.
 Read-only; never writes inside ``golden_samples/**``. The score is an
 evidence-presence signal, NOT a validation-quality signal: even
 100/100 keeps every FM-04b blocker visible in the rendered output.
+
+Phase 11 D extends the endpoint with:
+  * ``?analysis_type=<type>`` query parameter ∈ ``ANALYSIS_TYPE_TUPLE``
+    (currently ``ballistic`` / ``linear_static_pv`` / ``explicit_dynamics`` /
+    ``modal``). Default: ``ballistic`` for back-compat with pre-Phase-11
+    clients that did not send the parameter.
+  * 422 with the allowed-set echoed in the detail on invalid value.
 """
 
 from __future__ import annotations
@@ -14,10 +22,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from ...services.reporting.case_completeness import (
+    ANALYSIS_TYPE_TUPLE,
+    DEFAULT_ANALYSIS_TYPE,
     CaseCompletenessInputs,
     render_case_completeness_json,
     score_case_completeness,
@@ -32,7 +42,7 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
 
-def _build_inputs_for(case_id: str) -> CaseCompletenessInputs:
+def _build_inputs_for(case_id: str, analysis_type: str) -> CaseCompletenessInputs:
     repo_root = _repo_root()
     case_dir = repo_root / "golden_samples" / case_id
     starter_deck = case_dir / "data" / "model_00_0000.rad"
@@ -79,15 +89,48 @@ def _build_inputs_for(case_id: str) -> CaseCompletenessInputs:
         result_mesh_path=result_mesh_path,
         generator_script_path=generator_script,
         notes_path=notes,
+        analysis_type=analysis_type,
     )
 
 
 @router.get("/{case_id}")
-async def get_case_completeness(case_id: str):
-    """Score one Tier 1 candidate case's evidence completeness."""
+async def get_case_completeness(
+    case_id: str,
+    analysis_type: str = Query(
+        DEFAULT_ANALYSIS_TYPE,
+        description=(
+            "Analysis type whose rubric to apply. One of "
+            f"{ANALYSIS_TYPE_TUPLE}. Defaults to {DEFAULT_ANALYSIS_TYPE!r} "
+            "for back-compat with pre-Phase-11 clients."
+        ),
+    ),
+):
+    """Score one Tier 1 candidate case's evidence completeness.
+
+    Validation gate order:
+      1. **422** if ``case_id`` shape is invalid.
+      2. **422** if ``analysis_type`` is not in
+         :data:`ANALYSIS_TYPE_TUPLE`. The allowed set is echoed in
+         the detail.
+      3. **200** with the rebuilt scorecard JSON otherwise. The
+         scorecard's top-level ``analysis_type`` field equals the
+         requested value (Phase 11 A schema 1.1.0).
+    """
     if not _CASE_ID_RE.fullmatch(case_id):
+        # Preserved at 400 from Phase 4 A for back-compat with existing
+        # Phase 4 endpoint tests. Phase 11 D only INTRODUCES the new
+        # 422-on-invalid-analysis_type gate; existing 400 behavior is
+        # unchanged.
         raise HTTPException(status_code=400, detail="invalid case_id")
-    inputs = _build_inputs_for(case_id)
+    if analysis_type not in ANALYSIS_TYPE_TUPLE:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"invalid analysis_type {analysis_type!r}; allowed: "
+                f"{list(ANALYSIS_TYPE_TUPLE)}"
+            ),
+        )
+    inputs = _build_inputs_for(case_id, analysis_type)
     score = score_case_completeness(inputs)
     payload = render_case_completeness_json(score)
     return Response(content=payload, media_type="application/json")

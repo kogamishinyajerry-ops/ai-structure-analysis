@@ -801,3 +801,152 @@ def _default_llm_factory(
     # intentionally side-effect-free; the audit trail lives in the
     # downstream HTTP route's response telemetry (Phase 11 D).
     return None
+
+
+# ---------------------------------------------------------------------
+# Snapshot -> AdvisorContext builder (Phase 11 D)
+# ---------------------------------------------------------------------
+
+
+class AdvisorSnapshotNotFound(LookupError):
+    """Raised when the (snapshot_label, case_id) pair has no on-disk
+    presence under ``reports/snapshots/<label>/``. The HTTP route
+    surfaces this as a 404 — distinct from the 422 case_id refusal
+    paths and the 5xx tier we never want to hit on the advisor surface."""
+
+
+# Mapping from metrics-file ``analysis_type`` values seen on disk to
+# the SSOT ``ANALYSIS_TYPE_TUPLE``. Tier 1 metrics files emitted before
+# Phase 11 A used the long-form labels (e.g. ``linear_static_pressure_vessel``);
+# the rubric SSOT uses the short form (``linear_static_pv``). This map
+# is the SSOT for the long-form → short-form translation and is
+# pinned by a slice-D test.
+METRICS_ANALYSIS_TYPE_MAP: dict[str, str] = {
+    "ballistic": "ballistic",
+    "linear_static_pressure_vessel": "linear_static_pv",
+    "linear_static_pv": "linear_static_pv",
+    "explicit_dynamics": "explicit_dynamics",
+    "modal": "modal",
+}
+"""Long-form (filename) → short-form (rubric SSOT) translation for
+``analysis_type``. A value not in this map is treated as the
+default rubric (``ballistic``) so the advisor surface continues to
+produce a critique even when a future analysis-type label has not
+yet been registered. Pinned by ``test_metrics_analysis_type_map``."""
+
+
+def build_advisor_context_from_snapshot(
+    case_id: str,
+    snapshot_label: str,
+    *,
+    repo_root: Path,
+) -> AdvisorContext:
+    """Build an :class:`AdvisorContext` for a (case, snapshot) pair by
+    reading frozen snapshot bytes under
+    ``reports/snapshots/<snapshot_label>/``.
+
+    Raises:
+      * ``ValueError`` if ``case_id`` is empty.
+      * ``AdvisorSnapshotNotFound`` if the snapshot dir does not exist
+        OR if the snapshot exists but has no per-case metrics file
+        for ``case_id``. The HTTP route surfaces both as 404.
+
+    The reads are deliberately tolerant of pre-Phase-11 snapshot
+    layouts (1.0.0 / 1.1.0 / 1.2.0 / 1.3.0): missing fields default
+    to ``None`` and the advisor surface still produces a useful
+    critique (the stub's always-emit prompts kick in). A read failure
+    on any individual sidecar file (corrupted JSON, IOError) leaves
+    that field as ``None`` rather than crashing the route — the
+    advisor is LLM-offline-first AND snapshot-degradation-tolerant.
+    """
+    # Local import to keep module-level imports tidy and avoid a
+    # circular import with ``cohort_snapshot`` (which itself imports
+    # from this module's ``acceptance_packet`` dependency tree).
+    from .cohort_snapshot import (
+        SNAPSHOT_LABEL_RE,
+        SNAPSHOT_MANIFEST_FILENAME,
+        snapshots_root,
+    )
+
+    if not case_id:
+        raise ValueError("Advisor context requires a non-empty case_id")
+    if not snapshot_label:
+        raise ValueError("Advisor context requires a non-empty snapshot_label")
+    if not SNAPSHOT_LABEL_RE.fullmatch(snapshot_label):
+        raise ValueError(
+            f"Advisor context received invalid snapshot label shape: "
+            f"{snapshot_label!r}"
+        )
+
+    snap_dir = (snapshots_root(repo_root) / snapshot_label).resolve()
+    manifest_path = snap_dir / SNAPSHOT_MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        raise AdvisorSnapshotNotFound(
+            f"snapshot {snapshot_label!r} not found under reports/snapshots/"
+        )
+
+    metrics_path = snap_dir / "metrics" / f"{case_id}.json"
+    convergence_path = snap_dir / "convergence" / f"{case_id}.json"
+    completeness_path = snap_dir / "completeness" / f"{case_id}.json"
+
+    if not metrics_path.is_file():
+        raise AdvisorSnapshotNotFound(
+            f"case {case_id!r} has no per-case metrics file in "
+            f"snapshot {snapshot_label!r}; presumed not in cohort"
+        )
+
+    metrics = _read_json_or_none(metrics_path) or {}
+    convergence = _read_json_or_none(convergence_path) or {}
+    completeness = _read_json_or_none(completeness_path) or {}
+
+    energy_audit = metrics.get("energy_audit") or {}
+    raw_analysis_type = metrics.get("analysis_type")
+    analysis_type = (
+        METRICS_ANALYSIS_TYPE_MAP.get(raw_analysis_type)
+        if isinstance(raw_analysis_type, str)
+        else None
+    )
+
+    # Trust score: the snapshot does not carry a pre-computed integer
+    # trust score on the cohort_overview surface (that surface is
+    # cohort-scoped, not per-case-scoped). For slice D we surface
+    # ``None`` and the stub still emits useful content; a future slice
+    # may wire build_trust_score_provenance().trust_score here for a
+    # richer correlated-content payload.
+    return AdvisorContext(
+        case_id=case_id,
+        snapshot_label=snapshot_label,
+        trust_score=None,
+        completeness_score=_coerce_int(completeness.get("score")),
+        completeness_analysis_type=analysis_type,
+        energy_audit_status=_coerce_str(energy_audit.get("status")),
+        convergence_kind=_coerce_str(convergence.get("convergence_kind")),
+        convergence_combined_verdict=_coerce_str(
+            convergence.get("convergence_combined_verdict")
+        ),
+        extra={"metrics_analysis_type_raw": raw_analysis_type},
+    )
+
+
+def _read_json_or_none(path: Path) -> dict[str, Any] | None:
+    """Read a JSON file, returning the parsed dict or None on any
+    error. The advisor route MUST NOT 5xx on a corrupt sidecar; it
+    falls through to the stub's degraded-but-useful path."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):  # ``bool`` is a subclass of ``int`` in Python
+        return None
+    if isinstance(value, int):
+        return value
+    return None
+
+
+def _coerce_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None

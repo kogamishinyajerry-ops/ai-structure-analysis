@@ -9,6 +9,7 @@ from .api import nl_router
 # The /api/v1/knowledge/* surface is unregistered until post-MVP redesign.
 from .api.routes import (
     acceptance_packet,
+    advisor_critique,
     archived_packet_diff,
     candidate_cases,
     case_comparison,
@@ -126,6 +127,8 @@ app.include_router(cohort_executive_summary.router, prefix="/api/v1")
 app.include_router(cohort_anomalies.router, prefix="/api/v1")
 # FM-04a Phase 9 D — Tier 1 cohort trend-slope anomaly detection.
 app.include_router(cohort_trend_anomalies.router, prefix="/api/v1")
+# FM-04a Phase 11 D — Tier 1 candidate AI advisor critique surface.
+app.include_router(advisor_critique.router, prefix="/api/v1")
 
 
 @app.get("/")
