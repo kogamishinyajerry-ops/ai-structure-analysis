@@ -126,7 +126,28 @@ TEMPLATE_IDS: tuple[str, ...] = tuple(CATALOGS[DEFAULT_LOCALE].keys())
 """Canonical 16-element template enumeration; every locale must expose
 the same set of template_id keys."""
 
-_FORBIDDEN_TOKENS: tuple[str, ...] = (
+ENVELOPE_FORBIDDEN_TOKENS: tuple[str, ...] = (
+    "validated against",
+    "perforation completed",
+    "bullet-through-steel complete",
+    "validated physics",
+)
+"""Forbidden positive claims that are scanned against the *rendered
+envelope* of a built ``SnapshotNarrative`` payload by
+``snapshot_narrative._assert_no_overclaim``.
+
+This list deliberately EXCLUDES ``"signed validation"`` and
+``"benchmark agreement"`` because those tokens appear legitimately
+inside the Tier 1 disclaimer trio (``"not signed validation"``,
+``"not benchmark agreement"``) at the envelope level (``claim_tier``,
+``claim_boundary``, ``claim_impact``). Banning them at the envelope
+level would false-positive on every well-formed payload.
+
+If a future phase introduces disclaimer-form-aware scanning, this
+list could grow to match ``CATALOG_FORBIDDEN_TOKENS``.
+"""
+
+CATALOG_FORBIDDEN_TOKENS: tuple[str, ...] = (
     "validated against",
     "perforation completed",
     "bullet-through-steel complete",
@@ -134,6 +155,24 @@ _FORBIDDEN_TOKENS: tuple[str, ...] = (
     "signed validation",
     "benchmark agreement",
 )
+"""Forbidden positive claims that are scanned against *template body
+text* in ``_audit_catalog_forbidden_claims`` at module-import time.
+
+Template bodies are *factual delta descriptions* (``"Residual velocity
+changed from 75 to 80 m/s"``); they never carry disclaimer trios, so
+this list can be broader than ``ENVELOPE_FORBIDDEN_TOKENS`` and
+includes ``"signed validation"`` + ``"benchmark agreement"``. A
+translation that smuggles ``"signed validation"`` into a Chinese
+template body would fail at module-import time even though the same
+word appears safely inside the envelope disclaimer trio.
+
+Phase 7 B TAA finding (MEDIUM, axis C) initially flagged a duplication
+seam between this list and the envelope list. The first remediation
+attempt unified the two but BROKE the envelope audit on the disclaimer
+trio (every well-formed payload contains ``"not signed validation"``
+which the scan saw as a hit). The honest design is two intentional
+lists with this docstring explaining why.
+"""
 
 
 def _audit_catalog_forbidden_claims() -> None:
@@ -152,7 +191,7 @@ def _audit_catalog_forbidden_claims() -> None:
     for locale, catalog in CATALOGS.items():
         for template_id, body in catalog.items():
             lowered = body.lower()
-            for token in _FORBIDDEN_TOKENS:
+            for token in CATALOG_FORBIDDEN_TOKENS:
                 if token in lowered:
                     raise ValueError(
                         f"narrative catalog locale={locale!r} "

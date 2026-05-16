@@ -52,6 +52,7 @@ from .acceptance_packet import CLAIM_BOUNDARY
 from .cohort_snapshot_diff import CohortSnapshotDiff
 from .snapshot_narrative_catalogs import (
     DEFAULT_LOCALE,
+    ENVELOPE_FORBIDDEN_TOKENS,
     SUPPORTED_LOCALES,
     render_template,
 )
@@ -456,14 +457,22 @@ def _narrative_to_dict(narrative: SnapshotNarrative) -> dict[str, Any]:
 
 
 def _assert_no_overclaim(narrative: SnapshotNarrative) -> None:
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-    )
+    """Phase 7 B (post-TAA revision) — uses
+    ``snapshot_narrative_catalogs.ENVELOPE_FORBIDDEN_TOKENS`` (4
+    entries), NOT the broader ``CATALOG_FORBIDDEN_TOKENS`` (6 entries).
+
+    The envelope audit scope deliberately excludes ``"signed validation"``
+    and ``"benchmark agreement"`` because those tokens appear inside
+    the Tier 1 disclaimer trio (``"not signed validation"``,
+    ``"not benchmark agreement"``). The first remediation attempt for
+    the Phase 7 B TAA MEDIUM finding tried to unify both lists into one
+    and broke the envelope audit on every well-formed payload. The
+    honest design is two intentional lists — see the docstrings on
+    ``ENVELOPE_FORBIDDEN_TOKENS`` and ``CATALOG_FORBIDDEN_TOKENS`` for
+    the scope difference.
+    """
     haystack = json.dumps(_narrative_to_dict(narrative), default=str).lower()
-    for token in forbidden:
+    for token in ENVELOPE_FORBIDDEN_TOKENS:
         if token in haystack:
             raise ValueError(
                 f"Snapshot narrative contains forbidden positive claim: {token!r}"

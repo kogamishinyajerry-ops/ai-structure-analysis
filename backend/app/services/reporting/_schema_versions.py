@@ -185,10 +185,23 @@ evidence change. Bumping the formula version REQUIRES a retrospective
 entry naming the rebalance + a SCORECARD note on the bump category.
 """
 
-SNAPSHOT_NARRATIVE_SCHEMA_VERSION = "1.0.0"
-"""``snapshot_narrative`` HTTP response (Phase 6 C).
+SNAPSHOT_NARRATIVE_SCHEMA_VERSION = "1.1.0"
+"""``snapshot_narrative`` HTTP response (Phase 6 C; Phase 7 B MINOR bump).
 
 Builder: ``backend.app.services.reporting.snapshot_narrative``.
+
+Bump history:
+* ``1.0.0`` (Phase 6 C, commit ``823040b``) — initial release with
+  per-case templated narrative lines (16 enumerated templates,
+  fixed severity, no LLM generation).
+* ``1.1.0`` (Phase 7 B, MINOR per bump policy) — added optional
+  ``locale`` envelope field surfacing the catalog used to render
+  the narrative lines (defaults to ``"en-US"`` at the builder /
+  endpoint default). The field is additive; consumers reading the
+  1.0.0 fields continue to work. The bump exists so a downstream
+  reviewer comparing two captured narrative payloads can tell which
+  catalog produced each rendering. Closes Phase 6 retrospective
+  carry-forward §3.
 """
 
 TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.0.0"
