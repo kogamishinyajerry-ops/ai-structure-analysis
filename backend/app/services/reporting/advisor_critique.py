@@ -291,17 +291,80 @@ class StubAdvisor:
                 "analysis is required."
             )
         elif context.convergence_kind == "explicit_dynamics":
+            # Phase 14 C — explicit_dynamics-specific advisor concerns.
+            # Four named themes, mirroring the four blueprint items
+            # (CFL stability / energy partition closure / contact
+            # stiffness convergence / wave reflection vs BC). The four
+            # themes are emitted DISTINCTLY (no boilerplate copy) and
+            # each carries a marker token (``CFL`` / ``energy
+            # partition`` / ``contact stiffness`` / ``wave
+            # reflection``) so a downstream test can grep for the
+            # four themes without false positives.
+
+            # Theme 1: CFL stability — dt + mass-scaling failure mode.
+            # Carries the legacy "mass scaling" / "dt" tokens for the
+            # Phase 11 advisor-critique test
+            # ``test_stub_advisor_explicit_dynamics_surfaces_mass_scaling_check``.
             bc_questions.append(
-                "explicit_dynamics convergence kind: was the dt sweep "
-                "converged to within 5% on the metric of interest? Was "
-                "hourglass control reviewed?"
+                "explicit_dynamics CFL stability: was the dt sweep "
+                "converged to within 5% on the metric of interest? "
+                "Explicit time integration is conditionally stable; "
+                "dt MUST satisfy the CFL condition "
+                "dt <= delta_x_min / c_wave. Confirm hourglass "
+                "control coefficient + dt scaling were both reviewed "
+                "so the reported transient signature is not driven "
+                "by numerical damping rather than the physical "
+                "response."
             )
             failure_modes.append(
-                "Explicit dynamics is sensitive to mass scaling. Confirm "
-                "the mass-scaled-to-physical ratio is within accepted "
-                "engineering practice (<2-5% added mass typical) and "
-                "that the time step is dominated by the smallest "
-                "element rather than by mass scaling cutoff."
+                "explicit_dynamics CFL stability: with dt > CFL_limit "
+                "(delta_x_min / c_wave) the solve diverges and is NOT "
+                "energy-conserving. Mass scaling (>2-5% added mass "
+                "beyond engineering practice) hides this failure "
+                "mode; confirm the time step is dominated by the "
+                "smallest element via element-by-element wave-speed "
+                "audit, not by mass scaling cutoff."
+            )
+
+            # Theme 2: energy partition closure.
+            mesh_concerns.append(
+                "explicit_dynamics energy partition closure: per-frame "
+                "kinetic + internal energy MUST sum to external work "
+                "within the energy_partition_audit drift_fraction "
+                "tolerance (default 1%). A flagged frame indicates "
+                "non-physical energy injection — typically contact "
+                "stiffness too soft / hourglass leakage / mass-"
+                "scaling cutoff masking a CFL violation. Cross-check "
+                "the per-frame audit before accepting the transient "
+                "response as a Tier 1 candidate response."
+            )
+
+            # Theme 3: contact stiffness convergence.
+            mesh_concerns.append(
+                "explicit_dynamics contact stiffness convergence: "
+                "hourglass control coefficient + contact stiffness "
+                "scale factor together govern the transient response "
+                "signature. The candidate SHOULD sweep both (e.g., "
+                "contact stiffness 0.1x / 1x / 10x; hourglass "
+                "coefficient within solver-recommended bounds) and "
+                "report which combination produced the reported "
+                "quantity-of-interest. A single-point evaluation is "
+                "insufficient for Tier 1 candidate convergence."
+            )
+
+            # Theme 4: wave reflection vs boundary condition.
+            bc_questions.append(
+                "explicit_dynamics wave reflection vs boundary "
+                "condition: enumerate which end-condition is "
+                "asserted at the impact and reflection boundaries "
+                "(free / clamped / partially-fixed). Free vs clamped "
+                "SIGN-FLIPS the reflected stress wave and changes "
+                "the observed first-reflection signature; the "
+                "candidate MUST cite the asserted BC for the "
+                "analytical 1D-bar cross-check (see "
+                "explicit_dynamics_extraction."
+                "bar_wave_first_reflection_s) to be applicable to "
+                "the reported timing."
             )
         elif context.convergence_kind == "modal":
             # Phase 12 B — modal-specific advisor concerns. The four

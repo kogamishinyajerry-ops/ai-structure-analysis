@@ -61,7 +61,9 @@ EXPLICIT_DYNAMICS_CONVERGENCE_KIND: str = "explicit_dynamics"
 """SSOT for the ``convergence_kind`` discriminator value used by
 ``case_completeness`` and ``advisor_critique`` when an analysis is an
 explicit-integration transient solve. The string MUST match
-``ANALYSIS_TYPE_TUPLE[3]`` in ``case_completeness.py``."""
+``ANALYSIS_TYPE_TUPLE[2]`` in ``case_completeness.py`` (the tuple is
+``("ballistic", "linear_static_pv", "explicit_dynamics", "modal")``;
+``modal`` lives at index 3, ``explicit_dynamics`` at index 2)."""
 
 ENERGY_PARTITION_EPSILON: float = 1e-9
 """Absolute floor (Joules) below which energy-partition discrepancies

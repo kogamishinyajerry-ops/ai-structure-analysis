@@ -59,7 +59,7 @@ The candidate fixture (`golden_samples/rod-wave-impact-candidate/` in slice D) i
 `backend/app/services/reporting/explicit_dynamics_extraction.py` exposes:
 
 * `WAVE_CROSS_CHECK_TOLERANCE_PCT: float = 5.0` — SSOT tolerance.
-* `EXPLICIT_DYNAMICS_CONVERGENCE_KIND: str = "explicit_dynamics"` — discriminator value matching `ANALYSIS_TYPE_TUPLE[3]`.
+* `EXPLICIT_DYNAMICS_CONVERGENCE_KIND: str = "explicit_dynamics"` — discriminator value matching `ANALYSIS_TYPE_TUPLE[2]` (the closed tuple is `("ballistic", "linear_static_pv", "explicit_dynamics", "modal")`; `modal` lives at index 3, `explicit_dynamics` at index 2).
 * `ENERGY_PARTITION_EPSILON: float = 1e-9` — float-arithmetic floor.
 * `ENERGY_PARTITION_DRIFT_FRACTION: float = 0.01` — 1% relative-drift flag threshold.
 * `parse_animation_manifest(path) -> AnimationManifest` — defensive parser.
