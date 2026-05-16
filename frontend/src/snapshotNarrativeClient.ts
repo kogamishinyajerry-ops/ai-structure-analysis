@@ -19,6 +19,13 @@ export interface CaseNarrative {
   lines: NarrativeLine[]
 }
 
+// Phase 7 B — exposed locale set (kept here to avoid a network probe for
+// the supported set). The default and supported list must stay aligned
+// with backend/app/services/reporting/snapshot_narrative_catalogs.py.
+export const SUPPORTED_NARRATIVE_LOCALES = ['en-US', 'zh-CN'] as const
+export type NarrativeLocale = (typeof SUPPORTED_NARRATIVE_LOCALES)[number]
+export const DEFAULT_NARRATIVE_LOCALE: NarrativeLocale = 'en-US'
+
 export interface SnapshotNarrative {
   schemaVersion: string
   snapshotALabel: string
@@ -26,6 +33,7 @@ export interface SnapshotNarrative {
   generatedAtUtc: string
   claimTier: string
   claimBoundary: string
+  locale: string
   narratives: CaseNarrative[]
   claimImpact: string
 }
@@ -48,6 +56,7 @@ interface RawSnapshotNarrative {
   generated_at_utc?: string
   claim_tier?: string
   claim_boundary?: string
+  locale?: string
   narratives?: RawCaseNarrative[]
   claim_impact?: string
 }
@@ -97,6 +106,7 @@ export function parseSnapshotNarrative(
     generatedAtUtc: raw.generated_at_utc ?? '',
     claimTier: raw.claim_tier ?? '',
     claimBoundary: raw.claim_boundary ?? '',
+    locale: raw.locale ?? DEFAULT_NARRATIVE_LOCALE,
     narratives: (raw.narratives ?? [])
       .map(parseCaseNarrative)
       .filter((n): n is CaseNarrative => n !== null),
@@ -115,8 +125,9 @@ export async function fetchSnapshotNarrative(
   labelA: string,
   labelB: string,
   signal?: AbortSignal,
+  locale: NarrativeLocale = DEFAULT_NARRATIVE_LOCALE,
 ): Promise<SnapshotNarrativeFetchResult> {
-  const params = new URLSearchParams({ a: labelA, b: labelB })
+  const params = new URLSearchParams({ a: labelA, b: labelB, locale })
   const url = `${apiBase.replace(/\/$/, '')}/snapshot-narrative?${params.toString()}`
   try {
     const res = await fetch(url, { signal })

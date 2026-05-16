@@ -21,6 +21,10 @@ from ...services.reporting.snapshot_narrative import (
     build_snapshot_narrative,
     render_snapshot_narrative_json,
 )
+from ...services.reporting.snapshot_narrative_catalogs import (
+    DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+)
 
 router = APIRouter(prefix="/snapshot-narrative", tags=["snapshot-narrative"])
 
@@ -33,17 +37,36 @@ def _repo_root() -> Path:
 async def get_snapshot_narrative(
     a: str = Query(..., description="snapshot label A (YYYY-MM-DDTHHMMSSZ)"),
     b: str = Query(..., description="snapshot label B (YYYY-MM-DDTHHMMSSZ)"),
+    locale: str = Query(
+        DEFAULT_LOCALE,
+        description=(
+            "Narrative catalog locale; one of "
+            f"{', '.join(SUPPORTED_LOCALES)}"
+        ),
+    ),
 ):
-    """Compose templated drift narrative between two snapshots."""
+    """Compose templated drift narrative between two snapshots.
+
+    Phase 7 B — ``locale`` selects from a hand-translated catalog
+    (en-US default; zh-CN pilot). Unknown locale → 400.
+    """
     for label, name in ((a, "a"), (b, "b")):
         if not SNAPSHOT_LABEL_RE.fullmatch(label):
             raise HTTPException(
                 status_code=400, detail=f"invalid snapshot label for {name!r}"
             )
+    if locale not in SUPPORTED_LOCALES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unsupported locale {locale!r}; "
+                f"expected one of {SUPPORTED_LOCALES!r}"
+            ),
+        )
     try:
         diff = diff_cohort_snapshots(_repo_root(), a, b)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    narrative = build_snapshot_narrative(diff)
+    narrative = build_snapshot_narrative(diff, locale=locale)
     payload = render_snapshot_narrative_json(narrative)
     return Response(content=payload, media_type="application/json")

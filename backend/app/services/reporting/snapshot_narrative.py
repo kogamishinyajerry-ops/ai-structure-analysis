@@ -50,6 +50,11 @@ from typing import Any, Literal
 from ._schema_versions import SNAPSHOT_NARRATIVE_SCHEMA_VERSION
 from .acceptance_packet import CLAIM_BOUNDARY
 from .cohort_snapshot_diff import CohortSnapshotDiff
+from .snapshot_narrative_catalogs import (
+    DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
+    render_template,
+)
 
 CLAIM_TIER = "Tier 1 engineering candidate"
 CLAIM_IMPACT_DEFAULT = (
@@ -82,12 +87,26 @@ class SnapshotNarrative:
     generated_at_utc: str
     claim_tier: str
     claim_boundary: str
+    locale: str
     narratives: list[CaseNarrative]
     claim_impact: str
 
 
-def build_snapshot_narrative(diff: CohortSnapshotDiff) -> SnapshotNarrative:
-    """Compose templated narrative lines from a cohort snapshot diff."""
+def build_snapshot_narrative(
+    diff: CohortSnapshotDiff, locale: str = DEFAULT_LOCALE
+) -> SnapshotNarrative:
+    """Compose templated narrative lines from a cohort snapshot diff.
+
+    Phase 7 B — ``locale`` selects from a hand-translated catalog
+    (en-US default; zh-CN pilot). Unknown locale → ``ValueError``.
+    The ``template_id`` and ``severity`` are locale-independent;
+    only the rendered ``text`` varies.
+    """
+    if locale not in SUPPORTED_LOCALES:
+        raise ValueError(
+            f"unsupported locale {locale!r}; "
+            f"expected one of {SUPPORTED_LOCALES!r}"
+        )
     narratives: list[CaseNarrative] = []
 
     # cohort membership additions / removals get their own dedicated
@@ -101,7 +120,9 @@ def build_snapshot_narrative(diff: CohortSnapshotDiff) -> SnapshotNarrative:
                     NarrativeLine(
                         template_id="cohort_added",
                         severity="info",
-                        text=f"Case {case_id} added to the cohort between snapshots.",
+                        text=render_template(
+                            "cohort_added", locale, {"case_id": case_id}
+                        ),
                     )
                 ],
             )
@@ -114,7 +135,9 @@ def build_snapshot_narrative(diff: CohortSnapshotDiff) -> SnapshotNarrative:
                     NarrativeLine(
                         template_id="cohort_removed",
                         severity="warn",
-                        text=f"Case {case_id} removed from the cohort between snapshots.",
+                        text=render_template(
+                            "cohort_removed", locale, {"case_id": case_id}
+                        ),
                     )
                 ],
             )
@@ -127,9 +150,9 @@ def build_snapshot_narrative(diff: CohortSnapshotDiff) -> SnapshotNarrative:
 
     for case_id in diff.cohort_shared:
         lines: list[NarrativeLine] = []
-        lines.extend(_numerical_lines(numerical_by_case.get(case_id)))
-        lines.extend(_completeness_lines(completeness_by_case.get(case_id)))
-        lines.extend(_reproducibility_lines(repro_by_case.get(case_id)))
+        lines.extend(_numerical_lines(numerical_by_case.get(case_id), locale))
+        lines.extend(_completeness_lines(completeness_by_case.get(case_id), locale))
+        lines.extend(_reproducibility_lines(repro_by_case.get(case_id), locale))
         narratives.append(CaseNarrative(case_id=case_id, lines=lines))
 
     narrative = SnapshotNarrative(
@@ -139,6 +162,7 @@ def build_snapshot_narrative(diff: CohortSnapshotDiff) -> SnapshotNarrative:
         generated_at_utc=datetime.now(UTC).isoformat(timespec="seconds"),
         claim_tier=CLAIM_TIER,
         claim_boundary=CLAIM_BOUNDARY,
+        locale=locale,
         narratives=narratives,
         claim_impact=CLAIM_IMPACT_DEFAULT,
     )
@@ -156,7 +180,7 @@ def render_snapshot_narrative_json(narrative: SnapshotNarrative) -> str:
 # ---------------------------------------------------------------------
 
 
-def _numerical_lines(delta: Any) -> list[NarrativeLine]:
+def _numerical_lines(delta: Any, locale: str) -> list[NarrativeLine]:
     if delta is None:
         return []
     out: list[NarrativeLine] = []
@@ -170,9 +194,14 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
                 NarrativeLine(
                     template_id="residual_velocity_delta",
                     severity="info",
-                    text=(
-                        f"Residual velocity changed from {a:g} to {b:g} m/s "
-                        f"({_format_pct(rv.get('delta_pct'))})."
+                    text=render_template(
+                        "residual_velocity_delta",
+                        locale,
+                        {
+                            "a": a,
+                            "b": b,
+                            "delta_pct": _format_pct(rv.get("delta_pct")),
+                        },
                     ),
                 )
             )
@@ -181,7 +210,9 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
                 NarrativeLine(
                     template_id="residual_velocity_unchanged",
                     severity="info",
-                    text=f"Residual velocity unchanged at {a:g} m/s.",
+                    text=render_template(
+                        "residual_velocity_unchanged", locale, {"a": a}
+                    ),
                 )
             )
 
@@ -194,9 +225,14 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
                 NarrativeLine(
                     template_id="energy_balance_improved",
                     severity="info",
-                    text=(
-                        f"Energy balance error tightened from {a:g}% to {b:g}% "
-                        f"(absolute delta {eb.get('delta_abs_pct'):g}%)."
+                    text=render_template(
+                        "energy_balance_improved",
+                        locale,
+                        {
+                            "a": a,
+                            "b": b,
+                            "delta_abs_pct": eb.get("delta_abs_pct"),
+                        },
                     ),
                 )
             )
@@ -205,9 +241,14 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
                 NarrativeLine(
                     template_id="energy_balance_degraded",
                     severity="warn",
-                    text=(
-                        f"Energy balance error widened from {a:g}% to {b:g}% "
-                        f"(absolute delta {eb.get('delta_abs_pct'):g}%)."
+                    text=render_template(
+                        "energy_balance_degraded",
+                        locale,
+                        {
+                            "a": a,
+                            "b": b,
+                            "delta_abs_pct": eb.get("delta_abs_pct"),
+                        },
                     ),
                 )
             )
@@ -216,7 +257,9 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
                 NarrativeLine(
                     template_id="energy_balance_unchanged",
                     severity="info",
-                    text=f"Energy balance error unchanged at {a:g}%.",
+                    text=render_template(
+                        "energy_balance_unchanged", locale, {"a": a}
+                    ),
                 )
             )
 
@@ -231,7 +274,9 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="convergence_verdict_changed",
                 severity=severity,
-                text=f"Convergence verdict changed from {a!r} to {b!r}.",
+                text=render_template(
+                    "convergence_verdict_changed", locale, {"a": a, "b": b}
+                ),
             )
         )
 
@@ -243,14 +288,16 @@ def _numerical_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="perforation_marker_changed",
                 severity="warn",
-                text=f"Perforation marker changed from {a!r} to {b!r}.",
+                text=render_template(
+                    "perforation_marker_changed", locale, {"a": a, "b": b}
+                ),
             )
         )
 
     return out
 
 
-def _completeness_lines(delta: Any) -> list[NarrativeLine]:
+def _completeness_lines(delta: Any, locale: str) -> list[NarrativeLine]:
     if delta is None or delta.delta is None:
         return []
     if delta.delta > 0:
@@ -258,9 +305,14 @@ def _completeness_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="completeness_improved",
                 severity="info",
-                text=(
-                    f"Completeness score lifted from {delta.a_score} to "
-                    f"{delta.b_score} (+{delta.delta})."
+                text=render_template(
+                    "completeness_improved",
+                    locale,
+                    {
+                        "a_score": delta.a_score,
+                        "b_score": delta.b_score,
+                        "delta": delta.delta,
+                    },
                 ),
             )
         ]
@@ -269,9 +321,14 @@ def _completeness_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="completeness_regressed",
                 severity="warn",
-                text=(
-                    f"Completeness score regressed from {delta.a_score} to "
-                    f"{delta.b_score} ({delta.delta})."
+                text=render_template(
+                    "completeness_regressed",
+                    locale,
+                    {
+                        "a_score": delta.a_score,
+                        "b_score": delta.b_score,
+                        "delta": delta.delta,
+                    },
                 ),
             )
         ]
@@ -279,12 +336,14 @@ def _completeness_lines(delta: Any) -> list[NarrativeLine]:
         NarrativeLine(
             template_id="completeness_unchanged",
             severity="info",
-            text=f"Completeness score unchanged at {delta.a_score}.",
+            text=render_template(
+                "completeness_unchanged", locale, {"a_score": delta.a_score}
+            ),
         )
     ]
 
 
-def _reproducibility_lines(delta: Any) -> list[NarrativeLine]:
+def _reproducibility_lines(delta: Any, locale: str) -> list[NarrativeLine]:
     if delta is None:
         return []
     out: list[NarrativeLine] = []
@@ -294,9 +353,13 @@ def _reproducibility_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="git_sha_changed",
                 severity="info",
-                text=(
-                    f"Git commit advanced from {_short(delta.a_git_sha)} to "
-                    f"{_short(delta.b_git_sha)}."
+                text=render_template(
+                    "git_sha_changed",
+                    locale,
+                    {
+                        "a_short_sha": _short(delta.a_git_sha),
+                        "b_short_sha": _short(delta.b_git_sha),
+                    },
                 ),
             )
         )
@@ -310,7 +373,7 @@ def _reproducibility_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="git_dirty_introduced",
                 severity="warn",
-                text="Working tree went from clean to dirty between snapshots.",
+                text=render_template("git_dirty_introduced", locale, {}),
             )
         )
 
@@ -319,10 +382,13 @@ def _reproducibility_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="python_version_changed",
                 severity="warn",
-                text=(
-                    f"Python interpreter changed from {delta.a_python_version} "
-                    f"to {delta.b_python_version}; regression risk on numerical "
-                    "output."
+                text=render_template(
+                    "python_version_changed",
+                    locale,
+                    {
+                        "a_python_version": delta.a_python_version,
+                        "b_python_version": delta.b_python_version,
+                    },
                 ),
             )
         )
@@ -333,9 +399,8 @@ def _reproducibility_lines(delta: Any) -> list[NarrativeLine]:
             NarrativeLine(
                 template_id="script_sha_changed",
                 severity="warn",
-                text=(
-                    f"Generator script SHA-256 changed ({relpaths}); "
-                    "regression risk."
+                text=render_template(
+                    "script_sha_changed", locale, {"relpaths": relpaths}
                 ),
             )
         )
@@ -384,6 +449,7 @@ def _narrative_to_dict(narrative: SnapshotNarrative) -> dict[str, Any]:
         "generated_at_utc": narrative.generated_at_utc,
         "claim_tier": narrative.claim_tier,
         "claim_boundary": narrative.claim_boundary,
+        "locale": narrative.locale,
         "narratives": [_case_narrative_to_dict(c) for c in narrative.narratives],
         "claim_impact": narrative.claim_impact,
     }
