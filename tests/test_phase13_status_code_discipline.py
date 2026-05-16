@@ -290,6 +290,7 @@ def test_meta_test_ceiling_is_zero_after_slice_b() -> None:
     [
         "test_phase4_endpoints_integration.py",
         "test_phase5_endpoints_integration.py",
+        "test_phase6_endpoints_integration.py",
         "test_phase7_endpoints_integration.py",
         "test_phase11_endpoints_integration.py",
         "test_api_endpoints_integration.py",

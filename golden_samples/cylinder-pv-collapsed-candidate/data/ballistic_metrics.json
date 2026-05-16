@@ -1,0 +1,52 @@
+{
+  "analysis_type": "linear_static_pressure_vessel",
+  "case_id": "cylinder-pv-collapsed-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate DEEP-DEGRADATION synthetic fixture; not signed validation; not benchmark agreement. ASME §5.5 numbers carry intentionally degraded values (P_m/S_m > 1.0) and convergence-vs-Lame errors well above the 5% engineering tolerance. NOT a physical claim; the fixture serves the Phase 13 C regressed-bucket trigger only.",
+  "claim_tier": "Tier 1 engineering candidate",
+  "energy_audit": {
+    "rationale": "Deep-degradation synthetic fixture: residual norm did NOT close below the 1e-3 tolerance; strain-energy balance never reached aggregate closure. Reported `unavailable` to force the trust-score energy-axis floor.",
+    "status": "unavailable"
+  },
+  "pv_summary": {
+    "asme_section_5_5": {
+      "P_m_MPa": 207.0,
+      "P_m_P_b_MPa": 268.7,
+      "P_m_P_b_Q_MPa": 274.5,
+      "P_m_P_b_Q_exact_MPa": 274.6,
+      "S_m_MPa": 138.0,
+      "bending_outer_tensor_rtz": [9.5, -9.6, -0.01, 0.0, 0.0, 0.0],
+      "membrane_tensor_rtz": [-8.0, 40.0, 16.0, 0.0, 0.0, 0.0],
+      "ratio_P_m_P_b_Q_over_3_S_m": 0.66,
+      "ratio_P_m_P_b_over_1_5_S_m": 1.30,
+      "ratio_P_m_over_S_m": 1.50
+    },
+    "convergence_vs_lame": {
+      "max_abs_err_sigma_r_MPa": 12.5,
+      "max_abs_err_sigma_t_MPa": 8.4,
+      "max_abs_err_sigma_z_MPa": 4.8,
+      "max_abs_err_von_mises_MPa": 16.1,
+      "max_rel_err_sigma_r_pct": 15.4,
+      "max_rel_err_sigma_t_pct": 13.2,
+      "max_rel_err_sigma_z_pct": 12.0,
+      "max_rel_err_von_mises_pct": 14.7,
+      "rel_err_floor_MPa": 0.5
+    },
+    "geometry": {
+      "L_mm": 400.0,
+      "Ri_mm": 100.0,
+      "Ro_mm": 150.0,
+      "wedge_deg": 5.0
+    },
+    "load": {
+      "closed_end_axial_stress_MPa": 24.0,
+      "internal_pressure_MPa": 30.0
+    },
+    "material": {
+      "E_MPa": 200000.0,
+      "S_m_MPa": 138.0,
+      "name": "SA-516 Gr.70 (degraded synthetic)",
+      "nu": 0.3
+    }
+  }
+}

@@ -74,3 +74,22 @@ The behavior at every neighbour of the two thresholds is pinned by [`tests/test_
 * `signoff_verdict ∈ {None, watching, needs_more_evidence, needs_more_convergence, blocked_pending_input}`
 
 …and pins the bucket outcome for every combination the precedence ladder cares about. A silent edit of either constant (`80 → 79`, `50 → 51`, etc.) will cause at least one boundary cell to flip bucket, surfacing the change in CI.
+
+## Phase 13 C — load-bearing regressed-bucket trigger evidence
+
+Phase 12 D's `cylinder-pv-extended-candidate` synthetic arc was authored to land snapshot 3 in the `regressed` bucket, but the resulting trust score was 84 (well inside `healthy`). The mismatch was honestly flagged in the Phase 12 retrospective §4 as a **carry-forward**: the slice-D blueprint wording "regressed bucket fires" remained aspirational on fixture math, not load-bearing.
+
+Phase 13 C closes that gap by adding a **5th synthetic cohort case** — `cylinder-pv-collapsed-candidate` — authored to land trust strictly below the `WATCHING_TRUST_SCORE_MIN = 50` threshold on every snapshot. The fixture's failure modes are:
+
+| Trust axis (weight) | Collapsed-case behavior | Resulting raw → weighted |
+|---|---|---|
+| completeness (50) | every PV-quality gate fails: `ratio_P_m_over_S_m = 1.5 > 1.0`, `max_rel_err_*_pct > 5%`, no generator script | low raw → weighted < 30 |
+| convergence_stability (20) | `convergence_kind="linear_static"` + `mesh_sweep.candidate_stability="candidate_observed_unstable"` | raw 30 → weighted 6 |
+| energy_audit_closure (15) | `energy_audit.status = "unavailable"` | raw 0 → weighted 0 |
+| reproducibility_clean (15) | git env-dependent | varies, capped at weight ceiling |
+
+The composition forces total trust < 50 by construction; the load-bearing pin lives in [`tests/test_phase13_deeper_degradation_cohort.py`](../../tests/test_phase13_deeper_degradation_cohort.py) at `test_collapsed_candidate_snapshot3_trust_strictly_below_50` (asserts `trust_score < COLLAPSED_TRUST_SCORE_CEILING == 50`). The matching cohort-summary assertion lives at `test_cohort_executive_summary_regressed_bucket_fires` and pins `regressed_count >= 1` on the live ASGI surface.
+
+**What this fixture is NOT.** The collapsed case is a synthetic fixture authored to exercise the bucket classifier under deeper degradation. It is NOT a real-physics claim of any kind; the `ratio_P_m_over_S_m = 1.5` value would mean a pressure vessel that has failed ASME §5.5 margin, not a candidate for engineering review. The fixture's `expected_results.json` carries an explicit `fixture_authoring_notes` block making this construction transparent.
+
+**Why both `COLLAPSED_TRUST_SCORE_CEILING` AND `WATCHING_TRUST_SCORE_MIN` are pinned in tandem.** Slice C asserts `trust < 50` literally (not `trust < WATCHING_TRUST_SCORE_MIN`) so a future rebalance of the bucket edge surfaces in BOTH the threshold constant AND the slice-C test — the dependency is explicit, not implicit. The slice-C anti-loosening guard (`test_collapsed_trust_ceiling_is_exactly_50`) pins both equalities so a silent drift trips immediately.

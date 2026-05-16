@@ -1,0 +1,15 @@
+{
+  "case_id": "cylinder-pv-collapsed-candidate",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate DEEP-DEGRADATION synthetic pressure cylinder fixture, authored Phase 13 C as the load-bearing regressed-bucket trigger evidence. Every PV-quality gate (lame_cross_check / scl_convergence / allowable_margin) intentionally fails; energy_audit reports `unavailable`; convergence sweeps report `candidate_observed_unstable`. NOT a physical claim of any kind; the fixture exists ONLY to push the trust score below the 50-point regressed-bucket threshold so the slice-D Phase 12 blueprint assertion `regressed_count >= 1` becomes load-bearing on real fixture math.",
+  "purpose": "Slice C deliverable of FM-04a Phase 13. Closes Phase 12 retrospective §4 (deeper-degradation fixture, previously aspirational at trust=84). NOT a Tier 2 promotion candidate.",
+  "expected_trust_score_max": 49,
+  "expected_health_bucket": "regressed",
+  "fixture_authoring_notes": [
+    "Drop reproducibility: no generator script in any snapshot.",
+    "Drop energy_audit: status='unavailable' on every snapshot (not the canonical degrade-to-unavailable mid-arc).",
+    "Drop completeness: ballistic_metrics.json carries degraded PV-quality numbers (worst rel err 12-15% on every axis; ratio_P_m_over_S_m=1.5 > 1.0 fails allowable margin).",
+    "Drop convergence: mesh_sweep reports candidate_observed_unstable (convergence_kind='linear_static' so dt_sweep is N/A)."
+  ]
+}
