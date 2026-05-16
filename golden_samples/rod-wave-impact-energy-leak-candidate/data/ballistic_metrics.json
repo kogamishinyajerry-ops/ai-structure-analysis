@@ -1,0 +1,26 @@
+{
+  "analysis_type": "explicit_dynamics_transient",
+  "case_id": "rod-wave-impact-energy-leak-candidate",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate 1D-bar wave-propagation case (ENERGY-LEAK variant); not signed validation; not benchmark agreement. Synthetic non-physical energy injection at frame 30 flags the energy_partition_audit; energy_audit.status is open_residual by construction. Does not authorize Tier 2 promotion.",
+  "energy_audit": {
+    "status": "open_residual",
+    "rationale": "Per-frame audit flags frame 30 with relative drift ~= 0.50, well above the 1% ENERGY_PARTITION_DRIFT_FRACTION threshold. The case_completeness energy_audit axis lands 0/15 because closed_aggregate posture is not met."
+  },
+  "explicit_dynamics_summary": {
+    "rod_length_m": 1.0,
+    "cross_section_area_m2": 0.0001,
+    "E_Pa": 200000000000.0,
+    "rho_kg_per_m3": 7850.0,
+    "impact_velocity_m_per_s": 10.0,
+    "analytical_wave_speed_m_per_s": 5047.544651250688,
+    "analytical_first_reflection_s": 0.0001981161275615895,
+    "observed_first_reflection_frame_index": 20,
+    "observed_first_reflection_s": 0.0002,
+    "frame_count": 100,
+    "frame_dt_s": 1e-05,
+    "leak_injection_frame": 30,
+    "leak_injection_scale": 1.5
+  }
+}

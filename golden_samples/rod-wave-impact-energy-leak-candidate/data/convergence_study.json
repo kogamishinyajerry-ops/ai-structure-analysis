@@ -1,0 +1,17 @@
+{
+  "case_id": "rod-wave-impact-energy-leak-candidate",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "convergence_kind": "explicit_dynamics",
+  "combined_verdict": "candidate_observed_unstable",
+  "mesh_sweep": {
+    "axis": "mesh_h",
+    "candidate_stability": "candidate_observed_unstable",
+    "rationale": "Synthetic 1D-bar ENERGY-LEAK variant; mesh axis held constant but the audit's energy_partition deviation propagates as an unstable verdict \u2014 the per-frame energy balance is non-physical, so the convergence_combined_verdict cannot be stable."
+  },
+  "dt_sweep": {
+    "axis": "frame_dt_s",
+    "candidate_stability": "candidate_observed_unstable",
+    "rationale": "frame_dt unchanged from canonical (1e-5 s); the dt axis instability reflects the synthetic energy injection at frame 30, not a CFL violation. A reviewer reading this case must check the audit first."
+  }
+}
