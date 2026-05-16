@@ -78,7 +78,14 @@ Per the binding 9-axis rubric (B 12 / M 12 / T 15 / C 12 / X 12 / D 8 / A 8 / E 
 
 **Pre-FINAL cumulative honest score:** 12 + 12 + 15 + 12 + 12 + 8 + 8 + 8 + 6.5 = **93.5 / 100**, every code axis at 100 % of weight, V-axis 6.5 / 13 (50 %).
 
-Stop condition (≥99 AND every axis ≥95 % of weight) requires the slice G final whole-arc TAA APPROVE to raise V to ≥12 / 13.
+**FINAL whole-arc TAA verdict (slice G):** APPROVE 100 / 100. V-axis raised to 13 / 13 on the strength of:
+- 6 / 6 first-cut APPROVE on per-slice TAAs (zero CHANGES_REQUIRED, zero fix-up commits).
+- Independent re-verification of backend + frontend sweeps at HEAD (1916 / 1916 + 8 skipped; 77 / 77).
+- Cross-slice forbidden-token discipline verified.
+- HF1 zone untouched (36-file arc diff scanned).
+- All 5 Phase 9 carry-forwards visibly closed at HEAD.
+
+**Stop condition (≥99 AND every axis ≥95 % of weight) MET.**
 
 ## TAA reports
 
@@ -90,7 +97,7 @@ Per-slice TAA reports archived under `.planning/phase10_audit_reports/`:
 - `D.md` — APPROVE 68 / 68
 - `E.md` — APPROVE 68 / 68
 - `F.md` — APPROVE 41 / 41
-- `FINAL.md` — APPROVE pending (whole-arc TAA, to run after slice G retrospective + STATE land)
+- `FINAL.md` — APPROVE **100 / 100**, V-axis 13 / 13, stop condition met
 
 ## Closure invariants (must hold at slice G close)
 
@@ -102,4 +109,4 @@ Per-slice TAA reports archived under `.planning/phase10_audit_reports/`:
 - ✅ No real OpenRadioss / CalculiX invocation; synthetic-only test paths.
 - ✅ Tier 1 disclaimer trio present on every new response shape.
 - ✅ All 6 slice TAA reports archived.
-- ⏳ Final whole-arc TAA APPROVE archived at `.planning/phase10_audit_reports/FINAL.md` ← slice G remaining work.
+- ✅ Final whole-arc TAA APPROVE 100 / 100 archived at `.planning/phase10_audit_reports/FINAL.md` — V-axis raised to 13 / 13; stop condition met.

@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase10-reviewer-action-surface-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@ce4951a`
-> **Last updated:** 2026-05-16 (FM-04a Phase 10 A-F reviewer action-surface & calibration closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; closes every Phase 9 retrospective carry-forward at the HTTP + frontend boundary — SignoffSubmissionForm UI surfaces inside SignoffHistoryPanel with 4-verdict dropdown bound to as-const tuple + client-side forbidden-claim preview + 422 / 429 inline error surfaces, CohortTrendAnomaliesPanel parallel to z-score panel, .planning/methodology/cohort_trend_slope_thresholds.md SSOT doc + 24-case sensitivity matrix, per-(case, reviewer) sliding-window rate limit on POST signoff with HTTP-429 + Retry-After header, generator script canonicalization SHA via ast.parse + ast.dump with MINOR bump on provenance schema 1.1.0 → 1.2.0, 16 HTTP integration tests + 3 E2E reviewer journeys covering rate-limit recovery + whitespace equivalence over the wire + broken-generator surface isolation; cumulative honest score 93.5/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6.5/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 9 closure stamp `fm04a-phase9-active-surface-trend-closure-2026-05-16 · @6a18d4f` preserved in git history.
+> **Stamp:** `fm04a-phase10-reviewer-action-surface-CLOSED-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@<phase10-final-SHA>`
+> **Last updated:** 2026-05-16 (FM-04a Phase 10 A-G reviewer action-surface & calibration closure FULLY CLOSED locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; FINAL whole-arc TAA APPROVE **100/100** with every axis at 100% of weight — stop condition (≥99 AND every axis ≥95% of weight) MET. Closes every Phase 9 retrospective carry-forward (5 items) at the HTTP + frontend boundary — SignoffSubmissionForm UI surfaces inside SignoffHistoryPanel with 4-verdict dropdown bound to as-const tuple + client-side forbidden-claim preview + 422 / 429 inline error surfaces, CohortTrendAnomaliesPanel parallel to z-score panel, .planning/methodology/cohort_trend_slope_thresholds.md SSOT doc + 24-case sensitivity matrix, per-(case, reviewer) sliding-window rate limit on POST signoff with HTTP-429 + Retry-After header, generator script canonicalization SHA via ast.parse + ast.dump with MINOR bump on provenance schema 1.1.0 → 1.2.0, 16 HTTP integration tests + 3 E2E reviewer journeys; 6/6 slice TAAs APPROVE on first cut + FINAL whole-arc TAA APPROVE 100/100 — zero CHANGES_REQUIRED rounds across Phase 10, zero fix-up commits, cleanest arc in the FM-04a phase ledger. Backend 1916/1916 + 8 skipped; frontend 77/77 across 10 files. Nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 9 closure stamp `fm04a-phase9-active-surface-trend-closure-2026-05-16 · @6a18d4f` preserved in git history.
 > **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -776,18 +776,19 @@ each slice; final whole-arc TAA pass gates closure at ≥99 / 100.
     signoff + history + summary). E2E #1 walks 3 routes, #2 walks
     2 routes, #3 walks 4 routes. Slice-F TAA APPROVE 41/41 archived
     at `phase10_audit_reports/F.md`.
-- Phase 10 cumulative honest scorecard (pre-final-TAA pass):
-  **93.5/100**, code axes 100 % of weight, V-axis 6.5/13 (50 %). Per-
-  axis: B 12/12, M 12/12, T 15/15, C 12/12, X 12/12, D 8/8, A 8/8,
-  E 8/8, V 6.5/13. Stop condition (≥99 AND every axis ≥95 % of
-  weight) requires slice G final whole-arc TAA APPROVE to raise V to
-  ≥12/13. Full retrospective at
+- Phase 10 FINAL honest scorecard (post-whole-arc TAA):
+  **100/100**, every axis at 100 % of weight. Per-axis: B 12/12,
+  M 12/12, T 15/15, C 12/12, X 12/12, D 8/8, A 8/8, E 8/8, V 13/13.
+  Stop condition (≥99 AND every axis ≥95 % of weight) **MET**. Full
+  retrospective at
   `.planning/retrospectives/fm04a_phase10_reviewer_action_surface.md`.
   TAA reports archived under `.planning/phase10_audit_reports/`
-  (A.md, B.md, C.md, D.md, E.md, F.md, FINAL.md pending).
-  All 6 slice TAA verdicts were APPROVE on first cut — zero
-  CHANGES_REQUIRED rounds across Phase 10 (matching Phase 9's
-  6-for-6 record).
+  (A.md APPROVE 80/80, B.md APPROVE 80/80, C.md APPROVE 68/68,
+  D.md APPROVE 68/68, E.md APPROVE 68/68, F.md APPROVE 41/41,
+  FINAL.md APPROVE 100/100). All 6 slice TAA verdicts AND the FINAL
+  whole-arc TAA were APPROVE on first cut — zero CHANGES_REQUIRED
+  rounds across Phase 10 (matching Phase 9's 6-for-6 record), zero
+  fix-up commits, cleanest arc in the FM-04a phase ledger.
 
 Backend full sweep at slice F: **1916 pass / 8 skipped** (up from
 1843 entering Phase 10; +73 new backend tests).
