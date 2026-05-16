@@ -114,9 +114,12 @@ class _ScriptedProvider:
 # ---------------------------------------------------------------------
 
 
-def test_advisor_critique_schema_version_pinned_at_phase11_b_baseline() -> None:
-    """Phase 11 B starts at 1.0.0 per the documented bump policy."""
-    assert ADVISOR_CRITIQUE_SCHEMA_VERSION == "1.0.0"
+def test_advisor_critique_schema_version_pinned_at_phase13_a_baseline() -> None:
+    """Phase 11 B started at 1.0.0; Phase 13 A MINOR bump to 1.1.0
+    adds the optional ``refused_claims`` field. The SSOT pin tracks
+    the current version; the prior version is preserved in the
+    bump-history docstring on ``_schema_versions.py``."""
+    assert ADVISOR_CRITIQUE_SCHEMA_VERSION == "1.1.0"
 
 
 def test_advisor_status_tuple_closed_set() -> None:
@@ -178,7 +181,9 @@ def test_envelope_rendered_json_round_trips_with_pinned_keys() -> None:
     envelope = build_advisor_critique(_context(), now_utc=_FROZEN_NOW)
     rendered = render_advisor_critique_json(envelope)
     parsed = json.loads(rendered)
-    assert parsed["schema_version"] == "1.0.0"
+    # Phase 13 A — schema bumped 1.0.0 -> 1.1.0; the centralized
+    # SSOT pin lives in tests/test_schema_versions_stamping.py.
+    assert parsed["schema_version"] == ADVISOR_CRITIQUE_SCHEMA_VERSION
     assert parsed["case_id"] == "GS-PV-cyl-candidate"
     assert parsed["snapshot_label"] == "2026-05-16T00-00-00Z"
     assert parsed["advisor_status"] in ADVISOR_STATUS_TUPLE
@@ -407,7 +412,20 @@ def test_four_question_gate_refuses_false_answer() -> None:
 def test_forbidden_claim_audit_fires_per_token(token: str) -> None:
     """T:-5 — each forbidden token (base 4 + Phase-11 5) has its own
     test that injects the token *outside* the ``not <claim>`` form
-    and confirms the envelope is refused."""
+    and confirms the envelope refuses the OFFENDING CONTENT.
+
+    Phase 13 A contract evolution: the per-section filter REPLACES
+    the offending entry with a structured marker in
+    ``refused_claims`` (was: raise at construction in Phase 11 B).
+    This is a strictly stronger guarantee — the original positive
+    claim never reaches the rendered surface AT ALL, whereas the
+    Phase 11 raise behavior depended on the envelope-level audit
+    catching it. The per-token T:-5 anti-gaming guard remains
+    binding: each token must lead to a refusal, with the refusal now
+    surfaced as a structured marker rather than an exception.
+    """
+    from app.services.reporting.advisor_critique import REFUSED_CLAIM_MARKER_PREFIX
+
     raw = AdvisorRawCritique(
         mesh_quality_concerns=(f"The structure is {token} for service.",),
         boundary_condition_questions=("b",),
@@ -416,12 +434,14 @@ def test_forbidden_claim_audit_fires_per_token(token: str) -> None:
         four_question_gate={k: True for k in FOUR_QUESTION_GATE_KEYS},
         degrade_reason=None,
     )
-    with pytest.raises(ValueError, match="forbidden positive claim"):
-        build_advisor_critique(
-            _context(),
-            provider=_ScriptedProvider(raw),
-            now_utc=_FROZEN_NOW,
-        )
+    envelope = build_advisor_critique(
+        _context(),
+        provider=_ScriptedProvider(raw),
+        now_utc=_FROZEN_NOW,
+    )
+    # Phase 13 A: forbidden token is filtered, not raised.
+    assert envelope.mesh_quality_concerns == ()  # offending entry stripped
+    assert envelope.refused_claims == (f"{REFUSED_CLAIM_MARKER_PREFIX}{token}",)
 
 
 @pytest.mark.parametrize("token", list(ADVISOR_FORBIDDEN_TOKENS))
@@ -446,7 +466,15 @@ def test_forbidden_claim_audit_allows_not_claim_disclaimer_form(token: str) -> N
 
 def test_forbidden_claim_audit_is_case_insensitive() -> None:
     """``ASME Compliant`` (mixed case) is still forbidden — the audit
-    folds case so a maintainer can't slip past via capitalization."""
+    folds case so a maintainer can't slip past via capitalization.
+
+    Phase 13 A contract evolution: the case-insensitive match now
+    fires inside the per-section filter (not at envelope-audit
+    raise time). The mixed-case forbidden text is filtered into
+    a refused-claim marker; the lowercased token in the marker is
+    canonical. Original entry is discarded."""
+    from app.services.reporting.advisor_critique import REFUSED_CLAIM_MARKER_PREFIX
+
     raw = AdvisorRawCritique(
         mesh_quality_concerns=("This design is ASME Compliant per inspection.",),
         boundary_condition_questions=("b",),
@@ -455,12 +483,15 @@ def test_forbidden_claim_audit_is_case_insensitive() -> None:
         four_question_gate={k: True for k in FOUR_QUESTION_GATE_KEYS},
         degrade_reason=None,
     )
-    with pytest.raises(ValueError, match="forbidden positive claim"):
-        build_advisor_critique(
-            _context(),
-            provider=_ScriptedProvider(raw),
-            now_utc=_FROZEN_NOW,
-        )
+    envelope = build_advisor_critique(
+        _context(),
+        provider=_ScriptedProvider(raw),
+        now_utc=_FROZEN_NOW,
+    )
+    # Mixed-case forbidden text caught by case-folded scan; refused
+    # marker uses the canonical lowercase token form.
+    assert envelope.mesh_quality_concerns == ()
+    assert envelope.refused_claims == (f"{REFUSED_CLAIM_MARKER_PREFIX}asme compliant",)
 
 
 # ---------------------------------------------------------------------
@@ -470,7 +501,12 @@ def test_forbidden_claim_audit_is_case_insensitive() -> None:
 
 def test_critique_to_dict_pins_top_level_envelope_keys() -> None:
     """If a maintainer adds an envelope field, this audit fails until
-    they update the pin — making the schema contract auditable."""
+    they update the pin — making the schema contract auditable.
+
+    Phase 13 A MINOR bump: ``refused_claims`` was added per the
+    1.0.0 -> 1.1.0 schema evolution; the key set is updated in
+    lockstep with the version pin in
+    ``test_advisor_critique_schema_version_pinned_at_phase13_a_baseline``."""
     envelope = build_advisor_critique(_context(), now_utc=_FROZEN_NOW)
     keys = set(_critique_to_dict(envelope).keys())
     assert keys == {
@@ -489,6 +525,7 @@ def test_critique_to_dict_pins_top_level_envelope_keys() -> None:
         "claim_tier",
         "claim_boundary",
         "claim_impact",
+        "refused_claims",
     }
 
 

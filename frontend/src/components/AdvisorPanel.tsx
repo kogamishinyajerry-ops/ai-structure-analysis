@@ -24,6 +24,7 @@
 import { useEffect, useState } from 'react'
 import {
   FOUR_QUESTION_GATE_KEYS,
+  REFUSED_CLAIMS_MAX_ITEMS,
   fetchAdvisorCritique,
   isAdvisorEntrySafe,
   type AdvisorCritique,
@@ -215,6 +216,15 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
             entries={critique.unhandledLoadCases}
           />
 
+          {/*
+            Phase 13 A — refused-claim suppression history. Only renders
+            when at least one marker is present (collapsed visibility
+            when empty). The markers name WHICH forbidden token tripped
+            the per-section filter; the original positive-claim text
+            was DISCARDED upstream and never reaches this panel.
+          */}
+          <_RefusedClaimsSection refusedClaims={critique.refusedClaims} />
+
           {/* footer disclaimer trio */}
           <footer
             data-testid="advisor-claim-footer"
@@ -232,6 +242,81 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
         </div>
       )}
     </section>
+  )
+}
+
+interface _SectionProps {
+  testid: string
+  title: string
+  entries: string[]
+}
+
+interface _RefusedClaimsSectionProps {
+  refusedClaims: string[]
+}
+
+function _RefusedClaimsSection({ refusedClaims }: _RefusedClaimsSectionProps) {
+  // Phase 13 A — render the suppression history. Only mount when at
+  // least one marker is present so a clean envelope doesn't carry
+  // panel chrome for an empty section. The marker text is rendered
+  // verbatim; the marker is reviewer-readable and contains NO original
+  // positive-claim content (per the methodology doc).
+  if (refusedClaims.length === 0) return null
+  const shown = refusedClaims.slice(0, REFUSED_CLAIMS_MAX_ITEMS)
+  const truncated = refusedClaims.length - shown.length
+  return (
+    <div
+      data-testid="advisor-refused-claims"
+      style={{
+        marginTop: '8px',
+        padding: '6px 10px',
+        borderRadius: '6px',
+        border: '1px solid var(--text-warning, #b8860b)',
+        background: 'rgba(184, 134, 11, 0.06)',
+      }}
+    >
+      <div
+        data-testid="advisor-refused-claims-header"
+        style={{
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          color: 'var(--text-warning, #b8860b)',
+        }}
+      >
+        Refused LLM claims ({refusedClaims.length})
+      </div>
+      <div
+        style={{
+          fontSize: '0.62rem',
+          color: 'var(--text-secondary)',
+          marginBottom: '4px',
+        }}
+      >
+        Advisor content containing a forbidden positive claim outside `not
+        &lt;claim&gt;` disclaimer form was filtered out. The marker names
+        WHICH token tripped the audit; the original entry text has been
+        discarded.
+      </div>
+      <ul style={{ paddingLeft: '18px', margin: '4px 0', fontSize: '0.7rem' }}>
+        {shown.map((marker, idx) => (
+          <li
+            key={`refused-${idx}`}
+            data-testid={`advisor-refused-claims-item-${idx}`}
+            style={{ fontFamily: 'monospace' }}
+          >
+            {marker}
+          </li>
+        ))}
+        {truncated > 0 && (
+          <li
+            data-testid="advisor-refused-claims-truncated"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            … {truncated} more refused claim(s) not shown.
+          </li>
+        )}
+      </ul>
+    </div>
   )
 }
 

@@ -368,8 +368,8 @@ cause, validate physics, or authorize Tier 2 promotion."
 Closes Phase 8 retrospective carry-forward §4.
 """
 
-ADVISOR_CRITIQUE_SCHEMA_VERSION = "1.0.0"
-"""``advisor_critique`` HTTP response + on-disk serialization (Phase 11 B).
+ADVISOR_CRITIQUE_SCHEMA_VERSION = "1.1.0"
+"""``advisor_critique`` HTTP response + on-disk serialization (Phase 11 B; Phase 13 A MINOR bump).
 
 Builder: ``backend.app.services.reporting.advisor_critique``.
 
@@ -395,6 +395,22 @@ Bump policy: same MAJOR / MINOR / PATCH scheme as every other
 ``schema_version`` in this file. Bumping MAJOR requires a retrospective
 entry naming the broken consumer; MINOR/PATCH require only a SCORECARD
 note.
+
+Bump history:
+* ``1.0.0`` (Phase 11 B) — initial schema; four content sections +
+  ``four_question_gate`` + Tier 1 disclaimer trio + advisor_status /
+  advisor_backend / degrade_reason envelope fields.
+* ``1.1.0`` (Phase 13 A · 2026-05-16) — additive MINOR bump:
+  introduces the optional ``refused_claims: tuple[str, ...]`` envelope
+  field. When the underlying advisor produces content that would
+  contain a forbidden positive claim, the offending entry is replaced
+  with a structured *marker* string (``"refused: <token>"``) and the
+  marker is appended to ``refused_claims``; the original positive
+  claim never reaches the rendered surface. Closes Phase 11
+  retrospective carry-forward §5. Back-compat contract: a pre-1.1.0
+  consumer that ignores the new field continues to function;
+  ``refused_claims`` defaults to an empty tuple when absent on the
+  source payload.
 """
 
 SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"

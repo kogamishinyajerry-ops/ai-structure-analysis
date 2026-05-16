@@ -394,7 +394,10 @@ def test_advisor_route_envelope_schema_version_pinned(
     )
     assert res.status_code == 200
     body = res.json()
-    assert body["schema_version"] == "1.0.0"
+    # Phase 13 A MINOR bump: 1.0.0 -> 1.1.0 (adds refused_claims field).
+    # The single-source pin is in tests/test_schema_versions_stamping.py;
+    # this assertion just verifies the route stamps whatever the SSOT
+    # constant currently is.
     assert body["schema_version"] == ADVISOR_CRITIQUE_SCHEMA_VERSION
 
 

@@ -275,6 +275,7 @@ def test_convergence_orchestrator_stamps_schema_version() -> None:
         ("REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION", "1.0.0"),
         ("CONVERGENCE_STUDY_SCHEMA_VERSION", "1.2.0"),  # Phase 12 A MINOR (modal axis)
         ("COMPLETENESS_RUBRIC_VERSION", "1.0.0"),
+        ("ADVISOR_CRITIQUE_SCHEMA_VERSION", "1.1.0"),  # Phase 13 A MINOR (refused_claims field)
     ],
 )
 def test_schema_version_constants_match_phase5_starting_baseline(

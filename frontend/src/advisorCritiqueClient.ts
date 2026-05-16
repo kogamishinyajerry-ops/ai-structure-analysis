@@ -59,7 +59,29 @@ export interface AdvisorCritique {
   claimTier: string
   claimBoundary: string
   claimImpact: string
+  /**
+   * Phase 13 A — structured suppression markers for advisor content
+   * that contained a forbidden positive claim. Each entry has the
+   * format `refused: <token>` (the verbatim forbidden token from
+   * ADVISOR_FORBIDDEN_TOKENS). Back-compat: defaults to empty array
+   * for pre-1.1.0 payloads or payloads that omit the field.
+   */
+  refusedClaims: string[]
 }
+
+/**
+ * Phase 13 A SSOT: the marker prefix that distinguishes a refused-claim
+ * marker from advisor content. Pinned by frontend vitest.
+ */
+export const REFUSED_CLAIM_MARKER_PREFIX = 'refused: '
+
+/**
+ * Phase 13 A render cap: the panel shows at most this many refused
+ * markers before truncating with a "... N more" indicator. Independent
+ * of MAX_ITEMS_PER_AXIS to keep the suppression history visible even
+ * if backend caps grow.
+ */
+export const REFUSED_CLAIMS_MAX_ITEMS = 24
 
 interface RawCritique {
   schema_version?: string
@@ -77,6 +99,8 @@ interface RawCritique {
   claim_tier?: string
   claim_boundary?: string
   claim_impact?: string
+  // Phase 13 A — optional in pre-1.1.0 payloads; required in 1.1.0+.
+  refused_claims?: unknown[]
 }
 
 export function parseAdvisorStatus(raw: string | undefined): AdvisorStatus {
@@ -128,7 +152,27 @@ export function parseAdvisorCritique(
     claimTier: raw.claim_tier ?? '',
     claimBoundary: raw.claim_boundary ?? '',
     claimImpact: raw.claim_impact ?? '',
+    refusedClaims: _parseRefusedClaims(raw.refused_claims),
   }
+}
+
+/**
+ * Phase 13 A — parse the refused_claims list defensively. Only strings
+ * that START with REFUSED_CLAIM_MARKER_PREFIX are kept; everything
+ * else (numbers, objects, non-marker strings) is discarded. This is
+ * the X:-2 anti-promotion guard for the suppression-history surface:
+ * a tampered payload cannot inject arbitrary text under the
+ * refused-marker banner.
+ */
+function _parseRefusedClaims(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    if (!item.startsWith(REFUSED_CLAIM_MARKER_PREFIX)) continue
+    out.push(item)
+  }
+  return out
 }
 
 /**

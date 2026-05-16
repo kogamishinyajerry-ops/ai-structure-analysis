@@ -165,7 +165,23 @@ class AdvisorRawCritique:
 
 @dataclass(frozen=True)
 class AdvisorCritique:
-    """Envelope ready for JSON emission to the route layer."""
+    """Envelope ready for JSON emission to the route layer.
+
+    Phase 13 A — adds the optional ``refused_claims`` field
+    (``ADVISOR_CRITIQUE_SCHEMA_VERSION`` 1.0.0 → 1.1.0, MINOR additive).
+    When an advisor's raw content contains a token from
+    :data:`ADVISOR_FORBIDDEN_TOKENS` outside the ``not <claim>``
+    disclaimer form, the offending entry is replaced with a structured
+    marker (``"refused: <token>"``) BEFORE envelope construction; the
+    marker is appended to ``refused_claims`` so a reviewer can audit
+    suppression history without the positive claim text ever reaching
+    the rendered surface.
+
+    Back-compat: pre-1.1.0 consumers that don't read ``refused_claims``
+    continue to function. ``refused_claims`` defaults to an empty
+    tuple, matching the pre-bump behavior where ``_assert_no_overclaim``
+    raised at construction (now reachable only via defense-in-depth).
+    """
 
     schema_version: str
     case_id: str
@@ -182,6 +198,7 @@ class AdvisorCritique:
     claim_tier: str
     claim_boundary: str
     claim_impact: str
+    refused_claims: tuple[str, ...] = ()
 
 
 @runtime_checkable
@@ -461,6 +478,18 @@ def build_advisor_critique(
     # the envelope rather than emit a "drifted" critique.
     _audit_four_question_gate(raw.four_question_gate)
 
+    # Phase 13 A — refused-claim collection. Every content section
+    # passes through ``_audit_and_collect_refused``: entries containing
+    # a forbidden token outside disclaimer form are REPLACED with a
+    # structured marker string (``"refused: <token>"``) and the marker
+    # is recorded in the refused_claims tuple. The original positive
+    # claim text never enters the envelope.
+    refused_collected: list[str] = []
+    mesh_clean = _filter_section(raw.mesh_quality_concerns, refused_collected)
+    bc_clean = _filter_section(raw.boundary_condition_questions, refused_collected)
+    fm_clean = _filter_section(raw.failure_modes_to_consider, refused_collected)
+    load_clean = _filter_section(raw.unhandled_load_cases, refused_collected)
+
     moment = (now_utc or datetime.now(UTC)).isoformat(timespec="seconds")
     envelope = AdvisorCritique(
         schema_version=ADVISOR_CRITIQUE_SCHEMA_VERSION,
@@ -470,15 +499,21 @@ def build_advisor_critique(
         advisor_backend=selected_provider.name,
         generated_at_utc=moment,
         four_question_gate=dict(raw.four_question_gate),
-        mesh_quality_concerns=raw.mesh_quality_concerns,
-        boundary_condition_questions=raw.boundary_condition_questions,
-        failure_modes_to_consider=raw.failure_modes_to_consider,
-        unhandled_load_cases=raw.unhandled_load_cases,
+        mesh_quality_concerns=mesh_clean,
+        boundary_condition_questions=bc_clean,
+        failure_modes_to_consider=fm_clean,
+        unhandled_load_cases=load_clean,
         degrade_reason=degrade_reason,
         claim_tier=CLAIM_TIER,
         claim_boundary=CLAIM_BOUNDARY,
         claim_impact=CLAIM_IMPACT_DEFAULT,
+        refused_claims=tuple(refused_collected),
     )
+    # Defense in depth (A:-3): even after the upstream collection layer
+    # filters individual entries, run the envelope-level audit on the
+    # rendered JSON. This catches a positive claim that somehow
+    # reached a metadata field (e.g., degrade_reason) that the
+    # per-section filter does not touch.
     _assert_no_overclaim(envelope)
     return envelope
 
@@ -489,6 +524,11 @@ def render_advisor_critique_json(critique: AdvisorCritique) -> str:
 
 
 def _critique_to_dict(critique: AdvisorCritique) -> dict[str, Any]:
+    # Phase 13 A — the envelope dict includes ``refused_claims`` so
+    # downstream JSON consumers see the refused-marker list. The
+    # field is always present (default empty tuple) so a consumer
+    # checking presence-vs-absence as a feature flag should switch
+    # to length-based detection.
     return {
         "schema_version": critique.schema_version,
         "case_id": critique.case_id,
@@ -505,7 +545,86 @@ def _critique_to_dict(critique: AdvisorCritique) -> dict[str, Any]:
         "claim_tier": critique.claim_tier,
         "claim_boundary": critique.claim_boundary,
         "claim_impact": critique.claim_impact,
+        "refused_claims": list(critique.refused_claims),
     }
+
+
+# ---------------------------------------------------------------------
+# Phase 13 A — refused-claim collection helpers
+# ---------------------------------------------------------------------
+
+
+# The marker format that replaces an offending entry. Pinned by tests
+# in ``test_phase13_refused_claims.py``. Format: ``refused: <token>``
+# where ``<token>`` is the verbatim forbidden-token string from
+# ``ADVISOR_FORBIDDEN_TOKENS``. The marker is reviewer-readable but
+# deliberately does NOT echo the original positive-claim sentence —
+# a reviewer auditing suppression history sees WHICH token was
+# refused, not WHAT context the LLM tried to assert.
+REFUSED_CLAIM_MARKER_PREFIX = "refused: "
+
+
+def _audit_and_collect_refused(text: str) -> tuple[str | None, str | None]:
+    """Audit a single advisor-content entry for forbidden tokens.
+
+    Returns ``(safe_text, refused_marker)``:
+    * If ``text`` is forbidden-clean (no token outside ``not <claim>``
+      disclaimer form), returns ``(text, None)``.
+    * If ``text`` contains a forbidden token outside disclaimer form,
+      returns ``(None, "refused: <token>")`` — the original text is
+      DISCARDED and the marker is the only artifact that survives.
+      The marker names the FIRST forbidden token that tripped the
+      audit; subsequent tokens in the same entry are not enumerated
+      (one entry = one marker, by design).
+
+    Phase 13 A anti-gaming guard A:-2: this is a *report-via-marker*
+    flow, not a raised-exception flow. The marker is a structured
+    string that downstream consumers can render; the original positive
+    claim NEVER reaches the envelope. The envelope-level
+    :func:`_assert_no_overclaim` audit remains as defense in depth
+    (A:-3) so a positive claim that somehow reaches the rendered JSON
+    (e.g., via a metadata field this filter doesn't traverse) still
+    raises.
+    """
+    haystack = text.lower()
+    for token in ADVISOR_FORBIDDEN_TOKENS:
+        start = 0
+        while True:
+            idx = haystack.find(token, start)
+            if idx == -1:
+                break
+            prefix = haystack[max(0, idx - 4) : idx]
+            if not prefix.endswith("not "):
+                # Forbidden token outside disclaimer form -> refuse the
+                # entire entry. Marker uses the verbatim token string.
+                return None, f"{REFUSED_CLAIM_MARKER_PREFIX}{token}"
+            start = idx + len(token)
+    return text, None
+
+
+def _filter_section(
+    entries: tuple[str, ...],
+    refused_collected: list[str],
+) -> tuple[str, ...]:
+    """Apply ``_audit_and_collect_refused`` to every entry in a
+    content section. Safe entries pass through; refused entries are
+    discarded and their markers appended to ``refused_collected``
+    (caller-owned mutable list).
+
+    The order of safe entries is preserved; the order of refused
+    markers reflects the order of original entries that tripped the
+    audit. Multiple sections share one ``refused_collected`` list so
+    the final ``refused_claims`` tuple reflects the union across all
+    four content sections in section-encounter order.
+    """
+    clean: list[str] = []
+    for entry in entries:
+        safe, marker = _audit_and_collect_refused(entry)
+        if marker is not None:
+            refused_collected.append(marker)
+        if safe is not None:
+            clean.append(safe)
+    return tuple(clean)
 
 
 def _audit_four_question_gate(gate: dict[str, bool]) -> None:
@@ -544,8 +663,26 @@ def _audit_four_question_gate(gate: dict[str, bool]) -> None:
 
 def _assert_no_overclaim(critique: AdvisorCritique) -> None:
     """Refuse advisor critique JSON containing any ADVISOR_FORBIDDEN_TOKENS
-    outside the ``not <claim>`` disclaimer form (4-char prefix check)."""
-    payload = json.dumps(_critique_to_dict(critique))
+    outside the ``not <claim>`` disclaimer form (4-char prefix check).
+
+    Phase 13 A — the ``refused_claims`` field is INTENTIONALLY excluded
+    from the audit haystack. Markers in that field have the format
+    ``refused: <token>`` where ``<token>`` is a verbatim
+    forbidden-token string; including them in the haystack would
+    cause the audit to refuse its own structured suppression records,
+    creating a deadlock between the per-section filter and the
+    envelope-level guard. The audit's purview is advisor CONTENT
+    (the four content sections + claim banners + metadata fields)
+    NOT the suppression record itself; the per-section filter
+    upstream guarantees no forbidden content reaches the rendered
+    content sections, and this guard remains as defense in depth on
+    all OTHER fields.
+    """
+    audit_payload = _critique_to_dict(critique)
+    # Phase 13 A — exclude refused_claims from the audit haystack.
+    # See docstring for the deadlock-avoidance rationale.
+    audit_payload = {k: v for k, v in audit_payload.items() if k != "refused_claims"}
+    payload = json.dumps(audit_payload)
     haystack = payload.lower()
     for token in ADVISOR_FORBIDDEN_TOKENS:
         start = 0

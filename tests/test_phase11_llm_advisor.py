@@ -447,20 +447,29 @@ def test_llm_response_with_missing_gate_key_refuses_envelope() -> None:
 @pytest.mark.parametrize("token", list(ADVISOR_FORBIDDEN_TOKENS))
 def test_llm_response_with_forbidden_claim_refuses_envelope(token: str) -> None:
     """Each forbidden-claim token emitted by the LLM outside the
-    ``not <claim>`` disclaimer form refuses the envelope. The audit
-    happens at envelope construction; the parser does NOT pre-filter
-    (otherwise a maintainer could disable the audit by tightening the
-    parser silently). T:-5 + A:-3."""
+    ``not <claim>`` disclaimer form is refused.
+
+    Phase 13 A contract evolution: the per-section filter REPLACES
+    the offending entry with a structured marker in
+    ``refused_claims`` (was: raise at envelope construction). T:-5 +
+    A:-3 remain binding — the per-token guarantee now operates through
+    the filter + marker mechanism instead of a raise, with a
+    strictly stronger property: the LLM's positive claim text never
+    reaches the rendered surface at all.
+    """
+    from app.services.reporting.advisor_critique import REFUSED_CLAIM_MARKER_PREFIX
+
     bad = _well_formed_llm_response(
         overrides={"mesh_quality_concerns": [f"This part is {token} for service."]}
     )
     advisor = LLMAdvisor(_make_llm_call(json.dumps(bad)))
-    with pytest.raises(ValueError, match="forbidden positive claim"):
-        build_advisor_critique(
-            _context(),
-            provider=advisor,
-            now_utc=_FROZEN_NOW,
-        )
+    envelope = build_advisor_critique(
+        _context(),
+        provider=advisor,
+        now_utc=_FROZEN_NOW,
+    )
+    assert envelope.mesh_quality_concerns == ()
+    assert envelope.refused_claims == (f"{REFUSED_CLAIM_MARKER_PREFIX}{token}",)
 
 
 # ---------------------------------------------------------------------

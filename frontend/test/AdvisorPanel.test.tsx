@@ -318,3 +318,153 @@ describe('AdvisorPanel', () => {
     })
   })
 })
+
+// ------------------------------------------------------------------
+// Phase 13 A — refused_claims surface
+// ------------------------------------------------------------------
+
+describe('AdvisorPanel — Phase 13 A refused_claims surface', () => {
+  it('does NOT render the refused-claims section when refused_claims is empty', async () => {
+    // HAPPY_BODY has no refused_claims field → parsed to empty array.
+    stubFetch(HAPPY_BODY)
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-claim-footer')).toBeInTheDocument()
+    })
+    // The refused-claims section is conditionally mounted; expect
+    // it to be absent on a clean envelope.
+    expect(screen.queryByTestId('advisor-refused-claims')).toBeNull()
+  })
+
+  it('parses pre-1.1.0 payloads (no refused_claims field) as empty list (back-compat)', async () => {
+    // Explicitly strip the field to simulate a pre-1.1.0 producer.
+    const pre110 = { ...HAPPY_BODY }
+    stubFetch(pre110)
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-claim-footer')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('advisor-refused-claims')).toBeNull()
+  })
+
+  it('renders the refused-claims section with count when refused_claims has entries', async () => {
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: ['refused: production ready', 'refused: signed off'],
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-refused-claims')).toBeInTheDocument()
+    })
+    const header = screen.getByTestId('advisor-refused-claims-header')
+    expect(header.textContent).toContain('Refused LLM claims (2)')
+    expect(screen.getByTestId('advisor-refused-claims-item-0').textContent).toBe(
+      'refused: production ready',
+    )
+    expect(screen.getByTestId('advisor-refused-claims-item-1').textContent).toBe(
+      'refused: signed off',
+    )
+  })
+
+  it('discards non-marker strings from the refused_claims list (X:-2 anti-tampering)', async () => {
+    // Defensive parser MUST filter out entries that do NOT start with
+    // the marker prefix — a tampered payload cannot inject arbitrary
+    // text under the refused-claim banner.
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: [
+        'refused: certified', // valid marker
+        'arbitrary text without prefix', // tampering attempt
+        'refused: signed off', // valid marker
+        12345, // wrong type
+      ],
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-refused-claims')).toBeInTheDocument()
+    })
+    const header = screen.getByTestId('advisor-refused-claims-header')
+    // Only the two valid markers survived the parser.
+    expect(header.textContent).toContain('Refused LLM claims (2)')
+    expect(screen.queryByTestId('advisor-refused-claims-item-2')).toBeNull()
+  })
+
+  it('renders a truncation indicator when refused_claims exceeds the render cap', async () => {
+    // REFUSED_CLAIMS_MAX_ITEMS = 24; build 30 markers so 6 are truncated.
+    const many = Array.from(
+      { length: 30 },
+      (_, i) => `refused: ${ADVISOR_FORBIDDEN_TOKENS[i % ADVISOR_FORBIDDEN_TOKENS.length]}`,
+    )
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: many,
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      const trunc = screen.queryByTestId('advisor-refused-claims-truncated')
+      expect(trunc).not.toBeNull()
+      expect(trunc!.textContent).toContain('6 more')
+    })
+    const header = screen.getByTestId('advisor-refused-claims-header')
+    // Header count reflects total markers, not rendered count.
+    expect(header.textContent).toContain('Refused LLM claims (30)')
+  })
+
+  it('client-side parser keeps refused-marker strings even when they contain forbidden token substrings', async () => {
+    // The marker 'refused: validated against' contains the forbidden
+    // token substring 'validated against'. The parser MUST allow it
+    // through (because it has the marker prefix); the panel's content
+    // sections still go through isAdvisorEntrySafe so the forbidden
+    // token NEVER reaches a content section via a misroute.
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: ['refused: validated against'],
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-refused-claims-item-0').textContent).toBe(
+        'refused: validated against',
+      )
+    })
+  })
+})
