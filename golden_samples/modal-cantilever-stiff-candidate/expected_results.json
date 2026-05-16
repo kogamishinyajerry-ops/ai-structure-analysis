@@ -1,0 +1,9 @@
+{
+  "analysis_type": "modal",
+  "case_id": "modal-cantilever-stiff-candidate",
+  "case_name": "Stiff cantilever beam modal extraction, 1m x 75mm x 75mm SA-516 Gr.70 steel, structured C3D20 40x3x3 hex",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_tier": "Tier 1 engineering candidate",
+  "status": "engineering_candidate",
+  "status_reason": "Tier 1 engineering candidate. CalculiX *FREQUENCY mode 1 on the 75 x 75 mm cross-section cantilever matches Euler-Bernoulli analytical (62.67 Hz expected) within engineering tolerance. Within-type cohort variation pair to the 50 mm modal-cantilever-candidate. Signed validation and Tier 2 promotion are explicitly deferred."
+}

@@ -1,0 +1,10 @@
+{
+  "analysis_type": "linear_static_pressure_vessel",
+  "benchmark_source_ref": "ASME VIII Div 2 §5.5 (procedural reference only, not signed)",
+  "case_id": "cylinder-pv-extended-candidate",
+  "case_name": "Extended thick-walled pressure cylinder, Ri=100/Ro=150/L=400 mm, p=20 MPa, SA-516 Gr.70",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_tier": "Tier 1 engineering candidate",
+  "status": "engineering_candidate",
+  "status_reason": "Tier 1 engineering candidate. Extended variant of cylinder-pv-candidate with L=400 mm and P=20 MPa. The numerical solution agrees with Lame's analytical closed-end thick-cylinder solution to within engineering tolerance (max relative error 1.32% on σ_r, ≤0.25% on σ_θ / σ_z / vM). Signed validation, benchmark agreement, and Tier 2 promotion are explicitly deferred."
+}

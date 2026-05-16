@@ -126,6 +126,9 @@ exclude = [
     "sync_well_harness_approvals.py",
     ".venv/",
     "demo_cylinder_pv/",
+    "demo_cylinder_pv_extended/",
+    "demo_modal_cantilever_pv/",
+    "demo_modal_cantilever_stiff/",
 ]
 
 [tool.ruff.lint]

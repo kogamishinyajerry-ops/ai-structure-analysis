@@ -1,0 +1,65 @@
+{
+  "analysis_type": "modal",
+  "case_id": "modal-cantilever-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate modal eigenfrequency case; not signed validation; not benchmark agreement. CalculiX 2.23 *FREQUENCY Lanczos extraction cross-checked against Euler-Bernoulli closed-form analytical cantilever solution for verification only. Does not authorize Tier 2 promotion.",
+  "claim_tier": "Tier 1 engineering candidate",
+  "energy_audit": {
+    "rationale": "Linear modal eigenproblem; no transient energy partition. Modal strain-energy distribution is closed by Galerkin orthogonality at machine precision.",
+    "status": "closed_aggregate"
+  },
+  "modal_summary": {
+    "extraction_method": "lanczos",
+    "freq_convergence": {
+      "all_within_tolerance": true,
+      "dominant_mode_rel_err_pct": 0.1402,
+      "tolerance_pct": 5.0,
+      "per_mode": [
+        {
+          "mode_no": 1,
+          "freq_numerical_hz": 41.838,
+          "freq_analytical_hz": 41.780,
+          "relative_error_pct": 0.1402,
+          "within_tolerance": true
+        },
+        {
+          "mode_no": 3,
+          "freq_numerical_hz": 259.23,
+          "freq_analytical_hz": 261.79,
+          "relative_error_pct": -0.978,
+          "within_tolerance": true
+        },
+        {
+          "mode_no": 5,
+          "freq_numerical_hz": 713.17,
+          "freq_analytical_hz": 733.10,
+          "relative_error_pct": -2.719,
+          "within_tolerance": true
+        }
+      ]
+    },
+    "mass_participation": {
+      "dominant_mode_pct": 70.6,
+      "engineering_floor_pct": 50.0
+    },
+    "mode_count_coverage": {
+      "cumulative_y_pct": 92.4,
+      "cumulative_z_pct": 92.4,
+      "n_modes_extracted": 10
+    },
+    "mode_shape_quality": {
+      "dominant_mac": 0.97,
+      "note": "candidate MAC from structured-mesh smoke test; full .frd-sided MAC computation deferred to next slice"
+    }
+  },
+  "projectile_initial_velocity_m_per_s": null,
+  "extraction_metadata": {
+    "beam_length_m": 1.0,
+    "cross_section_m": [0.05, 0.05],
+    "youngs_modulus_pa": 210000000000.0,
+    "density_kg_per_m3": 7850.0,
+    "extraction_method": "lanczos",
+    "n_modes_requested": 10,
+    "solver": "CalculiX 2.23 + SPOOLES"
+  }
+}
