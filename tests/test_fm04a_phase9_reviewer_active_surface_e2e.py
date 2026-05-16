@@ -231,7 +231,7 @@ def test_phase9_generator_provenance_e2e(client: _SyncASGIClient, fake_repo: Pat
     )
     assert res.status_code == 200
     payload = res.json()
-    assert payload["schema_version"] == "1.1.0"
+    assert payload["schema_version"] == "1.2.0"
 
     gen_row = next(i for i in payload["inputs"] if i["kind"] == "generator")
     assert gen_row["present"] is True

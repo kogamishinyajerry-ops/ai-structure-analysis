@@ -129,13 +129,21 @@ export function ProvenancePanel({
           </div>
           {report.inputs.map((input, idx) => {
             const muted = !input.present
+            // Phase 10 E — generator rows render an extra
+            // "normalized SHA" cell so a reviewer can tell whether
+            // two snapshots' generators are AST-equivalent even when
+            // their raw bytes differ. Non-generator rows render `—`.
+            const normalizedCell =
+              input.normalizationError !== null && input.normalizationError !== undefined
+                ? 'parse error'
+                : shortSha(input.sha256Normalized)
             return (
               <div
                 key={`${input.kind}-${input.path}-${idx}`}
                 data-testid={`provenance-input-row-${input.kind}`}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '110px 1fr 60px 110px',
+                  gridTemplateColumns: '100px 1fr 50px 100px 100px',
                   gap: '4px 10px',
                   fontSize: '0.78rem',
                   padding: '4px 0',
@@ -146,7 +154,18 @@ export function ProvenancePanel({
                 <div>{input.kind}</div>
                 <div>{input.path}</div>
                 <div style={{ textAlign: 'right' }}>{input.present ? '✓' : '—'}</div>
-                <div>{shortSha(input.sha256)}</div>
+                <div title="raw SHA-256">{shortSha(input.sha256)}</div>
+                <div
+                  title={
+                    input.kind === 'generator'
+                      ? input.normalizationError ??
+                        'canonical AST-dump SHA — whitespace + comment insensitive'
+                      : 'normalized SHA not applicable for this kind'
+                  }
+                  data-testid={`provenance-input-normalized-${input.kind}`}
+                >
+                  {normalizedCell}
+                </div>
               </div>
             )
           })}

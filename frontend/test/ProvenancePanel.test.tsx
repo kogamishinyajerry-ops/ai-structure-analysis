@@ -12,7 +12,7 @@ import {
 } from '../src/trustScoreProvenanceClient.ts'
 
 const FULL_BODY = {
-  schema_version: '1.1.0',
+  schema_version: '1.2.0',
   formula_version: '1.0.0',
   case_id: 'GS-A-candidate',
   snapshot_label: '2026-05-16T100000Z',
@@ -191,7 +191,7 @@ describe('ProvenancePanel', () => {
     )
     await waitFor(() => {
       // The header line includes "schema v1.1.0 · formula v1.0.0".
-      expect(screen.getByText(/schema v1\.1\.0/)).toBeInTheDocument()
+      expect(screen.getByText(/schema v1\.2\.0/)).toBeInTheDocument()
       expect(screen.getByText(/formula v1\.0\.0/)).toBeInTheDocument()
     })
     expect(screen.getByText('87')).toBeInTheDocument()
@@ -207,7 +207,7 @@ describe('ProvenancePanel', () => {
       />,
     )
     await waitFor(() => {
-      expect(screen.getByText(/schema v1\.1\.0/)).toBeInTheDocument()
+      expect(screen.getByText(/schema v1\.2\.0/)).toBeInTheDocument()
     })
     const text = container.textContent?.toLowerCase() ?? ''
     expect(text).toContain('tier 1 engineering candidate')

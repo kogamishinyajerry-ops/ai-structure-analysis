@@ -247,7 +247,7 @@ def test_provenance_endpoint_carries_generator_input(
     assert res.status_code == 200
     payload = res.json()
     assert payload["schema_version"] == TRUST_SCORE_PROVENANCE_SCHEMA_VERSION
-    assert payload["schema_version"] == "1.1.0"
+    assert payload["schema_version"] == "1.2.0"
     assert len(payload["inputs"]) == len(PROVENANCE_INPUT_KINDS)
     gen_row = next(i for i in payload["inputs"] if i["kind"] == "generator")
     assert gen_row["present"] is True

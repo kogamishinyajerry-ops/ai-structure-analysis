@@ -92,8 +92,12 @@ def test_provenance_input_kinds_tuple_has_generator_last() -> None:
     assert PROVENANCE_INPUT_KINDS[-1] == "generator"
 
 
-def test_trust_score_provenance_schema_version_is_1_1_0() -> None:
-    assert TRUST_SCORE_PROVENANCE_SCHEMA_VERSION == "1.1.0"
+def test_trust_score_provenance_schema_version_is_1_2_0() -> None:
+    """Phase 10 E MINOR bump 1.1.0 -> 1.2.0 added three new additive
+    fields (``sha256_normalized``, ``normalization_method``,
+    ``normalization_error``) to every input row. Old consumers reading
+    the 1.1.0 fields continue to work."""
+    assert TRUST_SCORE_PROVENANCE_SCHEMA_VERSION == "1.2.0"
 
 
 def test_cohort_snapshot_manifest_schema_version_is_1_3_0() -> None:
@@ -230,13 +234,14 @@ def test_provenance_input_order_matches_tuple_ssot(tmp_path: Path) -> None:
     assert walked_kinds == PROVENANCE_INPUT_KINDS
 
 
-def test_provenance_emits_schema_version_1_1_0(tmp_path: Path) -> None:
+def test_provenance_emits_schema_version_1_2_0(tmp_path: Path) -> None:
+    """Phase 10 E bumped 1.1.0 -> 1.2.0 (additive canonical SHA fields)."""
     case = _seed_case(tmp_path, "GS-A-candidate", with_generator=True)
     write_cohort_snapshot([case], repo_root=tmp_path, snapshot_label="2026-05-16T100000Z")
     report = build_trust_score_provenance(
         "GS-A-candidate", "2026-05-16T100000Z", repo_root=tmp_path
     )
-    assert report.schema_version == "1.1.0"
+    assert report.schema_version == "1.2.0"
 
 
 # ---------------------------------------------------------------------

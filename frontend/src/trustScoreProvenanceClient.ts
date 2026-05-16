@@ -1,16 +1,20 @@
-// FM-04a Phase 9 E — Trust score provenance trace client.
+// FM-04a Phase 9 E + Phase 10 E — Trust score provenance trace client.
 //
 // Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 //
 // The frontend tuple SSOT must match the backend `PROVENANCE_INPUT_KINDS`
 // tuple in `backend/app/services/reporting/trust_score_provenance.py`
-// (Phase 8 C + Phase 9 B MINOR bump 1.0.0 -> 1.1.0). The Phase 9 B
-// addition was `generator` as the fifth kind.
+// (Phase 8 C + Phase 9 B MINOR bump 1.0.0 -> 1.1.0 + Phase 10 E MINOR
+// bump 1.1.0 -> 1.2.0). The Phase 9 B addition was `generator` as the
+// fifth kind. Phase 10 E added three additive fields on every row:
+// `sha256Normalized`, `normalizationMethod`, `normalizationError`.
 //
 // Defensive `parseInputKind` falls back to `'unknown'` for unknown
 // values so a future MINOR bump that adds another kind does NOT crash
 // the panel — it surfaces in a neutral state until the frontend tuple
-// is updated to match (Phase 9 anti-gaming guard X: -2).
+// is updated to match (Phase 9 anti-gaming guard X: -2). The Phase 10 E
+// fields are nullable on every row; the panel-side renderer falls back
+// to a neutral dash when a row carries `null`.
 
 export const PROVENANCE_INPUT_KINDS = [
   'metrics',
@@ -27,6 +31,11 @@ export interface ProvenanceInput {
   path: string
   present: boolean
   sha256: string | null
+  // Phase 10 E — present on every row (`null` for non-generator kinds
+  // and for generator rows with parse failure / absent file).
+  sha256Normalized: string | null
+  normalizationMethod: string | null
+  normalizationError: string | null
 }
 
 export interface ProvenanceAxis {
@@ -53,6 +62,9 @@ interface RawInput {
   path?: string
   present?: boolean
   sha256?: string | null
+  sha256_normalized?: string | null
+  normalization_method?: string | null
+  normalization_error?: string | null
 }
 
 interface RawAxis {
@@ -94,6 +106,11 @@ function parseInput(raw: RawInput | null | undefined): ProvenanceInput | null {
     path: raw.path,
     present: Boolean(raw.present),
     sha256: raw.sha256 ?? null,
+    // Phase 10 E — all three nullable on every row; a 1.1.0-era
+    // payload that omits the keys parses cleanly with `null`.
+    sha256Normalized: raw.sha256_normalized ?? null,
+    normalizationMethod: raw.normalization_method ?? null,
+    normalizationError: raw.normalization_error ?? null,
   }
 }
 

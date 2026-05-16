@@ -261,8 +261,8 @@ cohort mean; they do NOT diagnose root cause, validate physics, or
 authorize Tier 2 promotion."
 """
 
-TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.1.0"
-"""``trust_score_provenance`` HTTP response (Phase 8 C; Phase 9 B MINOR bump).
+TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.2.0"
+"""``trust_score_provenance`` HTTP response (Phase 8 C; Phase 9 B + Phase 10 E MINOR bumps).
 
 Builder: ``backend.app.services.reporting.trust_score_provenance``.
 
@@ -284,6 +284,21 @@ Bump history:
   whether or not the snapshot captured one (``present=False`` when
   the snapshot pre-dates Phase 9 B). Consumers reading the 1.0.0
   fields continue to work because the new row is additive.
+* ``1.2.0`` (Phase 10 E, MINOR per bump policy) — added three
+  additive fields to every ``ProvenanceInput`` row:
+  ``sha256_normalized``, ``normalization_method``, and
+  ``normalization_error``. For ``kind == "generator"`` rows whose
+  ``.py`` bytes parse successfully via ``ast.parse``, the canonical
+  SHA is computed over ``ast.dump(tree, annotate_fields=True,
+  include_attributes=False)`` — two generator scripts that differ
+  only in comments / whitespace / docstring trivia therefore yield
+  the SAME ``sha256_normalized`` even though their raw ``sha256``
+  differs. For non-generator rows the three new fields are
+  ``None``; for generator rows whose bytes fail to parse,
+  ``sha256_normalized`` is ``None`` and ``normalization_error``
+  carries the SyntaxError reason. Consumers reading the 1.1.0
+  fields continue to work because the three new fields are
+  additive. Closes Phase 9 retrospective carry-forward §5.
 """
 
 COHORT_TREND_ANOMALIES_SCHEMA_VERSION = "1.0.0"
