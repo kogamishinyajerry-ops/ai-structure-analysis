@@ -32,6 +32,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._schema_versions import ACCEPTANCE_PACKET_SCHEMA_VERSION
+
 CLAIM_TIER = "Tier 1 engineering candidate"
 CLAIM_BOUNDARY = "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"
 CLAIM_IMPACT_DEFAULT = (
@@ -281,6 +283,7 @@ def _default_limitations() -> tuple[str, ...]:
 
 def _packet_to_dict(packet: AcceptancePacket) -> dict[str, Any]:
     return {
+        "schema_version": ACCEPTANCE_PACKET_SCHEMA_VERSION,
         "case_id": packet.case_id,
         "generated_at_utc": packet.generated_at_utc,
         "claim_tier": packet.claim_tier,

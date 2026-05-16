@@ -45,6 +45,7 @@ export interface ConvergenceStudySummary {
 }
 
 export interface AcceptancePacket {
+  schemaVersion: string
   caseId: string
   generatedAtUtc: string
   claimTier: string
@@ -69,6 +70,7 @@ interface RawArtifact {
 }
 
 interface RawAcceptancePacket {
+  schema_version?: string
   case_id?: string
   generated_at_utc?: string
   claim_tier?: string
@@ -128,6 +130,7 @@ export function parseAcceptancePacket(
   const energy = raw.energy_audit_summary ?? {}
   const convergence = raw.convergence_study_summary ?? {}
   return {
+    schemaVersion: raw.schema_version ?? '',
     caseId: raw.case_id,
     generatedAtUtc: raw.generated_at_utc ?? '',
     claimTier: raw.claim_tier ?? '',

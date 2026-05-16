@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..reporting._schema_versions import CONVERGENCE_STUDY_SCHEMA_VERSION
 from .convergence_writers import (
     CLAIM_BOUNDARY_TIER1,
     DEFAULT_TOLERANCE_PCT,
@@ -101,6 +102,7 @@ def build_convergence_study(inp: ConvergenceStudyInput) -> dict[str, Any]:
     )
 
     payload: dict[str, Any] = {
+        "schema_version": CONVERGENCE_STUDY_SCHEMA_VERSION,
         "case_id": inp.case_id,
         "study_metric": inp.study_metric,
         "tolerance_pct": float(inp.tolerance_pct),

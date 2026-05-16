@@ -15,6 +15,8 @@ export interface CompletenessBreakdownEntry {
 }
 
 export interface CaseCompletenessScore {
+  schemaVersion: string
+  rubricVersion: string
   caseId: string
   generatedAtUtc: string
   claimTier: string
@@ -36,6 +38,8 @@ interface RawBreakdownEntry {
 }
 
 interface RawCaseCompletenessScore {
+  schema_version?: string
+  rubric_version?: string
   case_id?: string
   generated_at_utc?: string
   claim_tier?: string
@@ -68,6 +72,8 @@ export function parseCaseCompletenessScore(
   if (!raw || typeof raw !== 'object') return null
   if (typeof raw.case_id !== 'string') return null
   return {
+    schemaVersion: raw.schema_version ?? '',
+    rubricVersion: raw.rubric_version ?? '',
     caseId: raw.case_id,
     generatedAtUtc: raw.generated_at_utc ?? '',
     claimTier: raw.claim_tier ?? '',

@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._schema_versions import COHORT_OVERVIEW_SCHEMA_VERSION
 from .acceptance_packet import (
     CLAIM_BOUNDARY,
     DEFAULT_TIER2_BLOCKERS_REMAINING,
@@ -262,6 +263,7 @@ def _entry_to_dict(entry: CohortOverviewEntry) -> dict[str, Any]:
 
 def _overview_to_dict(overview: CohortOverview) -> dict[str, Any]:
     return {
+        "schema_version": COHORT_OVERVIEW_SCHEMA_VERSION,
         "generated_at_utc": overview.generated_at_utc,
         "claim_tier": overview.claim_tier,
         "claim_boundary": overview.claim_boundary,

@@ -53,6 +53,7 @@ export interface ArtifactDiff {
 }
 
 export interface CaseComparison {
+  schemaVersion: string
   caseA: string
   caseB: string
   generatedAtUtc: string
@@ -113,6 +114,7 @@ interface RawArtifactDiff {
 }
 
 interface RawCaseComparison {
+  schema_version?: string
   case_a?: string
   case_b?: string
   generated_at_utc?: string
@@ -163,6 +165,7 @@ export function parseCaseComparison(
   if (!raw || typeof raw !== 'object') return null
   if (typeof raw.case_a !== 'string' || typeof raw.case_b !== 'string') return null
   return {
+    schemaVersion: raw.schema_version ?? '',
     caseA: raw.case_a,
     caseB: raw.case_b,
     generatedAtUtc: raw.generated_at_utc ?? '',

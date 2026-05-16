@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._schema_versions import ARCHIVED_PACKET_DIFF_SCHEMA_VERSION
 from .acceptance_packet import CLAIM_BOUNDARY
 
 CLAIM_IMPACT_DEFAULT = (
@@ -251,6 +252,7 @@ def _provenance_to_dict(p: ArchiveProvenance) -> dict[str, Any]:
 
 def _diff_to_dict(diff: ArchivedPacketDiff) -> dict[str, Any]:
     return {
+        "schema_version": ARCHIVED_PACKET_DIFF_SCHEMA_VERSION,
         "generated_at_utc": diff.generated_at_utc,
         "claim_boundary": diff.claim_boundary,
         "archive_a": _provenance_to_dict(diff.archive_a),

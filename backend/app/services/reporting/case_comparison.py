@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from ._schema_versions import CASE_COMPARISON_SCHEMA_VERSION
 from .acceptance_packet import (
     CLAIM_BOUNDARY,
     AcceptanceArtifact,
@@ -186,6 +187,7 @@ def _artifact_diff(
 
 def _comparison_to_dict(comparison: CaseComparison) -> dict[str, Any]:
     return {
+        "schema_version": CASE_COMPARISON_SCHEMA_VERSION,
         "case_a": comparison.case_a,
         "case_b": comparison.case_b,
         "generated_at_utc": comparison.generated_at_utc,

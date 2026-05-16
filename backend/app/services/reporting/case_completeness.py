@@ -38,6 +38,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._schema_versions import (
+    CASE_COMPLETENESS_SCHEMA_VERSION,
+    COMPLETENESS_RUBRIC_VERSION,
+)
 from .acceptance_packet import (
     CLAIM_BOUNDARY,
     DEFAULT_TIER2_BLOCKERS_REMAINING,
@@ -343,6 +347,8 @@ def _entry_to_dict(entry: CompletenessBreakdownEntry) -> dict[str, Any]:
 
 def _score_to_dict(score: CaseCompletenessScore) -> dict[str, Any]:
     return {
+        "schema_version": CASE_COMPLETENESS_SCHEMA_VERSION,
+        "rubric_version": COMPLETENESS_RUBRIC_VERSION,
         "case_id": score.case_id,
         "generated_at_utc": score.generated_at_utc,
         "claim_tier": score.claim_tier,

@@ -34,6 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._schema_versions import REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION
 from .acceptance_packet import (
     CLAIM_BOUNDARY,
     DEFAULT_TIER2_BLOCKERS_REMAINING,
@@ -100,6 +101,7 @@ def build_reviewer_bundle(
             manifest_cases.append(members)
 
         manifest = {
+            "schema_version": REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION,
             "generated_at_utc": datetime.now(UTC).isoformat(timespec="seconds"),
             "claim_tier": CLAIM_TIER,
             "claim_boundary": CLAIM_BOUNDARY,

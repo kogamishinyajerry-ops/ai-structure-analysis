@@ -62,6 +62,7 @@ export interface ArtifactDiff {
 }
 
 export interface ArchivedPacketDiff {
+  schemaVersion: string
   generatedAtUtc: string
   claimBoundary: string
   archiveA: ArchiveProvenance
@@ -132,6 +133,7 @@ interface RawArtifactDiff {
 }
 
 interface RawArchivedPacketDiff {
+  schema_version?: string
   generated_at_utc?: string
   claim_boundary?: string
   archive_a?: RawProvenance
@@ -177,6 +179,7 @@ export function parseArchivedPacketDiff(
   if (!raw || typeof raw !== 'object') return null
   if (!raw.archive_a || !raw.archive_b) return null
   return {
+    schemaVersion: raw.schema_version ?? '',
     generatedAtUtc: raw.generated_at_utc ?? '',
     claimBoundary: raw.claim_boundary ?? '',
     archiveA: parseProvenance(raw.archive_a),

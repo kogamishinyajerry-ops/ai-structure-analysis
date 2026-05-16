@@ -37,6 +37,7 @@ export interface EnergyBalanceObservation {
 }
 
 export interface ConvergenceStudy {
+  schemaVersion: string
   caseId: string
   studyMetric: string
   combinedVerdict: string
@@ -79,6 +80,7 @@ interface RawEnergyBalanceObservation {
 }
 
 interface RawConvergenceStudy {
+  schema_version?: string
   case_id?: string
   study_metric?: string
   combined_verdict?: string
@@ -140,6 +142,7 @@ export function parseConvergenceStudy(
   if (typeof raw.case_id !== 'string') return null
   const energy = raw.energy_balance_observation ?? {}
   return {
+    schemaVersion: raw.schema_version ?? '',
     caseId: raw.case_id,
     studyMetric: raw.study_metric ?? 'residual_velocity_m_per_s',
     combinedVerdict: raw.combined_verdict ?? 'insufficient_data',

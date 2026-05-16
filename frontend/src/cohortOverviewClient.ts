@@ -25,6 +25,7 @@ export interface CohortOverviewEntry {
 }
 
 export interface CohortOverview {
+  schemaVersion: string
   generatedAtUtc: string
   claimTier: string
   claimBoundary: string
@@ -51,6 +52,7 @@ interface RawEntry {
 }
 
 interface RawCohortOverview {
+  schema_version?: string
   generated_at_utc?: string
   claim_tier?: string
   claim_boundary?: string
@@ -86,6 +88,7 @@ export function parseCohortOverview(
   if (!raw || typeof raw !== 'object') return null
   if (!Array.isArray(raw.entries) && raw.entries !== undefined) return null
   return {
+    schemaVersion: raw.schema_version ?? '',
     generatedAtUtc: raw.generated_at_utc ?? '',
     claimTier: raw.claim_tier ?? '',
     claimBoundary: raw.claim_boundary ?? '',
