@@ -15,6 +15,7 @@ from .api.routes import (
     case_completeness,
     cases,
     cohort_overview,
+    cohort_snapshots,
     convergence_study,
     frd,
     projects,
@@ -93,6 +94,8 @@ app.include_router(reviewer_bundle.router, prefix="/api/v1")
 app.include_router(archived_packet_diff.router, prefix="/api/v1")
 # FM-04a Phase 5 B — Tier 1 reproducibility manifest per case.
 app.include_router(reproducibility_manifest.router, prefix="/api/v1")
+# FM-04a Phase 5 C — Tier 1 cohort snapshot listing.
+app.include_router(cohort_snapshots.router, prefix="/api/v1")
 
 
 @app.get("/")
