@@ -15,6 +15,7 @@ import {
   type VerdictTone,
 } from '../signoffHistoryClient.ts'
 import { TIER1_BANNER } from '../trustCenterSummary.ts'
+import { SignoffSubmissionForm } from './SignoffSubmissionForm.tsx'
 
 export interface SignoffHistoryPanelProps {
   apiBase: string
@@ -67,6 +68,9 @@ export function SignoffHistoryPanel({
   const [report, setReport] = useState<SignoffHistoryReport | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // Phase 10 A — bump refreshKey on successful POST so the
+  // history effect re-runs exactly once per submit.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     if (!caseId) {
@@ -91,7 +95,7 @@ export function SignoffHistoryPanel({
       }
     })
     return () => ctrl.abort()
-  }, [apiBase, caseId, onLatestRecord])
+  }, [apiBase, caseId, onLatestRecord, refreshKey])
 
   return (
     <section
@@ -113,6 +117,13 @@ export function SignoffHistoryPanel({
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
           select a candidate case to load its signoff history
         </div>
+      )}
+      {caseId && (
+        <SignoffSubmissionForm
+          apiBase={apiBase}
+          caseId={caseId}
+          onSubmitSuccess={() => setRefreshKey((n) => n + 1)}
+        />
       )}
       {caseId && loading && (
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
