@@ -43,6 +43,7 @@ import { TrustScoreTimelineChart } from './components/TrustScoreTimelineChart';
 import { SignoffHistoryPanel } from './components/SignoffHistoryPanel';
 import { CohortExecutiveSummaryPanel } from './components/CohortExecutiveSummaryPanel';
 import { CohortAnomaliesPanel } from './components/CohortAnomaliesPanel';
+import { CohortTrendAnomaliesPanel } from './components/CohortTrendAnomaliesPanel';
 import { ProvenancePanel } from './components/ProvenancePanel';
 import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
@@ -1614,6 +1615,7 @@ function App() {
                     />
                     <CohortExecutiveSummaryPanel apiBase={API_BASE} />
                     <CohortAnomaliesPanel apiBase={API_BASE} />
+                    <CohortTrendAnomaliesPanel apiBase={API_BASE} />
                     <TrustScoreGauge
                         apiBase={API_BASE}
                         caseId={selectedCandidateCaseId}
