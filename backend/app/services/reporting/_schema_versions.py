@@ -327,7 +327,7 @@ Tier 1 candidate cohort scorecard: aggregates latest trust score
 NOT promote any case to Tier 2 or substitute for signed validation.
 """
 
-COHORT_ANOMALIES_SCHEMA_VERSION = "1.0.0"
+COHORT_ANOMALIES_SCHEMA_VERSION = "1.1.0"
 """``cohort_anomalies`` HTTP response (Phase 8 E).
 
 Builder: ``backend.app.services.reporting.cohort_anomalies``.
@@ -339,6 +339,21 @@ from mean on any axis. Severity buckets at 2σ / 3σ / 4σ. Explicit
 ``claim_impact``: "anomalies surface statistical outliers from
 cohort mean; they do NOT diagnose root cause, validate physics, or
 authorize Tier 2 promotion."
+
+Bump history:
+
+* ``1.0.0`` (Phase 8 E) — initial schema; z-score outliers across
+  4 trust-score axes with 2σ/3σ/4σ severity buckets.
+* ``1.1.0`` (Phase 16 B · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``cohort_drift_attribution`` field
+  carrying a :class:`CohortDriftAttribution` summary (per-case
+  drift_attribution between the cohort's latest 2 snapshots +
+  cohort-level dominant axis-case pair). Pre-1.1.0 consumers
+  that ignore the field continue to function; the z-score view
+  is preserved (additive, parallel). The new field defaults to
+  ``null`` when fewer than 2 cohort-wide snapshots exist. Closes
+  Phase 15 retro §4 (per-axis percentage delta on cohort-scoped
+  surfaces) + §6 (cross-axis-comparable cohort signal).
 """
 
 TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.2.0"
