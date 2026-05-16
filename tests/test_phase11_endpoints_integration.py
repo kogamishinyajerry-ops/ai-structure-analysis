@@ -396,3 +396,130 @@ def test_advisor_route_envelope_schema_version_pinned(
     body = res.json()
     assert body["schema_version"] == "1.0.0"
     assert body["schema_version"] == ADVISOR_CRITIQUE_SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------------
+# Phase 11 F supplemental integration tests — hardening the gate
+# composition for the FINAL whole-arc TAA. Each test targets a single
+# gate property not covered by the slice-D set above.
+# ---------------------------------------------------------------------
+
+
+def test_advisor_route_returns_application_json_content_type(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """The route must serve ``application/json`` so a typed client
+    parsing the body doesn't have to negotiate. Phase 11 F."""
+    _write_snapshot(fake_repo, _VALID_SNAPSHOT_LABEL, _VALID_CASE_ID)
+    res = client.get(
+        f"/api/v1/advisor-critique/{_VALID_CASE_ID}",
+        params={"snapshot": _VALID_SNAPSHOT_LABEL},
+    )
+    assert res.status_code == 200
+    ct = res.headers.get("content-type", "").split(";")[0].strip().lower()
+    assert ct == "application/json"
+
+
+def test_advisor_route_rejects_post_method_with_405(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """The advisor route is read-only. A POST must NOT silently 200
+    or 404 — FastAPI surfaces ``method not allowed`` as 405."""
+
+    async def _post() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as c:
+            return await c.post(
+                f"/api/v1/advisor-critique/{_VALID_CASE_ID}",
+                json={"snapshot": _VALID_SNAPSHOT_LABEL},
+            )
+
+    res = asyncio.run(_post())
+    assert res.status_code == 405
+
+
+def test_advisor_route_handles_max_length_case_id(client: _SyncASGIClient, fake_repo: Path) -> None:
+    """The case_id regex caps at 64 chars. A 64-char valid id round-
+    trips; a 65-char id is refused."""
+    valid_64 = "a" * 64
+    _write_snapshot(fake_repo, _VALID_SNAPSHOT_LABEL, valid_64)
+    res = client.get(
+        f"/api/v1/advisor-critique/{valid_64}",
+        params={"snapshot": _VALID_SNAPSHOT_LABEL},
+    )
+    assert res.status_code == 200, res.text
+
+    invalid_65 = "a" * 65
+    res = client.get(
+        f"/api/v1/advisor-critique/{invalid_65}",
+        params={"snapshot": _VALID_SNAPSHOT_LABEL},
+    )
+    assert res.status_code == 422, res.text
+
+
+def test_advisor_route_404_when_only_metrics_missing_but_snapshot_present(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Phase 11 F — distinguishes the two distinct
+    AdvisorSnapshotNotFound branches in the service layer. Snapshot
+    manifest exists; ``metrics/<case>.json`` does not."""
+    snap_dir = fake_repo / "reports" / "snapshots" / _VALID_SNAPSHOT_LABEL
+    snap_dir.mkdir(parents=True)
+    (snap_dir / "SNAPSHOT_MANIFEST.json").write_text(
+        json.dumps({"schema_version": "1.3.0"}), encoding="utf-8"
+    )
+    # NO metrics/<case>.json file written.
+    res = client.get(
+        f"/api/v1/advisor-critique/{_VALID_CASE_ID}",
+        params={"snapshot": _VALID_SNAPSHOT_LABEL},
+    )
+    assert res.status_code == 404, res.text
+    assert "no per-case metrics" in res.json()["detail"].lower()
+
+
+def test_case_completeness_route_returns_application_json_content_type(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    res = client.get(
+        f"/api/v1/case-completeness/{_VALID_CASE_ID}",
+        params={"analysis_type": "ballistic"},
+    )
+    assert res.status_code == 200
+    ct = res.headers.get("content-type", "").split(";")[0].strip().lower()
+    assert ct == "application/json"
+
+
+def test_case_completeness_route_rejects_post_method_with_405(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    async def _post() -> httpx.Response:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as c:
+            return await c.post(
+                f"/api/v1/case-completeness/{_VALID_CASE_ID}",
+                json={"analysis_type": "ballistic"},
+            )
+
+    res = asyncio.run(_post())
+    assert res.status_code == 405
+
+
+def test_case_completeness_route_422_detail_echoes_full_allowed_set(
+    client: _SyncASGIClient, fake_repo: Path
+) -> None:
+    """Phase 11 F — the 422 detail MUST echo every member of
+    ANALYSIS_TYPE_TUPLE so a confused client can self-correct.
+    Defense against silent drift if a future MINOR bump renames a
+    type without updating the route detail."""
+    res = client.get(
+        f"/api/v1/case-completeness/{_VALID_CASE_ID}",
+        params={"analysis_type": "nonexistent_type"},
+    )
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    for allowed in ANALYSIS_TYPE_TUPLE:
+        assert allowed in detail, f"detail missing allowed type {allowed!r}"
