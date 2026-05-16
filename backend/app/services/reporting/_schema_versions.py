@@ -225,6 +225,23 @@ shape is distinct from the timeline payload shape. Closes Phase 6
 retrospective carry-forward §4.
 """
 
+SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"
+"""``signoff_record.json`` (Phase 8 A).
+
+Builder: ``backend.app.services.reporting.signoff_record``.
+
+Tier 1 candidate review-judgment record: persists reviewer name,
+UTC ISO 8601 timestamp, verdict from the whitelisted enum
+(``watching`` / ``needs_more_evidence`` / ``needs_more_convergence``
+/ ``blocked_pending_input``), and reviewer notes audited for
+forbidden positive claims. The verdict enum DELIBERATELY excludes
+every Tier 2 promotion verb (no ``ready_for_tier_2``, no
+``signed_validation_ready``, no ``benchmark_agreement``); the module
+import-time audit ``_audit_verdict_whitelist`` enforces this so no
+future maintainer can add a Tier 2 vocabulary verdict without
+breaking import.
+"""
+
 # ----- rubric version (separate from emitted JSON contracts) -----
 
 COMPLETENESS_RUBRIC_VERSION = "1.0.0"
