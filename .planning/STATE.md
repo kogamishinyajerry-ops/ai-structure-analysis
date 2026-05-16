@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase6-trust-narrative-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@1bf3df4`
-> **Last updated:** 2026-05-16 (FM-04a Phase 6 A-F reviewer drift narrative + evidence trust score closure shipped locally with the binding 8-axis scoring rubric; cumulative score 95/100 with every axis ≥90% of weight; STATE refresh + retrospective in Phase 6 G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
+> **Stamp:** `fm04a-phase7-trust-closure-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@e35c275`
+> **Last updated:** 2026-05-16 (FM-04a Phase 7 A-G trust closure & honest 99-score gate shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; cumulative honest score 97/100 with every code axis at 100% of weight, V-axis 10/13 pending final whole-arc TAA pass in slice H; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 6 A-F closure stamp `fm04a-phase6-trust-narrative-2026-05-16 · @1bf3df4` preserved in git history.
 > **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -347,6 +347,108 @@ publish against in a SCORECARD block.
   E 5/5. Stop conditions satisfied per Phase 6 blueprint rubric: ≥95
   total AND every axis ≥90% of weight. Full retrospective at
   `.planning/retrospectives/fm04a_phase6_trust_narrative.md`.
+
+`.planning/FM-04A_PHASE7_BLUEPRINT.md` authored at `1c8e2c9`
+(2026-05-16) as the local execution plan for **trust closure & honest
+99-score gate**. Closes every Phase 6 carry-forward at the HTTP
+boundary and introduces an independent **Test Auditor Agent (TAA)**
+protocol so author SCORECARDs are independently verified before
+trusted. Publishes a binding 9-axis rubric (B 12 / M 12 / T 15 / C 12
+/ X 12 / D 8 / A 8 / E 8 / V 13 weighted to 100; target ≥99 with no
+axis below 95% of its weight) + 15 anti-gaming guards + TAA protocol
+§3.F + carry-forward closure map §8. Every Phase 7 commit's SCORECARD
+is preserved in `git log` AND reconciled against an independent TAA
+verdict archived under `.planning/phase7_audit_reports/`.
+
+- FM-04a Phase 7 A-G shipped 2026-05-16 (commits `1c8e2c9..e35c275`):
+  * **Plan** (`1c8e2c9`) — Binding 9-axis rubric + 15 anti-gaming
+    guards + TAA protocol + Phase 6 carry-forward closure map.
+    Published BEFORE any code.
+  * **Phase A** (`6a213eb`, TAA archive `ae94695`) —
+    `backend/app/services/reporting/cohort_snapshot.py` writes live
+    `convergence_study.json` to `convergence/<case>.json` alongside
+    `metrics/` / `completeness/` / `reproducibility/`.
+    `cohort_snapshot_diff.py`'s `_resolve_convergence_verdict` priority:
+    captured file → metrics-inlined → None. `trust_score_timeline.py`
+    uses `captured_convergence or _convergence_block_from_metrics(metrics)`.
+    MINOR bump `COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION` 1.1.0 → 1.2.0
+    with bump-history block. 10 new tests. Closes Phase 6 §1.
+    TAA-A APPROVE.
+  * **Phase B** (`23fb6b6`, fix `36aa6bb`, TAA archive `395dbfc`) —
+    `backend/app/services/reporting/snapshot_narrative_catalogs.py` (NEW)
+    introduces `CATALOGS: dict[locale, dict[template_id, str]]` with
+    en-US + zh-CN locale catalogs, `SUPPORTED_LOCALES`, `DEFAULT_LOCALE`,
+    and **two intentional forbidden-token lists**:
+    `ENVELOPE_FORBIDDEN_TOKENS` (4 tokens, excludes the Tier 1 disclaimer
+    trio) vs `CATALOG_FORBIDDEN_TOKENS` (6 tokens, full set, since
+    template bodies never carry disclaimers). Import-time invariant
+    audits (`_audit_template_id_consistency` +
+    `_audit_catalog_forbidden_claims`) catch catalog drift at import,
+    not runtime. `snapshot_narrative.py` refactored to
+    `build_snapshot_narrative(diff, locale='en-US')`. `?locale=` query
+    parameter on the narrative endpoint with whitelist 400 rejection.
+    MINOR bump `SNAPSHOT_NARRATIVE_SCHEMA_VERSION` 1.0.0 → 1.1.0 for
+    the new envelope `locale` field (added at `36aa6bb` after TAA-B
+    HIGH finding). 34 new tests. Closes Phase 6 §3. TAA-B
+    CHANGES_REQUIRED → re-archive APPROVE after fix.
+  * **Phase C** (`6f8b012`, fix `beeb897`) —
+    `backend/app/services/reporting/trust_score_alerts.py` (NEW)
+    + `/api/v1/trust-score-alerts/<case-id>` compare adjacent timeline
+    points and emit severity-bucketed alerts. Named module constants:
+    `ALERT_THRESHOLD_INFO_MIN = 10`, `WARN_MIN = 25`, `DANGER_MIN = 40`,
+    `THRESHOLD_DELTA_MIN/MAX/DEFAULT = 1/100/10`. `primary_axis_shift`
+    annotates which axis drove each drop. `claim_impact` explicitly
+    states "alarms surface candidate drift; they do NOT authorize Tier
+    2 promotion or reject signed validation". `TRUST_SCORE_ALERTS_SCHEMA_VERSION
+    = "1.0.0"`. `frontend/src/trustScoreAlertsClient.ts` (NEW) exports
+    `DEFAULT_THRESHOLD_DELTA = 10` (TAA-C LOW fix at `beeb897`) +
+    `SUPPORTED_ALERT_SEVERITIES`. 17 builder tests + endpoint clamp
+    tests. Closes Phase 6 §4. TAA-C APPROVE.
+  * **Phase D** (`9231436`) — `tests/test_phase7_trust_score_properties.py`
+    (7 Hypothesis tests, `_PROFILE = settings(derandomize=True,
+    max_examples=25, deadline=None)` for invariants: monotonicity,
+    additivity, conservative-on-missing); `tests/test_phase7_trust_score_formula_sensitivity.py`
+    (4 sensitivity tests `monkeypatch.setattr` on `_ALL_WEIGHTS` /
+    `COMPLETENESS_WEIGHT` / `CONVERGENCE_WEIGHT` / `ENERGY_AUDIT_WEIGHT`
+    to prove formula version bumps would be visible). `trust_score.py`
+    module docstring adds "Sensitivity & Rebalance Methodology" section.
+    Closes Phase 6 §5. TAA-D APPROVE.
+  * **Phase E** (`12895eb`) — `frontend/vitest.config.ts` (NEW) headless
+    smoke harness: vitest + jsdom + @testing-library/react narrowed to
+    `include: ['test/**/*.test.tsx']` so legacy `.test.ts` files keep
+    running under `node --test`. 17 component tests across
+    `TrustScoreGauge.test.tsx` / `DriftNarrativePanel.test.tsx` /
+    `TrustScoreTimelineChart.test.tsx`. Closes Phase 6 §2. TAA-E
+    APPROVE (2 LOW non-blocking).
+  * **Phase G** (`92aff40`, fix-up `3d681f2`, TAA re-audit archive
+    `e35c275`) — `tests/test_phase7_endpoints_integration.py` (15
+    HTTP integration tests post-fix, was 9 pre-fix; restored after
+    TAA-G CHANGES_REQUIRED on T-axis floor undershoot of blueprint
+    §3.G:234 floor ≥14) + `tests/test_fm04a_phase7_trust_closure_e2e.py`
+    (3 E2E reviewer journeys composing Phase 5+6+7 surfaces:
+    convergence recovery flow / locale roundtrip flow / regression
+    alarm flow). Severity boundary pins (delta=10/25/40 →
+    info/warn/danger) added in fix-up. TAA-G CHANGES_REQUIRED →
+    re-audit APPROVE after fix-up.
+
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 7 G closure (pre-H final TAA pass): backend pytest
+  **1619 passed / 8 skipped** (up from 1529 entering Phase 7; +90 new
+  backend tests across the arc). Frontend node:test (legacy `.test.ts`)
+  **142 passed**; frontend vitest run (new `.test.tsx`) **17 passed
+  across 3 files**. `tsc -b` clean throughout.
+- Phase 7 cumulative honest scorecard (post-slice-G re-audit, pre-slice-H
+  final TAA pass): **97/100**, code axes 100% of weight, V-axis
+  10/13 (76.9%). Per-axis: B 12/12, M 12/12, T 15/15, C 12/12, X 12/12,
+  D 8/8, A 8/8, E 8/8, V 10/13. Stop condition (≥99 AND every axis
+  ≥95% of weight) requires slice H final whole-arc TAA APPROVE to
+  raise V to ≥12/13. Two TAA CHANGES_REQUIRED verdicts (B at first
+  cut, G at first cut) validate that independent verification caught
+  real defects, not rubber-stamped — both closed by fix commits, not
+  by waiver. Full retrospective at
+  `.planning/retrospectives/fm04a_phase7_trust_closure.md`. TAA reports
+  archived under `.planning/phase7_audit_reports/` (A.md, B.md, C.md,
+  D.md, E.md, G.md, G_REAUDIT.md).
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
