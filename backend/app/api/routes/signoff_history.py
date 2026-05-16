@@ -38,9 +38,14 @@ from ...services.reporting.signoff_record import (
     write_signoff_record,
 )
 
+from ._signed_registry_refusal import assert_not_signed_registry
+
 router = APIRouter(prefix="/signoff-history", tags=["signoff-history"])
 
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Retained for back-compat with the existing POST handler's explicit
+# signed-registry refusal block; the canonical SSOT is now the
+# ``assert_not_signed_registry`` helper from ``_signed_registry_refusal``.
 _SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
 
 
@@ -65,6 +70,13 @@ class SignoffWriteRequest(BaseModel):
 async def get_signoff_history(case_id: str) -> Response:
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    # Harmonizes the GET surface from 400 to 422 + the canonical
+    # detail vocabulary across every Tier 1 reviewer-facing route.
+    # The service-layer refusal remains as defense in depth (any
+    # ValueError from a path the helper doesn't cover lands at 400
+    # below).
+    assert_not_signed_registry(case_id, "signoff-history")
     try:
         report = build_signoff_history_report(case_id, repo_root=_repo_root())
     except ValueError as exc:

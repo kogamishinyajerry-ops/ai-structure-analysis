@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 # RFC-001 §6.1 Bucket B: services.visualization frozen → _frozen.sprint2.visualization.
 # HTML-scene endpoints stay live until rebuilt on Layer-2 ReaderHandle (W2-W3).
 from ..._frozen.sprint2.visualization import get_visualization_service
+from ._signed_registry_refusal import assert_not_signed_registry
 from ._viz_helpers import (
     _allowed_fs_roots,
     _apply_increment,
@@ -94,6 +95,8 @@ async def get_result_mesh_payload(case_id: str):
         artifact = _resolve_result_mesh_artifact_path(case_id, "result_mesh.json")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
     if not artifact:
         raise HTTPException(status_code=404, detail="result_mesh.json not found")
     return FileResponse(artifact, media_type="application/json")
@@ -106,6 +109,8 @@ async def get_result_mesh_artifact(case_id: str, artifact_path: str):
         artifact = _resolve_result_mesh_artifact_path(case_id, artifact_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
     if not artifact:
         raise HTTPException(status_code=404, detail="result-mesh artifact not found")
     media_type = "application/xml" if artifact.suffix == ".vtu" else "application/json"

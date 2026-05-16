@@ -23,6 +23,7 @@ from ...services.reporting.acceptance_packet import (
     build_acceptance_packet,
     render_acceptance_packet_json,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/acceptance-packet", tags=["acceptance-packet"])
 
@@ -85,6 +86,8 @@ async def get_acceptance_packet(case_id: str):
     """Build and stream the Tier 1 candidate acceptance evidence packet."""
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "acceptance-packet")
 
     inputs = _build_inputs_for(case_id)
     if not inputs.ballistic_metrics_path.is_file():

@@ -14,6 +14,7 @@ from ...models.persistence import SimulationJob
 from ...core.config import settings
 from ...services.solver import get_solver_service
 from fastapi.responses import StreamingResponse
+from ._signed_registry_refusal import assert_not_signed_registry
 
 
 router = APIRouter(prefix="/report", tags=["报告生成"])
@@ -115,6 +116,8 @@ async def generate_report(
 @router.get("/export/pdf/{case_id}")
 async def export_report_pdf(case_id: str, db: AsyncSession = Depends(get_db)):
     """一键导出专业 PDF 报告"""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "report-export-pdf")
     # 1. 寻找结果文件 (.frd)
     # 基于 Sprint 9 的 Golden Sample 路径
     case_dir = settings.gs_root / case_id

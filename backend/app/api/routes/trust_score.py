@@ -21,6 +21,7 @@ from ...services.reporting.trust_score import (
     compute_trust_score,
     render_trust_score_json,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/trust-score", tags=["trust-score"])
 
@@ -88,6 +89,8 @@ async def get_trust_score(case_id: str):
     """Compute the Tier 1 candidate trust score for one case."""
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "trust-score")
     inputs = _build_inputs_for(case_id)
     score = compute_trust_score(inputs)
     payload = render_trust_score_json(score)

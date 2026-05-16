@@ -109,10 +109,18 @@ def test_signoff_history_endpoint_rejects_invalid_case_id_shape(
 def test_signoff_history_endpoint_rejects_signed_registry_case_id(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
-    """The builder refuses ^GS-\\d{3}$; route surfaces as 400."""
+    """Phase 14 A — harmonized from 400 to 422 + canonical detail vocab.
+    The route-level ``assert_not_signed_registry`` helper fires BEFORE
+    the service-layer's ValueError (which previously surfaced as 400).
+    Cross-route consistency: every Tier 1 reviewer-facing surface now
+    uses the same 422 + ``signed-registry`` / ``candidate`` /
+    ``out of scope`` vocabulary."""
     res = client.get("/api/v1/signoff-history/GS-001")
-    assert res.status_code == 400
-    assert "signed registry" in res.text.lower()
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert "signed-registry" in detail
+    assert "candidate" in detail
+    assert "out of scope" in detail
 
 
 # ---------------------------------------------------------------------

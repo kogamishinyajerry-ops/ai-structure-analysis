@@ -20,6 +20,7 @@ from ...services.reporting.trust_score_timeline import (
     build_trust_score_timeline,
     render_trust_score_timeline_json,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/trust-score-timeline", tags=["trust-score-timeline"])
 
@@ -35,6 +36,8 @@ async def get_trust_score_timeline(case_id: str):
     """Return the Tier 1 trust score timeline for one case."""
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "trust-score-timeline")
     timeline = build_trust_score_timeline(case_id, _repo_root())
     payload = render_trust_score_timeline_json(timeline)
     return Response(content=payload, media_type="application/json")

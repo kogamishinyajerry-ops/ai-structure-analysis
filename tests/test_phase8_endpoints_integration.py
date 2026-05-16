@@ -144,8 +144,19 @@ def test_signoff_history_endpoint_chronology(client: _SyncASGIClient, fake_repo:
 def test_signoff_history_endpoint_rejects_signed_registry(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    # Phase 14 A — harmonized from 400 to 422 + canonical detail vocab.
+    # The GET signoff-history route now uses the
+    # `assert_not_signed_registry` SSOT helper introduced in slice A,
+    # mirroring advisor-critique + case-completeness. The 400 was a
+    # service-layer pass-through (the underlying ValueError mapped to
+    # HTTPException(400)); the route-level 422 fires earlier and
+    # carries the cross-route consistent vocabulary.
     res = client.get("/api/v1/signoff-history/GS-001")
-    assert res.status_code == 400
+    assert res.status_code == 422
+    detail = res.json()["detail"]
+    assert "signed-registry" in detail
+    assert "candidate" in detail
+    assert "out of scope" in detail
 
 
 # ---------------------------------------------------------------------

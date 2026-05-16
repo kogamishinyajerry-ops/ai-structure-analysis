@@ -17,6 +17,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from ._signed_registry_refusal import assert_not_signed_registry
+
 router = APIRouter(prefix="/convergence-study", tags=["convergence-study"])
 
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -43,6 +45,8 @@ async def get_convergence_study(case_id: str):
     """Stream the Tier 1 candidate convergence_study.json sidecar."""
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "convergence-study")
     path = _resolve_convergence_path(case_id)
     if not path.is_file():
         raise HTTPException(

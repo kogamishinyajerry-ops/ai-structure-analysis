@@ -23,6 +23,7 @@ from ...services.reporting.tier1_candidate_report import (
     render_tier1_report_docx_bytes,
     render_tier1_report_markdown,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/tier1-report", tags=["tier1-report"])
 
@@ -95,6 +96,8 @@ async def get_tier1_report(case_id: str, fmt: str = "docx"):
     """
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "tier1-report")
     if fmt not in ("docx", "md"):
         raise HTTPException(
             status_code=400, detail="fmt must be 'docx' or 'md'"

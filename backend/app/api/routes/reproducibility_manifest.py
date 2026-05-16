@@ -26,6 +26,7 @@ from ...services.reporting.reproducibility_manifest import (
     build_reproducibility_manifest,
     render_reproducibility_manifest_json,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(
     prefix="/reproducibility-manifest", tags=["reproducibility-manifest"]
@@ -48,6 +49,8 @@ async def get_reproducibility_manifest(case_id: str):
     """Return the Tier 1 reproducibility manifest for one case."""
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "reproducibility-manifest")
     repo_root = _repo_root()
     inputs = ReproducibilityManifestInputs(
         case_id=case_id,

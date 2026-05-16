@@ -22,6 +22,7 @@ from ...services.reporting.trust_score_provenance import (
     build_trust_score_provenance,
     render_trust_score_provenance_json,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(
     prefix="/trust-score-provenance", tags=["trust-score-provenance"]
@@ -41,6 +42,8 @@ async def get_trust_score_provenance(
 ):
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=400, detail="invalid case_id")
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "trust-score-provenance")
     if not SNAPSHOT_LABEL_RE.fullmatch(snapshot):
         raise HTTPException(status_code=400, detail="invalid snapshot label shape")
     try:
