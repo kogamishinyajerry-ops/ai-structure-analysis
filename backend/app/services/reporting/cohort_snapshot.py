@@ -130,6 +130,11 @@ def write_cohort_snapshot(
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "completeness").mkdir(parents=True, exist_ok=True)
     (out_dir / "reproducibility").mkdir(parents=True, exist_ok=True)
+    # Phase 6 A: copy each case's raw ballistic_metrics.json into
+    # metrics/<case>.json so future diffs can surface raw numerical
+    # deltas (residual_velocity, energy_balance_error) without
+    # re-reading the live project_state/ tree.
+    (out_dir / "metrics").mkdir(parents=True, exist_ok=True)
 
     members: list[str] = []
 
@@ -174,6 +179,24 @@ def write_cohort_snapshot(
         manifest_path = out_dir / "reproducibility" / f"{case.case_id}.json"
         manifest_path.write_text(manifest_json, encoding="utf-8")
         members.append(f"reproducibility/{case.case_id}.json")
+
+    # 3b. Phase 6 A — copy the case's raw ballistic_metrics.json into
+    # metrics/<case>.json when it exists on disk. Missing metrics are
+    # silently skipped (the diff will fall back to "no numerical_deltas"
+    # for that case rather than raising).
+    for case in cases:
+        if (
+            case.ballistic_metrics_path is not None
+            and case.ballistic_metrics_path.is_file()
+        ):
+            raw = case.ballistic_metrics_path.read_text(encoding="utf-8")
+            _assert_no_overclaim_text(
+                f"metrics/{case.case_id}.json", raw
+            )
+            (out_dir / "metrics" / f"{case.case_id}.json").write_text(
+                raw, encoding="utf-8"
+            )
+            members.append(f"metrics/{case.case_id}.json")
 
     # 4. Reviewer bundle (only when every case carries ballistic_metrics).
     bundle_members_written = False

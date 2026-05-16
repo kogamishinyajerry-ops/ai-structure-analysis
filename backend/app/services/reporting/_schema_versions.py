@@ -122,17 +122,70 @@ REPRODUCIBILITY_MANIFEST_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.reproducibility_manifest``.
 """
 
-COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.0.0"
+COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.1.0"
 """``SNAPSHOT_MANIFEST.json`` at the root of a written cohort snapshot
-directory (Phase 5 C).
+directory (Phase 5 C; Phase 6 A MINOR bump).
 
 Builder: ``backend.app.services.reporting.cohort_snapshot``.
+
+Bump history:
+* ``1.0.0`` (Phase 5 C, commit ``f1aa09d``) — initial release.
+* ``1.1.0`` (Phase 6 A, MINOR per bump policy) — added optional
+  ``metrics/<case>.json`` sibling directory. The new ``members``
+  entries are additive; consumers that read only the JSON files
+  declared in 1.0.0 continue to work. The bump exists so the
+  Phase 6 D timeline + Phase 6 A diff raw-value extension can
+  distinguish snapshots that have / do not have ``metrics/``.
 """
 
-COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION = "1.0.0"
-"""``cohort_snapshot_diff`` HTTP response (Phase 5 D).
+COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION = "1.1.0"
+"""``cohort_snapshot_diff`` HTTP response (Phase 5 D; Phase 6 A
+MINOR bump).
 
 Builder: ``backend.app.services.reporting.cohort_snapshot_diff``.
+
+Bump history:
+* ``1.0.0`` (Phase 5 D, commit ``4c6eeb3``) — initial release with
+  cohort membership + completeness deltas + reproducibility deltas.
+* ``1.1.0`` (Phase 6 A, MINOR per bump policy) — added optional
+  ``numerical_deltas`` field listing per-case raw value diffs
+  (residual_velocity_m_per_s, energy_balance_error_pct,
+  convergence_combined_verdict, perforation_marker) for every case
+  whose snapshot has a captured ``metrics/<case>.json``. Empty list
+  when either snapshot is at manifest schema 1.0.0 (graceful
+  fallback). Consumers reading the 1.0.0 fields continue to work.
+"""
+
+# ----- Phase 6 NEW contracts -----
+
+TRUST_SCORE_SCHEMA_VERSION = "1.0.0"
+"""``trust_score`` HTTP response (Phase 6 B).
+
+Builder: ``backend.app.services.reporting.trust_score``.
+"""
+
+TRUST_SCORE_FORMULA_VERSION = "1.0.0"
+"""Composite weights + per-axis sub-formulas used by
+``trust_score.compute_trust_score``.
+
+Versioned SEPARATELY from ``TRUST_SCORE_SCHEMA_VERSION``: the schema
+governs the JSON shape, the formula governs the numerical meaning of
+``trust_score``. A reviewer comparing two snapshots needs to know
+whether the score difference came from a formula change or a real
+evidence change. Bumping the formula version REQUIRES a retrospective
+entry naming the rebalance + a SCORECARD note on the bump category.
+"""
+
+SNAPSHOT_NARRATIVE_SCHEMA_VERSION = "1.0.0"
+"""``snapshot_narrative`` HTTP response (Phase 6 C).
+
+Builder: ``backend.app.services.reporting.snapshot_narrative``.
+"""
+
+TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.0.0"
+"""``trust_score_timeline`` HTTP response (Phase 6 D).
+
+Builder: ``backend.app.services.reporting.trust_score_timeline``.
 """
 
 # ----- rubric version (separate from emitted JSON contracts) -----

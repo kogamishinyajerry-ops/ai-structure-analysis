@@ -74,6 +74,21 @@ class ReproducibilityDelta:
 
 
 @dataclass
+class NumericalDelta:
+    """Phase 6 A — per-case raw value diff sourced from each snapshot's
+    captured ``metrics/<case>.json`` (snapshot manifest schema >= 1.1.0).
+
+    Fields are ``None`` when the metric was absent from either snapshot.
+    """
+
+    case_id: str
+    residual_velocity_m_per_s: dict[str, Any]
+    energy_balance_error_pct: dict[str, Any]
+    convergence_combined_verdict: dict[str, Any]
+    perforation_marker: dict[str, Any]
+
+
+@dataclass
 class CohortSnapshotDiff:
     schema_version: str
     generated_at_utc: str
@@ -88,6 +103,7 @@ class CohortSnapshotDiff:
     cohort_shared: list[str]
     completeness_deltas: list[CompletenessDelta]
     reproducibility_deltas: list[ReproducibilityDelta]
+    numerical_deltas: list[NumericalDelta]
     claim_impact: str
 
 
@@ -123,6 +139,7 @@ def diff_cohort_snapshots(
 
     completeness_deltas: list[CompletenessDelta] = []
     reproducibility_deltas: list[ReproducibilityDelta] = []
+    numerical_deltas: list[NumericalDelta] = []
     for case_id in shared:
         completeness_deltas.append(
             _diff_completeness(dir_a, dir_b, case_id)
@@ -130,6 +147,13 @@ def diff_cohort_snapshots(
         reproducibility_deltas.append(
             _diff_reproducibility(dir_a, dir_b, case_id)
         )
+        # Phase 6 A — only emit a numerical_delta when both snapshots
+        # captured the case's metrics (manifest schema >= 1.1.0). When
+        # either side is missing, fall through to a delta with all
+        # values None — the downstream narrative templates will skip it.
+        numerical = _diff_numerical(dir_a, dir_b, case_id)
+        if numerical is not None:
+            numerical_deltas.append(numerical)
 
     diff = CohortSnapshotDiff(
         schema_version=COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION,
@@ -145,6 +169,7 @@ def diff_cohort_snapshots(
         cohort_shared=shared,
         completeness_deltas=completeness_deltas,
         reproducibility_deltas=reproducibility_deltas,
+        numerical_deltas=numerical_deltas,
         claim_impact=CLAIM_IMPACT_DEFAULT,
     )
     _assert_no_overclaim(diff)
@@ -217,6 +242,119 @@ def _diff_reproducibility(
         package_version_changes=_diff_packages(a, b),
         script_sha_changes=_diff_scripts(a, b),
     )
+
+
+def _diff_numerical(
+    dir_a: Path, dir_b: Path, case_id: str
+) -> NumericalDelta | None:
+    """Phase 6 A — read each snapshot's captured metrics/<case>.json and
+    surface raw value diffs. Returns ``None`` when neither side has the
+    file (gracefully degrades for 1.0.0 snapshots).
+    """
+    a = _load_optional(dir_a / "metrics" / f"{case_id}.json")
+    b = _load_optional(dir_b / "metrics" / f"{case_id}.json")
+    if a is None and b is None:
+        return None
+    return NumericalDelta(
+        case_id=case_id,
+        residual_velocity_m_per_s=_numeric_pair(
+            _extract_residual_velocity(a), _extract_residual_velocity(b)
+        ),
+        energy_balance_error_pct=_absolute_numeric_pair(
+            _extract_energy_balance_error(a), _extract_energy_balance_error(b)
+        ),
+        convergence_combined_verdict=_verdict_pair(
+            _extract_convergence_verdict(a), _extract_convergence_verdict(b)
+        ),
+        perforation_marker=_marker_pair(
+            _extract_perforation_marker(a), _extract_perforation_marker(b)
+        ),
+    )
+
+
+def _extract_residual_velocity(payload: dict[str, Any] | None) -> float | None:
+    if payload is None:
+        return None
+    block = payload.get("perforation")
+    if not isinstance(block, dict):
+        return None
+    value = block.get("residual_velocity_m_per_s")
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _extract_energy_balance_error(payload: dict[str, Any] | None) -> float | None:
+    if payload is None:
+        return None
+    block = payload.get("energy_audit")
+    if not isinstance(block, dict):
+        return None
+    value = block.get("energy_balance_error_pct")
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _extract_convergence_verdict(payload: dict[str, Any] | None) -> str | None:
+    """The convergence verdict lives in convergence_study.json, not in
+    ballistic_metrics.json. The snapshot writer copies only metrics; we
+    surface the verdict here as None when absent — the completeness
+    scorecard already carries this signal under a different name.
+    """
+    if payload is None:
+        return None
+    block = payload.get("convergence_summary")
+    if isinstance(block, dict):
+        verdict = block.get("combined_verdict")
+        if isinstance(verdict, str):
+            return verdict
+    return None
+
+
+def _extract_perforation_marker(payload: dict[str, Any] | None) -> str | None:
+    if payload is None:
+        return None
+    block = payload.get("perforation")
+    if not isinstance(block, dict):
+        return None
+    marker = block.get("marker")
+    if isinstance(marker, str):
+        return marker
+    return None
+
+
+def _numeric_pair(a: float | None, b: float | None) -> dict[str, Any]:
+    if a is None or b is None:
+        return {"a": a, "b": b, "delta": None, "delta_pct": None}
+    delta = b - a
+    delta_pct = None if a == 0 else (delta / a) * 100.0
+    return {
+        "a": a,
+        "b": b,
+        "delta": round(delta, 6),
+        "delta_pct": None if delta_pct is None else round(delta_pct, 6),
+    }
+
+
+def _absolute_numeric_pair(a: float | None, b: float | None) -> dict[str, Any]:
+    if a is None or b is None:
+        return {"a": a, "b": b, "delta": None, "delta_abs_pct": None}
+    delta = b - a
+    return {
+        "a": a,
+        "b": b,
+        "delta": round(delta, 6),
+        "delta_abs_pct": round(abs(delta), 6),
+    }
+
+
+def _verdict_pair(a: str | None, b: str | None) -> dict[str, Any]:
+    return {"a": a, "b": b, "same_verdict": a is not None and a == b}
+
+
+def _marker_pair(a: str | None, b: str | None) -> dict[str, Any]:
+    return {"a": a, "b": b, "same_marker": a is not None and a == b}
 
 
 def _load_optional(path: Path) -> dict[str, Any] | None:
@@ -316,6 +454,16 @@ def _diff_to_dict(diff: CohortSnapshotDiff) -> dict[str, Any]:
         "cohort_added": diff.cohort_added,
         "cohort_removed": diff.cohort_removed,
         "cohort_shared": diff.cohort_shared,
+        "numerical_deltas": [
+            {
+                "case_id": n.case_id,
+                "residual_velocity_m_per_s": n.residual_velocity_m_per_s,
+                "energy_balance_error_pct": n.energy_balance_error_pct,
+                "convergence_combined_verdict": n.convergence_combined_verdict,
+                "perforation_marker": n.perforation_marker,
+            }
+            for n in diff.numerical_deltas
+        ],
         "completeness_deltas": [
             {
                 "case_id": d.case_id,

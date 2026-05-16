@@ -154,6 +154,41 @@ export interface ReproducibilityDelta {
   scriptShaChanges: ScriptShaChange[]
 }
 
+// Phase 6 A — raw value deltas (new in diff schema 1.1.0).
+export interface NumericPair {
+  a: number | null
+  b: number | null
+  delta: number | null
+  deltaPct: number | null
+}
+
+export interface AbsoluteNumericPair {
+  a: number | null
+  b: number | null
+  delta: number | null
+  deltaAbsPct: number | null
+}
+
+export interface VerdictPair {
+  a: string | null
+  b: string | null
+  sameVerdict: boolean
+}
+
+export interface MarkerPair {
+  a: string | null
+  b: string | null
+  sameMarker: boolean
+}
+
+export interface NumericalDelta {
+  caseId: string
+  residualVelocityMPerS: NumericPair
+  energyBalanceErrorPct: AbsoluteNumericPair
+  convergenceCombinedVerdict: VerdictPair
+  perforationMarker: MarkerPair
+}
+
 export interface CohortSnapshotDiff {
   schemaVersion: string
   generatedAtUtc: string
@@ -168,6 +203,7 @@ export interface CohortSnapshotDiff {
   cohortShared: string[]
   completenessDeltas: CompletenessDelta[]
   reproducibilityDeltas: ReproducibilityDelta[]
+  numericalDeltas: NumericalDelta[]
   claimImpact: string
 }
 
@@ -205,6 +241,40 @@ interface RawReproducibilityDelta {
   script_sha_changes?: RawScriptChange[]
 }
 
+interface RawNumericPair {
+  a?: number | null
+  b?: number | null
+  delta?: number | null
+  delta_pct?: number | null
+}
+
+interface RawAbsoluteNumericPair {
+  a?: number | null
+  b?: number | null
+  delta?: number | null
+  delta_abs_pct?: number | null
+}
+
+interface RawVerdictPair {
+  a?: string | null
+  b?: string | null
+  same_verdict?: boolean
+}
+
+interface RawMarkerPair {
+  a?: string | null
+  b?: string | null
+  same_marker?: boolean
+}
+
+interface RawNumericalDelta {
+  case_id?: string
+  residual_velocity_m_per_s?: RawNumericPair
+  energy_balance_error_pct?: RawAbsoluteNumericPair
+  convergence_combined_verdict?: RawVerdictPair
+  perforation_marker?: RawMarkerPair
+}
+
 interface RawCohortSnapshotDiff {
   schema_version?: string
   generated_at_utc?: string
@@ -219,6 +289,7 @@ interface RawCohortSnapshotDiff {
   cohort_shared?: string[]
   completeness_deltas?: RawCompletenessDelta[]
   reproducibility_deltas?: RawReproducibilityDelta[]
+  numerical_deltas?: RawNumericalDelta[]
   claim_impact?: string
 }
 
@@ -284,6 +355,48 @@ function parseReproDelta(
   }
 }
 
+function parseNumericPair(raw: RawNumericPair | undefined): NumericPair {
+  return {
+    a: raw?.a ?? null,
+    b: raw?.b ?? null,
+    delta: raw?.delta ?? null,
+    deltaPct: raw?.delta_pct ?? null,
+  }
+}
+
+function parseAbsoluteNumericPair(
+  raw: RawAbsoluteNumericPair | undefined,
+): AbsoluteNumericPair {
+  return {
+    a: raw?.a ?? null,
+    b: raw?.b ?? null,
+    delta: raw?.delta ?? null,
+    deltaAbsPct: raw?.delta_abs_pct ?? null,
+  }
+}
+
+function parseNumericalDelta(
+  raw: RawNumericalDelta | null | undefined,
+): NumericalDelta | null {
+  if (!raw || typeof raw !== 'object') return null
+  if (typeof raw.case_id !== 'string') return null
+  return {
+    caseId: raw.case_id,
+    residualVelocityMPerS: parseNumericPair(raw.residual_velocity_m_per_s),
+    energyBalanceErrorPct: parseAbsoluteNumericPair(raw.energy_balance_error_pct),
+    convergenceCombinedVerdict: {
+      a: raw.convergence_combined_verdict?.a ?? null,
+      b: raw.convergence_combined_verdict?.b ?? null,
+      sameVerdict: raw.convergence_combined_verdict?.same_verdict ?? false,
+    },
+    perforationMarker: {
+      a: raw.perforation_marker?.a ?? null,
+      b: raw.perforation_marker?.b ?? null,
+      sameMarker: raw.perforation_marker?.same_marker ?? false,
+    },
+  }
+}
+
 export function parseCohortSnapshotDiff(
   raw: RawCohortSnapshotDiff | null | undefined,
 ): CohortSnapshotDiff | null {
@@ -312,6 +425,9 @@ export function parseCohortSnapshotDiff(
     reproducibilityDeltas: (raw.reproducibility_deltas ?? [])
       .map(parseReproDelta)
       .filter((d): d is ReproducibilityDelta => d !== null),
+    numericalDeltas: (raw.numerical_deltas ?? [])
+      .map(parseNumericalDelta)
+      .filter((d): d is NumericalDelta => d !== null),
     claimImpact: raw.claim_impact ?? '',
   }
 }
