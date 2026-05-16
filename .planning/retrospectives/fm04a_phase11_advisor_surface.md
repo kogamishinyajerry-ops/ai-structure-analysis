@@ -75,27 +75,20 @@ Per the binding 9-axis rubric (B 12 / M 12 / T 15 / C 12 / X 12 / D 8 / A 8 / E 
 | D | 8 / 8 | 8 | 100 % | Slice disposition matrix in the blueprint is filled in across all 7 slices; rebalance procedure in methodology doc is 6-step procedural. |
 | A | 8 / 8 | 8 | 100 % | Anti-gaming guards exercised distinctly: M:-2 (no magic in service modules; SSOTs by identifier); T:-4 (per-shape-drift LLM parser tests × 6); T:-5 (per-token forbidden-claim test × 9 + per-token disclaimer-form-allowed × 9); A:-2 (vacuous-stub guard); A:-3 (envelope refused not silently scrubbed; client-side defense-in-depth); A:-4 (env-var seam returns None when wiring incomplete; no real network calls); A:-5 (unwired placeholder → stub at produce, NOT 5xx); C:-10 (4-Q gate refusal modes × 4). |
 | E | 8 / 8 | 8 | 100 % | Backend full sweep 2064 / 2064 + 7 skipped at Phase 11 F close; frontend 97 / 97 at Phase 11 E close; E2E walks the real ASGI stack via `httpx.ASGITransport`. |
-| V | 5.0 / 13 | 13 | 38 % | Slice A-E TAA verdicts all APPROVE 63/63 on first cut. Slice F TAA still running at retrospective write time. V-axis remainder gated on slice-F TAA + slice-G FINAL whole-arc TAA. |
+| V | 13 / 13 | 13 | 100 % | 6 / 6 first-cut APPROVE on per-slice TAAs (A-F all APPROVE 63/63, zero CHANGES_REQUIRED, zero fix-up commits). FINAL whole-arc TAA at `.planning/phase11_audit_reports/FINAL.md` APPROVE 100/100 with independent re-verification of all sweeps + cross-slice anti-gaming verification + both e2e-demo carry-forwards visibly closed at HEAD. |
 
-**Pre-FINAL cumulative honest score:** 12 + 12 + 15 + 12 + 12 + 8 + 8 + 8 + 5.0 = **92.0 / 100**, every code axis at 100 % of weight, V-axis 5.0 / 13 (38 %).
+**FINAL cumulative honest score:** 12 + 12 + 15 + 12 + 12 + 8 + 8 + 8 + 13 = **100 / 100**, every axis at 100 % of weight.
 
-**FINAL whole-arc TAA verdict (slice G):** pending. Target: APPROVE 100 / 100 with V-axis raised to 13 / 13 based on:
-- 6 / 6 first-cut APPROVE on per-slice TAAs (zero CHANGES_REQUIRED, zero fix-up commits across A-E; slice F pending).
-- Independent re-verification of backend + frontend sweeps at HEAD.
-- Cross-slice forbidden-token discipline verified.
-- HF1 zone untouched.
-- Both e2e-demo carry-forwards visibly closed at HEAD.
-
-**Stop condition (≥99 AND every axis ≥95 % of weight): pending FINAL TAA.**
+**Stop condition (≥99 AND every axis ≥95 % of weight): MET.**
 
 ## TAA reports
 
 Per-slice TAA reports archived under `.planning/phase11_audit_reports/`:
 
-- `A.md` — APPROVE 63 / 63
-- `B.md` — APPROVE 63 / 63 (zero findings)
-- `C.md` — APPROVE 63 / 63 (3 LOW findings; all carry-forward)
-- `D.md` — APPROVE 63 / 63 (4 LOW findings; all carry-forward)
+- `A.md` — APPROVE 63 / 63 (1 LOW finding; carry-forward §1)
+- `B.md` — APPROVE 63 / 63 (4 LOW findings; carry-forward)
+- `C.md` — APPROVE 63 / 63 (3 LOW findings; carry-forward)
+- `D.md` — APPROVE 63 / 63 (4 LOW findings; carry-forward)
 - `E.md` — APPROVE 63 / 63 (zero findings)
-- `F.md` — pending (spawned post-slice-F commit)
-- `FINAL.md` — pending (spawned post-slice-G commit)
+- `F.md` — APPROVE 63 / 63 (zero findings)
+- `FINAL.md` — APPROVE **100 / 100**, every axis at 100 % of weight, stop condition MET
