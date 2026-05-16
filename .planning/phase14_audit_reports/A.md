@@ -118,3 +118,40 @@ The minimum-cost rework path:
 Projected post-rework score: **63/63**.
 
 Returning **REQUIRES_REWORK** because the whole-arc target demands it; the slice as it stands clears every binding floor but the four findings above are cheap to close and the whole-arc 99/100 target is unreachable without closing at least HIGH-1 + HIGH-2.
+
+## Re-audit (post-rework, commit 5779fe7)
+
+Auditor: independent TAA re-review (Opus 4.7 1M, no implementor context). Scope: only the 4 prior findings + regression risk.
+
+### Verification of prior findings
+
+* **HIGH-1 (visualization.py ordering) — CLOSED.** Both result-mesh handlers (`visualization.py:99` parent route, `:116` artifact sub-route) now call `assert_not_signed_registry(case_id, "visualize-result-mesh")` BEFORE `_resolve_result_mesh_artifact_path`. The resolver is unreachable on a signed-registry id. Inline comments cite the A:-7 rationale.
+* **HIGH-2 (regex + detail duplication) — CLOSED.** `advisor_critique.py:48,104` imports + calls `assert_not_signed_registry(case_id, "advisor-critique")`; the local `_SIGNED_REGISTRY_RE` is gone and the hand-rolled detail block is replaced. Same for `case_completeness.py:35,146` (helper call surface "case-completeness"). `grep _SIGNED_REGISTRY_RE backend/app/api/routes/` returns only `signoff_history.py` (see new finding below).
+* **LOW-1 (parametrize candidate-passes) — CLOSED.** `tests/test_phase14_cross_route_signed_registry_refusal.py:243` now parametrizes `test_candidate_case_id_passes_the_gate` over `_KNOWN_CASE_ID_ROUTES`. Per-route candidate id is built with `path.replace("{case_id}", "some-imaginary-candidate") + query_extras`; assertion is "if 422 then `signed-registry` token MUST NOT be present". +12 cases.
+* **LOW-2 (methodology helper-call ordering) — CLOSED.** `.planning/methodology/case_id_route_discipline.md:58` adds a new section "Helper-call ordering — MUST fire BEFORE any filesystem stat" with explicit A:-7 rationale, lists what the helper must precede (filesystem, service-layer call, business logic), and references the visualization.py retrospective miss.
+
+### Verification commands
+
+* `pytest tests/test_phase14_cross_route_signed_registry_refusal.py -q`: **38 passed in 0.78 s** (was 26; +12 from LOW-1 parametrize).
+* `pytest tests/ -q`: **2350 passed, 7 skipped in 22.54 s** (was 2306; +44 = 12 slice-A + 32 slice-B per commit message). No regressions. `advisor_critique` 4-question gate tests + `case_completeness` 400-on-bad-shape tests pass under the full sweep.
+
+### Scores (sub-rubric, 63 pts)
+
+* **M: 12/12** — SSOT helper is now the single regex + detail source for every in-scope route. The remaining `_SIGNED_REGISTRY_RE` in `signoff_history.py:49` covers the POST surface only, which is documented as opt-out for the GET-enumeration meta-test (line 127-131 of the test); GET surface uses the helper. Not in slice A scope.
+* **T: 15/15** — Per-route parametrize on both 422 side and candidate-passes side. T cap floors all cleared.
+* **C: 12/12** — Both advisor-critique and case-completeness now emit the SSOT canonical sentence verbatim; vocabulary drift identified in prior C-cap finding is closed. The legacy "advisor surface" / "accepts" drift is gone (replaced by the helper output, which the C:-8 forbidden-token test pins).
+* **A: 8/8** — Helper call now precedes the filesystem stat on both visualization.py routes. The A:-7 defense-in-depth posture is intact across every in-scope route.
+* **E: 8/8** — Methodology doc now documents the ordering invariant + the retrospective miss. A future reader following the doc cannot accidentally place the helper after a filesystem call.
+* **V: 8/8** — Full sweep stays green at 2350. Slice tests 38/38. No regressions in advisor 4-question gate or case_completeness 400-on-bad-shape.
+
+### Total: 63/63
+
+### New findings introduced by rework
+
+* **LOW-3 (NEW) — `signoff_history.py` POST handler still inlines `_SIGNED_REGISTRY_RE` + hand-rolled refusal at lines 49 + 121-128.** Comment on lines 46-48 explicitly states "Retained for back-compat with the existing POST handler's explicit signed-registry refusal block; the canonical SSOT is now the helper". The POST surface IS in scope for the cross-route contract (listed in `_OPT_OUT_ROUTES` only because the schema-check enumeration tracks GET-only; the POST is in scope but tested separately by `test_phase9_signoff_post_endpoint.py`). The comment at `test_phase14_*.py:127-130` claims "POST signoff-history... uses the helper since Phase 14 A", which is factually wrong — the POST still has its own regex + hand-built detail string. Not a slice-A blocker (out of the 4 prior findings; full sweep green) but worth tracking for slice B / a follow-up so the SSOT-everywhere thesis isn't undermined by a misleading test comment. **Fix:** replace `signoff_history.py:121-128` with `assert_not_signed_registry(case_id, "signoff-history-post")`; drop `_SIGNED_REGISTRY_RE` at line 49. The Phase 9 POST test asserts on the three canonical tokens — should pass under the SSOT helper output.
+
+### Verdict
+
+**APPROVE_WITH_COMMENTS**
+
+All 4 prior findings (HIGH-1, HIGH-2, LOW-1, LOW-2) closed. Every sub-axis at ceiling (M=12, T=15, C=12, A=8, E=8, V=8 → 63/63). Stop-condition floors all met (M≥10, T≥12, C≥10, A≥6, E≥7, V≥7). Full sweep green at 2350. No HIGH findings introduced. The one NEW LOW finding (signoff-history POST stragglers + misleading test comment) does NOT block slice A — it's a documented-but-unfixed pre-existing condition that the test enumeration accommodates, the full sweep ratifies, and a 5-line slice-B follow-up closes. Whole-arc 99/100 target is now reachable on the M/T/C/A/E/V dimensions for slice A.

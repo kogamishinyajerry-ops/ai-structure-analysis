@@ -43,10 +43,13 @@ from ._signed_registry_refusal import assert_not_signed_registry
 router = APIRouter(prefix="/signoff-history", tags=["signoff-history"])
 
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-# Retained for back-compat with the existing POST handler's explicit
-# signed-registry refusal block; the canonical SSOT is now the
-# ``assert_not_signed_registry`` helper from ``_signed_registry_refusal``.
-_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
+# Phase 14 A re-audit LOW-3 closure: removed the inline
+# ``_SIGNED_REGISTRY_RE`` declaration; both GET and POST now route
+# through the cross-route SSOT helper ``assert_not_signed_registry``.
+# The hand-rolled "signoff POST refuses signed-registry case_id;
+# Tier 1 candidate signoffs only accept *-candidate identifiers"
+# detail string is superseded by the SSOT detail builder, which
+# carries the same canonical tokens.
 
 
 def _repo_root() -> Path:
@@ -115,17 +118,15 @@ async def post_signoff_history(case_id: str, request: Request) -> JSONResponse:
             detail="signoff POST requires Content-Type: application/json",
         )
 
-    # 2 + 3. Case id gates (refuse before reading body).
+    # 2 + 3. Case id gates (refuse before reading body). Phase 14 A
+    #         re-audit LOW-3 closure: signoff POST now routes through
+    #         the cross-route SSOT helper for the signed-registry
+    #         refusal, matching the GET surface and every other Tier 1
+    #         reviewer-facing route. Service-layer ValueError remains
+    #         as defense in depth.
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=422, detail="invalid case_id")
-    if _SIGNED_REGISTRY_RE.fullmatch(case_id):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "signoff POST refuses signed-registry case_id; "
-                "Tier 1 candidate signoffs only accept *-candidate identifiers"
-            ),
-        )
+    assert_not_signed_registry(case_id, "signoff-history")
 
     # 4. Body parse + Pydantic validation.
     try:
