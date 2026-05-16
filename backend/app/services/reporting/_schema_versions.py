@@ -225,6 +225,20 @@ shape is distinct from the timeline payload shape. Closes Phase 6
 retrospective carry-forward §4.
 """
 
+TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.0.0"
+"""``trust_score_provenance`` HTTP response (Phase 8 C).
+
+Builder: ``backend.app.services.reporting.trust_score_provenance``.
+
+Tier 1 candidate provenance trace: given a case + snapshot label,
+walks back to every input file SHA (metrics / convergence /
+completeness / reproducibility / generator script), surfaces the
+``formula_version`` that produced the trust score, the recomputed
+score itself, and the per-axis breakdown — all from frozen
+snapshot bytes so the reviewer gets a deterministic answer to
+"exactly what produced this 87?"
+"""
+
 SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"
 """``signoff_record.json`` (Phase 8 A).
 

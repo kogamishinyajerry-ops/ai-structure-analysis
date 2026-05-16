@@ -30,6 +30,7 @@ from .api.routes import (
     tier1_report,
     trust_score,
     trust_score_alerts,
+    trust_score_provenance,
     trust_score_timeline,
     visualization,
 )
@@ -114,6 +115,8 @@ app.include_router(trust_score_timeline.router, prefix="/api/v1")
 app.include_router(trust_score_alerts.router, prefix="/api/v1")
 # FM-04a Phase 8 B — Tier 1 reviewer signoff history.
 app.include_router(signoff_history.router, prefix="/api/v1")
+# FM-04a Phase 8 C — Tier 1 trust score provenance trace.
+app.include_router(trust_score_provenance.router, prefix="/api/v1")
 
 
 @app.get("/")
