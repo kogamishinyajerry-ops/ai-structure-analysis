@@ -5,7 +5,12 @@
 // Typed fetch helper for `/api/v1/trust-score-alerts/<case-id>`. Preserves
 // schemaVersion + per-alert severity for tone-coded UI rendering.
 
-export type AlertSeverity = 'info' | 'warn' | 'danger'
+// Keep in lock-step with backend THRESHOLD_DELTA_DEFAULT (=10). Slice-C TAA
+// LOW finding: literal 10 was duplicated in two call sites; centralized here.
+export const DEFAULT_THRESHOLD_DELTA = 10
+export const SUPPORTED_ALERT_SEVERITIES = ['info', 'warn', 'danger'] as const
+
+export type AlertSeverity = (typeof SUPPORTED_ALERT_SEVERITIES)[number]
 
 export interface AxisDeltas {
   completeness: number
@@ -114,7 +119,7 @@ export function parseTrustScoreAlertReport(
     claimTier: raw.claim_tier ?? '',
     claimBoundary: raw.claim_boundary ?? '',
     generatedAtUtc: raw.generated_at_utc ?? '',
-    thresholdDelta: raw.threshold_delta ?? 10,
+    thresholdDelta: raw.threshold_delta ?? DEFAULT_THRESHOLD_DELTA,
     alertCount: raw.alert_count ?? 0,
     alerts: (raw.alerts ?? [])
       .map(parseAlertEvent)
@@ -133,7 +138,7 @@ export async function fetchTrustScoreAlerts(
   apiBase: string,
   caseId: string,
   signal?: AbortSignal,
-  thresholdDelta = 10,
+  thresholdDelta: number = DEFAULT_THRESHOLD_DELTA,
 ): Promise<TrustScoreAlertsFetchResult> {
   const params = new URLSearchParams({
     threshold_delta: String(thresholdDelta),
