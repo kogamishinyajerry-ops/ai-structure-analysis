@@ -122,10 +122,15 @@ def _make_case(case_id: str, root: Path, residual_velocity: float) -> SnapshotCa
 
 
 def test_snapshot_manifest_schema_version_bumped_to_1_2_0() -> None:
-    # Phase 7 A bumped the manifest from 1.1.0 to 1.2.0 (additive
-    # convergence/<case>.json capture). Phase 6 A's 1.1.0 baseline lives
-    # in the bump-history block of _schema_versions.py.
-    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.2.0"
+    # Bump history (additive MINOR per bump policy):
+    #   Phase 5 C  1.0.0
+    #   Phase 6 A  1.1.0  (metrics/<case>.json sibling)
+    #   Phase 7 A  1.2.0  (convergence/<case>.json sibling)
+    #   Phase 9 B  1.3.0  (generator/<case>.py sibling)
+    # The test name reflects the original Phase 6 A bump; the constant
+    # now tracks Phase 9 B. Old consumers reading 1.2.0 fields continue
+    # to work because every bump has been additive.
+    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.3.0"
 
 
 def test_snapshot_diff_schema_version_bumped_to_1_1_0() -> None:

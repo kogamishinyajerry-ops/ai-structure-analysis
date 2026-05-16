@@ -140,6 +140,13 @@ def write_cohort_snapshot(
     # combined verdict from captured bytes (closes Phase 6 carry-
     # forward §1; manifest 1.1.0 -> 1.2.0).
     (out_dir / "convergence").mkdir(parents=True, exist_ok=True)
+    # Phase 9 B: copy each case's generator script bytes into
+    # generator/<case>.py so the trust-score-provenance trace can
+    # surface a SHA over the actual generator that produced the case.
+    # Missing generators are silently skipped (the provenance walker
+    # yields present=False for the case). Closes Phase 8 carry-
+    # forward §2; manifest 1.2.0 -> 1.3.0; provenance 1.0.0 -> 1.1.0.
+    (out_dir / "generator").mkdir(parents=True, exist_ok=True)
 
     members: list[str] = []
 
@@ -220,6 +227,24 @@ def write_cohort_snapshot(
                 raw, encoding="utf-8"
             )
             members.append(f"convergence/{case.case_id}.json")
+
+    # 3d. Phase 9 B — copy the case's generator_script_path bytes into
+    # generator/<case>.py when it exists on disk. Same fallback
+    # semantics as metrics/ and convergence/: missing generators are
+    # silently skipped and the provenance walker yields present=False.
+    # The forbidden-claim audit runs over the bytes decoded as UTF-8
+    # with errors="replace" so a binary or non-UTF-8 generator never
+    # crashes the snapshot writer; the SHA + present=True still ship.
+    for case in cases:
+        if (
+            case.generator_script_path is not None
+            and case.generator_script_path.is_file()
+        ):
+            raw_bytes = case.generator_script_path.read_bytes()
+            decoded = raw_bytes.decode("utf-8", errors="replace")
+            _assert_no_overclaim_text(f"generator/{case.case_id}.py", decoded)
+            (out_dir / "generator" / f"{case.case_id}.py").write_bytes(raw_bytes)
+            members.append(f"generator/{case.case_id}.py")
 
     # 4. Reviewer bundle (only when every case carries ballistic_metrics).
     bundle_members_written = False

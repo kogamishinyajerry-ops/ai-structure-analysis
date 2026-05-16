@@ -47,12 +47,29 @@ CLAIM_IMPACT_DEFAULT = (
 
 # Per-axis input kinds the provenance walks. Tuple is the SSOT for both
 # the dict key order and the on-disk subdirectory naming.
+#
+# Phase 9 B (MINOR bump 1.0.0 -> 1.1.0): added ``generator`` as a fifth
+# input kind. The walker emits a ``ProvenanceInput`` row for the
+# generator script whether or not the snapshot captured one
+# (``present=False`` when the snapshot pre-dates Phase 9 B). The
+# ``.py`` extension is intentional — not every input kind is JSON.
 PROVENANCE_INPUT_KINDS: tuple[str, ...] = (
     "metrics",
     "convergence",
     "completeness",
     "reproducibility",
+    "generator",
 )
+
+# File extension per input kind (SSOT for the walker — keep ordering in
+# lock-step with PROVENANCE_INPUT_KINDS).
+_PROVENANCE_KIND_EXTENSION: dict[str, str] = {
+    "metrics": ".json",
+    "convergence": ".json",
+    "completeness": ".json",
+    "reproducibility": ".json",
+    "generator": ".py",
+}
 
 
 @dataclass(frozen=True)
@@ -153,8 +170,9 @@ def render_trust_score_provenance_json(report: TrustScoreProvenanceReport) -> st
 
 def _walk_inputs(case_id: str, snap_dir: Path):
     for kind in PROVENANCE_INPUT_KINDS:
-        path = snap_dir / kind / f"{case_id}.json"
-        rel = f"{kind}/{case_id}.json"
+        ext = _PROVENANCE_KIND_EXTENSION[kind]
+        path = snap_dir / kind / f"{case_id}{ext}"
+        rel = f"{kind}/{case_id}{ext}"
         if path.is_file():
             data = path.read_bytes()
             yield ProvenanceInput(

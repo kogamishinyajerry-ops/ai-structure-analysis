@@ -122,9 +122,9 @@ REPRODUCIBILITY_MANIFEST_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.reproducibility_manifest``.
 """
 
-COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.2.0"
+COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.3.0"
 """``SNAPSHOT_MANIFEST.json`` at the root of a written cohort snapshot
-directory (Phase 5 C; Phase 6 A + Phase 7 A MINOR bumps).
+directory (Phase 5 C; Phase 6 A / Phase 7 A / Phase 9 B MINOR bumps).
 
 Builder: ``backend.app.services.reporting.cohort_snapshot``.
 
@@ -145,6 +145,15 @@ Bump history:
   Consumers reading the 1.1.0 fields continue to work; the diff and
   timeline gracefully degrade when ``convergence/`` is absent.
   Closes Phase 6 retrospective carry-forward §1.
+* ``1.3.0`` (Phase 9 B, MINOR per bump policy) — added optional
+  ``generator/<case>.py`` sibling directory. The snapshot writer now
+  copies each case's ``generator_script_path`` bytes into the
+  snapshot so the trust-score-provenance trace can surface a SHA over
+  the actual generator that produced the case rather than only over
+  the rendered evidence. Consumers reading the 1.2.0 fields continue
+  to work; the provenance walker gracefully degrades to
+  ``present=False`` when ``generator/<case>.py`` is absent. Closes
+  Phase 8 retrospective carry-forward §2.
 """
 
 COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION = "1.1.0"
@@ -252,18 +261,29 @@ cohort mean; they do NOT diagnose root cause, validate physics, or
 authorize Tier 2 promotion."
 """
 
-TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.0.0"
-"""``trust_score_provenance`` HTTP response (Phase 8 C).
+TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.1.0"
+"""``trust_score_provenance`` HTTP response (Phase 8 C; Phase 9 B MINOR bump).
 
 Builder: ``backend.app.services.reporting.trust_score_provenance``.
 
 Tier 1 candidate provenance trace: given a case + snapshot label,
-walks back to every input file SHA (metrics / convergence /
-completeness / reproducibility / generator script), surfaces the
-``formula_version`` that produced the trust score, the recomputed
-score itself, and the per-axis breakdown — all from frozen
-snapshot bytes so the reviewer gets a deterministic answer to
-"exactly what produced this 87?"
+walks back to every input file SHA, surfaces the ``formula_version``
+that produced the trust score, the recomputed score itself, and the
+per-axis breakdown — all from frozen snapshot bytes so the reviewer
+gets a deterministic answer to "exactly what produced this 87?"
+
+Bump history:
+* ``1.0.0`` (Phase 8 C, commit ``6e19def``) — initial release with
+  four input kinds: ``metrics`` / ``convergence`` / ``completeness``
+  / ``reproducibility``. (Earlier docstring mentioned "generator
+  script" by mistake; the 1.0.0 tuple did not include it. Phase 9 B
+  closes that drift by actually shipping it.)
+* ``1.1.0`` (Phase 9 B, MINOR per bump policy) — added ``generator``
+  as a fifth value to the ``PROVENANCE_INPUT_KINDS`` SSOT tuple. The
+  walker emits a ``ProvenanceInput`` row for the generator script
+  whether or not the snapshot captured one (``present=False`` when
+  the snapshot pre-dates Phase 9 B). Consumers reading the 1.0.0
+  fields continue to work because the new row is additive.
 """
 
 SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"

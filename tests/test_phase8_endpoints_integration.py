@@ -41,6 +41,7 @@ from app.services.reporting.cohort_snapshot import (
     write_cohort_snapshot,
 )
 from app.services.reporting.signoff_record import write_signoff_record
+from app.services.reporting.trust_score_provenance import PROVENANCE_INPUT_KINDS
 
 
 class _SyncASGIClient:
@@ -166,7 +167,8 @@ def test_provenance_endpoint_returns_stamped_payload(
     assert payload["schema_version"] == TRUST_SCORE_PROVENANCE_SCHEMA_VERSION
     assert payload["case_id"] == "GS-A-candidate"
     assert payload["snapshot_label"] == "2026-05-16T100000Z"
-    assert len(payload["inputs"]) == 4  # PROVENANCE_INPUT_KINDS
+    # Phase 9 B added "generator" — pin via the SSOT tuple rather than a literal.
+    assert len(payload["inputs"]) == len(PROVENANCE_INPUT_KINDS)
 
 
 def test_provenance_endpoint_404_on_missing_snapshot(

@@ -112,8 +112,14 @@ def _make_case(
 
 
 def test_manifest_schema_version_bumped_to_1_2_0() -> None:
-    """Phase 7 A MINOR bump pins at 1.2.0; closes Phase 6 §1."""
-    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.2.0"
+    """Bump history (Phase 7 A added convergence; later bumps additive):
+
+    *  Phase 7 A  1.1.0 -> 1.2.0  (convergence/<case>.json)
+    *  Phase 9 B  1.2.0 -> 1.3.0  (generator/<case>.py)
+
+    Test name reflects the Phase 7 A bump; constant tracks current head.
+    """
+    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.3.0"
 
 
 # ---------------------------------------------------------------------
@@ -138,7 +144,8 @@ def test_writer_lists_convergence_member_in_manifest(tmp_path: Path) -> None:
         (result.snapshot_dir / SNAPSHOT_MANIFEST_FILENAME).read_text(encoding="utf-8")
     )
     assert "convergence/GS-A-candidate.json" in manifest["members"]
-    assert manifest["schema_version"] == "1.2.0"
+    # Tracks the current writer's stamp; bumped to 1.3.0 in Phase 9 B.
+    assert manifest["schema_version"] == "1.3.0"
 
 
 def test_writer_skips_convergence_capture_when_source_absent(tmp_path: Path) -> None:
