@@ -417,32 +417,18 @@ def test_methodology_doc_cumulative_section_passes_forbidden_grep() -> None:
     ``.planning/methodology/trust_score_drift_attribution.md`` MUST
     NOT carry any of the 9 forbidden positive-claim tokens outside
     ``not <claim>`` / ``no <claim>`` form. This is a smoke grep
-    complementing the Phase 15 C module-level guard."""
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-        "production ready",
-        "certified",
-        "approved for service",
-        "asme compliant",
-        "signed off",
+    complementing the Phase 15 C module-level guard.
+
+    Consumes the SSOT 9-tuple + grep helper from
+    :mod:`tests._test_utils` (closes Phase 15 retro §7)."""
+    from tests._test_utils import (
+        FORBIDDEN_POSITIVE_CLAIM_TOKENS_9,
+        assert_no_forbidden_positive_claims,
     )
+
     doc = REPO_ROOT / ".planning" / "methodology" / "trust_score_drift_attribution.md"
-    text = doc.read_text(encoding="utf-8").lower()
-    for token in forbidden:
-        idx = text.find(token)
-        while idx != -1:
-            prefix_raw = text[max(0, idx - 8) : idx]
-            prefix = prefix_raw.replace("`", " ").replace('"', " ").strip()
-            allowed = prefix.endswith("not") or prefix.endswith("no")
-            assert allowed, (
-                f"forbidden token {token!r} appears in methodology "
-                f"doc outside negated form; context: "
-                f"...{text[max(0, idx - 30) : idx + len(token) + 30]}..."
-            )
-            idx = text.find(token, idx + 1)
+    text = doc.read_text(encoding="utf-8")
+    assert_no_forbidden_positive_claims(text, tokens=FORBIDDEN_POSITIVE_CLAIM_TOKENS_9)
 
 
 # ---------------------------------------------------------------------

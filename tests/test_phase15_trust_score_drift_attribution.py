@@ -45,6 +45,11 @@ from app.services.reporting.trust_score_timeline import (
     build_trust_score_timeline,
 )
 
+from tests._test_utils import (
+    FORBIDDEN_POSITIVE_CLAIM_TOKENS_9,
+    assert_no_forbidden_positive_claims,
+)
+
 # ---------------------------------------------------------------------
 # M:-2 SSOT constant pins
 # ---------------------------------------------------------------------
@@ -380,18 +385,16 @@ def test_live_alerts_carry_drift_attribution_on_energy_axis(
 
 def test_no_forbidden_positive_claims_in_new_module() -> None:
     """The drift attribution module + methodology doc MUST carry no
-    forbidden positive-claim tokens outside `not <claim>` form."""
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-        "production ready",
-        "certified",
-        "approved for service",
-        "asme compliant",
-        "signed off",
-    )
+    forbidden positive-claim tokens outside `not <claim>` /
+    `no <claim>` form.
+
+    Consumes the SSOT 9-tuple + grep helper from
+    :mod:`tests._test_utils` (closes Phase 15 retro §7 — the 9-tuple
+    + grep loop are no longer inlined per file). The stricter
+    9-tuple is used for source-file grep (it rejects bare
+    ``certified``); the narrower 8-tuple is used for envelope audits
+    where CLAIM_BOUNDARY legitimately carries
+    ``not_signed_validation_or_certified_simulation``."""
     sources = [
         REPO_ROOT
         / "backend"
@@ -402,21 +405,5 @@ def test_no_forbidden_positive_claims_in_new_module() -> None:
         REPO_ROOT / ".planning" / "methodology" / "trust_score_drift_attribution.md",
     ]
     for src in sources:
-        text = src.read_text(encoding="utf-8").lower()
-        for token in forbidden:
-            # Allow `not <token>` and `no <token>` forms (the latter
-            # appears in the "Forbidden wording" docstring header,
-            # often with surrounding double-backticks).
-            idx = text.find(token)
-            while idx != -1:
-                prefix_raw = text[max(0, idx - 8) : idx]
-                # Strip backticks / quotes / whitespace so we can match
-                # the prefix word cleanly.
-                prefix = prefix_raw.replace("`", " ").replace('"', " ").strip()
-                allowed = prefix.endswith("not") or prefix.endswith("no")
-                assert allowed, (
-                    f"forbidden token {token!r} in {src.name} "
-                    f"outside 'not <claim>'/'no <claim>' form: "
-                    f"...{text[max(0, idx - 30) : idx + len(token) + 30]}..."
-                )
-                idx = text.find(token, idx + 1)
+        text = src.read_text(encoding="utf-8")
+        assert_no_forbidden_positive_claims(text, tokens=FORBIDDEN_POSITIVE_CLAIM_TOKENS_9)

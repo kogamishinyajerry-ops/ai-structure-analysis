@@ -62,6 +62,12 @@ from app.services.reporting.cohort_snapshot import (
     write_cohort_snapshot,
 )
 
+from tests._test_utils import (
+    FORBIDDEN_POSITIVE_CLAIM_TOKENS_8,
+    assert_no_forbidden_positive_claims,
+    assert_tier1_trio,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Cohort SSOT — 5 cases across 2 analysis types. (case_id, analysis_type) tuples.
@@ -296,13 +302,16 @@ def patched_routes(journey_repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _assert_tier1_trio(envelope: dict[str, Any]) -> None:
-    assert envelope.get("claim_tier") == "Tier 1 engineering candidate", (
-        f"claim_tier missing or wrong: {envelope.get('claim_tier')!r}"
-    )
-    boundary = envelope.get("claim_boundary", "")
-    assert "not_signed_validation" in boundary and "not_benchmark_agreement" in boundary, (
-        f"claim_boundary missing tokens: {boundary!r}"
-    )
+    """Journey 2 audits only claim_tier + claim_boundary (the
+    linear_static_pv cases under this rubric legitimately omit a
+    canonical ``claim_impact`` envelope token). Delegates to the
+    SSOT :func:`tests._test_utils.assert_tier1_trio` with
+    ``check_impact=False`` to close Phase 15 retro §8 — the trio
+    audit is no longer inlined per file. The thin per-file wrapper
+    is preserved so the meta-test in
+    ``tests/test_phase16_test_utils_ssot.py`` doesn't flag this
+    file (the wrapper just routes to the SSOT)."""
+    assert_tier1_trio(envelope, check_impact=False)
 
 
 # ---------------------------------------------------------------------
@@ -583,17 +592,10 @@ def test_journey2_no_forbidden_positive_claims_in_envelopes(
 ) -> None:
     """Smoke-grep on Journey 2's envelopes for the 8 broader
     forbidden tokens (modulo ``certified`` which appears in some
-    CLAIM_BOUNDARY variants)."""
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-        "production ready",
-        "approved for service",
-        "asme compliant",
-        "signed off",
-    )
+    CLAIM_BOUNDARY variants).
+
+    Consumes the SSOT 8-tuple + grep helper from
+    :mod:`tests._test_utils` (closes Phase 15 retro §7+§8)."""
     bodies: list[str] = []
     bodies.append(client.get("/api/v1/cohort-executive-summary").text)
     bodies.append(client.get("/api/v1/cohort-anomalies").text)
@@ -605,15 +607,5 @@ def test_journey2_no_forbidden_positive_claims_in_envelopes(
                 params={"analysis_type": atype},
             ).text
         )
-    blob = "\n".join(bodies).lower()
-    for token in forbidden:
-        idx = blob.find(token)
-        while idx != -1:
-            prefix = blob[max(0, idx - 8) : idx].replace("`", " ").strip()
-            allowed = prefix.endswith("not") or prefix.endswith("no")
-            assert allowed, (
-                f"forbidden token {token!r} appears in a journey 2 "
-                f"envelope outside the negated form; context: "
-                f"...{blob[max(0, idx - 30) : idx + len(token) + 30]}..."
-            )
-            idx = blob.find(token, idx + 1)
+    blob = "\n".join(bodies)
+    assert_no_forbidden_positive_claims(blob, tokens=FORBIDDEN_POSITIVE_CLAIM_TOKENS_8)

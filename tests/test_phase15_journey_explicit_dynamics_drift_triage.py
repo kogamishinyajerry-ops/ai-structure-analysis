@@ -77,6 +77,12 @@ from app.services.reporting.cohort_snapshot import (
     write_cohort_snapshot,
 )
 
+from tests._test_utils import (
+    FORBIDDEN_POSITIVE_CLAIM_TOKENS_8,
+    assert_no_forbidden_positive_claims,
+    assert_tier1_trio,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Phase 15 cohort SSOT — same 3 explicit_dynamics cases substantiated
@@ -304,24 +310,16 @@ def patched_routes(journey_repo: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 # ---------------------------------------------------------------------
-# C:-8 Tier 1 disclaimer trio audit helper
+# C:-8 Tier 1 disclaimer trio audit
 # ---------------------------------------------------------------------
-
-
-def _assert_tier1_trio(envelope: dict[str, Any]) -> None:
-    """Every 200 envelope in this journey carries the Tier 1
-    disclaimer trio (claim_tier / claim_boundary / claim_impact)."""
-    assert envelope.get("claim_tier") == "Tier 1 engineering candidate", (
-        f"claim_tier missing or wrong: {envelope.get('claim_tier')!r}"
-    )
-    boundary = envelope.get("claim_boundary", "")
-    assert "not_signed_validation" in boundary and "not_benchmark_agreement" in boundary, (
-        f"claim_boundary missing tokens: {boundary!r}"
-    )
-    impact = envelope.get("claim_impact", "")
-    assert (
-        "not signed validation" in impact.lower() or "not benchmark agreement" in impact.lower()
-    ), f"claim_impact missing tokens: {impact!r}"
+#
+# Phase 15 retrospective §8 sequel: the per-file ``_assert_tier1_trio``
+# helper has been hoisted to ``tests/_test_utils`` as the cross-phase
+# SSOT (closes Phase 16 retro §7 + §8 carry-forward). Phase 15+ test
+# files import :func:`tests._test_utils.assert_tier1_trio` instead of
+# inlining a local copy; a meta-test in
+# ``tests/test_phase16_test_utils_ssot.py`` enforces that no other
+# Phase 15+ test file re-inlines the helper.
 
 
 # ---------------------------------------------------------------------
@@ -346,7 +344,7 @@ def test_journey_step1_cohort_executive_summary_shows_regressed(
     res = client.get("/api/v1/cohort-executive-summary")
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     assert body["regressed_count"] >= 1, (
         f"snap-3 state expected at least one regressed case; got "
         f"regressed_count={body['regressed_count']}, "
@@ -379,7 +377,7 @@ def test_journey_step2_trust_score_alerts_drift_attribution_names_energy_axis(
     res = client.get(f"/api/v1/trust-score-alerts/{LEAK_CASE_ID}")
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     assert body["schema_version"] == "1.1.0", body["schema_version"]
     assert body["alert_count"] >= 1, body
     # Find an alert whose drift_attribution names energy_audit as
@@ -416,7 +414,7 @@ def test_journey_step3_trust_score_timeline_carries_inter_snapshot_drift(
     res = client.get(f"/api/v1/trust-score-timeline/{LEAK_CASE_ID}")
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     assert body["schema_version"] == "1.2.0", body["schema_version"]
     assert len(body["points"]) == 3, (
         f"expected 3 snapshot points; got {len(body['points'])}: "
@@ -452,7 +450,7 @@ def test_journey_step4_case_completeness_energy_axis_zero(
     )
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     assert body["analysis_type"] == "explicit_dynamics"
     axes = {entry["label"]: entry for entry in body["breakdown"]}
     assert "energy_audit" in axes, (
@@ -483,7 +481,7 @@ def test_journey_step5_advisor_critique_explicit_dynamics_branch(
     )
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     # 4-Q gate: advisor is advisory-only (LLM-offline-first stub path).
     assert body["advisor_status"] == "stub", body["advisor_status"]
     haystack = "\n".join(
@@ -510,7 +508,7 @@ def test_journey_step6_signoff_history_empty(client: _SyncASGIClient, patched_ro
     res = client.get(f"/api/v1/signoff-history/{LEAK_CASE_ID}")
     assert res.status_code == 200, res.text
     body = res.json()
-    _assert_tier1_trio(body)
+    assert_tier1_trio(body)
     assert body["records"] == [], body["records"]
 
 
@@ -618,22 +616,13 @@ def test_journey_per_route_signed_registry_refused(
 def test_journey_no_forbidden_positive_claims_in_envelopes(
     client: _SyncASGIClient, patched_routes: Path
 ) -> None:
-    """The 9 forbidden positive-claim tokens MUST NOT appear in any
-    journey envelope outside ``not <claim>`` form. This is a
-    smoke-grep that complements the per-module guard tests."""
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-        "production ready",
-        "approved for service",
-        "asme compliant",
-        "signed off",
-    )
-    # 'certified' is allowed in CLAIM_BOUNDARY (which carries the
-    # token "not_signed_validation_or_certified_simulation" in some
-    # variants); we audit the broader 8 tokens only here.
+    """The 8 forbidden positive-claim tokens MUST NOT appear in any
+    journey envelope outside ``not <claim>`` / ``no <claim>`` form.
+    A smoke-grep that complements the per-module guard tests.
+
+    Consumes the SSOT 8-tuple + grep helper from
+    :mod:`tests._test_utils` (closes Phase 15 retro §7+§8 — the
+    8-token tuple + grep loop are no longer inlined per file)."""
     bodies = []
     bodies.append(client.get("/api/v1/cohort-executive-summary").text)
     bodies.append(client.get(f"/api/v1/trust-score-alerts/{LEAK_CASE_ID}").text)
@@ -651,16 +640,5 @@ def test_journey_no_forbidden_positive_claims_in_envelopes(
         ).text
     )
     bodies.append(client.get(f"/api/v1/signoff-history/{LEAK_CASE_ID}").text)
-    blob = "\n".join(bodies).lower()
-    for token in forbidden:
-        idx = blob.find(token)
-        while idx != -1:
-            # Allow the negated form `not <claim>` / `no <claim>`.
-            prefix = blob[max(0, idx - 8) : idx].replace("`", " ").strip()
-            allowed = prefix.endswith("not") or prefix.endswith("no")
-            assert allowed, (
-                f"forbidden token {token!r} appears in a journey "
-                f"envelope outside the negated form; context: "
-                f"...{blob[max(0, idx - 30) : idx + len(token) + 30]}..."
-            )
-            idx = blob.find(token, idx + 1)
+    blob = "\n".join(bodies)
+    assert_no_forbidden_positive_claims(blob, tokens=FORBIDDEN_POSITIVE_CLAIM_TOKENS_8)

@@ -418,36 +418,22 @@ def test_render_helper_nan_becomes_null() -> None:
 def test_no_forbidden_positive_claims_in_new_module() -> None:
     """The 9 forbidden positive-claim tokens MUST NOT appear in the
     new module / methodology doc outside ``not <claim>`` / ``no
-    <claim>`` form."""
-    forbidden = (
-        "validated against",
-        "perforation completed",
-        "bullet-through-steel complete",
-        "validated physics",
-        "production ready",
-        "certified",
-        "approved for service",
-        "asme compliant",
-        "signed off",
+    <claim>`` form.
+
+    Consumes the SSOT 9-tuple + grep helper from
+    :mod:`tests._test_utils` (closes Phase 15 retro §7)."""
+    from tests._test_utils import (
+        FORBIDDEN_POSITIVE_CLAIM_TOKENS_9,
+        assert_no_forbidden_positive_claims,
     )
+
     sources = [
         REPO_ROOT / "backend" / "app" / "services" / "reporting" / "cohort_drift_attribution.py",
         REPO_ROOT / ".planning" / "methodology" / "cohort_drift_attribution.md",
     ]
     for src in sources:
-        text = src.read_text(encoding="utf-8").lower()
-        for token in forbidden:
-            idx = text.find(token)
-            while idx != -1:
-                prefix_raw = text[max(0, idx - 8) : idx]
-                prefix = prefix_raw.replace("`", " ").replace('"', " ").strip()
-                allowed = prefix.endswith("not") or prefix.endswith("no")
-                assert allowed, (
-                    f"forbidden token {token!r} in {src.name} outside "
-                    f"negated form; context: "
-                    f"...{text[max(0, idx - 30) : idx + len(token) + 30]}..."
-                )
-                idx = text.find(token, idx + 1)
+        text = src.read_text(encoding="utf-8")
+        assert_no_forbidden_positive_claims(text, tokens=FORBIDDEN_POSITIVE_CLAIM_TOKENS_9)
 
 
 # ---------------------------------------------------------------------
