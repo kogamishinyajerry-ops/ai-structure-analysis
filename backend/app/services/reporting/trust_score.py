@@ -44,6 +44,46 @@ Bump policy: the formula version is SEPARATE from
 threshold bumps ``TRUST_SCORE_FORMULA_VERSION`` (semver) AND requires
 the closing retrospective to call out the rebalance + rationale.
 
+============================================
+Sensitivity & Rebalance Methodology (FM-04a Phase 7 D)
+============================================
+
+The constants above (``COMPLETENESS_WEIGHT``, ``CONVERGENCE_WEIGHT``,
+``ENERGY_AUDIT_WEIGHT``, ``REPRODUCIBILITY_WEIGHT``, and the three
+``REPRO_PENALTY_*`` constants) are an opinionated first cut, called out
+in Phase 6 retrospective carry-forward §5. The pinning + sensitivity
+contract is:
+
+1. **Sum-to-100 invariant** — pinned by
+   ``tests/test_trust_score.py::test_composite_weights_sum_to_100``.
+   Silent rebalance trips a failing test.
+2. **In-bounds invariant** — pinned by property-based tests in
+   ``tests/test_phase7_trust_score_properties.py`` using
+   ``Hypothesis``: regardless of the input space (any combination of
+   present/absent evidence on any of the four axes), the returned
+   ``trust_score`` is in ``[0, 100]`` and each ``weighted`` is in
+   ``[0, weight]``. Strategies use ``derandomize=True`` or fixed seeds
+   so failures are reproducible across runs (Phase 7 anti-gaming
+   guard ``T: -2``).
+3. **Weight-delta linearity** — pinned by sensitivity tests in
+   ``tests/test_phase7_trust_score_formula_sensitivity.py``: given
+   identical evidence inputs, swapping a single weight constant by a
+   known delta produces exactly the corresponding score delta. This
+   IS the rebalance methodology: any future weight change is
+   testable in isolation by monkey-patching the constant in a
+   dedicated test and asserting the expected score shift.
+
+A rebalance therefore proceeds in four mechanical steps:
+
+a. Author the new weights, ensuring the constants still sum to 100.
+b. Bump ``TRUST_SCORE_FORMULA_VERSION`` from ``"1.0.0"`` to ``"1.1.0"``
+   (or higher, by magnitude) AND amend the bump-history note in
+   ``_schema_versions.py``.
+c. Run the property-based tests; in-bounds invariants must still hold.
+d. Add a sensitivity test that asserts the rebalance's expected effect
+   on at least one canonical input case; include the rationale in the
+   closing retrospective per the documented bump policy.
+
 This is NOT a substitute for the FM-04b P8 sealed-packet trust
 signal. The claim_impact string preserves the Tier 1 disclaimer trio.
 

@@ -37,6 +37,10 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.8",
+    # FM-04a Phase 7 D — property-based testing for the trust score
+    # formula. Strategies declare `derandomize=True` or fixed seeds per
+    # the blueprint anti-gaming guard T:-2 so failures are reproducible.
+    "hypothesis>=6.0",
 ]
 agents = [
     "langgraph>=0.2",
