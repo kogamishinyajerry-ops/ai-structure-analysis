@@ -26,6 +26,7 @@ from .api.routes import (
     sensitivity,
     solver,
     tier1_report,
+    trust_score,
     visualization,
 )
 from .core.config import settings
@@ -99,6 +100,8 @@ app.include_router(reproducibility_manifest.router, prefix="/api/v1")
 app.include_router(cohort_snapshots.router, prefix="/api/v1")
 # FM-04a Phase 5 D — Tier 1 cohort snapshot diff.
 app.include_router(cohort_snapshot_diff.router, prefix="/api/v1")
+# FM-04a Phase 6 B — Tier 1 evidence trust score.
+app.include_router(trust_score.router, prefix="/api/v1")
 
 
 @app.get("/")
