@@ -55,6 +55,19 @@ A new route added to the codebase MUST either:
 
 The meta-test's `_KNOWN_CASE_ID_ROUTES` SSOT tuple pins the expected enumeration so a NEW route that omits both the helper call AND the opt-out list trips the test with the unfamiliar route path in the failure message.
 
+## Helper-call ordering — MUST fire BEFORE any filesystem stat
+
+The SSOT helper `assert_not_signed_registry(case_id, surface_name)` MUST be the FIRST per-case_id check in every route handler, AFTER the per-route `_CASE_ID_RE.fullmatch` syntactic shape gate but BEFORE:
+
+* any filesystem `.resolve()` / `.is_file()` / `.exists()` on a path derived from `case_id`,
+* any service-layer call that reads from `golden_samples/` / `project_state/` / disk,
+* any `_resolve_*` helper that maps `case_id` to a path under those roots,
+* any database query whose key is derived from `case_id`.
+
+Why: the A:-7 defense-in-depth posture relies on the refusal happening BEFORE the route touches the filesystem. A planted artifact under a signed-registry case_id (`project_state/visualizations/GS-001/result_mesh.json`, hypothetical) MUST be refused without ever being stat'd. A helper call that fires AFTER the filesystem touch still produces a 422 response, but the operating system has already revealed the path's existence (timing side-channel; surfaces inode + permissions to the handler frame; logs may include the path). Phase 14 A retrospective recorded one such ordering miss in `visualization.py` (helper sat after `_resolve_result_mesh_artifact_path`); the fix swaps the call order so the helper fires first and the artifact resolver is never reached on a signed-registry id.
+
+The meta-test enumerates all in-scope routes and ASSERTS the helper trips on `GS-001` before any downstream handler logic; ordering regressions would manifest as a route that returned 404/200/400 instead of 422 on a planted signed-registry artifact. Until a fixture is planted under a signed-registry id (HF1.7a / HF1.7b prevent this on disk; the audit is the static-analysis test by code review), the meta-test exercises the symptom — 422 with the canonical detail — and the ordering invariant is documented here as the LIVE rule.
+
 ## Anti-gaming guards pinned by tests
 
 * **M:-2** — `SIGNED_REGISTRY_RE` and `assert_not_signed_registry` are module-level SSOTs in `_signed_registry_refusal.py`; every route imports from the SSOT rather than duplicating the regex.

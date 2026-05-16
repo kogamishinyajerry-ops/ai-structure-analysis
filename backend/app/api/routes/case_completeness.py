@@ -32,18 +32,17 @@ from ...services.reporting.case_completeness import (
     render_case_completeness_json,
     score_case_completeness,
 )
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/case-completeness", tags=["case-completeness"])
 
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-# Phase 13 B — signed-registry shape `^GS-\d{3}$`. The case-completeness
-# route refuses signed-registry case_ids for the same reason advisor-critique
-# does: Tier 1 candidate surfaces only accept ``*-candidate`` identifiers;
-# sealed FM-04b packets are out of scope. Closes the slice-F LOW finding
-# (Phase 12 retro / Phase 13 B carry-forward) where the advisor-critique
-# route refused GS-NNN at 422 but case-completeness silently returned 200
-# with an all-zero score (cohort surface inconsistency).
-_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
+# Phase 14 A — signed-registry shape `^GS-\d{3}$` is now enforced by the
+# cross-route SSOT helper ``assert_not_signed_registry`` at
+# ``_signed_registry_refusal.py``. Phase 13 B introduced the route-level
+# refusal; Phase 14 A migrates the regex + detail string to the shared
+# SSOT so a future maintainer cannot drift this route's vocabulary
+# away from the cross-route contract.
 
 
 def _repo_root() -> Path:
@@ -135,20 +134,16 @@ async def get_case_completeness(
         # 422-on-invalid-analysis_type gate; existing 400 behavior is
         # unchanged.
         raise HTTPException(status_code=400, detail="invalid case_id")
-    # Phase 13 B — signed-registry refusal at 422 (matches advisor-critique).
-    # Closes the Phase 12 F slice-F LOW finding where GS-NNN silently
-    # resolved to a 200 all-zero scorecard; cohort surfaces now refuse
-    # signed-registry case_ids consistently across all reviewer-facing
-    # routes.
-    if _SIGNED_REGISTRY_RE.fullmatch(case_id):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "case-completeness refuses signed-registry case_id; "
-                "Tier 1 candidate surfaces only accept *-candidate "
-                "identifiers (sealed FM-04b packets are out of scope)"
-            ),
-        )
+    # Phase 14 A — signed-registry refusal via the cross-route SSOT
+    # helper. Vocabulary harmonized with advisor-critique and all
+    # other Tier 1 reviewer-facing routes; the legacy detail
+    # "case-completeness refuses signed-registry case_id; Tier 1
+    # candidate surfaces only accept *-candidate identifiers (sealed
+    # FM-04b packets are out of scope)" is superseded by the SSOT
+    # helper output, which carries the same three canonical tokens
+    # (``signed-registry`` / ``candidate`` / ``out of scope``)
+    # audited by every Phase 13 B+ test.
+    assert_not_signed_registry(case_id, "case-completeness")
     if analysis_type not in ANALYSIS_TYPE_TUPLE:
         raise HTTPException(
             status_code=422,

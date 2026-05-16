@@ -45,11 +45,11 @@ from ...services.reporting.advisor_critique import (
     render_advisor_critique_json,
 )
 from ...services.reporting.cohort_snapshot import SNAPSHOT_LABEL_RE
+from ._signed_registry_refusal import assert_not_signed_registry
 
 router = APIRouter(prefix="/advisor-critique", tags=["advisor-critique"])
 
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
 
 
 def _repo_root() -> Path:
@@ -93,17 +93,15 @@ async def get_advisor_critique(
     if not _CASE_ID_RE.fullmatch(case_id):
         raise HTTPException(status_code=422, detail="invalid case_id")
 
-    # 2. Signed-registry refusal (defense in depth + Tier 1 posture).
-    if _SIGNED_REGISTRY_RE.fullmatch(case_id):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "advisor-critique refuses signed-registry case_id; "
-                "Tier 1 candidate advisor surface only accepts "
-                "*-candidate identifiers (sealed FM-04b packets are "
-                "out of scope)"
-            ),
-        )
+    # 2. Signed-registry refusal via the cross-route SSOT helper
+    #    (Phase 14 A). Vocabulary harmonized; the legacy detail
+    #    "advisor-critique refuses signed-registry case_id; Tier 1
+    #    candidate advisor surface only accepts *-candidate
+    #    identifiers (sealed FM-04b packets are out of scope)" is
+    #    superseded by the SSOT helper output, which carries the same
+    #    three canonical tokens (``signed-registry`` / ``candidate`` /
+    #    ``out of scope``) audited by every Phase 11+ test.
+    assert_not_signed_registry(case_id, "advisor-critique")
 
     # 3. Snapshot label shape gate.
     if not SNAPSHOT_LABEL_RE.fullmatch(snapshot):

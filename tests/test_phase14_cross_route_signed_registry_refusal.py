@@ -240,14 +240,44 @@ def test_signed_registry_shape_variants_all_refused_on_anchor_route(
 # ---------------------------------------------------------------------
 
 
-def test_candidate_case_id_passes_the_gate(client: _SyncASGIClient) -> None:
-    """A ``*-candidate`` case_id is NOT refused by the gate; the
-    route's normal handler logic runs. (The case may still legitimately
-    404 if no fixture exists, but the 422 gate must NOT fire.)
-    """
-    res = client.get("/api/v1/case-completeness/some-imaginary-candidate")
-    # 422 is the gate's status; anything else means the gate passed.
-    assert res.status_code != 422 or "signed-registry" not in res.json().get("detail", "")
+@pytest.mark.parametrize(("method", "path", "query_extras"), _KNOWN_CASE_ID_ROUTES)
+def test_candidate_case_id_passes_the_gate(
+    client: _SyncASGIClient,
+    method: str,
+    path: str,
+    query_extras: str,
+) -> None:
+    """For every in-scope route, a ``*-candidate`` case_id MUST NOT
+    trip the signed-registry refusal gate. The route's normal handler
+    runs after — the case may legitimately 404 / 400 / 422 / 200 on
+    downstream conditions (missing fixture, bad analysis_type,
+    snapshot not found), but a 422 carrying the canonical
+    ``signed-registry`` token would prove the helper is now firing
+    on a candidate id, which is a Phase 13 E MEDIUM-1 style
+    regression.
+
+    Per-route parametrize so a single failing route surfaces with
+    the route path in the test name (T:-3 anti-gaming guard). Closes
+    Phase 14 A TAA LOW-1: prior coverage was a single anchor-route
+    spot check, which would silently pass if the helper drifted on
+    a different route."""
+    candidate_id = "some-imaginary-candidate"
+    url = path.replace("{case_id}", candidate_id) + query_extras
+    if method == "GET":
+        res = client.get(url)
+    else:
+        raise AssertionError(f"unsupported method {method!r}")
+    # If the response is 422, the canonical signed-registry detail
+    # tokens MUST NOT be present — that would indicate the gate
+    # tripped on a candidate id.
+    if res.status_code == 422:
+        detail = res.json().get("detail", "")
+        if isinstance(detail, str):
+            assert "signed-registry" not in detail, (
+                f"{method} {path}: candidate id {candidate_id!r} "
+                f"incorrectly tripped the signed-registry refusal "
+                f"gate. detail={detail!r}"
+            )
 
 
 # ---------------------------------------------------------------------

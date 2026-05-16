@@ -91,12 +91,16 @@ def get_viz_service():
 @router.get("/result-mesh/{case_id}")
 async def get_result_mesh_payload(case_id: str):
     """Serve the Text-to-CAE-style dynamic result payload for one case."""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    # MUST fire BEFORE _resolve_result_mesh_artifact_path (which does
+    # `.resolve()` + `.is_file()` on a case_id-derived path) so a
+    # planted artifact under a signed-registry case_id cannot be
+    # stat'd before the refusal (A:-7 defense in depth).
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
     try:
         artifact = _resolve_result_mesh_artifact_path(case_id, "result_mesh.json")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
-    assert_not_signed_registry(case_id, "visualize-result-mesh")
     if not artifact:
         raise HTTPException(status_code=404, detail="result_mesh.json not found")
     return FileResponse(artifact, media_type="application/json")
@@ -105,12 +109,15 @@ async def get_result_mesh_payload(case_id: str):
 @router.get("/result-mesh/{case_id}/{artifact_path:path}")
 async def get_result_mesh_artifact(case_id: str, artifact_path: str):
     """Serve whitelisted dynamic result sidecars for one case."""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    # MUST fire BEFORE _resolve_result_mesh_artifact_path (which does
+    # `.resolve()` + `.is_file()` on a case_id-derived path); see the
+    # parent route above for the A:-7 rationale.
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
     try:
         artifact = _resolve_result_mesh_artifact_path(case_id, artifact_path)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
-    assert_not_signed_registry(case_id, "visualize-result-mesh")
     if not artifact:
         raise HTTPException(status_code=404, detail="result-mesh artifact not found")
     media_type = "application/xml" if artifact.suffix == ".vtu" else "application/json"
