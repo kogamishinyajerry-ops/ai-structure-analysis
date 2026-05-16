@@ -28,6 +28,16 @@ import { TIER1_BANNER } from '../trustCenterSummary.ts'
 
 export interface CohortSnapshotPanelProps {
   apiBase: string
+  /**
+   * Phase 6 E — optional controlled label state. When the parent passes
+   * `selectedLabelA` / `selectedLabelB` + `onSelectLabelA` / `onSelectLabelB`,
+   * the panel becomes a controlled component. Otherwise it owns the labels
+   * internally (Phase 5 behavior).
+   */
+  selectedLabelA?: string | null
+  selectedLabelB?: string | null
+  onSelectLabelA?: (label: string) => void
+  onSelectLabelB?: (label: string) => void
 }
 
 const SECTION_TITLE_STYLE = {
@@ -266,11 +276,28 @@ function ReproDriftTable({ diff }: { diff: CohortSnapshotDiff }) {
   )
 }
 
-export function CohortSnapshotPanel({ apiBase }: CohortSnapshotPanelProps) {
+export function CohortSnapshotPanel({
+  apiBase,
+  selectedLabelA,
+  selectedLabelB,
+  onSelectLabelA,
+  onSelectLabelB,
+}: CohortSnapshotPanelProps) {
   const [listing, setListing] = useState<SnapshotListing | null>(null)
   const [listingError, setListingError] = useState<string | null>(null)
-  const [labelA, setLabelA] = useState<string | null>(null)
-  const [labelB, setLabelB] = useState<string | null>(null)
+  const [internalLabelA, setInternalLabelA] = useState<string | null>(null)
+  const [internalLabelB, setInternalLabelB] = useState<string | null>(null)
+  const isControlled = selectedLabelA !== undefined || selectedLabelB !== undefined
+  const labelA = isControlled ? selectedLabelA ?? null : internalLabelA
+  const labelB = isControlled ? selectedLabelB ?? null : internalLabelB
+  const setLabelA = (label: string) => {
+    if (onSelectLabelA) onSelectLabelA(label)
+    if (!isControlled) setInternalLabelA(label)
+  }
+  const setLabelB = (label: string) => {
+    if (onSelectLabelB) onSelectLabelB(label)
+    if (!isControlled) setInternalLabelB(label)
+  }
   const [diff, setDiff] = useState<CohortSnapshotDiff | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)

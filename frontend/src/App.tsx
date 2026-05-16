@@ -37,6 +37,9 @@ import { ReviewerBundlePanel } from './components/ReviewerBundlePanel';
 import { ArchivedPacketDiffPanel } from './components/ArchivedPacketDiffPanel';
 import { CohortSnapshotPanel } from './components/CohortSnapshotPanel';
 import { ReproducibilityManifestCard } from './components/ReproducibilityManifestCard';
+import { TrustScoreGauge } from './components/TrustScoreGauge';
+import { DriftNarrativePanel } from './components/DriftNarrativePanel';
+import { TrustScoreTimelineChart } from './components/TrustScoreTimelineChart';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -446,6 +449,10 @@ function App() {
       return FALLBACK_CANDIDATE_CASES[1]?.caseId ?? null;
     }
   });
+  // FM-04a Phase 6 E — lifted snapshot label selection so DriftNarrativePanel
+  // can read the same labels the CohortSnapshotPanel picks.
+  const [snapshotLabelA, setSnapshotLabelA] = useState<string | null>(null);
+  const [snapshotLabelB, setSnapshotLabelB] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
@@ -1599,7 +1606,26 @@ function App() {
                         apiBase={API_BASE}
                         caseId={selectedCandidateCaseId}
                     />
-                    <CohortSnapshotPanel apiBase={API_BASE} />
+                    <TrustScoreGauge
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
+                    <TrustScoreTimelineChart
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
+                    <CohortSnapshotPanel
+                        apiBase={API_BASE}
+                        selectedLabelA={snapshotLabelA}
+                        selectedLabelB={snapshotLabelB}
+                        onSelectLabelA={setSnapshotLabelA}
+                        onSelectLabelB={setSnapshotLabelB}
+                    />
+                    <DriftNarrativePanel
+                        apiBase={API_BASE}
+                        labelA={snapshotLabelA}
+                        labelB={snapshotLabelB}
+                    />
                     <BulletPlateBlueprintPanel />
                 </div>
             )}
