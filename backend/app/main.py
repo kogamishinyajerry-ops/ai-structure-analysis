@@ -28,6 +28,7 @@ from .api.routes import (
     solver,
     tier1_report,
     trust_score,
+    trust_score_alerts,
     trust_score_timeline,
     visualization,
 )
@@ -108,6 +109,8 @@ app.include_router(trust_score.router, prefix="/api/v1")
 app.include_router(snapshot_narrative.router, prefix="/api/v1")
 # FM-04a Phase 6 D — Tier 1 trust score timeline.
 app.include_router(trust_score_timeline.router, prefix="/api/v1")
+# FM-04a Phase 7 C — Tier 1 trust score regression alarms.
+app.include_router(trust_score_alerts.router, prefix="/api/v1")
 
 
 @app.get("/")

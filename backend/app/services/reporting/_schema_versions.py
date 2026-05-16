@@ -210,6 +210,21 @@ TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.trust_score_timeline``.
 """
 
+# ----- Phase 7 NEW contracts -----
+
+TRUST_SCORE_ALERTS_SCHEMA_VERSION = "1.0.0"
+"""``trust_score_alerts`` HTTP response (Phase 7 C).
+
+Builder: ``backend.app.services.reporting.trust_score_alerts``.
+
+Tier 1 candidate regression-alarm surface: walks a case's timeline
+and surfaces snapshot-to-snapshot trust score drops above a
+configurable threshold. Carries its own ``schema_version`` separately
+from ``TRUST_SCORE_TIMELINE_SCHEMA_VERSION`` because the alarm payload
+shape is distinct from the timeline payload shape. Closes Phase 6
+retrospective carry-forward §4.
+"""
+
 # ----- rubric version (separate from emitted JSON contracts) -----
 
 COMPLETENESS_RUBRIC_VERSION = "1.0.0"
