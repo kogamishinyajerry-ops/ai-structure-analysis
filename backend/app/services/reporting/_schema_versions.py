@@ -225,6 +225,33 @@ shape is distinct from the timeline payload shape. Closes Phase 6
 retrospective carry-forward §4.
 """
 
+COHORT_EXECUTIVE_SUMMARY_SCHEMA_VERSION = "1.0.0"
+"""``cohort_executive_summary`` HTTP response (Phase 8 D).
+
+Builder: ``backend.app.services.reporting.cohort_executive_summary``.
+
+Tier 1 candidate cohort scorecard: aggregates latest trust score
++ latest alarm count + latest signoff verdict across all
+``golden_samples/*-candidate/`` cases, buckets each into
+``healthy`` / ``watching`` / ``regressed``. Surfaces aggregate counts
++ per-case rows. Explicit ``claim_impact`` states the summary does
+NOT promote any case to Tier 2 or substitute for signed validation.
+"""
+
+COHORT_ANOMALIES_SCHEMA_VERSION = "1.0.0"
+"""``cohort_anomalies`` HTTP response (Phase 8 E).
+
+Builder: ``backend.app.services.reporting.cohort_anomalies``.
+
+Tier 1 candidate cohort statistical outliers: for each
+``*-candidate`` case + each of the 4 trust-score axes, computes
+mean + standard deviation across the cohort and flags cases >2σ
+from mean on any axis. Severity buckets at 2σ / 3σ / 4σ. Explicit
+``claim_impact``: "anomalies surface statistical outliers from
+cohort mean; they do NOT diagnose root cause, validate physics, or
+authorize Tier 2 promotion."
+"""
+
 TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.0.0"
 """``trust_score_provenance`` HTTP response (Phase 8 C).
 

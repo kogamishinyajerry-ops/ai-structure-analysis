@@ -14,6 +14,7 @@ from .api.routes import (
     case_comparison,
     case_completeness,
     cases,
+    cohort_executive_summary,
     cohort_overview,
     cohort_snapshot_diff,
     cohort_snapshots,
@@ -117,6 +118,8 @@ app.include_router(trust_score_alerts.router, prefix="/api/v1")
 app.include_router(signoff_history.router, prefix="/api/v1")
 # FM-04a Phase 8 C — Tier 1 trust score provenance trace.
 app.include_router(trust_score_provenance.router, prefix="/api/v1")
+# FM-04a Phase 8 D — Tier 1 cohort executive summary scorecard.
+app.include_router(cohort_executive_summary.router, prefix="/api/v1")
 
 
 @app.get("/")
