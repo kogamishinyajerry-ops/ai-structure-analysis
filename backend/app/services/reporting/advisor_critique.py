@@ -43,10 +43,11 @@ Module-level SSOT constants (Phase 11 B):
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from ._schema_versions import ADVISOR_CRITIQUE_SCHEMA_VERSION
 from .acceptance_packet import CLAIM_BOUNDARY
@@ -379,6 +380,19 @@ def build_advisor_critique(
     raw = selected_provider.produce(context)
     degrade_reason = raw.degrade_reason or degrade_reason_override
 
+    # Phase 11 C — a live LLM provider that produces a raw critique
+    # WITH ``degrade_reason`` populated signals that it internally
+    # fell back to its stub fallback (malformed response, network
+    # error, etc.). The envelope status MUST downgrade from
+    # ``"online"`` to ``"stub"`` so a downstream reviewer knows the
+    # critique they are reading is not actually live-LLM-produced.
+    # Without this branch, a degraded-but-`is_available()==True`
+    # provider would silently emit a stub critique under the
+    # ``"online"`` banner — a real-world anti-pattern explicitly
+    # called out in blueprint section 3.C.
+    if advisor_status == "online" and raw.degrade_reason is not None:
+        advisor_status = "stub"
+
     # 4-Q gate audit — every key present, every value boolean, every
     # value True. The gate has explicit semantic; a False indicates
     # the system has drifted out of advisor-only posture. We REFUSE
@@ -484,3 +498,306 @@ def _assert_no_overclaim(critique: AdvisorCritique) -> None:
                     f"{token!r} outside the `not <claim>` disclaimer form."
                 )
             start = idx + len(token)
+
+
+# ---------------------------------------------------------------------
+# LLMAdvisor — live LLM backend (Phase 11 C)
+# ---------------------------------------------------------------------
+
+
+# JSON keys the LLMAdvisor expects in the live-LLM response. SSOT for
+# the prompt template + the response parser. Bumping this tuple is a
+# schema break (the LLM is asked to emit exactly these keys).
+LLM_RESPONSE_KEYS: tuple[str, ...] = (
+    "mesh_quality_concerns",
+    "boundary_condition_questions",
+    "failure_modes_to_consider",
+    "unhandled_load_cases",
+    "four_question_gate",
+)
+"""Closed set of keys the LLM is asked to emit. Used by the parser to
+fail fast on malformed responses. Phase 11 anti-gaming guard T:-4 (per
+response shape pin)."""
+
+
+# Maximum number of items per concern list. Cap protects against an
+# LLM that goes off and emits a 200-line dump per axis — the reviewer
+# panel is designed for short, scannable lists. A response that
+# exceeds the cap is truncated (NOT refused) because the cap is an
+# ergonomic guardrail, not a contract; the trailing items are silently
+# dropped and a degrade_reason is recorded.
+MAX_ITEMS_PER_AXIS = 12
+
+
+# Maximum length per concern string. Same rationale — protects the UI
+# from a wall-of-text bullet that breaks the reviewer panel layout.
+MAX_CHARS_PER_ITEM = 600
+
+
+class LLMAdvisor:
+    """Live-LLM advisor backend with defensive parsing + stub fallback.
+
+    Design pillars (LLM-offline-first):
+
+      1. The LLM is called via an injected ``llm_call`` Callable. Tests
+         inject controlled responses; production wires an ``httpx`` /
+         ``anthropic`` client at the factory level. **No network call
+         is made inside this module**.
+      2. Any failure (network exception, malformed JSON, missing
+         required key, wrong shape) falls back to the StubAdvisor for
+         the same context. The fallback raw critique carries a
+         ``degrade_reason`` so the envelope builder can downgrade
+         ``advisor_status`` from ``"online"`` to ``"stub"``.
+      3. The 4-question gate is asked of the LLM as part of the
+         response schema; if the LLM produces False on any key, the
+         envelope is refused at construction by the existing
+         ``_audit_four_question_gate``.
+      4. The forbidden-claim audit fires at envelope construction;
+         any positive-claim verb the LLM might emit outside the
+         disclaimer form refuses the envelope (existing
+         ``_assert_no_overclaim``).
+    """
+
+    def __init__(
+        self,
+        llm_call: Callable[[str], str],
+        *,
+        backend_label: str = "llm-advisor",
+    ) -> None:
+        self._llm_call = llm_call
+        self.name = backend_label
+
+    def is_available(self) -> bool:
+        # The LLMAdvisor is "available" as long as it has an injected
+        # callable. The callable itself may fail at produce() time —
+        # that path is the stub-fallback branch, NOT an availability
+        # check. Marking it unavailable here would route the failure
+        # through the wrong branch in build_advisor_critique (status
+        # would land on "offline" instead of "stub").
+        return self._llm_call is not None
+
+    def produce(self, context: AdvisorContext) -> AdvisorRawCritique:
+        prompt = build_llm_prompt(context)
+        try:
+            response_text = self._llm_call(prompt)
+        except Exception as exc:  # noqa: BLE001 — defensive boundary
+            return self._stub_fallback(
+                context,
+                f"llm_call raised {type(exc).__name__}: {exc}",
+            )
+
+        try:
+            payload = json.loads(response_text)
+        except json.JSONDecodeError as exc:
+            return self._stub_fallback(
+                context,
+                f"LLM response is not valid JSON: {exc.msg}",
+            )
+
+        try:
+            return _parse_llm_response(payload)
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._stub_fallback(
+                context,
+                f"LLM response failed schema parse: {exc}",
+            )
+
+    @staticmethod
+    def _stub_fallback(
+        context: AdvisorContext, reason: str
+    ) -> AdvisorRawCritique:
+        """Return a StubAdvisor critique for the same context with
+        the provided degrade_reason. Used internally on any LLM
+        failure path."""
+        stub_raw = StubAdvisor().produce(context)
+        return AdvisorRawCritique(
+            mesh_quality_concerns=stub_raw.mesh_quality_concerns,
+            boundary_condition_questions=stub_raw.boundary_condition_questions,
+            failure_modes_to_consider=stub_raw.failure_modes_to_consider,
+            unhandled_load_cases=stub_raw.unhandled_load_cases,
+            four_question_gate=stub_raw.four_question_gate,
+            degrade_reason=reason,
+        )
+
+
+def build_llm_prompt(context: AdvisorContext) -> str:
+    """Build the live-LLM prompt string for ``context``.
+
+    The prompt is a single string (system + user turns concatenated)
+    that asks the LLM to emit a strict JSON object with the keys
+    enumerated in ``LLM_RESPONSE_KEYS``. The four-question gate is
+    asked as part of the response schema so the LLM's posture
+    statement lands inside the same payload as the engineering
+    concerns. The forbidden-claim list is included verbatim so the
+    LLM has explicit guidance on what NOT to emit.
+    """
+    forbidden_list = ", ".join(repr(t) for t in ADVISOR_FORBIDDEN_TOKENS)
+    gate_keys = ", ".join(repr(k) for k in FOUR_QUESTION_GATE_KEYS)
+    response_keys = ", ".join(repr(k) for k in LLM_RESPONSE_KEYS)
+
+    # The prompt deliberately states the Tier 1 disclaimer trio and
+    # the advisor-not-driver posture in plain language — this is the
+    # north-star statement the LLM is asked to honor.
+    return (
+        "You are an AI ADVISOR (not driver) for a Tier 1 engineering "
+        "candidate structural FEA review. Your role is to surface "
+        "engineering concerns, questions, failure modes, and "
+        "unhandled load cases for a human reviewer to consider. You "
+        "are NOT the authority; the reviewer is. The critique is "
+        "Tier 1 candidate; not signed validation; not benchmark "
+        "agreement. The critique does NOT authorize Tier 2 promotion "
+        "or substitute for a sealed packet.\n"
+        "\n"
+        "CONTEXT (frozen snapshot bytes — read-only):\n"
+        f"  case_id: {context.case_id}\n"
+        f"  snapshot_label: {context.snapshot_label}\n"
+        f"  trust_score: {context.trust_score}\n"
+        f"  completeness_score: {context.completeness_score}\n"
+        f"  completeness_analysis_type: {context.completeness_analysis_type}\n"
+        f"  energy_audit_status: {context.energy_audit_status}\n"
+        f"  convergence_kind: {context.convergence_kind}\n"
+        f"  convergence_combined_verdict: {context.convergence_combined_verdict}\n"
+        "\n"
+        "RESPONSE SCHEMA — emit a JSON OBJECT with EXACTLY these keys:\n"
+        f"  {response_keys}\n"
+        "\n"
+        "Each of the first four keys is a JSON ARRAY of short, "
+        "scannable strings (one concern / question / mode / load case "
+        "per entry). Use short, declarative sentences. Do not emit "
+        "more than "
+        f"{MAX_ITEMS_PER_AXIS} entries per axis. Do not emit any "
+        "entry longer than "
+        f"{MAX_CHARS_PER_ITEM} characters.\n"
+        "\n"
+        f"The fifth key 'four_question_gate' MUST be a JSON OBJECT "
+        f"with the EXACT keys {gate_keys}, each mapped to the "
+        "literal JSON boolean true. Any false answer indicates the "
+        "system has drifted out of advisor-only posture and the "
+        "envelope will be refused.\n"
+        "\n"
+        "FORBIDDEN: do NOT use any of the following phrases outside "
+        f"a disclaimer of the form 'not <phrase>': {forbidden_list}. "
+        "These are positive-claim verbs reserved for FM-04b signed "
+        "validation work; using them outside disclaimer form "
+        "automatically refuses the envelope.\n"
+        "\n"
+        "Emit ONLY the JSON object. No markdown fences, no prose "
+        "preamble, no trailing commentary."
+    )
+
+
+def _parse_llm_response(payload: Any) -> AdvisorRawCritique:
+    """Parse a JSON-decoded LLM response into an AdvisorRawCritique.
+
+    Raises ``TypeError`` / ``ValueError`` / ``KeyError`` on any shape
+    drift; ``LLMAdvisor.produce`` catches these and falls back to
+    the stub. We deliberately raise rather than coerce — a permissive
+    parser is the worst possible posture for the advisor surface."""
+    if not isinstance(payload, dict):
+        raise TypeError(
+            f"LLM response is not a JSON object; got {type(payload).__name__}"
+        )
+
+    missing = [k for k in LLM_RESPONSE_KEYS if k not in payload]
+    if missing:
+        raise KeyError(f"LLM response missing required keys: {missing}")
+
+    extra = [k for k in payload if k not in LLM_RESPONSE_KEYS]
+    if extra:
+        raise ValueError(f"LLM response has unexpected keys: {extra}")
+
+    list_axes: dict[str, tuple[str, ...]] = {}
+    for axis in LLM_RESPONSE_KEYS[:4]:  # first four are the list axes
+        items = payload[axis]
+        if not isinstance(items, list):
+            raise TypeError(
+                f"LLM response key {axis!r} is not a list; "
+                f"got {type(items).__name__}"
+            )
+        cleaned: list[str] = []
+        for item in items[:MAX_ITEMS_PER_AXIS]:
+            if not isinstance(item, str):
+                raise TypeError(
+                    f"LLM response key {axis!r} contains non-string "
+                    f"entry of type {type(item).__name__}"
+                )
+            cleaned.append(item[:MAX_CHARS_PER_ITEM])
+        list_axes[axis] = tuple(cleaned)
+
+    gate = payload["four_question_gate"]
+    if not isinstance(gate, dict):
+        raise TypeError(
+            f"LLM response 'four_question_gate' is not an object; "
+            f"got {type(gate).__name__}"
+        )
+    # We leave gate validation (missing keys / non-bool / False) to
+    # the envelope-level _audit_four_question_gate; that audit is the
+    # SSOT for what the gate must look like, and a duplicate here
+    # would drift. The parser only ensures the value is at least a
+    # dict so the audit can inspect it.
+
+    return AdvisorRawCritique(
+        mesh_quality_concerns=list_axes["mesh_quality_concerns"],
+        boundary_condition_questions=list_axes["boundary_condition_questions"],
+        failure_modes_to_consider=list_axes["failure_modes_to_consider"],
+        unhandled_load_cases=list_axes["unhandled_load_cases"],
+        four_question_gate=gate,
+        degrade_reason=None,
+    )
+
+
+# Environment variable names for the production factory. Pinned by
+# `test_default_llm_factory_env_var_names`.
+ENV_VAR_BACKEND = "AIFEA_ADVISOR_BACKEND"
+ENV_VAR_ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+
+
+def _default_llm_factory(
+    *,
+    environ: dict[str, str] | None = None,
+) -> AdvisorProvider | None:
+    """Production hook for spawning an ``LLMAdvisor`` from env config.
+
+    Returns:
+      * ``None`` when ``AIFEA_ADVISOR_BACKEND`` is unset or empty,
+        OR when the chosen backend's API key env var is missing. The
+        caller MUST fall back to ``StubAdvisor``.
+      * An ``LLMAdvisor`` instance wired against a placeholder
+        callable that raises ``NotImplementedError`` when the env
+        config selects the ``anthropic`` backend. The placeholder
+        exists so the injection seam is testable now; the real
+        ``anthropic`` / ``httpx`` client lands in a later slice and
+        replaces the placeholder verbatim. When the placeholder
+        raises, ``LLMAdvisor.produce`` catches the exception and
+        falls back to the stub with a populated ``degrade_reason``.
+
+    The optional ``environ`` argument lets tests inject a fake
+    environment dict without monkeypatching ``os.environ`` — this
+    keeps the test suite hermetic and parallel-safe.
+    """
+    env = environ if environ is not None else os.environ
+    backend = env.get(ENV_VAR_BACKEND, "").strip().lower()
+    if not backend:
+        return None
+    if backend == "anthropic":
+        api_key = env.get(ENV_VAR_ANTHROPIC_API_KEY, "").strip()
+        if not api_key:
+            return None
+
+        def _placeholder_anthropic_call(prompt: str) -> str:
+            raise NotImplementedError(
+                "Live Anthropic client wiring lands in a future "
+                "slice. Phase 11 C ships only the injection seam; "
+                "LLMAdvisor.produce will catch this and fall back to "
+                "the stub with degrade_reason populated."
+            )
+
+        return LLMAdvisor(
+            llm_call=_placeholder_anthropic_call,
+            backend_label="llm-advisor-anthropic-unwired",
+        )
+    # Unknown backend label — refuse silently (caller falls back to
+    # stub). Logging would belong here but the reporting service is
+    # intentionally side-effect-free; the audit trail lives in the
+    # downstream HTTP route's response telemetry (Phase 11 D).
+    return None
