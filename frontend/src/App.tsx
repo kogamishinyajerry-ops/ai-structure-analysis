@@ -35,6 +35,8 @@ import { CohortDashboardPanel } from './components/CohortDashboardPanel';
 import { CaseCompletenessCard } from './components/CaseCompletenessCard';
 import { ReviewerBundlePanel } from './components/ReviewerBundlePanel';
 import { ArchivedPacketDiffPanel } from './components/ArchivedPacketDiffPanel';
+import { CohortSnapshotPanel } from './components/CohortSnapshotPanel';
+import { ReproducibilityManifestCard } from './components/ReproducibilityManifestCard';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -1593,6 +1595,11 @@ function App() {
                     />
                     <ReviewerBundlePanel apiBase={API_BASE} />
                     <ArchivedPacketDiffPanel apiBase={API_BASE} />
+                    <ReproducibilityManifestCard
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                    />
+                    <CohortSnapshotPanel apiBase={API_BASE} />
                     <BulletPlateBlueprintPanel />
                 </div>
             )}
