@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase7-trust-closure-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@e35c275`
-> **Last updated:** 2026-05-16 (FM-04a Phase 7 A-G trust closure & honest 99-score gate shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; cumulative honest score 97/100 with every code axis at 100% of weight, V-axis 10/13 pending final whole-arc TAA pass in slice H; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 6 A-F closure stamp `fm04a-phase6-trust-narrative-2026-05-16 · @1bf3df4` preserved in git history.
+> **Stamp:** `fm04a-phase8-reviewer-accountability-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@bec24c7`
+> **Last updated:** 2026-05-16 (FM-04a Phase 8 A-F reviewer accountability & provenance closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; 4 new endpoints — signoff-history / trust-score-provenance / cohort-executive-summary / cohort-anomalies — close every Phase 7 retrospective carry-forward at the HTTP boundary; cumulative honest score 92/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 7 closure stamp `fm04a-phase7-trust-closure-2026-05-16 · @9dae909` preserved in git history.
 > **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -448,7 +448,114 @@ verdict archived under `.planning/phase7_audit_reports/`.
   by waiver. Full retrospective at
   `.planning/retrospectives/fm04a_phase7_trust_closure.md`. TAA reports
   archived under `.planning/phase7_audit_reports/` (A.md, B.md, C.md,
-  D.md, E.md, G.md, G_REAUDIT.md).
+  D.md, E.md, G.md, G_REAUDIT.md). Phase 7 closed at 100/100 in slice
+  H (`9dae909`) with zero waivers — two TAA-FINAL LOW carry-forwards
+  (E2E #3 loose severity bucket + missing primary_axis_shift pin)
+  were closed in same slice rather than deferred, lifting V to 13/13.
+
+`.planning/FM-04A_PHASE8_BLUEPRINT.md` authored at `2e640f6`
+(2026-05-16) as the local execution plan for **reviewer
+accountability & provenance closure**. North Star: 4 reviewer
+questions ("did anyone review this candidate yet?" / "exactly what
+produced this 87?" / "what's the cohort look like?" / "which case
+is an outlier?"). Closes Phase 7 retrospective's "reviewer judgments
+have nowhere to land" gap. Same 9-axis rubric structure as Phase 7
+(B 12 / M 12 / T 15 / C 12 / X 12 / D 8 / A 8 / E 8 / V 13 = 100)
+plus 17 Phase-8-specific anti-gaming guards. Independent TAA gates
+each slice; final whole-arc TAA pass gates closure at ≥99/100.
+
+- FM-04a Phase 8 A-F shipped 2026-05-16 (commits `2e640f6..bec24c7`):
+  * **Plan** (`2e640f6`) — Binding 9-axis rubric + 17 anti-gaming
+    guards + TAA protocol + Phase 7 carry-forward disposition.
+  * **Phase A** (`6dd7be4`) —
+    `backend/app/services/reporting/signoff_record.py` (NEW) +
+    `SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"`. Persists per-candidate
+    reviewer signoff records at `reports/signoffs/<case>/<utc>.json`.
+    The verdict is drawn from a STRICT 4-element whitelist
+    (`watching` / `needs_more_evidence` / `needs_more_convergence`
+    / `blocked_pending_input`) that DELIBERATELY excludes every Tier
+    2 promotion verb. `_audit_verdict_whitelist()` runs at IMPORT
+    time and refuses module load if any verdict in
+    `SUPPORTED_SIGNOFF_VERDICTS` contains any of the 9 forbidden Tier
+    2 tokens — a future maintainer who adds `ready_for_tier_2`
+    cannot ship it. Free-text notes audited by `_assert_no_overclaim`
+    against 6 forbidden positive-claim tokens; disclaimer-form
+    `not <claim>` accepted. UTC ISO 8601 filename (no local time).
+    21 new tests covering whitelist invariants + tamper-refusal +
+    write/read happy + 6 rejection paths + every verdict positive +
+    Tier 1 disclaimer trio + future-field tolerance.
+  * **Phase B** (`270e0d0`) — `/api/v1/signoff-history/<case-id>`
+    endpoint + `frontend/src/signoffHistoryClient.ts` (with
+    `SUPPORTED_SIGNOFF_VERDICTS` as-const re-export +
+    `toneForVerdict`) + `frontend/src/components/SignoffHistoryPanel.tsx`
+    (chronological list with verdict pills, info/warn/danger tone) +
+    `TrustScoreGauge` extended with optional latest-signoff subline.
+    Two-list forbidden-token design (Phase 7 B pattern):
+    `_FORBIDDEN_NOTES_TOKENS` (6 tokens, write-site) vs
+    `_ENVELOPE_FORBIDDEN_TOKENS` (4 tokens, HTTP envelope).
+    `App.tsx` lifts latest signoff via `onLatestRecord` callback so
+    gauge subline mirrors panel state without duplicate fetch. 6
+    backend tests + 7 vitest. Slice-A TAA archive landed at
+    `.planning/phase8_audit_reports/A.md` (APPROVE).
+  * **Phase C** (`6e19def`) —
+    `backend/app/services/reporting/trust_score_provenance.py` (NEW)
+    + `TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.0.0"` +
+    `/api/v1/trust-score-provenance/<case-id>?snapshot=<label>`.
+    Walks 4 input kinds (metrics / convergence / completeness /
+    reproducibility) inside `reports/snapshots/<label>/`, computes
+    SHA-256 of each present file, reuses Phase 6 D `_build_point` to
+    recompute the score from frozen bytes. A reviewer reading the
+    provenance gets a deterministic answer to "exactly what
+    produced this 87?". 12 tests including SHA determinism + 404 on
+    missing snapshot.
+  * **Phase D** (`74902aa`) —
+    `backend/app/services/reporting/cohort_executive_summary.py`
+    (NEW) + `COHORT_EXECUTIVE_SUMMARY_SCHEMA_VERSION = "1.0.0"` +
+    `/api/v1/cohort-executive-summary` + scorecard panel mounted at
+    top of Visual tab. Walks `golden_samples/*-candidate/`, reuses
+    Phase 6 D trust score timeline + Phase 7 C alerts + Phase 8 A
+    signoff history per case, buckets into healthy/watching/regressed
+    via `_classify_bucket`. Named threshold constants
+    (`HEALTHY_TRUST_SCORE_MIN=80` / `WATCHING_TRUST_SCORE_MIN=50`).
+    Precedence: regressed > watching > healthy; `blocked_pending_input`
+    signoff forces regressed even at perfect score. 13 backend +
+    5 vitest. Also reserves `COHORT_ANOMALIES_SCHEMA_VERSION = "1.0.0"`
+    for slice E. Slice-B TAA archive landed (APPROVE).
+  * **Phase E** (`9f0a8a1`) —
+    `backend/app/services/reporting/cohort_anomalies.py` (NEW) +
+    `/api/v1/cohort-anomalies` + `CohortAnomaliesPanel`. For each
+    `*-candidate` case + each of the 4 trust score axes, computes
+    cohort mean + stdev and flags `|z| >= 2σ`. Severity buckets at
+    2σ/3σ/4σ (`ANOMALY_SIGMA_INFO_MIN=2.0` / `_WARN_MIN=3.0` /
+    `_DANGER_MIN=4.0`). Cohort size floor `COHORT_MIN_SIZE_FOR_ANOMALY=3`
+    (size 0/1/2 return empty since stdev is degenerate). Uniform
+    cohort (stdev=0) returns no anomalies on that axis. 13 unit +
+    4 Hypothesis property tests (all `derandomize=True`) + 4 vitest.
+  * **Phase F** (`bec24c7`) —
+    `tests/test_phase8_endpoints_integration.py` (15 HTTP integration
+    tests across all 4 Phase 8 endpoints including cross-endpoint
+    Tier 1 disclaimer trio + forbidden-claim audit + application/json
+    content-type) + `tests/test_fm04a_phase8_reviewer_accountability_e2e.py`
+    (3 E2E reviewer journeys: signoff workflow / provenance trace
+    with SHA re-hash / cohort outlier+anomaly+signoff escalation).
+    Slice-C TAA archive landed (APPROVE).
+
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 8 F closure (pre-slice-G final TAA pass): backend
+  pytest **1706 passed / 8 skipped** (up from 1619 entering Phase 8;
+  +87 new backend tests across the arc, +103 total including frontend).
+  Frontend node:test (legacy `.test.ts`) **142 passed**; frontend
+  vitest **33 passed across 6 files** (was 17 / 3 entering Phase 8).
+  `tsc -b` clean throughout.
+- Phase 8 cumulative honest scorecard (post-slice F, pre-slice-G
+  final TAA): **92/100**, code axes 100% of weight, V-axis 6/13
+  (slice-A/B/C/D/E TAA reports archived). Slice-D + E + F TAA
+  audits all returned APPROVE with no HIGH findings. Stop condition
+  (≥99 AND every axis ≥95% of weight) requires slice G to land
+  final whole-arc TAA APPROVE to raise V to 13/13 → cumulative
+  100/100. Slice G also lands `.planning/retrospectives/fm04a_phase8_reviewer_accountability.md`.
+  TAA reports archived under `.planning/phase8_audit_reports/`
+  (A.md, B.md, C.md, D.md, E.md so far; F.md + FINAL.md pending).
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
