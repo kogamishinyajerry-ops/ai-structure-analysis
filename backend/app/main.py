@@ -24,6 +24,7 @@ from .api.routes import (
     reproducibility_manifest,
     reviewer_bundle,
     sensitivity,
+    snapshot_narrative,
     solver,
     tier1_report,
     trust_score,
@@ -102,6 +103,8 @@ app.include_router(cohort_snapshots.router, prefix="/api/v1")
 app.include_router(cohort_snapshot_diff.router, prefix="/api/v1")
 # FM-04a Phase 6 B — Tier 1 evidence trust score.
 app.include_router(trust_score.router, prefix="/api/v1")
+# FM-04a Phase 6 C — Tier 1 snapshot drift narrative.
+app.include_router(snapshot_narrative.router, prefix="/api/v1")
 
 
 @app.get("/")
