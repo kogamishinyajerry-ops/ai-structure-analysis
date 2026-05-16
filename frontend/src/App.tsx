@@ -43,6 +43,7 @@ import { TrustScoreTimelineChart } from './components/TrustScoreTimelineChart';
 import { SignoffHistoryPanel } from './components/SignoffHistoryPanel';
 import { CohortExecutiveSummaryPanel } from './components/CohortExecutiveSummaryPanel';
 import { CohortAnomaliesPanel } from './components/CohortAnomaliesPanel';
+import { ProvenancePanel } from './components/ProvenancePanel';
 import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
@@ -1636,6 +1637,16 @@ function App() {
                         onSelectLabelA={setSnapshotLabelA}
                         onSelectLabelB={setSnapshotLabelB}
                     />
+                    {/* FM-04a Phase 9 E — Provenance panel; only mounts when a
+                        snapshot label is known so we never fire a fetch with
+                        empty params (Phase 9 anti-gaming guard X: -2). */}
+                    {selectedCandidateCaseId && snapshotLabelA && (
+                        <ProvenancePanel
+                            apiBase={API_BASE}
+                            caseId={selectedCandidateCaseId}
+                            snapshotLabel={snapshotLabelA}
+                        />
+                    )}
                     <DriftNarrativePanel
                         apiBase={API_BASE}
                         labelA={snapshotLabelA}
