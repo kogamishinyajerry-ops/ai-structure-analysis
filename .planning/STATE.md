@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase8-reviewer-accountability-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@f2c28ff`
-> **Last updated:** 2026-05-16 (FM-04a Phase 8 A-F reviewer accountability & provenance closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; 4 new endpoints — signoff-history / trust-score-provenance / cohort-executive-summary / cohort-anomalies — close every Phase 7 retrospective carry-forward at the HTTP boundary; cumulative honest score 92/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 7 closure stamp `fm04a-phase7-trust-closure-2026-05-16 · @9dae909` preserved in git history.
+> **Stamp:** `fm04a-phase9-active-surface-trend-closure-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@6a18d4f`
+> **Last updated:** 2026-05-16 (FM-04a Phase 9 A-F reviewer active-surface & trend-visibility closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; closes every Phase 8 retrospective carry-forward at the HTTP + frontend boundary — POST signoff-history endpoint with HTTP-422 verdict-whitelist enforcement, `generator` added to PROVENANCE_INPUT_KINDS with MINOR bumps on provenance + manifest schemas, cohort bucket threshold rebalance methodology SSOT doc + 49-cell sensitivity matrix, new trend-slope anomaly endpoint orthogonal to z-score, ProvenancePanel frontend surface; cumulative honest score 87/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6.5/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 8 closure stamp `fm04a-phase8-reviewer-accountability-2026-05-16 · @a0585aa` preserved in git history.
 > **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -587,6 +587,116 @@ AERON-03 / ENG-37 then landed a narrow orchestration-provenance slice:
 - PR #139 added additive `solve_metadata.backend` provenance.
 - `tests/test_cold_smoke_e2e.py` proves `compile_graph().invoke(...)` exposes the AERON backend provenance without real `ccx`.
 - This slice intentionally avoided `aeron/protocols/*`, `schemas/*`, `agents/graph.py`, Web/API services, report-cli, UI/workbench, golden samples, GS101, signed-validation artifacts, Notion sync, and CI/governance workflows.
+
+`.planning/FM-04A_PHASE9_BLUEPRINT.md` authored at `f5bf4f4`
+(2026-05-16) as the local execution plan for **reviewer active
+surface & trend-visibility closure**. North Star: 5 reviewer questions
+("Can I record my judgment from the UI?" / "Is the recompute
+reproducible end-to-end, including the script?" / "Are the cohort
+bucket thresholds defensible?" / "Is the case trend-degrading even
+though no single point is an outlier?" / "What input bytes produced
+this score?"). Closes every Phase 8 retrospective carry-forward at the
+HTTP + frontend boundary. Same 9-axis rubric structure as Phase 7/8
+(B 12 / M 12 / T 15 / C 12 / X 12 / D 8 / A 8 / E 8 / V 13 = 100) plus
+17 Phase-9-specific anti-gaming guards. Independent TAA gates each
+slice; final whole-arc TAA pass gates closure at ≥99/100.
+
+- FM-04a Phase 9 A-F shipped 2026-05-16 (commits `f5bf4f4..6a18d4f`):
+  * **Plan** (`f5bf4f4`) — Binding 9-axis rubric + 17 anti-gaming
+    guards + TAA protocol + Phase 8 carry-forward disposition map.
+  * **Phase A** (`4696e76`) — `POST /api/v1/signoff-history/<case-id>`
+    body `{reviewer, verdict, notes}`. HTTP-422 verdict-whitelist
+    refusal at request-validation boundary (before any disk write);
+    6 Tier-2 promotion verbs refused; signed-registry case_id
+    refused; forbidden-claim notes refused outside `not <claim>`
+    disclaimer form. HTTP-415 on non-application/json Content-Type
+    BEFORE body parse. 30 new tests (18 def's parametrized).
+    Slice-A TAA APPROVE 80/80 archived at
+    `.planning/phase9_audit_reports/A.md`.
+  * **Phase B** (`e74790f`) — `generator` added to
+    `PROVENANCE_INPUT_KINDS` (4 → 5; tuple SSOT + new
+    `_PROVENANCE_KIND_EXTENSION` dict). Cohort snapshot writer
+    extends to freeze `generator_script_path` bytes into
+    `<snap>/generator/<case>.py`. MINOR bumps:
+    `TRUST_SCORE_PROVENANCE_SCHEMA_VERSION` 1.0.0 → 1.1.0;
+    `COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION` 1.2.0 → 1.3.0. Forward-
+    compat: legacy 1.2.0-era snapshots without `generator/` subdir
+    read back cleanly with `present=False`. 16 new tests + 3
+    historical change-detector migrations (Phase 6/7/8). Slice-B
+    TAA APPROVE 80/80 archived at `phase9_audit_reports/B.md`.
+  * **Phase C** (`674b422`) — `.planning/methodology/cohort_bucket_thresholds.md`
+    SSOT doc names `HEALTHY_TRUST_SCORE_MIN = 80` +
+    `WATCHING_TRUST_SCORE_MIN = 50` by full Python identifier;
+    documents the 6-rule precedence ladder
+    (`regressed > watching > healthy`); documents rebalance procedure
+    (retrospective entry + sensitivity-matrix extension + schema
+    bump rule + frontend forward-compat check); states Tier 1
+    candidate scope explicitly. 49-case sensitivity matrix in
+    `tests/test_phase9_bucket_sensitivity_matrix.py` pins both sides
+    of both thresholds (49/50/51, 79/80/81) crossed with every
+    signoff verdict. Slice-C TAA APPROVE 80/80 archived at
+    `phase9_audit_reports/C.md`.
+  * **Phase D** (`985b528`) —
+    `backend/app/services/reporting/cohort_trend_anomalies.py` (NEW)
+    + `GET /api/v1/cohort-trend-anomalies`. Per-axis least-squares
+    slope across each case's snapshot timeline; flags negative drift
+    at named thresholds (`TREND_SLOPE_INFO_MAX = -0.5`,
+    `_WARN_MAX = -1.5`, `_DANGER_MAX = -3.0`). Cohort point-count
+    floor `TREND_MIN_POINTS = 3`. `TREND_AXES` tuple matches
+    `ANOMALY_AXES` from Phase 8 E byte-for-byte (cross-module lock-
+    step, distinct constants). New schema constant
+    `COHORT_TREND_ANOMALIES_SCHEMA_VERSION = "1.0.0"`. Orthogonal to
+    Phase 8 E z-score endpoint: a case can fire trend, z-score,
+    both, or neither — they answer different reviewer questions.
+    22 new tests including severity boundary pins at exact threshold
+    values + 3 opposite-direction negative controls (flat, ascending,
+    too-few-points). Slice-D TAA APPROVE 80/80 archived at
+    `phase9_audit_reports/D.md`.
+  * **Phase E** (`6cfe21c`) —
+    `frontend/src/trustScoreProvenanceClient.ts` (NEW typed client
+    with as-const `PROVENANCE_INPUT_KINDS` tuple matching backend
+    SSOT exactly; `parseInputKind` defensive parser falls to
+    `'unknown'` for kinds not in the tuple → future MINOR bump
+    cannot crash panel or silently render a Tier 2 verb;
+    `shortSha(sha)` returns first 12 chars or '—' on null) +
+    `frontend/src/components/ProvenancePanel.tsx` (NEW; mounts only
+    when caseId AND snapshotLabel both non-empty; 4-column grid
+    kind/path/present/sha-256; muted styling for present=false;
+    header surfaces schema version + formula version + recomputed
+    trust score; footer surfaces `claimImpact` with Tier 1 disclaimer
+    trio). `App.tsx` mounts panel adjacent to `CohortSnapshotPanel`
+    gated by `selectedCandidateCaseId && snapshotLabelA`. 13 vitest
+    cases. Slice-E TAA APPROVE 80/80 archived at
+    `phase9_audit_reports/E.md`.
+  * **Phase F** (`6a18d4f`) — 16 HTTP integration tests in
+    `tests/test_phase9_endpoints_integration.py` (POST signoff →
+    summary mirror, generator-extended provenance, trend endpoint,
+    orthogonality, cross-phase chained reads, POST validation pins,
+    UTC stamp format). 3 E2E reviewer journeys in
+    `tests/test_fm04a_phase9_reviewer_active_surface_e2e.py` (POST
+    round-trip → bucket flip; generator-frozen provenance SHA pin;
+    trend / z-score orthogonality proves trend fires AND z-score
+    does NOT in same test). Every E2E composes ≥3 phase surfaces.
+    Slice-F TAA APPROVE 56/56 archived at
+    `phase9_audit_reports/F.md`.
+- Phase 9 cumulative honest scorecard (pre-final-TAA pass):
+  **87/100**, code axes 100 % of weight, V-axis 6.5/13 (50 %). Per-
+  axis: B 12/12, M 12/12, T 15/15, C 12/12, X 12/12, D 8/8, A 8/8,
+  E 8/8, V 6.5/13. Stop condition (≥99 AND every axis ≥95 % of
+  weight) requires slice G final whole-arc TAA APPROVE to raise V to
+  ≥12/13. Full retrospective at
+  `.planning/retrospectives/fm04a_phase9_active_surface.md`. TAA
+  reports archived under `.planning/phase9_audit_reports/`
+  (A.md, B.md, C.md, D.md, E.md, F.md, FINAL.md). All 6 slice TAA
+  verdicts were APPROVE on first cut — zero CHANGES_REQUIRED rounds
+  across Phase 9, contrasting with Phase 7's 2 rounds and showing
+  the TAA protocol's deterrent effect is now load-bearing for
+  authoring discipline.
+
+Backend full sweep at slice F: **1843 pass / 8 skipped** (up from
+1707 entering Phase 9; +136 new backend tests).
+Frontend vitest: **46 pass across 7 files** (33 prior + 13 new Phase
+9 E). `tsc -b` clean.
 
 ---
 
