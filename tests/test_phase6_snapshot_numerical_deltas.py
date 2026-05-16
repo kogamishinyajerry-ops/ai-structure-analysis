@@ -121,8 +121,11 @@ def _make_case(case_id: str, root: Path, residual_velocity: float) -> SnapshotCa
 # ---------------------------------------------------------------------
 
 
-def test_snapshot_manifest_schema_version_bumped_to_1_1_0() -> None:
-    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.1.0"
+def test_snapshot_manifest_schema_version_bumped_to_1_2_0() -> None:
+    # Phase 7 A bumped the manifest from 1.1.0 to 1.2.0 (additive
+    # convergence/<case>.json capture). Phase 6 A's 1.1.0 baseline lives
+    # in the bump-history block of _schema_versions.py.
+    assert COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION == "1.2.0"
 
 
 def test_snapshot_diff_schema_version_bumped_to_1_1_0() -> None:
@@ -278,6 +281,9 @@ def test_diff_falls_back_when_one_snapshot_lacks_metrics(tmp_path: Path) -> None
 def test_diff_omits_numerical_deltas_when_both_snapshots_lack_metrics(
     tmp_path: Path,
 ) -> None:
+    # Phase 7 A note: the diff now also reads convergence/<case>.json
+    # when present. To exercise the "no source data on either side"
+    # path we must remove both metrics/ and convergence/ files.
     case = _make_case("GS-A-candidate", tmp_path, residual_velocity=75.0)
     a_result = write_cohort_snapshot(
         [case], repo_root=tmp_path, snapshot_label="2026-05-16T100000Z"
@@ -288,6 +294,8 @@ def test_diff_omits_numerical_deltas_when_both_snapshots_lack_metrics(
     )
     (a_result.snapshot_dir / "metrics" / "GS-A-candidate.json").unlink()
     (b_result.snapshot_dir / "metrics" / "GS-A-candidate.json").unlink()
+    (a_result.snapshot_dir / "convergence" / "GS-A-candidate.json").unlink()
+    (b_result.snapshot_dir / "convergence" / "GS-A-candidate.json").unlink()
 
     diff = diff_cohort_snapshots(tmp_path, "2026-05-16T100000Z", "2026-05-16T200000Z")
     assert diff.numerical_deltas == []

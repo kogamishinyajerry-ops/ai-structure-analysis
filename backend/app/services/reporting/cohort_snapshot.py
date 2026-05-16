@@ -135,6 +135,11 @@ def write_cohort_snapshot(
     # deltas (residual_velocity, energy_balance_error) without
     # re-reading the live project_state/ tree.
     (out_dir / "metrics").mkdir(parents=True, exist_ok=True)
+    # Phase 7 A: copy each case's raw convergence_study.json into
+    # convergence/<case>.json so the timeline + diff can recover the
+    # combined verdict from captured bytes (closes Phase 6 carry-
+    # forward §1; manifest 1.1.0 -> 1.2.0).
+    (out_dir / "convergence").mkdir(parents=True, exist_ok=True)
 
     members: list[str] = []
 
@@ -197,6 +202,24 @@ def write_cohort_snapshot(
                 raw, encoding="utf-8"
             )
             members.append(f"metrics/{case.case_id}.json")
+
+    # 3c. Phase 7 A — copy the case's raw convergence_study.json into
+    # convergence/<case>.json when it exists on disk. Same fallback
+    # semantics as metrics/: missing files are silently skipped and
+    # downstream consumers (diff, timeline) gracefully degrade.
+    for case in cases:
+        if (
+            case.convergence_study_path is not None
+            and case.convergence_study_path.is_file()
+        ):
+            raw = case.convergence_study_path.read_text(encoding="utf-8")
+            _assert_no_overclaim_text(
+                f"convergence/{case.case_id}.json", raw
+            )
+            (out_dir / "convergence" / f"{case.case_id}.json").write_text(
+                raw, encoding="utf-8"
+            )
+            members.append(f"convergence/{case.case_id}.json")
 
     # 4. Reviewer bundle (only when every case carries ballistic_metrics).
     bundle_members_written = False

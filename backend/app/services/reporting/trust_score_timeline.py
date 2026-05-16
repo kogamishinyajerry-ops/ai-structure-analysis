@@ -147,7 +147,13 @@ def _build_point(case_id: str, snapshot_dir: Path) -> TimelinePoint | None:
     metrics = _load_optional_json(
         snapshot_dir / "metrics" / f"{case_id}.json"
     )
-    convergence = _convergence_block_from_metrics(metrics)
+    # Phase 7 A — prefer the captured convergence/<case>.json (real
+    # convergence_study.json shape with mesh_sweep/dt_sweep blocks)
+    # over the metrics-inlined convergence_summary fallback.
+    captured_convergence = _load_optional_json(
+        snapshot_dir / "convergence" / f"{case_id}.json"
+    )
+    convergence = captured_convergence or _convergence_block_from_metrics(metrics)
 
     completeness_w = _completeness_weighted(completeness)
     convergence_w = _convergence_weighted(convergence)

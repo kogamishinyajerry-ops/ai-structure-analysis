@@ -250,10 +250,17 @@ def _diff_numerical(
     """Phase 6 A — read each snapshot's captured metrics/<case>.json and
     surface raw value diffs. Returns ``None`` when neither side has the
     file (gracefully degrades for 1.0.0 snapshots).
+
+    Phase 7 A — when ``convergence/<case>.json`` was captured in either
+    snapshot, prefer it over the metrics-inlined ``convergence_summary``
+    block for the convergence verdict. Captured convergence file wins;
+    inlined block is the 1.1.0 fallback; ``None`` is the 1.0.0 fallback.
     """
     a = _load_optional(dir_a / "metrics" / f"{case_id}.json")
     b = _load_optional(dir_b / "metrics" / f"{case_id}.json")
-    if a is None and b is None:
+    conv_a = _load_optional(dir_a / "convergence" / f"{case_id}.json")
+    conv_b = _load_optional(dir_b / "convergence" / f"{case_id}.json")
+    if a is None and b is None and conv_a is None and conv_b is None:
         return None
     return NumericalDelta(
         case_id=case_id,
@@ -264,12 +271,32 @@ def _diff_numerical(
             _extract_energy_balance_error(a), _extract_energy_balance_error(b)
         ),
         convergence_combined_verdict=_verdict_pair(
-            _extract_convergence_verdict(a), _extract_convergence_verdict(b)
+            _resolve_convergence_verdict(conv_a, a),
+            _resolve_convergence_verdict(conv_b, b),
         ),
         perforation_marker=_marker_pair(
             _extract_perforation_marker(a), _extract_perforation_marker(b)
         ),
     )
+
+
+def _resolve_convergence_verdict(
+    captured_convergence: dict[str, Any] | None,
+    metrics: dict[str, Any] | None,
+) -> str | None:
+    """Phase 7 A — convergence verdict priority order:
+
+    1. Captured ``convergence/<case>.json``'s top-level ``combined_verdict``
+       (the real ``convergence_study.json`` shape).
+    2. ``metrics/<case>.json``'s inlined ``convergence_summary.combined_verdict``
+       (the Phase 6 D / 6 A fallback when the snapshot pre-dates 1.2.0).
+    3. ``None`` (1.0.0 fallback).
+    """
+    if isinstance(captured_convergence, dict):
+        verdict = captured_convergence.get("combined_verdict")
+        if isinstance(verdict, str):
+            return verdict
+    return _extract_convergence_verdict(metrics)
 
 
 def _extract_residual_velocity(payload: dict[str, Any] | None) -> float | None:

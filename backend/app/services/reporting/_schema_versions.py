@@ -122,9 +122,9 @@ REPRODUCIBILITY_MANIFEST_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.reproducibility_manifest``.
 """
 
-COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.1.0"
+COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION = "1.2.0"
 """``SNAPSHOT_MANIFEST.json`` at the root of a written cohort snapshot
-directory (Phase 5 C; Phase 6 A MINOR bump).
+directory (Phase 5 C; Phase 6 A + Phase 7 A MINOR bumps).
 
 Builder: ``backend.app.services.reporting.cohort_snapshot``.
 
@@ -136,6 +136,15 @@ Bump history:
   declared in 1.0.0 continue to work. The bump exists so the
   Phase 6 D timeline + Phase 6 A diff raw-value extension can
   distinguish snapshots that have / do not have ``metrics/``.
+* ``1.2.0`` (Phase 7 A, MINOR per bump policy) — added optional
+  ``convergence/<case>.json`` sibling directory. The snapshot writer
+  now copies each case's live ``convergence_study.json`` into the
+  snapshot so the timeline + diff can recover the convergence
+  verdict directly from captured bytes rather than relying on an
+  inlined ``convergence_summary`` block inside the metrics file.
+  Consumers reading the 1.1.0 fields continue to work; the diff and
+  timeline gracefully degrade when ``convergence/`` is absent.
+  Closes Phase 6 retrospective carry-forward §1.
 """
 
 COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION = "1.1.0"
