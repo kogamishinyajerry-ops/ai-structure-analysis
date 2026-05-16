@@ -1,0 +1,5 @@
+# rod-wave-impact-candidate engine deck (SYNTHETIC stub)
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+# This is NOT a runnable OpenRadioss deck. See the starter
+# deck docstring for the synthetic-fixture rationale.
+# frame_count = 100, frame_dt_s = 1e-05
