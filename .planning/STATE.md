@@ -1,7 +1,7 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase9-active-surface-trend-closure-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@6a18d4f`
-> **Last updated:** 2026-05-16 (FM-04a Phase 9 A-F reviewer active-surface & trend-visibility closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; closes every Phase 8 retrospective carry-forward at the HTTP + frontend boundary — POST signoff-history endpoint with HTTP-422 verdict-whitelist enforcement, `generator` added to PROVENANCE_INPUT_KINDS with MINOR bumps on provenance + manifest schemas, cohort bucket threshold rebalance methodology SSOT doc + 49-cell sensitivity matrix, new trend-slope anomaly endpoint orthogonal to z-score, ProvenancePanel frontend surface; cumulative honest score 87/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6.5/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 8 closure stamp `fm04a-phase8-reviewer-accountability-2026-05-16 · @a0585aa` preserved in git history.
+> **Stamp:** `fm04a-phase10-reviewer-action-surface-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@ce4951a`
+> **Last updated:** 2026-05-16 (FM-04a Phase 10 A-F reviewer action-surface & calibration closure shipped locally with the binding 9-axis scoring rubric + independent Test Auditor Agent (TAA) gating; closes every Phase 9 retrospective carry-forward at the HTTP + frontend boundary — SignoffSubmissionForm UI surfaces inside SignoffHistoryPanel with 4-verdict dropdown bound to as-const tuple + client-side forbidden-claim preview + 422 / 429 inline error surfaces, CohortTrendAnomaliesPanel parallel to z-score panel, .planning/methodology/cohort_trend_slope_thresholds.md SSOT doc + 24-case sensitivity matrix, per-(case, reviewer) sliding-window rate limit on POST signoff with HTTP-429 + Retry-After header, generator script canonicalization SHA via ast.parse + ast.dump with MINOR bump on provenance schema 1.1.0 → 1.2.0, 16 HTTP integration tests + 3 E2E reviewer journeys covering rate-limit recovery + whitespace equivalence over the wire + broken-generator surface isolation; cumulative honest score 93.5/100 pre-final-TAA with every code axis at 100% of weight, V-axis 6.5/13 pending final whole-arc TAA pass in slice G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed). Phase 9 closure stamp `fm04a-phase9-active-surface-trend-closure-2026-05-16 · @6a18d4f` preserved in git history.
 > **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
@@ -697,6 +697,105 @@ Backend full sweep at slice F: **1843 pass / 8 skipped** (up from
 1707 entering Phase 9; +136 new backend tests).
 Frontend vitest: **46 pass across 7 files** (33 prior + 13 new Phase
 9 E). `tsc -b` clean.
+
+---
+
+## FM-04a Phase 10 — Reviewer Action Surface & Calibration Closure (CLOSED 2026-05-16 pre-FINAL-TAA)
+
+Phase 10 closes every Phase 9 retrospective carry-forward (5 items)
+at the HTTP + frontend boundary. Same binding 9-axis scoring rubric
+(B 12 / M 12 / T 15 / C 12 / X 12 / D 8 / A 8 / E 8 / V 13 = 100)
+plus 17 Phase-10-specific anti-gaming guards. Independent TAA gates
+each slice; final whole-arc TAA pass gates closure at ≥99 / 100.
+
+- FM-04a Phase 10 A-F shipped 2026-05-16 (commits `84d20b0..ce4951a`):
+  * **Plan** (`84d20b0`) — Binding 9-axis rubric + 17 anti-gaming
+    guards + TAA protocol + Phase 9 carry-forward disposition map
+    (`.planning/FM-04A_PHASE10_BLUEPRINT.md`, 353 lines).
+  * **Phase A** (`1057d80`) — `SignoffSubmissionForm.tsx` mounted
+    inside `SignoffHistoryPanel`. 4-verdict dropdown bound to
+    `SUPPORTED_SIGNOFF_VERDICTS` as-const tuple; reviewer + notes
+    inputs; client-side `detectForbiddenClaim()` preview surfaces
+    forbidden positive claims before submit; 200 path clears form +
+    triggers `onSubmitSuccess` callback; 422 detail + 429
+    Retry-After surfaced inline. Tier 1 disclaimer trio in form
+    footer. 16 vitest cases. Slice-A TAA APPROVE 80/80 archived at
+    `.planning/phase10_audit_reports/A.md`.
+  * **Phase B** (`7264fa9`) — `CohortTrendAnomaliesPanel.tsx`
+    parallel to `CohortAnomaliesPanel`; typed client with as-const
+    `SUPPORTED_TREND_SEVERITIES = ['info', 'warn', 'danger']`;
+    defensive `parseSeverity` falls to `'info'` for unknown values.
+    5-column grid (case / axis / slope / points / severity); slope
+    rendered with `toFixed(2)`. 9 vitest cases. Slice-B TAA APPROVE
+    80/80 archived at `phase10_audit_reports/B.md`.
+  * **Phase C** (`8a44215`) — `.planning/methodology/cohort_trend_slope_thresholds.md`
+    SSOT doc names `TREND_SLOPE_INFO_MAX = -0.5`,
+    `_WARN_MAX = -1.5`, `_DANGER_MAX = -3.0`, `TREND_MIN_POINTS = 3`
+    by full Python identifier; documents "more negative is worse"
+    convention; documents rebalance procedure (6-step numbered
+    list). 24-case sensitivity matrix in
+    `tests/test_phase10_trend_slope_sensitivity_matrix.py` pins all
+    4 constants + monotonicity + boundary cells at every threshold
+    ±0.01. Slice-C TAA APPROVE 68/68 archived at
+    `phase10_audit_reports/C.md`.
+  * **Phase D** (`2ba8829`) —
+    `backend/app/services/reporting/signoff_rate_limit.py` (NEW):
+    `RATE_LIMIT_MAX_REQUESTS = 5`, `RATE_LIMIT_WINDOW_SECONDS = 60`.
+    Sliding-window per-(case_id, reviewer) bucket with lazy eviction;
+    `RateLimitResult` dataclass + `check_and_record()` + synthetic
+    `now=` clock injection. Route layer surfaces 429 + Retry-After
+    header. Rate-limit gate placed AFTER verdict whitelist so
+    rejected verdicts do not consume a slot. Autouse `_reset_signoff_rate_limit_state`
+    fixture in `tests/conftest.py` keeps Phase 8/9 POST tests
+    deterministic without modifying any prior test file. 12 new
+    tests. Slice-D TAA APPROVE 68/68 archived at
+    `phase10_audit_reports/D.md`.
+  * **Phase E** (`9555ce6`) — `_canonical_python_sha()` helper via
+    `ast.parse` + `ast.dump(annotate_fields=True,
+    include_attributes=False)`. Three additive fields on every
+    `ProvenanceInput` row: `sha256_normalized`,
+    `normalization_method`, `normalization_error`.
+    `GENERATOR_NORMALIZATION_METHOD = "python-ast-dump-v1"` pinned
+    SSOT. MINOR bump `TRUST_SCORE_PROVENANCE_SCHEMA_VERSION`
+    1.1.0 → 1.2.0 with extended bump history. Frontend parser
+    surfaces `null` for missing fields (1.1.0-era payload still
+    plumbs cleanly through). `ProvenancePanel` grows a 5th column
+    showing canonical short SHA / `"parse error"` / em-dash. 18
+    backend + 9 frontend tests including whitespace + comment +
+    docstring + logic-change equivalence pins + parse-failure path
+    + forbidden-claim audit re-verified post-bump. Slice-E TAA
+    APPROVE 68/68 archived at `phase10_audit_reports/E.md`.
+  * **Phase F** (`ce4951a`) — 16 HTTP integration tests in
+    `tests/test_phase10_endpoints_integration.py` (8 rate-limit gate
+    composition with peer 415/422 gates + 8 canonical SHA surfaced
+    via HTTP including whitespace + comment + logic-change
+    equivalence + parse-failure). 3 E2E reviewer journeys in
+    `tests/test_fm04a_phase10_reviewer_safety_e2e.py` (rate-limit
+    recovery → cohort summary bucket flip; generator whitespace
+    equivalence over the wire; broken generator does not poison
+    signoff + history + summary). E2E #1 walks 3 routes, #2 walks
+    2 routes, #3 walks 4 routes. Slice-F TAA APPROVE 41/41 archived
+    at `phase10_audit_reports/F.md`.
+- Phase 10 cumulative honest scorecard (pre-final-TAA pass):
+  **93.5/100**, code axes 100 % of weight, V-axis 6.5/13 (50 %). Per-
+  axis: B 12/12, M 12/12, T 15/15, C 12/12, X 12/12, D 8/8, A 8/8,
+  E 8/8, V 6.5/13. Stop condition (≥99 AND every axis ≥95 % of
+  weight) requires slice G final whole-arc TAA APPROVE to raise V to
+  ≥12/13. Full retrospective at
+  `.planning/retrospectives/fm04a_phase10_reviewer_action_surface.md`.
+  TAA reports archived under `.planning/phase10_audit_reports/`
+  (A.md, B.md, C.md, D.md, E.md, F.md, FINAL.md pending).
+  All 6 slice TAA verdicts were APPROVE on first cut — zero
+  CHANGES_REQUIRED rounds across Phase 10 (matching Phase 9's
+  6-for-6 record).
+
+Backend full sweep at slice F: **1916 pass / 8 skipped** (up from
+1843 entering Phase 10; +73 new backend tests).
+Frontend vitest: **77 pass across 10 files** (46 prior + 16 new
+Phase 10 A SignoffSubmissionForm + 9 new Phase 10 B
+CohortTrendAnomaliesPanel + 6 new Phase 10 E canonical-SHA
+forward-compat / panel render — counting the +1 schema-version
+assertion updated in the pre-existing ProvenancePanel.test.tsx).
 
 ---
 
