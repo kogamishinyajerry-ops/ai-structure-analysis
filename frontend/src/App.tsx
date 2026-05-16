@@ -45,6 +45,10 @@ import { CohortExecutiveSummaryPanel } from './components/CohortExecutiveSummary
 import { CohortAnomaliesPanel } from './components/CohortAnomaliesPanel';
 import { CohortTrendAnomaliesPanel } from './components/CohortTrendAnomaliesPanel';
 import { ProvenancePanel } from './components/ProvenancePanel';
+// FM-04a Phase 11 E — AI advisor critique panel; mounted adjacent to
+// ProvenancePanel below. The advisor surface is read-only / advisor-only
+// per the project four-question gate.
+import { AdvisorPanel } from './components/AdvisorPanel';
 import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
@@ -1644,6 +1648,16 @@ function App() {
                         empty params (Phase 9 anti-gaming guard X: -2). */}
                     {selectedCandidateCaseId && snapshotLabelA && (
                         <ProvenancePanel
+                            apiBase={API_BASE}
+                            caseId={selectedCandidateCaseId}
+                            snapshotLabel={snapshotLabelA}
+                        />
+                    )}
+                    {/* FM-04a Phase 11 E — Advisor critique panel; same mount
+                        guard as ProvenancePanel above. The advisor surface is
+                        advisor-only (NOT driver); reviewer agency preserved. */}
+                    {selectedCandidateCaseId && snapshotLabelA && (
+                        <AdvisorPanel
                             apiBase={API_BASE}
                             caseId={selectedCandidateCaseId}
                             snapshotLabel={snapshotLabelA}
