@@ -461,7 +461,7 @@ Bump history:
   source payload.
 """
 
-SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"
+SIGNOFF_RECORD_SCHEMA_VERSION = "1.1.0"
 """``signoff_record.json`` (Phase 8 A).
 
 Builder: ``backend.app.services.reporting.signoff_record``.
@@ -476,6 +476,22 @@ every Tier 2 promotion verb (no ``ready_for_tier_2``, no
 import-time audit ``_audit_verdict_whitelist`` enforces this so no
 future maintainer can add a Tier 2 vocabulary verdict without
 breaking import.
+
+Bump history:
+
+* ``1.0.0`` (Phase 8 A) — initial schema; verdict + reviewer +
+  signoff_utc + notes + Tier 1 disclaimer trio.
+* ``1.1.0`` (Phase 16 C · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``drift_attribution_at_signoff_time``
+  field carrying the per-case :class:`DriftAttribution` for the
+  case's latest snapshot pair AT WRITE TIME. SERVER-COMPUTED
+  (NOT trusted from a client POST body — A:-3 guard). ``null``
+  when fewer than 2 snapshots exist for the case at write time.
+  Closes the audit-trail gap between "WHAT regressed" (drift
+  surface) and "WHO judged it" (signoff record). Pre-1.1.0
+  consumers that ignore the field continue to function;
+  back-compat reading defaults the field to ``None`` for older
+  on-disk records.
 """
 
 # ----- rubric version (separate from emitted JSON contracts) -----

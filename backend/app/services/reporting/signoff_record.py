@@ -192,6 +192,17 @@ class SignoffRecord:
     claim_tier: str = CLAIM_TIER
     claim_boundary: str = CLAIM_BOUNDARY
     claim_impact: str = CLAIM_IMPACT_DEFAULT
+    drift_attribution_at_signoff_time: object = None
+    """Phase 16 C — the per-case :class:`DriftAttribution` for the
+    case's latest snapshot pair AT WRITE TIME (server-computed; A:-3
+    NOT trusted from a client POST body). ``None`` when fewer than
+    2 snapshots exist for the case at write time. Closes the
+    audit-trail gap: a future reviewer reading this record sees
+    WHICH axis was regressing AT THE TIME the verdict was made,
+    NOT recomputed from the live snapshot tree (which may have
+    evolved past the signoff event). Schema 1.1.0 additive field;
+    pre-1.1.0 consumers that ignore the field continue to function.
+    """
 
 
 # ----- write -----
@@ -232,18 +243,50 @@ def write_signoff_record(
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{stamp}.json"
 
+    # Phase 16 C — compute drift_attribution at write time from the
+    # case's latest snapshot pair (server-computed; A:-3 NOT trusted
+    # from any client-supplied input). Local import defers the cost
+    # when no snapshots exist; graceful degrade to None when the case
+    # has fewer than 2 timeline points.
+    drift_attribution = _compute_drift_attribution_at_signoff_time(
+        case_id, repo_root=repo_root
+    )
+
     record = SignoffRecord(
         case_id=case_id,
         reviewer=reviewer.strip(),
         verdict=verdict,  # type: ignore[arg-type]
         signoff_utc=stamp,
         notes=notes,
+        drift_attribution_at_signoff_time=drift_attribution,
     )
     out_path.write_text(
         json.dumps(_record_to_dict(record), indent=2, sort_keys=True),
         encoding="utf-8",
     )
     return record
+
+
+def _compute_drift_attribution_at_signoff_time(
+    case_id: str, *, repo_root: Path
+) -> object:
+    """Compute the per-case drift_attribution for the case's latest
+    snapshot pair at signoff write time. Returns ``None`` when fewer
+    than 2 snapshots exist for the case (graceful degrade).
+
+    Server-computed only (anti-gaming guard A:-3): the signoff POST
+    body MUST NOT carry a client-side drift_attribution field; the
+    server walks the on-disk snapshot tree at write time.
+    """
+    from .trust_score_timeline import build_trust_score_timeline
+
+    timeline = build_trust_score_timeline(case_id, repo_root)
+    if len(timeline.inter_snapshot_drift_attribution) == 0:
+        return None
+    # Latest consecutive-pair entry is the snap-(N-1) → snap-N
+    # transition; this is the load-bearing pair for "what was
+    # regressing at signoff time".
+    return timeline.inter_snapshot_drift_attribution[-1]
 
 
 # ----- read -----
@@ -282,15 +325,50 @@ def read_signoff_history(case_id: str, *, repo_root: Path) -> list[SignoffRecord
                 claim_tier=payload.get("claim_tier", CLAIM_TIER),
                 claim_boundary=payload.get("claim_boundary", CLAIM_BOUNDARY),
                 claim_impact=payload.get("claim_impact", CLAIM_IMPACT_DEFAULT),
+                # Phase 16 C — additive field; 1.0.0-era records lack
+                # the key and read as ``None`` (back-compat).
+                drift_attribution_at_signoff_time=_parse_drift_attribution(
+                    payload.get("drift_attribution_at_signoff_time")
+                ),
             )
         )
     return records
+
+
+def _parse_drift_attribution(blob: object) -> object:
+    """Reconstruct a :class:`DriftAttribution` from its JSON dict form;
+    returns ``None`` when the blob is missing/None (back-compat with
+    1.0.0-era on-disk records)."""
+    if blob is None:
+        return None
+    if not isinstance(blob, dict):
+        return None
+    from .trust_score_drift_attribution import DriftAttribution
+
+    dominant_delta_pct = blob.get("dominant_delta_pct")
+    return DriftAttribution(
+        from_snapshot=blob["from_snapshot"],
+        to_snapshot=blob["to_snapshot"],
+        per_axis_delta_pct=dict(blob["per_axis_delta_pct"]),
+        dominant_axis=blob.get("dominant_axis"),
+        dominant_delta_pct=(
+            float("nan")
+            if dominant_delta_pct is None
+            else float(dominant_delta_pct)
+        ),
+    )
 
 
 # ----- helpers -----
 
 
 def _record_to_dict(record: SignoffRecord) -> dict[str, object]:
+    from .trust_score_drift_attribution import render_drift_attribution_dict
+
+    drift = record.drift_attribution_at_signoff_time
+    drift_dict = (
+        render_drift_attribution_dict(drift) if drift is not None else None
+    )
     return {
         "schema_version": record.schema_version,
         "case_id": record.case_id,
@@ -301,6 +379,10 @@ def _record_to_dict(record: SignoffRecord) -> dict[str, object]:
         "claim_tier": record.claim_tier,
         "claim_boundary": record.claim_boundary,
         "claim_impact": record.claim_impact,
+        # Phase 16 C — schema 1.1.0 additive field. ``null`` when
+        # fewer than 2 snapshots existed at write time. Pre-1.1.0
+        # consumers that ignore the field continue to function.
+        "drift_attribution_at_signoff_time": drift_dict,
     }
 
 
