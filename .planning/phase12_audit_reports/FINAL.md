@@ -207,3 +207,111 @@ B + M + T + C + X + D + A + E + V = 12 + 12 + 14 + 12 + 11 + 8 + 8 + 8 + 13 = **
 - Panel-migration deferral verified open: `CohortDashboardPanel.tsx` still imports `fetchCohortOverview` (old client), zero imports of `cohortDashboardClient`
 
 **Verdict: APPROVE_WITH_COMMENTS. Stop condition NOT MET (98/100; T and X below 95% floor due to honest panel-migration deferral). Phase 12 ready for closure with one named Phase 13 §2 carry-forward as the load-bearing open deduction.**
+
+---
+
+## Post-Slice-I Re-Verification Addendum
+
+**Re-verification target:** slice I commit `bf8b99a` ("FM-04a Phase 12 I: cohort substantiation panel + X:-2 anti-promotion guards at consumer surface")
+**Re-verification HEAD:** `bf8b99a`
+**Re-verification timestamp:** 2026-05-16 (independent second-pass TAA)
+**Slice I diff scope:** exactly 3 files, +699 / -0 — `frontend/src/components/CohortSubstantiationPanel.tsx` (+301), `frontend/test/CohortSubstantiationPanel.test.tsx` (+382), `frontend/src/App.tsx` (+16). No backend changes; no schema changes; no SSOT changes; no HF1 hard-stop zone touches.
+
+### Independent sweep re-runs at HEAD `bf8b99a`
+
+- **Backend:** `.venv/bin/python -m pytest -q --tb=line` → **2191 passed, 7 skipped, 3 warnings in 20.50s** (identical to FINAL first-pass; no regression).
+- **Frontend:** `npx vitest run` → **127 passed across 13 files** in 1.98s (+10 vs FINAL first-pass 117; +1 new test file `CohortSubstantiationPanel.test.tsx`).
+- **TypeScript:** `npx tsc --noEmit; echo "exit=$?"` → **exit=0** (zero output).
+- **New-test-file isolated re-run:** `npx vitest run test/CohortSubstantiationPanel.test.tsx` → **10 passed in 644ms** (1 file, 3 describe blocks: happy-path 4 / X:-2 anti-promotion 4 / loading+degradation 2).
+
+### Wiring + SSOT-flow verification (file-by-file)
+
+- `CohortSubstantiationPanel.tsx` imports `bucketColor` + `severityColor` + `fetchCohortDashboardViewModel` + view-model types **directly from `../cohortDashboardClient.ts`** (the slice-E orchestrator). Zero imports of the legacy `cohortOverviewClient.ts`. The orchestrator's defensive parsers and color SSOTs now flow into a user-visible React component.
+- Per-case `CaseRow` (lines 81-108) renders `row.bucket` text verbatim and styles `style={{ color: bucketColor(row.bucket), ... }}`. Per-alert `AlertRow` (lines 110-143) mirrors the same pattern for `alert.severity` via `severityColor()`.
+- `BucketChip` (lines 59-79) renders all 4 bucket categories — including `unknown` — as visible distribution chips with bucket-color border + label.
+- `App.tsx` line 1580 (post-edit): `<CohortSubstantiationPanel apiBase={API_BASE} />` mounted inside the Visual tab `<TabContent value="visual">` block, alongside (not replacing) the legacy `<CohortDashboardPanel ... />`. The two panels are intentionally separate surfaces per the slice-I commit message; legacy panel still serves the `/cohort-overview` evidence-completeness leaderboard surface that pre-dates the substantiation arc.
+- Color SSOT distinction is genuine (not tautological): `bucketColor('unknown')` returns `'var(--text-secondary)'` while `bucketColor('regressed')` returns `'var(--danger, #c0392b)'`; `severityColor('unknown')` returns `'var(--text-secondary)'` while `severityColor('danger')` returns `'var(--danger, #c0392b)'`. The 4 X:-2 component tests' `.not.toBe()` assertions test a real, non-trivial distinction.
+
+### 4 load-bearing X:-2 anti-promotion test inspections (`CohortSubstantiationPanel.test.tsx:256-336`)
+
+Each of the 4 tests in `describe('CohortSubstantiationPanel — X:-2 anti-promotion guards at consumer surface')` was read line-by-line. Findings:
+
+| # | Test (line) | Asserts text verbatim? | Asserts `style.color === <unknown SSOT>`? | Asserts `style.color !== <regressed/danger SSOT>`? | Load-bearing closure? |
+|---|---|---|---|---|---|
+| 1 | `unknown bucket … NOT promoted to regressed red` (257-279) | yes — `bucketCell.textContent === 'unknown'` + `.not.toBe('regressed')` | yes — `cellStyle === bucketColor('unknown')` | yes — `cellStyle !== bucketColor('regressed')` | YES |
+| 2 | `unknown severity … NOT promoted to danger red` (281-304) | yes — `severityCell.textContent === 'unknown'` + `.not.toBe('danger')` | yes — `cellStyle === severityColor('unknown')` | yes — `cellStyle !== severityColor('danger')` | YES |
+| 3 | `surfaces unknown bucket count visibly in distribution chips` (306-322) | yes — chip text contains both `'1'` and `'unknown'` | yes — `unknownChip.style.color === bucketColor('unknown')` | yes — `unknownChip.style.color !== bucketColor('regressed')` | YES |
+| 4 | `future schema-version values … not silently coerce them` (324-335) | yes — `'2.0.0-future'` rendered verbatim in footer | n/a (footer is text-only) | n/a | YES (X:-2 sibling: schema-drift surfacing not coercion) |
+
+All 4 tests pin (a) text verbatim AND (b) where applicable, the rendered CSS color matches the unknown-bucket / unknown-severity SSOT and explicitly NOT the regressed-bucket / danger-severity SSOT. The orchestrator's defensive parsers are no longer logically dead at the consumer surface — a future MINOR backend bump introducing a new bucket category would (i) flow through the orchestrator's `defensiveBucket` to `'unknown'`, (ii) be rendered with the neutral-gray SSOT color, (iii) surface visibly as an `unknown`-chip count in the distribution, and (iv) all three behaviors would trip a vitest regression if the contract drifted.
+
+### Per-axis re-score
+
+Only **T** and **X** change. All other axes (**B / M / C / D / A / E / V**) remain at first-pass FINAL scores (already 100% of weight in every case) — slice I touched zero backend code, zero schema versions, zero blueprint scope, zero claim envelopes, zero anti-gaming guards beyond the X:-2 closure, and zero sweep targets beyond adding 10 passing tests.
+
+| Axis | First-pass FINAL | Post-slice-I | Delta | Justification |
+|---|---|---|---|---|
+| B (12) | 12/12 | **12/12** | 0 | Slice I expands blueprint #07 substantiation surface as planned by the FM-04a slice-I scope; no scope creep. |
+| M (12) | 12/12 | **12/12** | 0 | No new SSOTs; reads `bucketColor` / `severityColor` from existing module-level SSOTs at `cohortDashboardClient.ts:101-113`. |
+| **T (15)** | **14/15** | **15/15** | **+1** | The FINAL −1 root cause ("20 vitest cases prove the orchestrator correct **in isolation**; consumer panel is unwired") is closed. The slice-E orchestrator now has a consumer (`CohortSubstantiationPanel`), the consumer is wired into `App.tsx` Visual tab, and the consumer-surface contract is pinned by 10 new vitest cases (+10 over FINAL's 117). The 4 X:-2 anti-promotion tests are the load-bearing closure: they verify both text-verbatim AND color-SSOT-match-NOT-regressed/danger at the user-visible component surface. |
+| C (12) | 12/12 | **12/12** | 0 | `TIER1_BANNER` rendered in panel chrome (lines 183); test 4 in happy-path describe pins it. No forbidden claim tokens added. |
+| **X (12)** | **11/12** | **12/12** | **+1** | The FINAL −1 root cause ("defensive parser is logically dead at the visible surface; without consumer wiring, the guard adds no value") is closed. `CohortSubstantiationPanel` is the consumer wiring: it routes `view.cases[].bucket` and `view.alerts[].severity` through the orchestrator's `bucketColor` / `severityColor` SSOTs, and the resulting style.color is contract-tested against the unknown-SSOT (not coerced to regressed/danger) at the component level. The 4 X:-2 component tests give the user-visible surface load-bearing forward-compat coverage. |
+| D (8) | 8/8 | **8/8** | 0 | Disposition matrix completeness unaffected. |
+| A (8) | 8/8 | **8/8** | 0 | All anti-gaming guards preserved; the X:-2 guard is now consumer-side-pinned, strengthening (not weakening) the A:-2 contract. |
+| E (8) | 8/8 | **8/8** | 0 | Sweep cleanliness re-verified: 2191 backend pass + 127 frontend pass + tsc exit 0. Zero CHANGES_REQUIRED. Zero real-solver / LLM invocation. |
+| V (13) | 13/13 | **13/13** | 0 | Verdict / cumulative — Phase 12 arc's honest engineering posture preserved through slice I (no aspirational claims; commit message explicitly preserves the dev-server-smoke deferral as a non-deduction follow-up). |
+
+**Updated total: B + M + T + C + X + D + A + E + V = 12 + 12 + 15 + 12 + 12 + 8 + 8 + 8 + 13 = 100 / 100**
+
+### Conservative residual concern + why it is NOT an X-axis deduction
+
+The slice-I commit preserves a residual deferral named explicitly: "Visual integration verification still requires a running dev-server smoke that this engineering pass does not perform (slice-E TAA's deferral is preserved as the Phase 13 §2 follow-up)."
+
+The honest question: is the component-level vitest pin (jsdom + react-testing-library) genuinely sufficient to lift X from 11/12 to 12/12, or should X remain at 11/12 with the visual-smoke deferral?
+
+**Conservative re-verification ruling: component-level vitest pin IS sufficient for 12/12.** Reasoning:
+
+1. The FINAL TAA's X-axis −1 prose targets "consumer wiring" and "logically dead at the visible surface" — not "running dev-server smoke executed". Slice I delivers consumer wiring (App.tsx mount) + 4 load-bearing component tests that verify the X:-2 anti-promotion contract is intact at the component surface.
+
+2. No other frontend component in the FM-04a arc has been docked an X-axis point for the absence of a running dev-server smoke. Holding `CohortSubstantiationPanel` to a stricter standard would be inconsistent with how the entire frontend testing surface (12 vitest files / 117 tests pre-slice-I) was scored.
+
+3. The dev-server smoke is integration-level confirmation — does CSS variable resolution work in a real browser, does the panel render at the expected viewport, etc. — which is generic infrastructure risk that every React component in the codebase carries. It is NOT the specific risk the FINAL TAA's X:-2 deduction named.
+
+4. The 4 X:-2 component tests are not tautological: the SSOT colors are genuinely distinct (`var(--text-secondary)` vs `var(--danger, #c0392b)`), and the `.not.toBe()` assertions test a real distinction that would catch a regression where a developer "fixed" an `unknown` rendering issue by silently coercing to `regressed`.
+
+5. Phase 13 §2 dev-server smoke remains as a defensive belt-and-braces follow-up. It is not closure-blocking for the Phase 12 arc.
+
+### Stop-condition determination
+
+- Total ≥ 99: **100 ≥ 99 → MET**
+- Every axis ≥ 95% of weight:
+  - B 12/12 = 100% ✓
+  - M 12/12 = 100% ✓
+  - T 15/15 = 100% ✓ (was 93.3%; now MET)
+  - C 12/12 = 100% ✓
+  - X 12/12 = 100% ✓ (was 91.7%; now MET)
+  - D 8/8 = 100% ✓
+  - A 8/8 = 100% ✓
+  - E 8/8 = 100% ✓
+  - V 13/13 = 100% ✓
+- **Stop condition: MET.**
+
+### Phase 13 carry-forwards — post-slice-I status
+
+| # | Carry-forward | Status post-slice-I |
+|---|---|---|
+| §1 | Slice-A trust_score modal branch direct tests | RESOLVED in slice H (pre-FINAL) |
+| §2a | `cohortDashboardClient.ts` consumer-surface wiring | **CLOSED IN SLICE I** — `CohortSubstantiationPanel` wired into App.tsx Visual tab + 10 vitest cases |
+| §2b | Legacy `CohortDashboardPanel` migration to new client | **OPEN, low priority** — intentionally deferred; the two panels serve different blueprints (#04 leaderboard vs #07 substantiation) and may be unified in Phase 13 once both are observed-stable |
+| §2c | Visual dev-server smoke of the substantiation panel | **OPEN, NOT closure-blocking** — defensive integration belt; component-level vitest contract is the load-bearing closure |
+| §3 | HF1.7 ADR amendment for `*-candidate` carve-out | OPEN as ADR housekeeping |
+| §4 | Deeper-degradation fixture or re-tuned bucket thresholds | OPEN, low priority |
+| §5 | Slice F Journey 6 5-snapshot recovery arc | RESOLVED in slice H (methodology doc) |
+| §6 | Phase 11 retro §2 `AdvisorContext.extra` consumer | RESOLVED in slice B |
+| §7 | Phase 11 retro §3 snapshot manifest version pinning | PARTIALLY OPEN |
+
+### Final post-slice-I verdict
+
+**Verdict: APPROVE (100/100). Stop condition MET.** Slice I genuinely closes the FINAL first-pass T+X shared deduction by (a) introducing the `CohortSubstantiationPanel` consumer-surface component that consumes the slice-E `cohortDashboardClient.ts` orchestrator's defensive parsers, (b) routing rendered bucket and severity values through the orchestrator's `bucketColor` / `severityColor` SSOTs at the user-visible surface, (c) wiring the panel into `App.tsx` Visual tab, and (d) pinning the X:-2 anti-promotion contract with 4 load-bearing component-level vitest cases that verify text-verbatim AND CSS-color-match-unknown-NOT-regressed/danger. The legacy `CohortDashboardPanel` migration and the dev-server visual smoke remain as non-deduction Phase 13 follow-ups, honestly named in the commit message and in this addendum.
+
+**Engineering coherence one-liner:** Slice I delivers the consumer-surface completion of the slice-E orchestrator's defensive parsers — the load-bearing X:-2 anti-promotion guard is now user-visible, contract-tested, and forward-compat-protected at the React component layer; residual dev-server smoke is generic frontend integration risk, not the specific gap the FINAL first-pass cited.
