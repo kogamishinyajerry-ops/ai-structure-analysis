@@ -260,7 +260,7 @@ Bump history:
   carry-forward §3.
 """
 
-TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.1.0"
+TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.2.0"
 """``trust_score_timeline`` HTTP response.
 
 Builder: ``backend.app.services.reporting.trust_score_timeline``.
@@ -277,6 +277,15 @@ Bump history:
   function; the new field defaults to an empty tuple when no
   consecutive snapshots are walked. Closes Phase 14 retro §1
   (per-axis drift attribution surface).
+* ``1.2.0`` (Phase 16 A · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``cumulative_drift_attribution`` field
+  carrying a single :class:`DriftAttribution` for the snap-1 →
+  snap-N transition (distinct from the consecutive-pair tuple
+  above). For 0/1-point timelines the field is ``null``. For
+  2-point timelines it equals the single consecutive-pair entry's
+  percentages (degenerate but correct). A pre-1.2.0 consumer that
+  ignores the new field continues to function. Closes Phase 15
+  retro §3 (drift attribution on more envelopes).
 """
 
 # ----- Phase 7 NEW contracts -----

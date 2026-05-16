@@ -242,8 +242,12 @@ def test_alerts_schema_at_1_1_0() -> None:
     assert TRUST_SCORE_ALERTS_SCHEMA_VERSION == "1.1.0"
 
 
-def test_timeline_schema_at_1_1_0() -> None:
-    assert TRUST_SCORE_TIMELINE_SCHEMA_VERSION == "1.1.0"
+def test_timeline_schema_at_1_2_0() -> None:
+    # Phase 16 A bumped the timeline schema to 1.2.0 with the
+    # additive ``cumulative_drift_attribution`` field. The Phase 15 C
+    # ``inter_snapshot_drift_attribution`` field remains intact at
+    # 1.1.0 level; the 1.2.0 bump is purely additive.
+    assert TRUST_SCORE_TIMELINE_SCHEMA_VERSION == "1.2.0"
 
 
 # ---------------------------------------------------------------------

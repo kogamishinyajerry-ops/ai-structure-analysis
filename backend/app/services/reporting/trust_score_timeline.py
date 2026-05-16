@@ -88,6 +88,17 @@ class TrustScoreTimeline:
     :class:`DriftAttribution` carrying per-axis percentage deltas +
     dominant_axis. Schema 1.1.0 additive field; pre-1.1.0 consumers
     that ignore the field continue to function."""
+    cumulative_drift_attribution: object = None
+    """Phase 16 A — cumulative snap-1 → snap-N drift attribution.
+    A SINGLE :class:`DriftAttribution` spanning the first and last
+    timeline points (distinct from the consecutive-pair tuple
+    above). ``None`` for 0/1-point timelines. For 2-point timelines
+    equals the per-pair entry's percentages. For 3+ points the
+    cumulative magnitude on each axis may differ from any single
+    per-pair entry (e.g. an axis that dropped and then recovered
+    shows a smaller cumulative absolute delta than the worst
+    per-pair). Schema 1.2.0 additive field; pre-1.2.0 consumers
+    that ignore the field continue to function."""
 
 
 def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimeline:
@@ -115,25 +126,35 @@ def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimel
     # (no consecutive pairs).
     from .trust_score_drift_attribution import compute_drift_attribution
 
+    def _axes_dict(point: TimelinePoint) -> dict[str, int]:
+        return {
+            "completeness": int(point.completeness_weighted),
+            "convergence": int(point.convergence_weighted),
+            "energy_audit": int(point.energy_audit_weighted),
+            "reproducibility": int(point.reproducibility_weighted),
+        }
+
     drifts: list = []
     for older, newer in zip(points, points[1:], strict=False):
         drifts.append(
             compute_drift_attribution(
-                {
-                    "completeness": int(older.completeness_weighted),
-                    "convergence": int(older.convergence_weighted),
-                    "energy_audit": int(older.energy_audit_weighted),
-                    "reproducibility": int(older.reproducibility_weighted),
-                },
-                {
-                    "completeness": int(newer.completeness_weighted),
-                    "convergence": int(newer.convergence_weighted),
-                    "energy_audit": int(newer.energy_audit_weighted),
-                    "reproducibility": int(newer.reproducibility_weighted),
-                },
+                _axes_dict(older),
+                _axes_dict(newer),
                 from_snapshot=older.snapshot_label,
                 to_snapshot=newer.snapshot_label,
             )
+        )
+
+    # Phase 16 A — cumulative snap-1 → snap-N drift. ``None`` for
+    # 0/1-point timelines (no transition exists); otherwise a single
+    # DriftAttribution spanning first and last points.
+    cumulative_drift = None
+    if len(points) >= 2:
+        cumulative_drift = compute_drift_attribution(
+            _axes_dict(points[0]),
+            _axes_dict(points[-1]),
+            from_snapshot=points[0].snapshot_label,
+            to_snapshot=points[-1].snapshot_label,
         )
 
     timeline = TrustScoreTimeline(
@@ -147,6 +168,7 @@ def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimel
         points=points,
         claim_impact=CLAIM_IMPACT_DEFAULT,
         inter_snapshot_drift_attribution=tuple(drifts),
+        cumulative_drift_attribution=cumulative_drift,
     )
     _assert_no_overclaim(timeline)
     return timeline
@@ -352,6 +374,14 @@ def _timeline_to_dict(timeline: TrustScoreTimeline) -> dict[str, Any]:
             render_drift_attribution_dict(att)
             for att in timeline.inter_snapshot_drift_attribution
         ],
+        # Phase 16 A — schema 1.2.0 additive field. Pre-1.2.0
+        # consumers that ignore the field continue to function.
+        # ``null`` when the timeline has fewer than 2 points.
+        "cumulative_drift_attribution": (
+            render_drift_attribution_dict(timeline.cumulative_drift_attribution)
+            if timeline.cumulative_drift_attribution is not None
+            else None
+        ),
     }
 
 

@@ -70,4 +70,25 @@ Every consumer (alerts builder + timeline builder) imports the helper from this 
 
 ## Reference
 
-Phase 15 D's reviewer journey "explicit_dynamics drift triage" exercises the `dominant_axis == "energy_audit"` path on the rod-wave-impact-energy-leak-candidate snap-2→snap-3 transition. The Phase 15 retrospective at `.planning/retrospectives/fm04a_phase15_explicit_dynamics_cohort_substantiation.md` will document the closure of Phase 14 retro §1 by this slice.
+Phase 15 D's reviewer journey "explicit_dynamics drift triage" exercises the `dominant_axis == "energy_audit"` path on the rod-wave-impact-energy-leak-candidate snap-2→snap-3 transition. The Phase 15 retrospective at `.planning/retrospectives/fm04a_phase15_explicit_dynamics_cohort_substantiation.md` documents the closure of Phase 14 retro §1 by this slice.
+
+## Cumulative drift attribution (Phase 16 A · 2026-05-17)
+
+The Phase 15 C surface ships `inter_snapshot_drift_attribution: tuple[DriftAttribution, ...]` on the `trust-score-timeline` envelope (length `N-1` for N timeline points; one entry per consecutive pair). Phase 16 A adds `cumulative_drift_attribution: DriftAttribution | None` on the SAME envelope (schema MINOR bump 1.1.0 → 1.2.0; additive field; pre-1.2.0 readers ignore it).
+
+The cumulative entry spans snap-1 → snap-N (one entry per timeline, regardless of point count). The cumulative value answers a different reviewer question than the per-pair entries:
+
+* **Per-pair** answers "where in the arc did each axis change?"
+* **Cumulative** answers "what is the NET change between the first and last observation, regardless of the path taken?"
+
+For an axis that monotonically drops, per-pair sum equals cumulative. For an axis that drops and recovers, cumulative is SMALLER in absolute magnitude than the worst per-pair entry. For example: convergence axis goes 20 → 10 → 20 across 3 snapshots — per-pair: `-50% / +100%`; cumulative: `0%`. Reading per-pair alone would surface the +100% recovery as a (positive) regression event; reading cumulative alone would miss the transient drop. Both views are useful; surface both.
+
+Degenerate cases:
+* 0-point timeline: `cumulative_drift_attribution = null`. Vacuous (no observation).
+* 1-point timeline: `cumulative_drift_attribution = null`. No transition exists.
+* 2-point timeline: `cumulative_drift_attribution` EQUALS the single `inter_snapshot_drift_attribution[0]` entry (degenerate-correct).
+* 3+ point timeline: `cumulative_drift_attribution` may differ from the per-pair entries; see the convergence example above.
+
+The 5.0% SSOT floor (`DRIFT_DOMINANT_AXIS_DELTA_FLOOR_PCT`) applies to both surfaces uniformly: an axis must STRICTLY EXCEED 5% cumulative absolute delta to be counted as the cumulative `dominant_axis`. Sub-floor cumulative drift surfaces `dominant_axis = None` (uniform-drift posture; the recovery + drop canceled out within the noise floor).
+
+Closes Phase 15 retrospective §3 (drift attribution rendered on more envelopes than alerts + timeline-per-pair).

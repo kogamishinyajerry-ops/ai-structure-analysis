@@ -417,7 +417,7 @@ def test_journey_step3_trust_score_timeline_carries_inter_snapshot_drift(
     assert res.status_code == 200, res.text
     body = res.json()
     _assert_tier1_trio(body)
-    assert body["schema_version"] == "1.1.0", body["schema_version"]
+    assert body["schema_version"] == "1.2.0", body["schema_version"]
     assert len(body["points"]) == 3, (
         f"expected 3 snapshot points; got {len(body['points'])}: "
         f"{[p['snapshot_label'] for p in body['points']]}"
