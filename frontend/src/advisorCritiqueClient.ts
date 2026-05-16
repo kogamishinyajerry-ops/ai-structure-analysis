@@ -158,18 +158,37 @@ export function parseAdvisorCritique(
 
 /**
  * Phase 13 A — parse the refused_claims list defensively. Only strings
- * that START with REFUSED_CLAIM_MARKER_PREFIX are kept; everything
- * else (numbers, objects, non-marker strings) is discarded. This is
- * the X:-2 anti-promotion guard for the suppression-history surface:
- * a tampered payload cannot inject arbitrary text under the
- * refused-marker banner.
+ * that match EXACTLY `refused: <token>` where `<token>` ∈
+ * ADVISOR_FORBIDDEN_TOKENS are kept; everything else (numbers, objects,
+ * non-marker strings, marker-prefix strings whose suffix is NOT a
+ * close-set forbidden token) is discarded.
+ *
+ * This is the X:-2 anti-promotion guard for the suppression-history
+ * surface. Tightened in Phase 13 B (slice-A TAA HIGH finding): a
+ * tampered/MITM payload such as `"refused: production ready for
+ * service deployment"` (a forbidden token followed by smuggled
+ * positive-claim copy) used to slip through the prefix-only check and
+ * render verbatim inside `_RefusedClaimsSection` (which does NOT apply
+ * `isAdvisorEntrySafe` because the markers are reviewer-intended to
+ * reveal *which* forbidden token tripped, not to relay advisor copy).
+ * Close-set suffix validation closes that injection vector.
+ *
+ * Case folding mirrors the backend: tokens in ADVISOR_FORBIDDEN_TOKENS
+ * are stored lower-case (`"asme compliant"` not `"ASME compliant"`),
+ * and the backend marker emit path lower-cases the token before
+ * embedding (`backend/app/services/reporting/advisor_critique.py`
+ * `_audit_and_collect_refused`). The frontend folds the suffix for the
+ * same reason.
  */
 function _parseRefusedClaims(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
+  const closedSet: ReadonlySet<string> = new Set(ADVISOR_FORBIDDEN_TOKENS)
   const out: string[] = []
   for (const item of raw) {
     if (typeof item !== 'string') continue
     if (!item.startsWith(REFUSED_CLAIM_MARKER_PREFIX)) continue
+    const suffix = item.slice(REFUSED_CLAIM_MARKER_PREFIX.length).toLowerCase()
+    if (!closedSet.has(suffix)) continue
     out.push(item)
   }
   return out

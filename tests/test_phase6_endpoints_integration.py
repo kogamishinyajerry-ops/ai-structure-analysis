@@ -144,8 +144,12 @@ def test_trust_score_endpoint_returns_stamped_payload(
 def test_trust_score_endpoint_rejects_path_traversal(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    # Phase 13 B — tightened from `in {400, 404, 422}` to exact 404.
+    # The Starlette path matcher rejects the URL-decoded traversal
+    # before the route handler runs; permissive ranges hid which
+    # layer is authoritative.
     res = client.get("/api/v1/trust-score/..%2Fescape")
-    assert res.status_code in {400, 404, 422}
+    assert res.status_code == 404
 
 
 def test_trust_score_endpoint_returns_tier1_disclaimer(
@@ -276,8 +280,11 @@ def test_trust_score_timeline_endpoint_returns_stamped_payload(
 def test_trust_score_timeline_endpoint_rejects_invalid_case_id(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    # Phase 13 B — tightened from `in {400, 404, 422}` to exact 404.
+    # The Starlette path matcher rejects the URL-decoded traversal
+    # before the route handler's case_id regex runs.
     res = client.get("/api/v1/trust-score-timeline/..%2Fescape")
-    assert res.status_code in {400, 404, 422}
+    assert res.status_code == 404
 
 
 def test_trust_score_timeline_endpoint_returns_empty_timeline_when_no_snapshots(

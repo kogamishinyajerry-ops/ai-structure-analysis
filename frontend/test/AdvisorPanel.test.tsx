@@ -446,9 +446,10 @@ describe('AdvisorPanel — Phase 13 A refused_claims surface', () => {
   it('client-side parser keeps refused-marker strings even when they contain forbidden token substrings', async () => {
     // The marker 'refused: validated against' contains the forbidden
     // token substring 'validated against'. The parser MUST allow it
-    // through (because it has the marker prefix); the panel's content
-    // sections still go through isAdvisorEntrySafe so the forbidden
-    // token NEVER reaches a content section via a misroute.
+    // through (because the suffix matches a close-set forbidden token);
+    // the panel's content sections still go through isAdvisorEntrySafe
+    // so the forbidden token NEVER reaches a content section via a
+    // misroute.
     stubFetch({
       ...HAPPY_BODY,
       schema_version: '1.1.0',
@@ -466,5 +467,82 @@ describe('AdvisorPanel — Phase 13 A refused_claims surface', () => {
         'refused: validated against',
       )
     })
+  })
+
+  // -------------------------------------------------------------------
+  // Phase 13 B — close-set suffix validation (closes slice-A TAA HIGH
+  // finding on `_parseRefusedClaims`). The defensive parser now requires
+  // the suffix after `refused: ` to be an EXACT member of
+  // ADVISOR_FORBIDDEN_TOKENS; otherwise the entry is discarded.
+  //
+  // Threat model: an attacker on the wire (MITM, malicious proxy, or a
+  // backend regression) sends a string that LOOKS like a refused marker
+  // but smuggles positive-claim copy after the forbidden token, e.g.
+  // `"refused: production ready for service deployment"`. The previous
+  // prefix-only check let this render verbatim inside
+  // `_RefusedClaimsSection` (which does NOT apply `isAdvisorEntrySafe`
+  // because markers are reviewer-readable suppression records, not
+  // advisor copy). The close-set suffix gate closes the vector.
+  // -------------------------------------------------------------------
+
+  it('discards refused-marker strings whose suffix is NOT a close-set forbidden token (TAA HIGH)', async () => {
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: [
+        'refused: production ready', // valid close-set member
+        'refused: production ready for service deployment', // SMUGGLED — must be dropped
+        'refused: signed off', // valid close-set member
+        'refused: ', // empty suffix — must be dropped
+        'refused: totally-not-a-token', // bogus suffix — must be dropped
+      ],
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-refused-claims')).toBeInTheDocument()
+    })
+    const header = screen.getByTestId('advisor-refused-claims-header')
+    // Only the two close-set members survived.
+    expect(header.textContent).toContain('Refused LLM claims (2)')
+    expect(screen.getByTestId('advisor-refused-claims-item-0').textContent).toBe(
+      'refused: production ready',
+    )
+    expect(screen.getByTestId('advisor-refused-claims-item-1').textContent).toBe(
+      'refused: signed off',
+    )
+    expect(screen.queryByTestId('advisor-refused-claims-item-2')).toBeNull()
+  })
+
+  it('case-folds the suffix when validating against ADVISOR_FORBIDDEN_TOKENS', async () => {
+    // Tokens in ADVISOR_FORBIDDEN_TOKENS are stored lower-case. A backend
+    // that emits a marker with title-cased copy (e.g. via a future bump
+    // that forgets to lower-case before embedding) should still parse
+    // cleanly, but suffix-validation is the gate — keep it tight.
+    stubFetch({
+      ...HAPPY_BODY,
+      schema_version: '1.1.0',
+      refused_claims: [
+        'refused: ASME compliant', // upper-cased close-set member
+        'refused: Signed Off', // mixed-case close-set member
+      ],
+    })
+    render(
+      <AdvisorPanel
+        apiBase="/api/v1"
+        caseId="cylinder-pv-candidate"
+        snapshotLabel="2026-05-16T120000Z"
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('advisor-refused-claims')).toBeInTheDocument()
+    })
+    const header = screen.getByTestId('advisor-refused-claims-header')
+    expect(header.textContent).toContain('Refused LLM claims (2)')
   })
 })

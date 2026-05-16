@@ -231,8 +231,13 @@ def test_alerts_endpoint_returns_stamped_payload(client: _SyncASGIClient, fake_r
 
 
 def test_alerts_endpoint_rejects_invalid_case_id(client: _SyncASGIClient, fake_repo: Path) -> None:
+    # Phase 13 B — tightened from `in {400, 404, 422}` to exact 404.
+    # ``..%2Fescape`` is URL-decoded to ``../escape`` and the Starlette
+    # path matcher rejects the traversal at the routing layer with 404
+    # ``Not Found`` BEFORE the route handler's case_id regex runs.
+    # Permissive ranges hid which layer is authoritative.
     res = client.get("/api/v1/trust-score-alerts/..%2Fescape")
-    assert res.status_code in {400, 404, 422}
+    assert res.status_code == 404
 
 
 def test_alerts_endpoint_clamps_threshold_below_min(

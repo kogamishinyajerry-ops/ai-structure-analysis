@@ -155,23 +155,52 @@ def test_audit_passes_through_safe_content_unchanged() -> None:
 
 def test_audit_first_token_wins_when_multiple_forbidden_tokens_present() -> None:
     """An entry containing multiple forbidden tokens reports the
-    FIRST one (in ADVISOR_FORBIDDEN_TOKENS declaration order)
-    encountered in haystack-scan order. Methodology doc names this
-    the one-marker-per-refused-entry contract."""
-    # 'validated against' appears in the haystack BEFORE 'production ready',
-    # so the marker should name 'validated against'.
+    EARLIEST token in ``ADVISOR_FORBIDDEN_TOKENS`` declaration order
+    (NOT haystack scan order). The audit loop in
+    :func:`_audit_and_collect_refused` iterates the closed-set tokens
+    in their tuple order and returns on the first match; methodology
+    doc names this the one-marker-per-refused-entry contract.
+
+    Phase 13 B (slice-A TAA MEDIUM finding): tightened from a
+    two-element ``in {...}`` set to a deterministic single-winner
+    pin. The previous formulation admitted EITHER ``validated against``
+    OR ``production ready`` as a valid winner; that ambiguity hid the
+    actual contract (declaration-order priority) and would have let a
+    silent reordering of ``ADVISOR_FORBIDDEN_TOKENS`` go undetected.
+    """
+    # Two forbidden tokens present: 'validated against' (index 0) and
+    # 'production ready' (index 4). Declaration order wins => the
+    # marker MUST name 'validated against'.
+    assert ADVISOR_FORBIDDEN_TOKENS.index("validated against") < (
+        ADVISOR_FORBIDDEN_TOKENS.index("production ready")
+    )
     text = "The case is validated against ASTM and production ready."
     safe, marker = _audit_and_collect_refused(text)
     assert safe is None
-    assert marker is not None
-    # Either of the two tokens that appear in the input is a valid
-    # first-encountered marker depending on scan order; we accept
-    # either as long as it IS one of the input's tokens (not, e.g.,
-    # 'certified' which doesn't appear).
-    assert marker in {
-        f"{REFUSED_CLAIM_MARKER_PREFIX}validated against",
-        f"{REFUSED_CLAIM_MARKER_PREFIX}production ready",
-    }
+    assert marker == f"{REFUSED_CLAIM_MARKER_PREFIX}validated against"
+
+
+def test_audit_first_token_wins_respects_declaration_order_not_haystack_order() -> None:
+    """A second, sharper case: the LATER-declared token appears FIRST
+    in the haystack (left-to-right). Declaration order still wins.
+
+    This pin distinguishes "first in declaration order" from "first in
+    haystack order" — the two contracts are observationally identical
+    in the canonical case above but diverge here. The implementation
+    iterates the tuple, so declaration order is the contract.
+    """
+    # 'production ready' (index 4) appears at offset 4 in the haystack;
+    # 'validated against' (index 0) appears later at offset ~31.
+    text = "Production ready hardware was validated against ASTM."
+    assert text.lower().index("production ready") < (text.lower().index("validated against"))
+    assert ADVISOR_FORBIDDEN_TOKENS.index("validated against") < (
+        ADVISOR_FORBIDDEN_TOKENS.index("production ready")
+    )
+    safe, marker = _audit_and_collect_refused(text)
+    assert safe is None
+    # Declaration order wins -> 'validated against' even though
+    # 'production ready' appears earlier in the text.
+    assert marker == f"{REFUSED_CLAIM_MARKER_PREFIX}validated against"
 
 
 # ---------------------------------------------------------------------

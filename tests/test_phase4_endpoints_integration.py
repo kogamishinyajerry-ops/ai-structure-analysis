@@ -193,8 +193,14 @@ def test_case_completeness_returns_scored_payload(
 
 
 def test_case_completeness_rejects_invalid_case_id(client: _SyncASGIClient) -> None:
+    # Phase 13 B — tightened from `in (400, 404)` to exact 400. The route at
+    # ``backend/app/api/routes/case_completeness.py`` raises a 400 with detail
+    # ``"invalid case_id"`` when the URL-decoded id fails the ``_CASE_ID_RE``
+    # whitelist; permissive ranges hide route-status drift, which is the
+    # blueprint §3.B discipline the slice closes.
     response = client.get("/api/v1/case-completeness/has%20space")
-    assert response.status_code in (400, 404)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid case_id"
 
 
 # ---------------------------------------------------------------------
@@ -246,8 +252,18 @@ def test_reviewer_bundle_returns_zip_with_expected_members(
 
 
 def test_reviewer_bundle_rejects_empty_ids(client: _SyncASGIClient) -> None:
+    # Phase 13 B — tightened from `in (400, 422)` to exact 422. The route
+    # declares the ``ids`` query parameter with ``min_length=1`` in
+    # FastAPI's ``Query``; an empty string trips Pydantic validation
+    # (``string_too_short``) which surfaces as 422 with a structured
+    # detail list. A permissive 400/422 range hid which contract is
+    # authoritative — the Pydantic-validation contract is.
     response = client.get("/api/v1/reviewer-bundle", params={"ids": ""})
-    assert response.status_code in (400, 422)
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list) and detail
+    assert detail[0]["type"] == "string_too_short"
+    assert "ids" in detail[0]["loc"]
 
 
 def test_reviewer_bundle_rejects_invalid_case_id(

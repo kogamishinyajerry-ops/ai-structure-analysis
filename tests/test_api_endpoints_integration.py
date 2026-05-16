@@ -257,9 +257,16 @@ def test_tier1_report_rejects_bogus_format(client: _SyncASGIClient, fixture_repo
 
 
 def test_tier1_report_rejects_bad_case_id(client: _SyncASGIClient, fixture_repo: Path) -> None:
+    # Phase 13 B — tightened from `in (400, 404)` to exact 404. Probed
+    # under FastAPI 0.115 + Starlette: ``..%2Fescape`` is URL-decoded to
+    # ``../escape`` and the path router rejects the traversal at the
+    # matcher with 404 ``Not Found`` BEFORE the route handler runs (so
+    # the handler's own 400 ``invalid case_id`` is unreachable for this
+    # input). Permissive 4xx ranges hid this behavior; pinning the
+    # observed code surfaces any future routing-layer change as a real
+    # test failure.
     response = client.get("/api/v1/tier1-report/..%2Fescape", params={"fmt": "md"})
-    # FastAPI may either decode the path traversal or 404 via the matcher.
-    assert response.status_code in (400, 404)
+    assert response.status_code == 404
 
 
 def test_tier1_report_returns_404_for_missing_case(
@@ -295,8 +302,14 @@ def test_acceptance_packet_returns_404_for_missing_case(
 
 
 def test_acceptance_packet_rejects_invalid_case_id(client: _SyncASGIClient) -> None:
+    # Phase 13 B — tightened from `in (400, 404)` to exact 400. The
+    # acceptance-packet route's handler regex rejects URL-decoded space
+    # characters and raises 400 ``invalid case_id`` before any disk
+    # lookup; 404 was historically permitted but is unreachable for
+    # this input. Pinning the observed code prevents silent regression.
     response = client.get("/api/v1/acceptance-packet/has%20space")
-    assert response.status_code in (400, 404)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid case_id"
 
 
 # ---------------------------------------------------------------------
@@ -375,8 +388,15 @@ def test_convergence_study_endpoint_returns_404_for_missing(
 
 
 def test_convergence_study_endpoint_rejects_invalid_case_id(client: _SyncASGIClient) -> None:
+    # Phase 13 B — tightened from `in (400, 404)` to exact 400. The
+    # convergence-study route's case_id regex rejects URL-decoded space
+    # characters and raises 400 ``invalid case_id`` before any disk
+    # lookup; pin the observed code so a future routing-layer drift
+    # cannot silently regress to 404 (which would mask a misrouted
+    # request as "missing data").
     response = client.get("/api/v1/convergence-study/has%20space")
-    assert response.status_code in (400, 404)
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid case_id"
 
 
 # ---------------------------------------------------------------------

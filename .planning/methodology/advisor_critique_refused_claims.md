@@ -86,11 +86,17 @@ The marker is NOT a "log entry" with a UTC timestamp. It is a **suppression reco
 * **M:-2** — marker prefix is a module-level constant (`REFUSED_CLAIM_MARKER_PREFIX`), typed, with a docstring naming this methodology doc.
 * **T:-3** — boundary-pinned tests for every forbidden token round-trip through the collection layer.
 * **T:-4** — distinct tests per content section (mesh / BC / FM / load-case) confirm filter applies uniformly.
+* **T:-5** — **Phase 13 B tightening**: the first-token-wins contract is pinned by TWO tests in `tests/test_phase13_refused_claims.py` — one canonical case where declaration order and haystack order coincide, and one sharper case where the LATER-declared token appears FIRST in the haystack. The sharper case is the load-bearing pin: a silent reordering of `ADVISOR_FORBIDDEN_TOKENS` (which would NOT change observable behavior on the canonical case) WILL change observable behavior on the sharper case. (Closes slice-A TAA MEDIUM finding.)
 * **C:-8** — Tier 1 disclaimer trio still asserted; rendered JSON still has zero forbidden tokens outside disclaimer form.
 * **A:-2** — refused-claim collection is a reported list, not a raised exception (reviewer judges, advisor reports).
 * **A:-3** — defense in depth: `_assert_no_overclaim` still trips on metadata-path forbidden tokens.
 * **E:-2** — schema bump bump-history docstring + centralized SSOT pin in `tests/test_schema_versions_stamping.py`.
+* **X:-2** — **Phase 13 B tightening**: frontend `_parseRefusedClaims` validates BOTH the marker prefix AND the suffix (close-set membership in `ADVISOR_FORBIDDEN_TOKENS`, case-folded). A tampered backend response such as `"refused: production ready for service deployment"` (a forbidden token + smuggled positive-claim copy) is now DISCARDED at parse time instead of rendering verbatim inside the suppression-history surface. Two new vitest cases (`AdvisorPanel.test.tsx`) pin the close-set contract: one with a smuggled-suffix payload, one with case-folded close-set members. (Closes slice-A TAA HIGH finding.)
 
 ## Reference
 
-The Phase 13 A retrospective at `.planning/retrospectives/fm04a_phase13_carry_forward_closure.md` (TBD) will document the closure of Phase 11 retro §5 by this surface.
+The Phase 13 retrospective at `.planning/retrospectives/fm04a_phase13_carry_forward_closure.md` will document the closure of Phase 11 retro §4–§5 + Phase 12 retro §3–§4 across slices A–E. Slice-B-specific items:
+
+* The 7 permissive 4xx-range assertions tightened to exact-code pins across 5 test files (Phase 4 + Phase 5 + Phase 6 + Phase 7 + Phase 11 + Phase 4 reviewer-bundle + the API-endpoints generic file).
+* The new meta-test `tests/test_phase13_status_code_discipline.py` (16 tests) that scans `tests/test_*.py` for permissive 4xx patterns and trips at the ceiling (0).
+* The case-completeness signed-registry gate added at `backend/app/api/routes/case_completeness.py` (Phase 12 F honest-flag LOW finding).

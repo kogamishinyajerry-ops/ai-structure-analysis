@@ -152,10 +152,15 @@ def test_reproducibility_endpoint_returns_stamped_payload(
 def test_reproducibility_endpoint_rejects_path_traversal(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    # Phase 13 B — tightened from `in {400, 404, 422}` to exact 404.
+    # ``..%2Fescape`` is URL-decoded to ``../escape`` and the Starlette
+    # path matcher rejects the traversal at the routing layer with 404
+    # ``Not Found`` BEFORE the route's case_id regex runs. Pin the
+    # observed code so a future routing change (e.g., a middleware
+    # that re-encodes path components) surfaces as a real failure
+    # instead of silently passing under the permissive set.
     res = client.get("/api/v1/reproducibility-manifest/..%2Fescape")
-    # FastAPI URL-decodes the path component and routes to the regex
-    # validator which rejects characters outside [A-Za-z0-9_-]
-    assert res.status_code in {400, 404, 422}
+    assert res.status_code == 404
 
 
 def test_reproducibility_endpoint_returns_tier1_disclaimer(

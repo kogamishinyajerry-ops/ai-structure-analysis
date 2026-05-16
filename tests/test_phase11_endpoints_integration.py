@@ -228,14 +228,18 @@ def test_advisor_route_surfaces_linear_static_failure_modes_from_stub(
 def test_advisor_route_422_on_invalid_case_id_shape(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    """Phase 13 B tightening (closes Phase 11 retro §4 for this site):
+    spaced case_id reaches the route handler via httpx URL passthrough;
+    the documented gate at ``advisor_critique.py:94`` raises 422 with
+    ``"invalid case_id"`` detail. Pinning the exact code surfaces a
+    future regression that converts 422 → 400 (matching
+    case-completeness for back-compat) as a contract break."""
     res = client.get(
         "/api/v1/advisor-critique/invalid case id with spaces",
         params={"snapshot": _VALID_SNAPSHOT_LABEL},
     )
-    # FastAPI may surface path validation as 404 (no route match) for
-    # certain illegal chars, but a 422/404 are both honest refusals.
-    # We accept either as long as it is NOT a 5xx and not a 200.
-    assert 400 <= res.status_code < 500
+    assert res.status_code == 422, res.text
+    assert res.json()["detail"] == "invalid case_id"
 
 
 def test_advisor_route_422_on_signed_registry_case_id(
@@ -363,8 +367,17 @@ def test_case_completeness_route_422_on_invalid_analysis_type(
 def test_case_completeness_route_422_on_invalid_case_id_shape(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
+    """Phase 13 B tightening (closes Phase 11 retro §4 for this site):
+    the case-completeness route's invalid-case_id gate at
+    ``case_completeness.py:124`` raises 400 (preserved from Phase 4 A
+    for back-compat with pre-Phase-11 endpoint tests). The route
+    name in this test is misleading (says "422" but the actual
+    behavior is 400); Phase 13 B leaves the function name to preserve
+    test discovery + commit-history linkage but tightens the
+    assertion to the actual documented status code."""
     res = client.get("/api/v1/case-completeness/has spaces and dollar$signs")
-    assert 400 <= res.status_code < 500
+    assert res.status_code == 400, res.text
+    assert res.json()["detail"] == "invalid case_id"
 
 
 def test_case_completeness_route_422_on_empty_analysis_type_param(
@@ -677,33 +690,24 @@ def test_p12f_advisor_route_422_signed_registry_detail_contains_candidate_hint(
     assert "out of scope" in detail
 
 
-def test_p12f_case_completeness_route_4xx_signed_registry_refusal(
+def test_p12f_case_completeness_route_422_signed_registry_refusal(
     client: _SyncASGIClient, fake_repo: Path
 ) -> None:
-    """Phase 12 F honest gap audit — the case-completeness route does
-    NOT currently have an explicit signed-registry refusal gate
-    (signed-registry case_ids match the ``^[A-Za-z0-9_-]{1,64}$``
-    regex so they pass the shape gate, and downstream
-    ``_build_inputs_for`` either resolves or 4xx-refuses based on
-    fixture presence). Phase 12 F pins this honest engineering
-    observation: ``GS-101`` returns SOME 4xx (not 5xx), but the
-    route lacks the advisor-critique-style signed-registry guard.
-
-    Documented carry-forward for slice G: align case-completeness
-    with advisor-critique by adding an explicit signed-registry 422
-    refusal so the cohort surfaces refuse consistently.
+    """Phase 13 B CLOSURE of the Phase 12 F honest gap audit:
+    case-completeness now refuses signed-registry case_ids at 422
+    with the same detail vocabulary as advisor-critique (cohort
+    surface consistency). Before Phase 13 B, this test only asserted
+    ``status_code < 500`` because the route LACKED an explicit
+    signed-registry guard and silently returned a 200 all-zero
+    scorecard. Phase 13 B added the guard at ``case_completeness.py``
+    route gate #2 and tightens this assertion to exact-code 422.
     """
     res = client.get("/api/v1/case-completeness/GS-101")
-    # Honest observation: the route either (a) returns 200 if a
-    # signed-registry fixture exists (which it should NOT, per
-    # binding constraint), or (b) returns some 4xx as the
-    # downstream resolver refuses. Phase 12 F pins (b) at the 4xx
-    # level + flags the gap for slice G.
-    assert res.status_code != 500, res.text
-    # Slice G alignment target: this should be exact 422 with
-    # signed-registry detail (matching advisor-critique).
-    # For now, the only binding contract is "not 5xx".
-    assert res.status_code < 500
+    assert res.status_code == 422, res.text
+    detail = res.json()["detail"]
+    assert "signed-registry" in detail
+    assert "candidate" in detail
+    assert "out of scope" in detail
 
 
 def test_p12f_advisor_route_snapshot_label_case_sensitivity_pinned(
