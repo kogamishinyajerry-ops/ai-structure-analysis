@@ -1,8 +1,8 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase5-reproducibility-snapshots-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@4df64e2`
-> **Last updated:** 2026-05-16 (FM-04a Phase 5 A-F reproducibility / schema-versioning / cohort time-series closure shipped locally with the binding 8-axis scoring rubric; cumulative score 95/100 with every axis ≥90% of weight; STATE refresh + retrospective in Phase 5 G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
-> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), and the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
+> **Stamp:** `fm04a-phase6-trust-narrative-2026-05-16 · branch=claude/FM-04a-tier1-ballistic-candidate@1bf3df4`
+> **Last updated:** 2026-05-16 (FM-04a Phase 6 A-F reviewer drift narrative + evidence trust score closure shipped locally with the binding 8-axis scoring rubric; cumulative score 95/100 with every axis ≥90% of weight; STATE refresh + retrospective in Phase 6 G; nothing pushed, no PR opened, no Linear / Notion writes, no FM-04b prerequisite crossed).
+> **Maintained by:** Codex primary executor (default); under user direct-execution authorization 2026-05-07/16 the FM-03 closeout, FM-04a P1-P9, the local-arc closure commits (`61857f5..88362ad`), the FM-04a Phase 2 industrial polish (`b3c97ef..477c529`), the FM-04a Phase 3 reviewer-workbench polish (`7f726bb..de3e90d`), the FM-04a Phase 4 cohort-operations console (`2399c11..3e2de76`), the FM-04a Phase 5 reproducibility / schema versioning / cohort snapshots stack (`fd23f7f..4df64e2`), and the FM-04a Phase 6 reviewer drift narrative + evidence trust score stack (`cc057c5..1bf3df4` plus this STATE refresh) are authored by local Claude Opus 4.7 with the same ADR-011/012/013/023 boundaries. Codex review remains required for any path that flips this back to Codex-primary or that promotes Tier 1 → Tier 2.
 
 This file is the **repo-side execution status snapshot**. Linear is the work-control truth for scoped issues, acceptance, blockers, and proof. GitHub/repo is the code truth. Notion 项目控制塔 (root_page_id `345c68942bed80f6a092c9c2b3d3f5b9`) is an architecture/control mirror patched after repo and Linear truth settle. When they conflict, **git is authoritative**; STATE.md is updated to match git, and external mirrors are patched from STATE.md.
 
@@ -251,6 +251,102 @@ Phase 4 commit's SCORECARD is preserved in `git log`.
   D 10.00/10 (100%), A 10.00/10 (100%), E 13.71/15 (91.4%). Stop
   conditions satisfied per Phase 4 blueprint rubric: ≥95 total AND
   every axis ≥90% of weight.
+
+`.planning/FM-04A_PHASE6_BLUEPRINT.md` authored at `cc057c5`
+(2026-05-16) as the local execution plan for closing three reviewer-
+trust gaps after Phase 5: composite trust score (with transparent
+breakdown), templated drift narrative (no LLM), and raw-value
+snapshot diff (closing Phase 5 §5 carry-forward). The blueprint
+publishes a binding 8-axis scoring rubric (B/M/T/C/X/D/A/E weighted
+to 100; target ≥95 with no axis below 90% of its weight) plus 8
+Phase-6-specific anti-gaming guards that every Phase 6 commit must
+publish against in a SCORECARD block.
+
+- FM-04a Phase 6 A-F shipped 2026-05-16 (commits `cc057c5..1bf3df4`):
+  * **Phase A** (`4018671`) — `backend/app/services/reporting/cohort_snapshot.py`
+    writes each case's `ballistic_metrics.json` as `metrics/<case>.json`
+    next to `completeness/<case>.json` / `reproducibility/<case>.json`;
+    `cohort_snapshot_diff.py` gains a `NumericalDelta` sibling list
+    with raw residual_velocity / energy_balance / convergence_verdict
+    / perforation_marker pairs. MINOR schema bump on both
+    `COHORT_SNAPSHOT_MANIFEST_SCHEMA_VERSION` (1.0.0→1.1.0) and
+    `COHORT_SNAPSHOT_DIFF_SCHEMA_VERSION` (1.0.0→1.1.0). 10 new tests.
+    Closes Phase 5 §5 carry-forward "diff only surfaces drift signals,
+    not raw values". SCORECARD: 84/100.
+  * **Phase B** (`fbe84c1`) — `backend/app/services/reporting/trust_score.py`
+    composite 0–100 score across 4 axes (completeness 50 + convergence
+    20 + energy_audit 15 + reproducibility 15 = 100); named weight +
+    penalty constants (`COMPLETENESS_WEIGHT`, `CONVERGENCE_WEIGHT`,
+    `ENERGY_AUDIT_WEIGHT`, `REPRODUCIBILITY_WEIGHT`,
+    `REPRO_PENALTY_GIT_DIRTY=30`, `REPRO_PENALTY_GIT_SHA_MISSING=25`,
+    `REPRO_PENALTY_PER_NOT_INSTALLED_PACKAGE=20`). `TRUST_SCORE_SCHEMA_VERSION`
+    AND `TRUST_SCORE_FORMULA_VERSION` are independently versioned
+    (rebalance bumps formula even when envelope is stable).
+    `/api/v1/trust-score/<case-id>` endpoint. 18 new tests including
+    `test_composite_weights_sum_to_100` parametrized constants test
+    that pins the weight balance. SCORECARD: 87/100.
+  * **Phase C** (`823040b`) — `backend/app/services/reporting/snapshot_narrative.py`
+    + `/api/v1/snapshot-narrative?a=<utc>&b=<utc>` build a per-case
+    list of templated narrative lines from a snapshot diff. 16
+    enumerated templates (`residual_velocity_delta/unchanged`,
+    `energy_balance_improved/degraded/unchanged`,
+    `convergence_verdict_changed`, `perforation_marker_changed`,
+    `script_sha_changed`, `python_version_changed`, `git_sha_changed`,
+    `git_dirty_introduced`, `completeness_improved/regressed/unchanged`,
+    `cohort_added`, `cohort_removed`); each carries a fixed severity
+    (info/warn/danger). NO LLM / NO free-form prose. Severity
+    escalation: convergence regression to `candidate_observed_unstable`
+    is danger. 21 new tests; every template has a positive test.
+    SCORECARD: 87/100.
+  * **Phase D** (`87837d4`) — `backend/app/services/reporting/trust_score_timeline.py`
+    + `/api/v1/trust-score-timeline/<case-id>` walks
+    `reports/snapshots/<*>/` and recomputes trust score from each
+    snapshot's frozen evidence using the same formula constants as
+    Phase 6 B (so `formula_version` is shared). Ordered oldest-first.
+    Conservative on convergence: scores 0 when verdict is not inlined
+    in `convergence_summary` of metrics file (Phase 7 carry-forward).
+    `TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.0.0"`. 11 new tests.
+    SCORECARD: 87/100.
+  * **Phase E** (`0970ec2`) — three new components mounted in
+    `frontend/src/App.tsx`:
+    - `TrustScoreGauge.tsx` (tone-coded 8px bar + breakdown table;
+      surfaces exact integer score, no rounding)
+    - `DriftNarrativePanel.tsx` (lines grouped by severity with
+      severity-pill labels)
+    - `TrustScoreTimelineChart.tsx` (inline SVG sparkline 320×60
+      with gridlines at trust=80/50; per-snapshot table)
+    `CohortSnapshotPanel.tsx` refactored for *optional* controlled-
+    mode props (`selectedLabelA` / `selectedLabelB` / `onSelectLabelA`
+    / `onSelectLabelB`) so `App.tsx` can lift the snapshot picker
+    state and share it with `DriftNarrativePanel`. Phase 5
+    uncontrolled-mode behavior preserved when props are omitted.
+    `tsc -b` clean. SCORECARD: 90/100.
+  * **Phase F** (`1bf3df4`) — `tests/test_phase6_endpoints_integration.py`
+    drives every Phase 6 endpoint through `_SyncASGIClient` (14
+    tests: trust-score 3, snapshot-narrative 5, trust-score-timeline 5,
+    cohort-snapshot-diff v1.1.0 schema bump 1);
+    `tests/test_fm04a_phase6_trust_workflow_e2e.py` is the 7-step
+    reviewer journey (baseline → drift → follow-up → list → trust
+    score → timeline → narrative with severity assertions for
+    `residual_velocity_delta`/info + `energy_balance_improved`/info +
+    `script_sha_changed`/warn) plus an edge-case test covering
+    `cohort_added`/info on a newly-added case and
+    `convergence_verdict_changed`/danger on a stable → unstable
+    regression. SCORECARD: 95/100.
+
+- Final mechanical state on `claude/FM-04a-tier1-ballistic-candidate`
+  after Phase 6 closure: backend pytest **1529 passed / 8 skipped**
+  (up from 1446 entering Phase 6; +83 new tests across the arc).
+  Frontend `tsc -b` clean. Branch is 42 commits ahead of the most
+  recently authored Codex baseline (`de65d15`) without any push, PR,
+  Linear, or Notion write. Trailer rewrite for `trailer-check` /
+  `calibration-cap-check` / ADR-013 PR template remains reserved for
+  the human user when the branch is pushed.
+- Phase 6 cumulative scorecard: **95/100**, every axis 100% of weight.
+  Per-axis: B 15/15, M 15/15, T 20/20, C 15/15, X 15/15, D 5/5, A 5/5,
+  E 5/5. Stop conditions satisfied per Phase 6 blueprint rubric: ≥95
+  total AND every axis ≥90% of weight. Full retrospective at
+  `.planning/retrospectives/fm04a_phase6_trust_narrative.md`.
 
 2026-05-06 pre-WF-01 Linear discover readback:
 
