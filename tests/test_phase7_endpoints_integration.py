@@ -411,6 +411,7 @@ def test_alerts_endpoint_severity_info_at_boundary(
     alert = payload["alerts"][0]
     assert alert["delta"] == 10
     assert alert["severity"] == "info"
+    assert alert["primary_axis_shift"] == "completeness"
 
 
 def test_alerts_endpoint_severity_warn_at_boundary(
@@ -432,6 +433,7 @@ def test_alerts_endpoint_severity_warn_at_boundary(
     alert = payload["alerts"][0]
     assert alert["delta"] == 25
     assert alert["severity"] == "warn"
+    assert alert["primary_axis_shift"] == "completeness"
 
 
 def test_alerts_endpoint_severity_danger_at_boundary(
@@ -453,3 +455,4 @@ def test_alerts_endpoint_severity_danger_at_boundary(
     alert = payload["alerts"][0]
     assert alert["delta"] == 40
     assert alert["severity"] == "danger"
+    assert alert["primary_axis_shift"] == "completeness"

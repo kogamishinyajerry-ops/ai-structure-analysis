@@ -298,11 +298,12 @@ def test_phase7_regression_alarm_flow_e2e(client: _SyncASGIClient, fake_repo: Pa
     assert first["to_snapshot"] == "2026-05-16T200000Z"
     assert first["severity"] == "info"
     assert first["primary_axis_shift"] == "completeness"
-    # Second alert: 70 → 20, delta = ~25 → warn bucket
+    # Second alert: 70 → 20, completeness_weighted 35 → 10 = delta 25
+    # → exactly at WARN_MIN=25 (deterministic; int(round(...)) at every step)
     second = payload["alerts"][1]
     assert second["from_snapshot"] == "2026-05-16T200000Z"
     assert second["to_snapshot"] == "2026-05-16T300000Z"
-    assert second["severity"] in {"warn", "info"}  # boundary depends on integer cast
+    assert second["severity"] == "warn"
     assert second["primary_axis_shift"] == "completeness"
 
     # Tier 1 disclaimer + "do NOT authorize Tier 2" surfaces in body
