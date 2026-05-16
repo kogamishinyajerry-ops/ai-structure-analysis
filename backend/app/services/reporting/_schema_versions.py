@@ -343,6 +343,35 @@ cause, validate physics, or authorize Tier 2 promotion."
 Closes Phase 8 retrospective carry-forward §4.
 """
 
+ADVISOR_CRITIQUE_SCHEMA_VERSION = "1.0.0"
+"""``advisor_critique`` HTTP response + on-disk serialization (Phase 11 B).
+
+Builder: ``backend.app.services.reporting.advisor_critique``.
+
+Tier 1 candidate AI-advisor critique payload: emits a structured list of
+mesh-quality concerns, boundary-condition questions, failure modes to
+consider, and unhandled load cases. The advisor is ADVISORY only — never
+the authority. Reviewer agency is preserved at every step; the critique
+does NOT promote any case to Tier 2 or substitute for the FM-04b sealed
+packet.
+
+Closed-enum SSOTs live alongside this constant in the builder module:
+* ``ADVISOR_STATUS_TUPLE = ("online", "offline", "stub")`` — pinned by
+  ``test_advisor_status_tuple_closed_set``.
+* ``FOUR_QUESTION_GATE_KEYS`` — the four LLM-offline / artifacts /
+  trustgate / advisor-only question keys every payload answers.
+* ``ADVISOR_FORBIDDEN_TOKENS`` — extends the Tier 1 base forbidden list
+  with five advisor-specific positive verbs (``production ready``,
+  ``certified``, ``approved for service``, ``ASME compliant``,
+  ``signed off``); each new token is exercised by a dedicated test
+  per Phase 11 anti-gaming guard T:-5.
+
+Bump policy: same MAJOR / MINOR / PATCH scheme as every other
+``schema_version`` in this file. Bumping MAJOR requires a retrospective
+entry naming the broken consumer; MINOR/PATCH require only a SCORECARD
+note.
+"""
+
 SIGNOFF_RECORD_SCHEMA_VERSION = "1.0.0"
 """``signoff_record.json`` (Phase 8 A).
 
