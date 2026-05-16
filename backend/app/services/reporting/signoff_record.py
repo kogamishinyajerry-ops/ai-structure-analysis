@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -121,7 +121,25 @@ def _audit_verdict_whitelist() -> None:
 _audit_verdict_whitelist()
 
 
-# ----- forbidden positive-claim tokens for free-text notes -----
+# ----- forbidden positive-claim tokens: two intentional lists -----
+#
+# Same design as Phase 7 B ``snapshot_narrative_catalogs``:
+#
+# * ``_FORBIDDEN_NOTES_TOKENS`` — applied to *reviewer-provided* free
+#   text (the ``notes`` field). Notes should never contain *any* Tier 2
+#   promotion claim, so the list is the full set of 6 tokens.
+#
+# * ``_ENVELOPE_FORBIDDEN_TOKENS`` — applied to the *full report dict*
+#   (envelope + records) when serialized for HTTP. The envelope's own
+#   ``claim_impact`` legitimately contains "signed validation" and
+#   "benchmark agreement" inside disclaimer text ("...do NOT substitute
+#   for signed validation, ...constitute benchmark agreement..."); the
+#   `not <claim>` lookback cannot accept these because they appear
+#   inside compound sentences with prepositional / verbal contexts
+#   between "not" and the token. Excluding those two from the envelope
+#   audit is the same honest fix used in Phase 7 B
+#   (``ENVELOPE_FORBIDDEN_TOKENS = 4`` tokens vs
+#   ``CATALOG_FORBIDDEN_TOKENS = 6`` tokens).
 
 _FORBIDDEN_NOTES_TOKENS: tuple[str, ...] = (
     "validated against",
@@ -131,11 +149,13 @@ _FORBIDDEN_NOTES_TOKENS: tuple[str, ...] = (
     "signed validation",
     "benchmark agreement",
 )
-"""Free-text notes are audited for these tokens *outside* the
-``not <claim>`` disclaimer form. Mirrors the envelope-token list
-from Phase 7 B (``snapshot_narrative_catalogs.ENVELOPE_FORBIDDEN_TOKENS``)
-plus the catalog-only ``signed validation`` / ``benchmark agreement``
-since notes bodies should never contain those claims at all."""
+
+_ENVELOPE_FORBIDDEN_TOKENS: tuple[str, ...] = (
+    "validated against",
+    "perforation completed",
+    "bullet-through-steel complete",
+    "validated physics",
+)
 
 
 # ----- case_id validation (refuses ^GS-\d{3}$ signed registry) -----
@@ -315,3 +335,93 @@ def _assert_not_in_golden_samples(output_dir: Path) -> None:
                 "Signoff record refuses writes under golden_samples/**; "
                 "use reports/signoffs/<case_id>/ instead."
             )
+
+
+# ----- HTTP-facing report (slice 8-B) -----
+
+
+@dataclass(frozen=True)
+class SignoffHistoryReport:
+    """Endpoint envelope for ``GET /api/v1/signoff-history/<case_id>``.
+
+    Mirrors the envelope shape used by every other Phase 6/7 endpoint:
+    Tier 1 disclaimer trio + schema version + case id + record count +
+    chronological records list. Carries an explicit ``claim_impact``
+    that says signoffs do NOT authorize Tier 2 promotion.
+    """
+
+    schema_version: str
+    case_id: str
+    claim_tier: str
+    claim_boundary: str
+    generated_at_utc: str
+    record_count: int
+    records: tuple[SignoffRecord, ...] = field(default_factory=tuple)
+    claim_impact: str = CLAIM_IMPACT_DEFAULT
+
+
+def build_signoff_history_report(
+    case_id: str, *, repo_root: Path, now_utc: datetime | None = None
+) -> SignoffHistoryReport:
+    """Build an HTTP envelope around :func:`read_signoff_history`.
+
+    Refuses signed registry case_id (defense in depth) and audits the
+    final dict for forbidden positive claims before returning.
+    """
+    records = read_signoff_history(case_id, repo_root=repo_root)
+    generated_at = (now_utc or datetime.now(UTC)).isoformat(timespec="seconds")
+    report = SignoffHistoryReport(
+        schema_version=SIGNOFF_RECORD_SCHEMA_VERSION,
+        case_id=case_id,
+        claim_tier=CLAIM_TIER,
+        claim_boundary=CLAIM_BOUNDARY,
+        generated_at_utc=generated_at,
+        record_count=len(records),
+        records=tuple(records),
+    )
+    _assert_no_overclaim_in_report(report)
+    return report
+
+
+def render_signoff_history_json(report: SignoffHistoryReport) -> str:
+    return json.dumps(_report_to_dict(report), indent=2, sort_keys=True)
+
+
+def _report_to_dict(report: SignoffHistoryReport) -> dict[str, object]:
+    return {
+        "schema_version": report.schema_version,
+        "case_id": report.case_id,
+        "claim_tier": report.claim_tier,
+        "claim_boundary": report.claim_boundary,
+        "generated_at_utc": report.generated_at_utc,
+        "record_count": report.record_count,
+        "records": [_record_to_dict(r) for r in report.records],
+        "claim_impact": report.claim_impact,
+    }
+
+
+def _assert_no_overclaim_in_report(report: SignoffHistoryReport) -> None:
+    """Audit the *full report dict* against ``_ENVELOPE_FORBIDDEN_TOKENS``.
+
+    Uses the narrower envelope list (4 tokens, excludes "signed
+    validation" / "benchmark agreement") because the envelope's own
+    Tier 1 ``claim_impact`` legitimately uses those phrases inside
+    disclaimer text. The wider notes-level list (6 tokens) is enforced
+    on reviewer-provided ``notes`` fields at write time
+    (:func:`_assert_no_overclaim`), so a forbidden claim cannot enter
+    via that surface.
+    """
+    haystack = json.dumps(_report_to_dict(report)).lower()
+    for token in _ENVELOPE_FORBIDDEN_TOKENS:
+        start = 0
+        while True:
+            idx = haystack.find(token, start)
+            if idx == -1:
+                break
+            prefix = haystack[max(0, idx - 4) : idx]
+            if not prefix.endswith("not "):
+                raise ValueError(
+                    f"Signoff history report contains forbidden positive "
+                    f"claim {token!r} outside the `not <claim>` disclaimer form."
+                )
+            start = idx + len(token)

@@ -20,6 +20,16 @@ import { TIER1_BANNER } from '../trustCenterSummary.ts'
 export interface TrustScoreGaugeProps {
   apiBase: string
   caseId: string | null
+  /**
+   * Phase 8 B — optional latest signoff metadata. When provided, the gauge
+   * surfaces a "Latest signoff: <verdict> by <reviewer> at <utc>" subline.
+   * Absence means "no signoff exists" or "lookup is the caller's
+   * responsibility" — the gauge does NOT itself fetch signoffs, so the
+   * Phase 6 contract surface is unchanged.
+   */
+  latestSignoffVerdict?: string | null
+  latestSignoffReviewer?: string | null
+  latestSignoffUtc?: string | null
 }
 
 const SECTION_TITLE_STYLE = {
@@ -36,7 +46,13 @@ function toneColor(tone: ReturnType<typeof trustTone>): string {
   return 'var(--text-secondary)'
 }
 
-export function TrustScoreGauge({ apiBase, caseId }: TrustScoreGaugeProps) {
+export function TrustScoreGauge({
+  apiBase,
+  caseId,
+  latestSignoffVerdict,
+  latestSignoffReviewer,
+  latestSignoffUtc,
+}: TrustScoreGaugeProps) {
   const [score, setScore] = useState<TrustScore | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -148,6 +164,23 @@ export function TrustScoreGauge({ apiBase, caseId }: TrustScoreGaugeProps) {
             {' '}· accent ≥ {TRUST_TONE_ACCENT_THRESHOLD} · warn ≥{' '}
             {TRUST_TONE_WARNING_THRESHOLD}
           </div>
+
+          {latestSignoffVerdict && latestSignoffUtc && (
+            <div
+              data-testid="trust-score-signoff-subline"
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-secondary)',
+                marginBottom: '8px',
+                paddingTop: '4px',
+                borderTop: '1px dashed var(--border)',
+              }}
+            >
+              Latest signoff: <strong>{latestSignoffVerdict}</strong>
+              {latestSignoffReviewer ? <> by <strong>{latestSignoffReviewer}</strong></> : null}
+              {' '}at <span style={{ fontFamily: 'monospace' }}>{latestSignoffUtc}</span>
+            </div>
+          )}
 
           <div style={SECTION_TITLE_STYLE}>per-axis breakdown</div>
           <div

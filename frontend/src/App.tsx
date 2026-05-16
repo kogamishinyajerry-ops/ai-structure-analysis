@@ -40,6 +40,8 @@ import { ReproducibilityManifestCard } from './components/ReproducibilityManifes
 import { TrustScoreGauge } from './components/TrustScoreGauge';
 import { DriftNarrativePanel } from './components/DriftNarrativePanel';
 import { TrustScoreTimelineChart } from './components/TrustScoreTimelineChart';
+import { SignoffHistoryPanel } from './components/SignoffHistoryPanel';
+import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
     TIER1_BANNER,
@@ -453,6 +455,7 @@ function App() {
   // can read the same labels the CohortSnapshotPanel picks.
   const [snapshotLabelA, setSnapshotLabelA] = useState<string | null>(null);
   const [snapshotLabelB, setSnapshotLabelB] = useState<string | null>(null);
+  const [latestSignoff, setLatestSignoff] = useState<SignoffRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
@@ -1609,6 +1612,14 @@ function App() {
                     <TrustScoreGauge
                         apiBase={API_BASE}
                         caseId={selectedCandidateCaseId}
+                        latestSignoffVerdict={latestSignoff?.verdict ?? null}
+                        latestSignoffReviewer={latestSignoff?.reviewer ?? null}
+                        latestSignoffUtc={latestSignoff?.signoffUtc ?? null}
+                    />
+                    <SignoffHistoryPanel
+                        apiBase={API_BASE}
+                        caseId={selectedCandidateCaseId}
+                        onLatestRecord={setLatestSignoff}
                     />
                     <TrustScoreTimelineChart
                         apiBase={API_BASE}

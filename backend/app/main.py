@@ -24,6 +24,7 @@ from .api.routes import (
     reproducibility_manifest,
     reviewer_bundle,
     sensitivity,
+    signoff_history,
     snapshot_narrative,
     solver,
     tier1_report,
@@ -111,6 +112,8 @@ app.include_router(snapshot_narrative.router, prefix="/api/v1")
 app.include_router(trust_score_timeline.router, prefix="/api/v1")
 # FM-04a Phase 7 C — Tier 1 trust score regression alarms.
 app.include_router(trust_score_alerts.router, prefix="/api/v1")
+# FM-04a Phase 8 B — Tier 1 reviewer signoff history.
+app.include_router(signoff_history.router, prefix="/api/v1")
 
 
 @app.get("/")
