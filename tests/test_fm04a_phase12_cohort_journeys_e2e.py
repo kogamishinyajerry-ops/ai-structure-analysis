@@ -370,7 +370,15 @@ def test_phase12_cohort_triage_journey_e2e(client: _SyncASGIClient, fake_repo: P
     latest_label = labels[-1]
     target_case = "cylinder-pv-extended-candidate"
 
-    routes_crossed: set[str] = set()
+    # Slice-H hardening (per slice-F TAA LOW finding §3): the
+    # route-crossed counter tracks ``(method, url)`` tuples not
+    # synthetic step keys, so the re-poll of the same URL is the
+    # 5th method+url tuple iff a 5th distinct URL is also crossed.
+    # We retain the "verdict propagated to row" re-poll as the
+    # load-bearing cross-route assertion, and ADD a 5th distinct
+    # route call (GET signoff-history) so the ≥5 contract holds on
+    # distinct URLs.
+    routes_crossed: set[tuple[str, str]] = set()
 
     # Step 1 — cohort executive summary (initial poll).
     summary_res = client.get("/api/v1/cohort-executive-summary")
@@ -381,7 +389,7 @@ def test_phase12_cohort_triage_journey_e2e(client: _SyncASGIClient, fake_repo: P
     assert summary_body["cohort_count"] == 4 + len(FILLER_COHORT_CASES)
     pv_ext_pre = next(c for c in summary_body["cases"] if c["case_id"] == target_case)
     assert pv_ext_pre["latest_signoff_verdict"] is None
-    routes_crossed.add("cohort-executive-summary")
+    routes_crossed.add(("GET", "/api/v1/cohort-executive-summary"))
 
     # Step 2 — cohort anomalies (latest-snapshot z-score view).
     anomalies_res = client.get("/api/v1/cohort-anomalies")
@@ -389,7 +397,7 @@ def test_phase12_cohort_triage_journey_e2e(client: _SyncASGIClient, fake_repo: P
     anomalies_body = anomalies_res.json()
     assert anomalies_body["claim_tier"] == "Tier 1 engineering candidate"
     assert "not signed validation" in anomalies_body["claim_impact"]
-    routes_crossed.add("cohort-anomalies")
+    routes_crossed.add(("GET", "/api/v1/cohort-anomalies"))
 
     # Step 3 — advisor critique for the regressed case.
     adv_res = client.get(
@@ -404,7 +412,7 @@ def test_phase12_cohort_triage_journey_e2e(client: _SyncASGIClient, fake_repo: P
     assert "not_signed_validation" in adv_body["claim_boundary"]
     failures = "\n".join(adv_body["failure_modes_to_consider"]).lower()
     assert "plasticity" in failures or "contact" in failures or "large displacement" in failures
-    routes_crossed.add("advisor-critique")
+    routes_crossed.add(("GET", "/api/v1/advisor-critique"))
 
     # Step 4 — POST signoff with reviewer judgment.
     signoff_res = client.post(
@@ -423,20 +431,37 @@ def test_phase12_cohort_triage_journey_e2e(client: _SyncASGIClient, fake_repo: P
     assert signoff_res.status_code == 200, signoff_res.text
     signoff_body = signoff_res.json()
     assert signoff_body["verdict"] == "needs_more_evidence"
-    routes_crossed.add("signoff-history-POST")
+    routes_crossed.add(("POST", "/api/v1/signoff-history"))
 
     # Step 5 — re-poll cohort summary; verdict now visible on row.
+    # This is the LOAD-BEARING cross-route assertion of Journey 4
+    # (verifies signoff propagation through the cohort surface).
+    # NOTE: this is the same URL as Step 1 — distinct ``(method, url)``
+    # tuple is NOT added; the 5th distinct route comes from Step 6.
     summary_res2 = client.get("/api/v1/cohort-executive-summary")
     assert summary_res2.status_code == 200, summary_res2.text
     summary_body2 = summary_res2.json()
     pv_ext_post = next(c for c in summary_body2["cases"] if c["case_id"] == target_case)
     assert pv_ext_post["latest_signoff_verdict"] == "needs_more_evidence"
-    routes_crossed.add("cohort-executive-summary-rread")
 
-    # M:-2 binding route-count audit.
+    # Step 6 — reviewer confirms the signoff landed via GET to the
+    # signoff-history route. 5th distinct (method, url) tuple.
+    hist_res = client.get(f"/api/v1/signoff-history/{target_case}")
+    assert hist_res.status_code == 200, hist_res.text
+    hist_body = hist_res.json()
+    assert hist_body["claim_tier"] == "Tier 1 engineering candidate"
+    hist_records = hist_body["records"]
+    assert len(hist_records) >= 1
+    assert hist_records[-1]["verdict"] == "needs_more_evidence"
+    assert hist_records[-1]["reviewer"] == "phase12-triage-reviewer"
+    routes_crossed.add(("GET", "/api/v1/signoff-history"))
+
+    # M:-2 binding route-count audit on DISTINCT (method, url) tuples
+    # (Slice-H hardening: no synthetic re-poll keys; only real
+    # distinct routes count).
     assert len(routes_crossed) >= 5, (
-        f"Journey 4 contract: ≥5 distinct routes; crossed {len(routes_crossed)} "
-        f"({sorted(routes_crossed)})"
+        f"Journey 4 contract: ≥5 distinct (method, url) tuples; "
+        f"crossed {len(routes_crossed)} ({sorted(routes_crossed)})"
     )
 
 
@@ -558,6 +583,33 @@ def test_phase12_cross_case_investigation_journey_e2e(
         "got identical text for modal vs linear_static_pv cases"
     )
 
+    # Slice-H hardening (per slice-F TAA LOW finding §2): the weak
+    # ``!=`` assertion above would let an advisor that produces 80%
+    # shared boilerplate + 20% analysis-type-specific text pass. The
+    # tighter cross-leakage pins forbid analysis-type-specific
+    # vocabulary from leaking across rubrics:
+    #
+    #   * MAC / Lanczos / mass-participation / eigenfrequency are
+    #     modal-specific concepts — they must NOT appear in the
+    #     linear_static_pv advisor output.
+    #   * Plasticity / contact / large-displacement are
+    #     linear_static-specific failure-mode concepts — they must
+    #     NOT appear in the modal advisor output (modal eigenproblems
+    #     are linear by construction; plasticity and contact are
+    #     out-of-scope concerns).
+    modal_only_keywords = ("mac", "lanczos", "mass participation", "eigenfrequency")
+    for kw in modal_only_keywords:
+        assert kw not in pv_failures_concat, (
+            f"modal-specific keyword {kw!r} leaked into the "
+            f"linear_static_pv advisor output: {pv_failures_concat!r}"
+        )
+    pv_only_keywords = ("plasticity", "contact", "large displacement")
+    for kw in pv_only_keywords:
+        assert kw not in modal_failures_concat, (
+            f"linear_static_pv-specific keyword {kw!r} leaked into "
+            f"the modal advisor output: {modal_failures_concat!r}"
+        )
+
 
 # ---------------------------------------------------------------------
 # Journey 6 — trend alarm closure (≥4 routes)
@@ -605,6 +657,18 @@ def test_phase12_trend_alarm_closure_journey_e2e(client: _SyncASGIClient, fake_r
     _write_three_snapshots(fake_repo)
     target_case = "cylinder-pv-extended-candidate"
 
+    # Slice-H clarification: Journey 6's ``routes_crossed`` counter is
+    # keyed on call-step labels (pre-recovery poll / signoff-POST /
+    # signoff-history-GET / post-recovery poll) NOT on
+    # ``(method, url)`` tuples, because the two GET-trend-anomalies
+    # calls (pre + post) are the load-bearing contract — they prove
+    # the HTTP surface mirrors the recovery state. If we collapsed
+    # them to a single tuple the journey's "≥4 routes" contract
+    # would degrade into "≥3 distinct URLs", weakening the
+    # cross-route audit. The slice-F TAA LOW finding §3 was
+    # specifically about Journey 4's synthetic-key re-poll
+    # (resolved by adding a 5th DISTINCT URL); Journey 6's re-poll
+    # is structurally different and intentionally retained.
     routes_crossed: set[str] = set()
 
     # Step 1 — initial trend anomaly poll.
@@ -661,10 +725,41 @@ def test_phase12_trend_alarm_closure_journey_e2e(client: _SyncASGIClient, fake_r
     # (NOT a route call; this is what an out-of-band re-run would do).
     snapshot4_label = _write_recovery_snapshot4(fake_repo)
     assert snapshot4_label is not None
+    # Slice-H hardening (per slice-F TAA MEDIUM finding): pin a
+    # filesystem pre-condition so a regression where
+    # ``_write_recovery_snapshot4`` silently no-ops (e.g., a future
+    # write_cohort_snapshot refactor stops creating manifests) is
+    # caught directly rather than letting the recovery-not-happening
+    # path slide through the slope-comparison guard.
+    snap4_dir = fake_repo / "reports" / "snapshots" / snapshot4_label
+    assert snap4_dir.is_dir(), (
+        f"recovery snapshot 4 directory not created at {snap4_dir}; "
+        f"_write_recovery_snapshot4 returned label but write_cohort_snapshot "
+        f"did not produce the snapshot tree"
+    )
+    assert (snap4_dir / "SNAPSHOT_MANIFEST.json").is_file(), (
+        f"recovery snapshot 4 manifest missing at {snap4_dir}; "
+        f"slice-H pre-condition for the slope-comparison assertion"
+    )
 
     # Verify the underlying trend service sees a less-negative slope
     # over 4 points before re-polling the HTTP route — protects
     # against an HTTP-layer caching regression masking the recovery.
+    # Slice-H hardening (per slice-F TAA MEDIUM finding): the
+    # event-set MUST be non-empty (the slope must still EXIST and
+    # have improved). The Phase-12-F conditional guard
+    # ``if target_events_4pt:`` was too permissive — a future
+    # regression where the recovery silently flushes ALL events
+    # (slope above TREND_SLOPE_INFO_MAX entirely) would also pass.
+    # We document the two acceptable outcomes explicitly:
+    #   (a) event present + slope_after > slope_before (recovery
+    #       observable as flattening), OR
+    #   (b) event absent + the cohort's previous trend on the case
+    #       has flattened above the alarm floor (full recovery —
+    #       even better than (a)).
+    # Either is acceptable; the regression we forbid is (c) event
+    # present AND slope_after <= slope_before (no observable
+    # recovery), which the original ``if ...:`` guard skipped past.
     report4 = build_cohort_trend_anomalies(repo_root=fake_repo)
     target_events_4pt = [
         e
@@ -677,6 +772,9 @@ def test_phase12_trend_alarm_closure_journey_e2e(client: _SyncASGIClient, fake_r
             f"recovery should flatten slope (less negative); "
             f"got slope_before={slope_before} slope_after={slope_after_service}"
         )
+    # else: full recovery flushed the event entirely — acceptable
+    # outcome (b). The filesystem pre-condition above ensures we
+    # haven't silently no-op'd the snapshot write.
 
     # Step 4 — re-poll trend anomalies via HTTP route; same slope
     # signal MUST surface through the route stack.
@@ -688,18 +786,22 @@ def test_phase12_trend_alarm_closure_journey_e2e(client: _SyncASGIClient, fake_r
         for e in trend_post_body["anomalies"]
         if e["case_id"] == target_case and e["axis"] == _TREND_COMPLETENESS_AXIS
     ]
+    # Slice-H hardening: HTTP route must reflect the same recovery
+    # state the underlying service computed. We assert event-set
+    # presence parity between service and route (load-bearing
+    # cross-check that the HTTP layer is not caching stale slopes).
+    assert bool(post_events_for_target) == bool(target_events_4pt), (
+        "HTTP route's event set MUST mirror the service-layer event "
+        "set; service-vs-route divergence indicates HTTP caching "
+        "regression or repo-root monkeypatch leak"
+    )
     if post_events_for_target:
         slope_after = post_events_for_target[0]["slope"]
         assert slope_after > slope_before, (
             f"HTTP route must surface recovery slope; "
             f"got slope_before={slope_before} slope_after={slope_after}"
         )
-    else:
-        # Recovery flushed the alarm entirely (slope above
-        # TREND_SLOPE_INFO_MAX = -0.5) — even better than the
-        # "less negative" weaker assertion.
-        pass
-    routes_crossed.add("cohort-trend-anomalies-post")
+    routes_crossed.add("cohort-trend-anomalies-post")  # re-poll = distinct step
 
     # M:-2 binding route-count audit: ≥4 distinct route calls.
     assert len(routes_crossed) >= 4, (

@@ -453,3 +453,145 @@ def test_cumulative_mass_participation_refuses_empty_result() -> None:
     )
     with pytest.raises(ValueError, match="has no modes"):
         cumulative_mass_participation(empty, direction_index=1)
+
+
+# ---------------------------------------------------------------------
+# Slice-H closure: Phase 12 A carry-forward §1 — `_score_convergence_axis`
+# modal branches direct behavioral tests. The Phase 12 A blueprint
+# §3.A deliverable named "convergence_kind == 'modal' trust score
+# branch verified" — slice A shipped the three named raw_score
+# branches (100 / 30 / 0) with three distinct rationale strings but
+# zero behavioral tests. Slice-H closes the gap with explicit per-
+# branch unit tests on raw_score + weighted + rationale substring,
+# mirroring the Phase 11 A analog for `linear_static`.
+#
+# Anti-gaming guards:
+# * **T:-3** — each branch has its own boundary-pinned test.
+# * **T:-4** — distinct failure-mode-equivalent inputs per branch
+#   (mode_count_sweep ∈ {stable, unstable, absent}).
+# * **A:-2** — rationale strings are reported, not raised; reviewer
+#   judges, advisor reports.
+# ---------------------------------------------------------------------
+
+
+def _write_modal_convergence_payload(
+    tmp_path: Path,
+    *,
+    mode_count_stability: str | None = "candidate_observed_stable",
+) -> Path:
+    """Write a modal `convergence_study.json` shape under tmp_path
+    for the trust_score modal-branch tests. mesh_sweep / dt_sweep
+    are omitted because they are N/A for the modal eigenproblem."""
+    import json
+
+    payload: dict[str, object] = {
+        "case_id": "modal-cantilever-candidate",
+        "schema_version": CONVERGENCE_STUDY_SCHEMA_VERSION,
+        "convergence_kind": MODAL_CONVERGENCE_KIND,
+    }
+    if mode_count_stability is not None:
+        payload["mode_count_sweep"] = {"candidate_stability": mode_count_stability}
+    out = tmp_path / "modal_convergence.json"
+    out.write_text(json.dumps(payload), encoding="utf-8")
+    return out
+
+
+def test_trust_score_modal_branch_stable_scores_100(tmp_path: Path) -> None:
+    """`convergence_kind == "modal"` + `mode_count_sweep` stable →
+    raw_score = 100 (full credit; eigenfrequency converges with
+    extraction count). The Phase 12 A blueprint contract:
+    `mesh_sweep` and `dt_sweep` are N/A; only `mode_count_sweep`
+    matters for the modal axis score."""
+    from app.services.reporting.trust_score import (
+        CONVERGENCE_WEIGHT,
+        _score_convergence_axis,
+    )
+
+    convergence = _write_modal_convergence_payload(
+        tmp_path, mode_count_stability="candidate_observed_stable"
+    )
+    entry = _score_convergence_axis(convergence)
+    assert entry.axis == "convergence_stability"
+    assert entry.weight == CONVERGENCE_WEIGHT
+    assert entry.raw_score == 100
+    assert entry.weighted == CONVERGENCE_WEIGHT  # 100 * 20 / 100 = 20
+    # Rationale must explicitly name the modal kind + N/A axes
+    # so a future regression that loses the discriminator surfaces
+    # in the rationale string.
+    assert "modal" in entry.rationale.lower()
+    assert "mode_count" in entry.rationale.lower() and "stable" in entry.rationale.lower()
+    assert "n/a" in entry.rationale.lower() or "eigenproblem" in entry.rationale.lower()
+
+
+def test_trust_score_modal_branch_unstable_scores_30(tmp_path: Path) -> None:
+    """`convergence_kind == "modal"` + `mode_count_sweep` unstable →
+    raw_score = 30 (matches the explicit_dynamics 'both unstable'
+    weak credit). The Phase 12 A rationale string explicitly names
+    the failure mode (dominant frequency drifts with extraction
+    count); we pin the substring so a future regression that loses
+    the specific guidance surfaces."""
+    from app.services.reporting.trust_score import (
+        CONVERGENCE_WEIGHT,
+        _score_convergence_axis,
+    )
+
+    convergence = _write_modal_convergence_payload(
+        tmp_path, mode_count_stability="candidate_observed_unstable"
+    )
+    entry = _score_convergence_axis(convergence)
+    assert entry.raw_score == 30
+    assert entry.weighted == round(30 * CONVERGENCE_WEIGHT / 100)  # 30 * 20 / 100 = 6
+    assert "modal" in entry.rationale.lower()
+    assert "unstable" in entry.rationale.lower()
+    assert "extraction count" in entry.rationale.lower() or "drift" in entry.rationale.lower()
+
+
+def test_trust_score_modal_branch_absent_scores_0(tmp_path: Path) -> None:
+    """`convergence_kind == "modal"` + `mode_count_sweep` absent →
+    raw_score = 0 (cannot judge eigenfrequency stability without
+    the sweep). Distinct rationale string from the unstable branch
+    so a future regression that conflates 'inconclusive' with
+    'unstable' surfaces."""
+    from app.services.reporting.trust_score import _score_convergence_axis
+
+    convergence = _write_modal_convergence_payload(tmp_path, mode_count_stability=None)
+    entry = _score_convergence_axis(convergence)
+    assert entry.raw_score == 0
+    assert entry.weighted == 0
+    assert "modal" in entry.rationale.lower()
+    assert (
+        "inconclusive" in entry.rationale.lower()
+        or "absent" in entry.rationale.lower()
+        or "cannot judge" in entry.rationale.lower()
+    )
+
+
+def test_trust_score_modal_branch_back_compat_without_convergence_kind(
+    tmp_path: Path,
+) -> None:
+    """A pre-Phase-12 snapshot (no `convergence_kind` field) MUST
+    fall through to the legacy explicit_dynamics two-axis branch
+    for back-compat. We verify this by writing a modal-shaped
+    payload WITHOUT the discriminator and asserting it does NOT
+    hit any of the modal branches' rationale strings (which all
+    explicitly say 'modal convergence_kind')."""
+    import json
+
+    from app.services.reporting.trust_score import _score_convergence_axis
+
+    # Write a legacy explicit_dynamics-shape payload (mesh + dt
+    # axes, no convergence_kind, no mode_count_sweep).
+    payload = {
+        "case_id": "legacy-pre-phase12",
+        "mesh_sweep": {"candidate_stability": "candidate_observed_stable"},
+        "dt_sweep": {"candidate_stability": "candidate_observed_stable"},
+    }
+    out = tmp_path / "legacy_convergence.json"
+    out.write_text(json.dumps(payload), encoding="utf-8")
+    entry = _score_convergence_axis(out)
+    # Legacy two-axis path: both stable → 100.
+    assert entry.raw_score == 100
+    # The rationale string MUST NOT mention "modal" (would indicate
+    # the modal branch fired on a legacy snapshot — Phase 12 A
+    # contract failure).
+    assert "modal" not in entry.rationale.lower()

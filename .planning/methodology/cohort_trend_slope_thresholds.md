@@ -149,3 +149,43 @@ The matrix exercises:
 combination the firing gate cares about. A silent edit of any
 constant (`-0.5 → -0.4`, `-1.5 → -1.6`, etc.) will cause at least one
 boundary cell to flip, surfacing the change in CI.
+
+## Recovery semantics (Phase 12 F slice-H clarification)
+
+A trend-slope alarm does **not** clear instantly when the underlying
+case's evidence is restored — the slope is a least-squares fit over
+the case's full timeline, and a single recovery point flattens the
+slope without zeroing it. For a synthetic recovery arc of `[100, 99,
+84, 100]` (baseline → mild drop → big drop → restored), the
+4-point slope is `≈ -1.5` — still inside the `warn` band even
+though point 4 is back at baseline.
+
+This is the **intended behavior**, not a bug. The trend-slope axis
+reports *regression observability over the case's history*, not
+"current state". A reviewer observing a slope `-1.5` after a
+restoration-snapshot should read it as "the case shows a regression
+over its recorded history that the most recent restoration has begun
+to reverse" — not as "the regression is still active".
+
+Stop conditions for full alarm clearance (slope above
+`TREND_SLOPE_INFO_MAX = -0.5`):
+
+* **3-point arc** `[X, Y, Z]` with `Z ≥ X` (full recovery): slope is
+  non-negative; alarm clears immediately.
+* **4-point arc** `[100, 99, 84, 100]` (Phase 12 F Journey 6's
+  fixture): slope `≈ -1.5`; alarm flattens to `warn`.
+* **5+ point arc** with at least 2 consecutive restored points:
+  slope passes through `-0.5` and clears.
+
+Phase 12 F Journey 6 (`test_phase12_trend_alarm_closure_journey_e2e`)
+exercises the 4-point case and asserts the flatten-not-clear contract
+explicitly. The Phase 13 carry-forward §5 captures the option to
+extend Journey 6 to a 5-point arc that demonstrates full clearance;
+for the Phase 12 close the load-bearing contract is "recovery
+observable as flattening", not "recovery clears the alarm".
+
+The full-recovery option (alarm cleared) is an **acceptable outcome**
+(b) explicitly documented in the journey docstring; the regression
+the test forbids is (c) — "recovery silently no-op'd; slope
+unchanged", caught by the slice-H pre-condition assert on the
+recovery-snapshot filesystem write.
