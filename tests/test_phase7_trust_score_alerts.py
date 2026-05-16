@@ -134,8 +134,11 @@ def _seed_snapshot_with_score_axes(
 # ---------------------------------------------------------------------
 
 
-def test_alerts_schema_version_is_1_0_0() -> None:
-    assert TRUST_SCORE_ALERTS_SCHEMA_VERSION == "1.0.0"
+def test_alerts_schema_version_is_1_1_0() -> None:
+    """Phase 15 C MINOR bump: introduces the additive
+    ``drift_attribution`` field on every alarm event. Pre-1.1.0
+    consumers that ignore the new field continue to function."""
+    assert TRUST_SCORE_ALERTS_SCHEMA_VERSION == "1.1.0"
 
 
 def test_severity_thresholds_are_named_constants() -> None:

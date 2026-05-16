@@ -82,6 +82,12 @@ class TrustScoreTimeline:
     point_count: int
     points: list[TimelinePoint]
     claim_impact: str
+    inter_snapshot_drift_attribution: tuple = ()
+    """Phase 15 C — per-consecutive-snapshot-pair drift attribution.
+    Length equals max(0, ``point_count - 1``); each entry is a
+    :class:`DriftAttribution` carrying per-axis percentage deltas +
+    dominant_axis. Schema 1.1.0 additive field; pre-1.1.0 consumers
+    that ignore the field continue to function."""
 
 
 def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimeline:
@@ -104,6 +110,32 @@ def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimel
             if point is not None:
                 points.append(point)
 
+    # Phase 15 C — per-consecutive-snapshot-pair drift attribution.
+    # Importing here defers the cost when the case has 0 or 1 points
+    # (no consecutive pairs).
+    from .trust_score_drift_attribution import compute_drift_attribution
+
+    drifts: list = []
+    for older, newer in zip(points, points[1:], strict=False):
+        drifts.append(
+            compute_drift_attribution(
+                {
+                    "completeness": int(older.completeness_weighted),
+                    "convergence": int(older.convergence_weighted),
+                    "energy_audit": int(older.energy_audit_weighted),
+                    "reproducibility": int(older.reproducibility_weighted),
+                },
+                {
+                    "completeness": int(newer.completeness_weighted),
+                    "convergence": int(newer.convergence_weighted),
+                    "energy_audit": int(newer.energy_audit_weighted),
+                    "reproducibility": int(newer.reproducibility_weighted),
+                },
+                from_snapshot=older.snapshot_label,
+                to_snapshot=newer.snapshot_label,
+            )
+        )
+
     timeline = TrustScoreTimeline(
         schema_version=TRUST_SCORE_TIMELINE_SCHEMA_VERSION,
         formula_version=TRUST_SCORE_FORMULA_VERSION,
@@ -114,6 +146,7 @@ def build_trust_score_timeline(case_id: str, repo_root: Path) -> TrustScoreTimel
         point_count=len(points),
         points=points,
         claim_impact=CLAIM_IMPACT_DEFAULT,
+        inter_snapshot_drift_attribution=tuple(drifts),
     )
     _assert_no_overclaim(timeline)
     return timeline
@@ -301,6 +334,8 @@ def _point_to_dict(point: TimelinePoint) -> dict[str, Any]:
 
 
 def _timeline_to_dict(timeline: TrustScoreTimeline) -> dict[str, Any]:
+    from .trust_score_drift_attribution import render_drift_attribution_dict
+
     return {
         "schema_version": timeline.schema_version,
         "formula_version": timeline.formula_version,
@@ -311,6 +346,12 @@ def _timeline_to_dict(timeline: TrustScoreTimeline) -> dict[str, Any]:
         "point_count": timeline.point_count,
         "points": [_point_to_dict(p) for p in timeline.points],
         "claim_impact": timeline.claim_impact,
+        # Phase 15 C — schema 1.1.0 additive field. Pre-1.1.0
+        # consumers that ignore the field continue to function.
+        "inter_snapshot_drift_attribution": [
+            render_drift_attribution_dict(att)
+            for att in timeline.inter_snapshot_drift_attribution
+        ],
     }
 
 

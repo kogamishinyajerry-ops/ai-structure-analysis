@@ -38,6 +38,11 @@ from typing import Literal
 
 from ._schema_versions import TRUST_SCORE_ALERTS_SCHEMA_VERSION
 from .acceptance_packet import CLAIM_BOUNDARY
+from .trust_score_drift_attribution import (
+    DriftAttribution,
+    compute_drift_attribution,
+    render_drift_attribution_dict,
+)
 from .trust_score_timeline import TimelinePoint, build_trust_score_timeline
 
 CLAIM_TIER = "Tier 1 engineering candidate"
@@ -89,6 +94,15 @@ class TrustScoreAlertEvent:
     severity: Severity
     primary_axis_shift: str
     axis_deltas: dict[str, int]
+    drift_attribution: DriftAttribution
+    """Phase 15 C — per-axis PERCENTAGE deltas + dominant_axis when
+    the absolute delta exceeds the SSOT 5.0% floor. Carries the same
+    drift information as ``axis_deltas`` but expressed as percentages
+    of each axis's weight, making cross-axis comparison meaningful
+    (e.g. a 15-point drop on convergence vs a 15-point drop on
+    completeness are both reported, but the convergence drop is
+    -75% of its 20-pt axis while the completeness drop is -30% of
+    its 50-pt axis). Schema 1.1.0 additive field."""
 
 
 @dataclass
@@ -184,6 +198,28 @@ def build_trust_score_alerts(
         primary_field = _primary_axis(
             {field: _axis_delta(older, newer, field) for field in _AXIS_FIELDS}
         )
+        # Phase 15 C — per-axis percentage deltas via the cross-
+        # snapshot drift attribution SSOT. Axis labels match
+        # TRUST_AXIS_WEIGHTS in trust_score_drift_attribution.py
+        # ({completeness, convergence, energy_audit, reproducibility}).
+        prev_axes_pct = {
+            "completeness": int(older.completeness_weighted),
+            "convergence": int(older.convergence_weighted),
+            "energy_audit": int(older.energy_audit_weighted),
+            "reproducibility": int(older.reproducibility_weighted),
+        }
+        curr_axes_pct = {
+            "completeness": int(newer.completeness_weighted),
+            "convergence": int(newer.convergence_weighted),
+            "energy_audit": int(newer.energy_audit_weighted),
+            "reproducibility": int(newer.reproducibility_weighted),
+        }
+        attribution = compute_drift_attribution(
+            prev_axes_pct,
+            curr_axes_pct,
+            from_snapshot=older.snapshot_label,
+            to_snapshot=newer.snapshot_label,
+        )
         alerts.append(
             TrustScoreAlertEvent(
                 from_snapshot=older.snapshot_label,
@@ -194,6 +230,7 @@ def build_trust_score_alerts(
                 severity=_severity_for(delta),
                 primary_axis_shift=_axis_field_to_breakdown[primary_field],
                 axis_deltas=axis_deltas,
+                drift_attribution=attribution,
             )
         )
 
@@ -226,6 +263,10 @@ def _event_to_dict(event: TrustScoreAlertEvent) -> dict[str, object]:
         "severity": event.severity,
         "primary_axis_shift": event.primary_axis_shift,
         "axis_deltas": event.axis_deltas,
+        # Phase 15 C — schema 1.1.0 additive field.
+        "drift_attribution": render_drift_attribution_dict(
+            event.drift_attribution
+        ),
     }
 
 

@@ -260,16 +260,29 @@ Bump history:
   carry-forward §3.
 """
 
-TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.0.0"
-"""``trust_score_timeline`` HTTP response (Phase 6 D).
+TRUST_SCORE_TIMELINE_SCHEMA_VERSION = "1.1.0"
+"""``trust_score_timeline`` HTTP response.
 
 Builder: ``backend.app.services.reporting.trust_score_timeline``.
+
+Bump history:
+
+* ``1.0.0`` (Phase 6 D) — initial schema; per-snapshot
+  ``TimelinePoint`` with ``trust_score`` + 4 axis-weighted scores +
+  Tier 1 disclaimer trio.
+* ``1.1.0`` (Phase 15 C · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``inter_snapshot_drift_attribution`` field
+  carrying a per-consecutive-pair :class:`DriftAttribution`. A
+  pre-1.1.0 consumer that ignores the new field continues to
+  function; the new field defaults to an empty tuple when no
+  consecutive snapshots are walked. Closes Phase 14 retro §1
+  (per-axis drift attribution surface).
 """
 
 # ----- Phase 7 NEW contracts -----
 
-TRUST_SCORE_ALERTS_SCHEMA_VERSION = "1.0.0"
-"""``trust_score_alerts`` HTTP response (Phase 7 C).
+TRUST_SCORE_ALERTS_SCHEMA_VERSION = "1.1.0"
+"""``trust_score_alerts`` HTTP response.
 
 Builder: ``backend.app.services.reporting.trust_score_alerts``.
 
@@ -277,8 +290,19 @@ Tier 1 candidate regression-alarm surface: walks a case's timeline
 and surfaces snapshot-to-snapshot trust score drops above a
 configurable threshold. Carries its own ``schema_version`` separately
 from ``TRUST_SCORE_TIMELINE_SCHEMA_VERSION`` because the alarm payload
-shape is distinct from the timeline payload shape. Closes Phase 6
-retrospective carry-forward §4.
+shape is distinct from the timeline payload shape.
+
+Bump history:
+
+* ``1.0.0`` (Phase 7 C) — initial schema; per-alarm event with
+  per-axis WEIGHTED delta breakdown + severity bucket + primary-axis
+  shift.
+* ``1.1.0`` (Phase 15 C · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``drift_attribution`` field on every
+  alarm event carrying a :class:`DriftAttribution` (per-axis
+  PERCENTAGE deltas + dominant_axis when the absolute delta exceeds
+  the SSOT 5.0% floor). A pre-1.1.0 consumer that ignores the new
+  field continues to function. Closes Phase 14 retro §1.
 """
 
 COHORT_EXECUTIVE_SUMMARY_SCHEMA_VERSION = "1.0.0"
