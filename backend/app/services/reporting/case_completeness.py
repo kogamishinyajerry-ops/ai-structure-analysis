@@ -96,6 +96,21 @@ WEIGHT_LAME_CROSS_CHECK = 10
 WEIGHT_SCL_CONVERGENCE = 10
 WEIGHT_ALLOWABLE_MARGIN = 5
 
+# Phase 12 A — close Phase 11 retrospective carry-forward §1.
+# These were inlined as `15` and `10` in the linear_static_pv rubric;
+# named constants make a future rebalance a typed identifier rename
+# rather than a magic-number chase.
+WEIGHT_BALLISTIC_METRICS_PV = 15
+"""linear_static_pv reweight: 'ballistic_metrics' axis carries the
+PV summary block (Lamé cross-check, ASME-style SCL block, allowable
+margin) under the inherited filename. Reduced from 20 (ballistic
+default) to 15 to make room for the PV-specific axes that sum to 25."""
+WEIGHT_CONVERGENCE_STABLE_PV = 10
+"""linear_static_pv reweight: 'convergence_study' axis weight reduced
+from 15 (ballistic default) to 10 because linear_static cases only
+score mesh_sweep (dt_sweep is N/A — no time integration), so the axis
+carries less information per point of weight than on a transient case."""
+
 ANALYSIS_TYPE_RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {
     "ballistic": {
         "starter_deck": WEIGHT_STARTER_DECK,
@@ -120,9 +135,9 @@ ANALYSIS_TYPE_RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {
         # cases have only mesh_sweep meaningful (no dt sweep).
         "starter_deck": WEIGHT_STARTER_DECK,                  # 15
         "engine_deck": WEIGHT_ENGINE_DECK,                    # 15
-        "ballistic_metrics": 15,                              # filename inheritance; holds PV metrics
+        "ballistic_metrics": WEIGHT_BALLISTIC_METRICS_PV,     # 15 — Phase 12 A named constant
         "energy_audit": WEIGHT_ENERGY_AUDIT_CLOSED,           # 15
-        "convergence_study": 10,                              # mesh-only (no dt)
+        "convergence_study": WEIGHT_CONVERGENCE_STABLE_PV,    # 10 — Phase 12 A named constant
         "lame_cross_check": WEIGHT_LAME_CROSS_CHECK,          # 10
         "scl_convergence": WEIGHT_SCL_CONVERGENCE,            # 10
         "generator_script": WEIGHT_GENERATOR_SCRIPT,          # 5

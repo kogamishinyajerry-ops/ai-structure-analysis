@@ -56,6 +56,8 @@ Adding a new analysis type **requires updating both the tuple and the weights di
 | `generator_script` | 5 | Source-of-truth Python generator for the deck. |
 | `notes` | 5 | Free-form narrative `NOTES.md`. |
 
+> **modal note (Phase 12 A)**: the modal rubric reuses every ballistic axis verbatim — same weights, same scorers. `animation_manifest` is load-bearing here (mode-shape playback is the canonical modal artifact); `result_mesh` carries the per-mode deformed-mesh; `ballistic_metrics` carries the participation-factor + effective-modal-mass blocks under the inherited filename. The analytical Euler-Bernoulli cross-check (§Modal cross-check below) is a **separate slice-B advisor concern**, not a completeness axis.
+
 ## linear_static_pv — closing 25 pts (replacement axes)
 
 The PV-specific axes are read from inside the metrics JSON under a `pv_summary` block. They replace the three non-applicable optional-artifact axes (`animation_manifest`, `result_mesh`, `notes`) AND pull 10 more points from a reduced `ballistic_metrics` weight (20 → 15) and a reduced `convergence_study` weight (15 → 10). The convergence weight is lower because `linear_static` cases have only `mesh_sweep` meaningful (no `dt_sweep`), so the convergence axis carries half its usual signal.
@@ -69,12 +71,36 @@ The PV-specific axes are read from inside the metrics JSON under a `pv_summary` 
 
 ## Convergence-kind discriminator (linked schema bump)
 
-`convergence_study.json` schema 1.0.0 → 1.1.0 adds an optional top-level `convergence_kind` ∈ {`explicit_dynamics`, `nonlinear_static`, `linear_static`, `modal`}. The trust-score convergence axis (`_score_convergence_axis` in `backend/app/services/reporting/trust_score.py`) reads this discriminator:
+`convergence_study.json` schema 1.0.0 → 1.1.0 → 1.2.0 evolution:
+
+- **1.0.0**: two-axis (`mesh_sweep` + `dt_sweep`), no discriminator.
+- **1.1.0**: adds optional top-level `convergence_kind` ∈ {`explicit_dynamics`, `nonlinear_static`, `linear_static`, `modal`}.
+- **1.2.0** (Phase 12 A MINOR): adds optional `mode_count_sweep` axis used when `convergence_kind == "modal"`. The legacy `mesh_sweep` + `dt_sweep` axes are treated as N/A on modal cases (mode-count refinement is the only convergence dimension that matters for an eigenproblem).
+
+The trust-score convergence axis (`_score_convergence_axis` in `backend/app/services/reporting/trust_score.py`) reads this discriminator:
 
 - `convergence_kind == "linear_static"`: score on `mesh_sweep` only; `dt_sweep` absence is **not** a failure.
+- `convergence_kind == "modal"`: score on `mode_count_sweep` only; `mesh_sweep` and `dt_sweep` absence is **not** a failure.
 - Anything else (or absent): two-axis scoring (legacy back-compat).
 
 A 1.0.0-era payload reads cleanly as `explicit_dynamics` (the back-compat default).
+
+## Modal cross-check (Phase 12 A — Euler-Bernoulli analytical residual)
+
+The modal rubric inherits the ballistic / explicit_dynamics closing 25 pts (`animation_manifest` + `result_mesh` + `generator_script` + `notes`) because mode-shape playback and per-mode deformed-mesh artifacts are first-class evidence for a modal sweep. The `ballistic_metrics` axis (15 pts) carries the participation-factor + effective-modal-mass blocks under the inherited filename; the `energy_audit` axis (15 pts) carries the strain-energy distribution `closed_aggregate` flag.
+
+The analytical cross-check is **not** a rubric axis — it lives in `backend/app/domain/modal_extraction.py` and surfaces as a slice-B advisor concern, not a completeness score. The split is deliberate: completeness measures evidence presence; the cross-check measures evidence quality. A reviewer with the cross-check report can judge whether the modal sweep is converged enough to be a Tier 1 candidate; a reviewer without it still sees a 100/100 completeness score for a case that ships all artifacts.
+
+| Concept | Symbol | Source |
+|---|---|---|
+| Closed-form β·L roots (cantilever) | `EULER_BERNOULLI_BETA_LN` | `backend/app/domain/modal_extraction.py` |
+| Cross-check tolerance | `MODAL_CROSS_CHECK_TOLERANCE_PCT = 5.0` | Same module |
+| `convergence_kind` sentinel | `MODAL_CONVERGENCE_KIND = "modal"` | Same module |
+| Reference | Blevins 1979, "Formulas for Natural Frequency and Mode Shape", Table 8-1 p.108 | External |
+
+The β·L roots are the dimensionless solutions of `cos(βL)·cosh(βL) + 1 = 0`. The first 4 roots are pinned by `test_euler_bernoulli_beta_ln_constants_are_correct`. The project intentionally does **not** extrapolate β·L past mode 4 (the closed-form Series approximation's convergence radius narrows past mode 6); `euler_bernoulli_cantilever_freq` raises ValueError if asked for mode 5+. A future slice that adds modes 5+ requires a methodology-doc update + retro entry, the same lock-step rule that gates every Phase 11/12 MINOR bump.
+
+The 5 % tolerance is the conservative engineering-practice floor for first-2-bending-mode accuracy on a structured hex mesh; finer mesh routinely achieves < 1 % on bending modes. The smoke deck used to de-risk slice A (1 m × 50 mm × 50 mm steel cantilever, C3D20 structured hex) measured mode 1 = 0.14 %, mode 3 = 0.98 %, mode 8 axial = 0.07 % against analytical.
 
 ## Rebalance procedure (binding — follow in lock-step on any future change)
 
@@ -99,8 +125,9 @@ To change a weight in `ANALYSIS_TYPE_RUBRIC_WEIGHTS`:
 
 ## Closure cross-references
 
-- Service module: `backend/app/services/reporting/case_completeness.py` (Phase 11 A)
-- Schema constants: `backend/app/services/reporting/_schema_versions.py::CASE_COMPLETENESS_SCHEMA_VERSION` (1.1.0); `CONVERGENCE_STUDY_SCHEMA_VERSION` (1.1.0)
-- Trust-score downstream: `backend/app/services/reporting/trust_score.py::_score_convergence_axis` honors `convergence_kind`
-- Tests: `tests/test_phase11_analysis_type_rubric.py` (30 tests at slice A close)
-- Blueprint disposition: `.planning/FM-04A_PHASE11_BLUEPRINT.md` §3.A
+- Service module: `backend/app/services/reporting/case_completeness.py` (Phase 11 A; Phase 12 A added named PV weight constants — see `WEIGHT_BALLISTIC_METRICS_PV` / `WEIGHT_CONVERGENCE_STABLE_PV`)
+- Schema constants: `backend/app/services/reporting/_schema_versions.py::CASE_COMPLETENESS_SCHEMA_VERSION` (1.1.0); `CONVERGENCE_STUDY_SCHEMA_VERSION` (1.2.0 — Phase 12 A MINOR adds `modal` + `mode_count_sweep`)
+- Modal cross-check module: `backend/app/domain/modal_extraction.py` (Phase 12 A — Euler-Bernoulli β·L SSOT, .dat parser, residual report, cumulative mass-participation utility)
+- Trust-score downstream: `backend/app/services/reporting/trust_score.py::_score_convergence_axis` honors `convergence_kind` for `linear_static` and `modal` cases
+- Tests: `tests/test_phase11_analysis_type_rubric.py` (30 tests at slice A close); `tests/test_phase12_modal_extraction.py` (modal slice-A pins)
+- Blueprint dispositions: `.planning/FM-04A_PHASE11_BLUEPRINT.md` §3.A (Phase 11 A); `.planning/FM-04A_PHASE12_BLUEPRINT.md` §3.A (Phase 12 A)

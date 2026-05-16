@@ -3,8 +3,11 @@
 Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
 Pins:
-* CASE_COMPLETENESS_SCHEMA_VERSION == "1.1.0" (MINOR bump).
-* CONVERGENCE_STUDY_SCHEMA_VERSION == "1.1.0" (MINOR bump).
+* CASE_COMPLETENESS_SCHEMA_VERSION == "1.1.0" (Phase 11 A MINOR bump).
+* CONVERGENCE_STUDY_SCHEMA_VERSION — version pin lives in
+  ``tests/test_schema_versions_stamping.py`` (parametrized). Phase 11 A
+  shipped 1.1.0; Phase 12 A bumped to 1.2.0 (modal axis). The single
+  Phase-11 pin was retired in Phase 12 A to keep one SSOT.
 * ANALYSIS_TYPE_TUPLE closed set + DEFAULT_ANALYSIS_TYPE == "ballistic".
 * Every rubric in ANALYSIS_TYPE_RUBRIC_WEIGHTS sums to 100 (M:-2 guard).
 * Every rubric carries the 5 universal axes (M:-2 guard).
@@ -46,7 +49,6 @@ import pytest
 from app.services.reporting import case_completeness as cc
 from app.services.reporting._schema_versions import (
     CASE_COMPLETENESS_SCHEMA_VERSION,
-    CONVERGENCE_STUDY_SCHEMA_VERSION,
 )
 from app.services.reporting.case_completeness import (
     ANALYSIS_TYPE_RUBRIC_WEIGHTS,
@@ -67,8 +69,10 @@ def test_case_completeness_schema_version_is_1_1_0() -> None:
     assert CASE_COMPLETENESS_SCHEMA_VERSION == "1.1.0"
 
 
-def test_convergence_study_schema_version_is_1_1_0() -> None:
-    assert CONVERGENCE_STUDY_SCHEMA_VERSION == "1.1.0"
+# Phase 12 A: CONVERGENCE_STUDY_SCHEMA_VERSION pin retired here in
+# favor of the centralized parametrized pin in
+# ``tests/test_schema_versions_stamping.py`` (which tracks every bump).
+# A future MINOR/PATCH bump only needs to update one file, not two.
 
 
 def test_default_analysis_type_is_ballistic() -> None:

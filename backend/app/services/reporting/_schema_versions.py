@@ -118,7 +118,7 @@ REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.reviewer_bundle``.
 """
 
-CONVERGENCE_STUDY_SCHEMA_VERSION = "1.1.0"
+CONVERGENCE_STUDY_SCHEMA_VERSION = "1.2.0"
 """``convergence_study.json`` payload.
 
 Builder: ``backend.app.services.ballistics.convergence_orchestrator``.
@@ -134,6 +134,17 @@ Bump history:
   scorer treats its absence as "not applicable", not as failure.
   Consumers reading the 1.0.0 fields continue to work. Closes the
   e2e-demo gap surfaced by the cylinder-pv-candidate case.
+* ``1.2.0`` (Phase 12 A, MINOR per bump policy) — added optional
+  ``mode_count_sweep`` axis for ``convergence_kind == "modal"``
+  payloads (eigenproblem cases). The trust-score scorer now routes
+  modal cases through a dedicated branch that scores
+  ``mode_count_sweep`` and treats ``mesh_sweep`` + ``dt_sweep`` as
+  N/A. Consumers reading 1.1.0 fields continue to work because the
+  new axis is additive; a modal case that omits ``mode_count_sweep``
+  scores 0 (inconclusive) on convergence_stability rather than
+  silently falling into the explicit_dynamics two-axis path it
+  incorrectly inhabited at 1.1.0. Closes Phase 11 blueprint #06
+  modal-placeholder gap.
 """
 
 # ----- Phase 5 B/C/D NEW contracts -----

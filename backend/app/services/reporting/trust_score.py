@@ -276,9 +276,19 @@ def _score_convergence_axis(
     # linear_static cases there is no time integration so the dt_sweep
     # axis is N/A; we score on mesh stability alone instead of penalizing
     # the absent dt sweep.
+    #
+    # Phase 12 A — modal cases are eigenproblems: no time integration AND
+    # no mesh stability per se, but a mode_count_sweep dimension that
+    # asks "does the dominant mode's frequency stabilize as the
+    # extraction count + mesh refines?". The legacy "modal falls into
+    # the explicit_dynamics two-axis branch" behaviour was incorrect; a
+    # legacy snapshot without convergence_kind still falls into the
+    # default branch for back-compat, but a new snapshot with
+    # convergence_kind == "modal" routes through the dedicated branch.
     convergence_kind = payload.get("convergence_kind") or "explicit_dynamics"
     mesh_stable = _stability_label(payload.get("mesh_sweep"))
     dt_stable = _stability_label(payload.get("dt_sweep"))
+    mode_count_stable = _stability_label(payload.get("mode_count_sweep"))
 
     if convergence_kind == "linear_static":
         if mesh_stable == "candidate_observed_stable":
@@ -298,8 +308,33 @@ def _score_convergence_axis(
             rationale = (
                 "linear_static convergence_kind; mesh_sweep inconclusive"
             )
+    elif convergence_kind == "modal":
+        # Phase 12 A — modal-specific scoring. Single relevant axis is
+        # mode_count_sweep (does the dominant mode's frequency converge
+        # as we refine?). mesh_sweep and dt_sweep are N/A.
+        if mode_count_stable == "candidate_observed_stable":
+            raw = 100
+            rationale = (
+                "modal convergence_kind; mode_count_sweep stable; "
+                "mesh_sweep and dt_sweep N/A (eigenproblem)"
+            )
+        elif mode_count_stable == "candidate_observed_unstable":
+            raw = 30
+            rationale = (
+                "modal convergence_kind; mode_count_sweep unstable; "
+                "dominant frequency drifts with extraction count — "
+                "increase mode count or refine mesh"
+            )
+        else:
+            raw = 0
+            rationale = (
+                "modal convergence_kind; mode_count_sweep inconclusive "
+                "or absent; cannot judge eigenfrequency stability"
+            )
     else:
-        # Original two-axis scoring for explicit_dynamics / nonlinear_static / modal.
+        # Original two-axis scoring for explicit_dynamics / nonlinear_static
+        # (and the legacy fall-through path for modal snapshots written
+        # before Phase 12 A bumped convergence_study to 1.2.0).
         if (
             mesh_stable == "candidate_observed_stable"
             and dt_stable == "candidate_observed_stable"
