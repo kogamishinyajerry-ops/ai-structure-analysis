@@ -1,6 +1,6 @@
 # FM-04a Phase 16 retrospective — Drift Attribution Cross-Surface Binding
 
-**Closure stamp:** `fm04a-phase16-drift-attribution-cross-surface-2026-05-17 · branch=claude/FM-04a-tier1-ballistic-candidate@<SLICE_E_COMMIT_PLACEHOLDER>`
+**Closure stamp:** `fm04a-phase16-drift-attribution-cross-surface-2026-05-17 · branch=claude/FM-04a-tier1-ballistic-candidate@c09b309`
 **Tier:** Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 **Disposition:** Closes Phase 15 retrospective §3 (cumulative trust-score-timeline drift attribution), §4 (cross-axis percentage delta as cohort-anomalies scaling axis), §6 (per-axis percentage delta beyond alerts + timeline), §7 (8-token forbidden-positive-claim tuple SSOT), §8 (`_assert_tier1_trio` audit helper SSOT). Nothing pushed; no PR opened; no Linear / Notion writes; no FM-04b prerequisite crossed.
 
