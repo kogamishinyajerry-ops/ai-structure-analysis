@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from ...services.reporting.signoff_rate_limit import check_and_record
 from ...services.reporting.signoff_record import (
     SUPPORTED_SIGNOFF_VERDICTS,
     build_signoff_history_report,
@@ -136,6 +137,22 @@ async def post_signoff_history(case_id: str, request: Request) -> JSONResponse:
                 f"signoff verdict {body.verdict!r} is not in the whitelist "
                 f"{SUPPORTED_SIGNOFF_VERDICTS!r}"
             ),
+        )
+
+    # 5b. Phase 10 D — per-(case, reviewer) sliding-window rate limit.
+    # Reviewer key uses the *stripped* reviewer so an attacker can't
+    # bypass the limit by padding whitespace. Stripping is read-only;
+    # the actual write path uses the same stripped value.
+    rl_result = check_and_record(case_id, body.reviewer.strip())
+    if not rl_result.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"rate limit exceeded for case_id={case_id} "
+                f"reviewer={body.reviewer.strip()!r}; "
+                f"retry in {rl_result.retry_after_seconds} seconds"
+            ),
+            headers={"Retry-After": str(rl_result.retry_after_seconds)},
         )
 
     # 6 + 7. Hand off to the service layer; any remaining ValueError
