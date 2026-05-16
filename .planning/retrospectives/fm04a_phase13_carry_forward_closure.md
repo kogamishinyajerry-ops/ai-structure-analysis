@@ -93,7 +93,7 @@ Per-slice TAA reports archived under `.planning/phase13_audit_reports/`:
 - `B.md` — APPROVE 60/63 (3 LOW findings; per-file parametrize closed inline in slice C; numerical accounting + cross-route meta-guard deferred to Phase 14)
 - `C.md` — APPROVE 63/63 (perfect score; live ASGI verification confirmed regressed-bucket fire)
 - `D.md` — APPROVE 60/63 (1 MEDIUM doc-vs-code inconsistency closed inline in slice E: helper now rejects BOTH canonical fullmatch `^GS-\d{3}$` AND prefix shape `^GS-\d{3}-`; 2 LOW findings closed: `__import__("re")` → top-level `import re`; test docstring + assertion flipped to pin closure)
-- `FINAL.md` — scheduled (post-MEDIUM-1 closure)
+- `FINAL.md` — **APPROVE 100/100**, every axis at 100% of weight. Stop condition (≥99 AND every axis ≥95%) **MET**. Adversarial probes succeeded: meta-test fired on synthetic permissive-range regression with offending filename+line; `_is_candidate_carveout("golden_samples/GS-101-candidate/...")` → False (MEDIUM-1 closure verified live); HF1.7a `check_paths_and_report(["golden_samples/GS-001/..."])` → rc=1; slice-C `cohort-executive-summary regressed_count=1` with `trust=45 < 50` confirmed live. 4 LOW findings carry-forward to Phase 14 (cosmetic; not load-bearing).
 
 ## Constraint posture (verbatim preserved across the arc)
 
