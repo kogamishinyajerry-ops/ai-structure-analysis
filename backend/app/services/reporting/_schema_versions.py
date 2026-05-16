@@ -78,7 +78,7 @@ ACCEPTANCE_PACKET_SCHEMA_VERSION = "1.0.0"
 Builder: ``backend.app.services.reporting.acceptance_packet``.
 """
 
-CASE_COMPLETENESS_SCHEMA_VERSION = "1.1.0"
+CASE_COMPLETENESS_SCHEMA_VERSION = "1.2.0"
 """``<case>_completeness_scorecard.json`` top-level dict.
 
 Builder: ``backend.app.services.reporting.case_completeness``.
@@ -92,6 +92,20 @@ Bump history:
   ballistic rubric via the dataclass default. Closes the e2e-demo gap
   surfaced by the cylinder-pv-candidate case (PV linear-static
   evidence was being scored against an irrelevant rubric).
+* ``1.2.0`` (Phase 12 B, MINOR per bump policy) — substantiated the
+  ``modal`` rubric with four new modal-specific axes
+  (``mode_count_coverage``, ``freq_convergence``, ``mode_shape_quality``,
+  ``mass_participation``) read from a ``modal_summary`` block inside
+  the metrics JSON, replacing the inherited ballistic optional-artifact
+  axes that were not load-bearing for an eigenproblem (``animation_manifest``
+  and ``result_mesh`` remain inside the modal universal axes at reduced
+  weight; ``notes`` was dropped). Universal axes rebalanced to
+  10+10+10+10+10 = 50 to make room for the 15+15+10+10 modal-specific
+  block. A 1.1.0-era payload that omits the ``modal_summary`` block
+  scores 0 on the four new axes (graceful degrade) rather than failing
+  to parse. Consumers reading the 1.1.0 fields continue to work because
+  the dispatch is keyed on ``analysis_type``. Closes the v1 blueprint
+  #06 modal-placeholder gap at the rubric layer.
 """
 
 COHORT_OVERVIEW_SCHEMA_VERSION = "1.0.0"

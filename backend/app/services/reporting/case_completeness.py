@@ -111,6 +111,58 @@ from 15 (ballistic default) to 10 because linear_static cases only
 score mesh_sweep (dt_sweep is N/A — no time integration), so the axis
 carries less information per point of weight than on a transient case."""
 
+# Phase 12 B — modal-specific axis weights. Replace the inherited
+# ballistic notes axis and shrink animation_manifest / result_mesh so
+# the four modal-quality axes can carry 50 pts. Sum policy: universal
+# 5 axes × 10 = 50; modal-specific 4 axes = 50; total 100. The modal
+# rubric carries lighter universal axes than ballistic because the
+# modal-specific quality gates are doing the load-bearing work that
+# energy-audit + convergence-stable would otherwise do on a ballistic
+# transient case.
+WEIGHT_MODE_COUNT_COVERAGE = 15
+"""modal axis: did the analyst extract enough modes to cover the
+frequency range of interest (cumulative effective mass participation
+above the engineering-practice 80% floor in each significant direction)?
+Read from ``modal_summary.mode_count_coverage.cumulative_y_pct`` and
+``modal_summary.mode_count_coverage.cumulative_z_pct``."""
+WEIGHT_FREQ_CONVERGENCE = 15
+"""modal axis: how tight is the dominant-mode frequency relative to the
+Euler-Bernoulli (or other closed-form) analytical cross-check? Read from
+``modal_summary.freq_convergence.dominant_mode_rel_err_pct``."""
+WEIGHT_MODE_SHAPE_QUALITY = 10
+"""modal axis: does the mode-shape Modal Assurance Criterion (MAC) on
+the dominant mode pair indicate the shape is well-resolved? Read from
+``modal_summary.mode_shape_quality.dominant_mac``."""
+WEIGHT_MASS_PARTICIPATION = 10
+"""modal axis: does the dominant mode's effective modal mass exceed the
+engineering-practice 50% floor in at least one principal direction?
+Read from ``modal_summary.mass_participation.dominant_mode_pct``."""
+
+# Phase 12 B — modal-universal axis weights. All five universal axes
+# reduced from ballistic defaults to 10 each so the four modal-specific
+# axes (15+15+10+10 = 50) can fit at sum=100. The four ballistic
+# optional axes (animation_manifest / result_mesh / generator_script /
+# notes) are dropped entirely from the modal rubric because the modal-
+# specific axes are doing their load-bearing work (mass participation
+# captures what notes / animation would on a ballistic case). Math:
+# 5 universal × 10 + 4 modal-specific = 50 + 50 = 100.
+WEIGHT_STARTER_DECK_MODAL = 10
+WEIGHT_ENGINE_DECK_MODAL = 10
+WEIGHT_BALLISTIC_METRICS_MODAL = 10
+"""modal reweight: 'ballistic_metrics' axis carries the modal_summary
+block under the inherited filename. Reduced from 20 (ballistic default)
+to 10 so the four modal-specific axes can sum to 50."""
+WEIGHT_ENERGY_AUDIT_CLOSED_MODAL = 10
+"""modal reweight: 'energy_audit' axis carries the modal strain-energy
+distribution closed_aggregate flag. Reduced from 15 (ballistic default)
+to 10 because the modal-specific axes are now load-bearing for energy
+quality, not the audit alone."""
+WEIGHT_CONVERGENCE_STABLE_MODAL = 10
+"""modal reweight: 'convergence_study' axis weight reduced from 15
+(ballistic default) to 10. The convergence scorer routes modal cases
+through the mode_count_sweep branch (Phase 12 A); the axis still
+carries useful signal, just less than on a ballistic transient case."""
+
 ANALYSIS_TYPE_RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {
     "ballistic": {
         "starter_deck": WEIGHT_STARTER_DECK,
@@ -158,15 +210,21 @@ ANALYSIS_TYPE_RUBRIC_WEIGHTS: dict[str, dict[str, int]] = {
         "notes": WEIGHT_NOTES,
     },
     "modal": {
-        "starter_deck": WEIGHT_STARTER_DECK,
-        "engine_deck": WEIGHT_ENGINE_DECK,
-        "ballistic_metrics": WEIGHT_BALLISTIC_METRICS,   # filename inheritance; holds modal participation factors
-        "energy_audit": WEIGHT_ENERGY_AUDIT_CLOSED,      # modal strain-energy distribution closed-aggregate
-        "convergence_study": WEIGHT_CONVERGENCE_STABLE,  # mode-count convergence
-        "animation_manifest": WEIGHT_ANIMATION_MANIFEST, # mode-shape animations
-        "result_mesh": WEIGHT_RESULT_MESH,
-        "generator_script": WEIGHT_GENERATOR_SCRIPT,
-        "notes": WEIGHT_NOTES,
+        # Phase 12 B — modal rubric substantiation. Five universal
+        # axes at 10 each (50 pts) + four modal-specific axes at
+        # 15+15+10+10 = 50 pts → sum 100. Ballistic optional artifacts
+        # (animation_manifest / result_mesh / generator_script / notes)
+        # are dropped on modal because the modal-specific quality
+        # gates carry their load-bearing signal.
+        "starter_deck": WEIGHT_STARTER_DECK_MODAL,                  # 10
+        "engine_deck": WEIGHT_ENGINE_DECK_MODAL,                    # 10
+        "ballistic_metrics": WEIGHT_BALLISTIC_METRICS_MODAL,        # 10
+        "energy_audit": WEIGHT_ENERGY_AUDIT_CLOSED_MODAL,           # 10
+        "convergence_study": WEIGHT_CONVERGENCE_STABLE_MODAL,       # 10
+        "mode_count_coverage": WEIGHT_MODE_COUNT_COVERAGE,          # 15
+        "freq_convergence": WEIGHT_FREQ_CONVERGENCE,                # 15
+        "mode_shape_quality": WEIGHT_MODE_SHAPE_QUALITY,            # 10
+        "mass_participation": WEIGHT_MASS_PARTICIPATION,            # 10
     },
 }
 """Per-analysis-type rubric weights. Each inner dict must sum to 100.
@@ -310,12 +368,17 @@ def score_case_completeness(inputs: CaseCompletenessInputs) -> CaseCompletenessS
             stable_weight=weights["convergence_study"],
         )
     )
-    breakdown.append(
-        _score_simple_presence(
-            "generator_script", inputs.generator_script_path,
-            weights["generator_script"], missing
+    # generator_script is a per-rubric optional axis (Phase 12 B —
+    # dropped from the modal rubric because the modal-specific quality
+    # gates carry its load-bearing signal). Score only if the rubric
+    # declares it.
+    if "generator_script" in weights:
+        breakdown.append(
+            _score_simple_presence(
+                "generator_script", inputs.generator_script_path,
+                weights["generator_script"], missing
+            )
         )
-    )
 
     # Analysis-type-specific axes — dispatched per rubric key set.
     if inputs.analysis_type == "linear_static_pv":
@@ -330,9 +393,27 @@ def score_case_completeness(inputs: CaseCompletenessInputs) -> CaseCompletenessS
         breakdown.append(pv_lame)
         breakdown.append(pv_scl)
         breakdown.append(pv_margin)
+    elif inputs.analysis_type == "modal":
+        # Phase 12 B — modal-specific axes read from inside
+        # ballistic_metrics.json under a `modal_summary` block. The
+        # four axes replace the ballistic optional-artifact triplet
+        # (animation_manifest / result_mesh / notes) which were not
+        # load-bearing for an eigenproblem.
+        cov, freq, shape, mass = _score_modal_specific_axes(
+            inputs.ballistic_metrics_path, missing,
+            coverage_weight=weights["mode_count_coverage"],
+            freq_weight=weights["freq_convergence"],
+            shape_weight=weights["mode_shape_quality"],
+            mass_weight=weights["mass_participation"],
+        )
+        breakdown.append(cov)
+        breakdown.append(freq)
+        breakdown.append(shape)
+        breakdown.append(mass)
     else:
-        # ballistic / explicit_dynamics / modal — keep
-        # animation_manifest + result_mesh + notes.
+        # ballistic / explicit_dynamics — keep ballistic optional
+        # artifacts (animation_manifest + result_mesh + generator_script
+        # + notes).
         breakdown.append(
             _score_simple_presence(
                 "animation_manifest", inputs.animation_manifest_path,
@@ -729,6 +810,277 @@ def _score_pv_specific_axes(
             )
 
     return lame_entry, scl_entry, margin_entry
+
+
+def _score_modal_specific_axes(
+    metrics_path: Path | None,
+    missing: list[str],
+    *,
+    coverage_weight: int,
+    freq_weight: int,
+    shape_weight: int,
+    mass_weight: int,
+) -> tuple[
+    CompletenessBreakdownEntry,
+    CompletenessBreakdownEntry,
+    CompletenessBreakdownEntry,
+    CompletenessBreakdownEntry,
+]:
+    """Phase 12 B — score the four modal-specific axes that replace the
+    ballistic optional-artifact triplet (animation_manifest / result_mesh
+    / notes) for analysis_type == "modal":
+
+      - ``mode_count_coverage``: cumulative effective mass participation
+        in the dominant directions. Read from
+        ``modal_summary.mode_count_coverage.{cumulative_y_pct,
+        cumulative_z_pct}``. Both >=80% → full credit; both >=50% →
+        half credit; either <50% or absent → 0.
+      - ``freq_convergence``: dominant-mode relative error vs the
+        analytical cross-check. Read from
+        ``modal_summary.freq_convergence.dominant_mode_rel_err_pct``.
+        |err| <=1% → full credit; |err| <=5% → half credit; |err|>5%
+        or absent → 0.
+      - ``mode_shape_quality``: Modal Assurance Criterion (MAC) on the
+        dominant-mode pair. Read from
+        ``modal_summary.mode_shape_quality.dominant_mac``. MAC>=0.95
+        → full credit; MAC>=0.80 → half credit; <0.80 or absent → 0.
+      - ``mass_participation``: dominant-mode effective modal mass
+        fraction in the principal direction. Read from
+        ``modal_summary.mass_participation.dominant_mode_pct``. >=50%
+        → full credit; >=20% → half credit; <20% or absent → 0.
+
+    The partial-credit boundaries are documented in the methodology
+    SSOT (`.planning/methodology/analysis_type_completeness_rubric.md`
+    §Modal). Each boundary has its own boundary test in
+    ``tests/test_phase12_modal_advisor.py`` per anti-gaming guard T:-3.
+    """
+    if metrics_path is None or not metrics_path.is_file():
+        missing.append("mode_count_coverage")
+        missing.append("freq_convergence")
+        missing.append("mode_shape_quality")
+        missing.append("mass_participation")
+        return (
+            CompletenessBreakdownEntry(
+                label="mode_count_coverage",
+                points_awarded=0,
+                points_max=coverage_weight,
+                evidence_status="absent",
+            ),
+            CompletenessBreakdownEntry(
+                label="freq_convergence",
+                points_awarded=0,
+                points_max=freq_weight,
+                evidence_status="absent",
+            ),
+            CompletenessBreakdownEntry(
+                label="mode_shape_quality",
+                points_awarded=0,
+                points_max=shape_weight,
+                evidence_status="absent",
+            ),
+            CompletenessBreakdownEntry(
+                label="mass_participation",
+                points_awarded=0,
+                points_max=mass_weight,
+                evidence_status="absent",
+            ),
+        )
+
+    try:
+        raw = json.loads(metrics_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        missing.append("mode_count_coverage")
+        missing.append("freq_convergence")
+        missing.append("mode_shape_quality")
+        missing.append("mass_participation")
+        return (
+            CompletenessBreakdownEntry(
+                label="mode_count_coverage",
+                points_awarded=0,
+                points_max=coverage_weight,
+                evidence_status="unreadable",
+            ),
+            CompletenessBreakdownEntry(
+                label="freq_convergence",
+                points_awarded=0,
+                points_max=freq_weight,
+                evidence_status="unreadable",
+            ),
+            CompletenessBreakdownEntry(
+                label="mode_shape_quality",
+                points_awarded=0,
+                points_max=shape_weight,
+                evidence_status="unreadable",
+            ),
+            CompletenessBreakdownEntry(
+                label="mass_participation",
+                points_awarded=0,
+                points_max=mass_weight,
+                evidence_status="unreadable",
+            ),
+        )
+
+    modal = raw.get("modal_summary") or {}
+    cov = modal.get("mode_count_coverage") or {}
+    freq = modal.get("freq_convergence") or {}
+    shape = modal.get("mode_shape_quality") or {}
+    mass = modal.get("mass_participation") or {}
+
+    # mode_count_coverage axis.
+    if not cov:
+        missing.append("mode_count_coverage")
+        cov_entry = CompletenessBreakdownEntry(
+            label="mode_count_coverage",
+            points_awarded=0,
+            points_max=coverage_weight,
+            evidence_status="absent",
+        )
+    else:
+        y_pct = float(cov.get("cumulative_y_pct", 0.0))
+        z_pct = float(cov.get("cumulative_z_pct", 0.0))
+        worst = min(y_pct, z_pct)
+        if worst >= 80.0:
+            cov_entry = CompletenessBreakdownEntry(
+                label="mode_count_coverage",
+                points_awarded=coverage_weight,
+                points_max=coverage_weight,
+                evidence_status="above_engineering_floor",
+                notes=f"min(cum Y, cum Z) = {worst:.1f}% >= 80%",
+            )
+        elif worst >= 50.0:
+            missing.append("mode_count_coverage_tight")
+            cov_entry = CompletenessBreakdownEntry(
+                label="mode_count_coverage",
+                points_awarded=coverage_weight // 2,
+                points_max=coverage_weight,
+                evidence_status="partial_coverage",
+                notes=f"min(cum Y, cum Z) = {worst:.1f}% in [50, 80)%",
+            )
+        else:
+            missing.append("mode_count_coverage")
+            cov_entry = CompletenessBreakdownEntry(
+                label="mode_count_coverage",
+                points_awarded=0,
+                points_max=coverage_weight,
+                evidence_status="below_engineering_floor",
+                notes=f"min(cum Y, cum Z) = {worst:.1f}% < 50%",
+            )
+
+    # freq_convergence axis.
+    if not freq or "dominant_mode_rel_err_pct" not in freq:
+        missing.append("freq_convergence")
+        freq_entry = CompletenessBreakdownEntry(
+            label="freq_convergence",
+            points_awarded=0,
+            points_max=freq_weight,
+            evidence_status="absent",
+        )
+    else:
+        err = abs(float(freq["dominant_mode_rel_err_pct"]))
+        if err <= 1.0:
+            freq_entry = CompletenessBreakdownEntry(
+                label="freq_convergence",
+                points_awarded=freq_weight,
+                points_max=freq_weight,
+                evidence_status="converged_tight",
+                notes=f"|dom mode rel err| = {err:.3f}% <= 1%",
+            )
+        elif err <= 5.0:
+            missing.append("freq_convergence_tight")
+            freq_entry = CompletenessBreakdownEntry(
+                label="freq_convergence",
+                points_awarded=freq_weight // 2,
+                points_max=freq_weight,
+                evidence_status="converged_engineering",
+                notes=f"|dom mode rel err| = {err:.3f}% in (1, 5]%",
+            )
+        else:
+            missing.append("freq_convergence")
+            freq_entry = CompletenessBreakdownEntry(
+                label="freq_convergence",
+                points_awarded=0,
+                points_max=freq_weight,
+                evidence_status="exceeds_engineering_tolerance",
+                notes=f"|dom mode rel err| = {err:.3f}% > 5%",
+            )
+
+    # mode_shape_quality axis (MAC).
+    if not shape or "dominant_mac" not in shape:
+        missing.append("mode_shape_quality")
+        shape_entry = CompletenessBreakdownEntry(
+            label="mode_shape_quality",
+            points_awarded=0,
+            points_max=shape_weight,
+            evidence_status="absent",
+        )
+    else:
+        mac = float(shape["dominant_mac"])
+        if mac >= 0.95:
+            shape_entry = CompletenessBreakdownEntry(
+                label="mode_shape_quality",
+                points_awarded=shape_weight,
+                points_max=shape_weight,
+                evidence_status="well_resolved",
+                notes=f"dominant MAC = {mac:.3f} >= 0.95",
+            )
+        elif mac >= 0.80:
+            missing.append("mode_shape_quality_tight")
+            shape_entry = CompletenessBreakdownEntry(
+                label="mode_shape_quality",
+                points_awarded=shape_weight // 2,
+                points_max=shape_weight,
+                evidence_status="adequately_resolved",
+                notes=f"dominant MAC = {mac:.3f} in [0.80, 0.95)",
+            )
+        else:
+            missing.append("mode_shape_quality")
+            shape_entry = CompletenessBreakdownEntry(
+                label="mode_shape_quality",
+                points_awarded=0,
+                points_max=shape_weight,
+                evidence_status="poorly_resolved",
+                notes=f"dominant MAC = {mac:.3f} < 0.80",
+            )
+
+    # mass_participation axis.
+    if not mass or "dominant_mode_pct" not in mass:
+        missing.append("mass_participation")
+        mass_entry = CompletenessBreakdownEntry(
+            label="mass_participation",
+            points_awarded=0,
+            points_max=mass_weight,
+            evidence_status="absent",
+        )
+    else:
+        pct = float(mass["dominant_mode_pct"])
+        if pct >= 50.0:
+            mass_entry = CompletenessBreakdownEntry(
+                label="mass_participation",
+                points_awarded=mass_weight,
+                points_max=mass_weight,
+                evidence_status="dominant_mode_significant",
+                notes=f"dominant mode mass = {pct:.1f}% >= 50%",
+            )
+        elif pct >= 20.0:
+            missing.append("mass_participation_tight")
+            mass_entry = CompletenessBreakdownEntry(
+                label="mass_participation",
+                points_awarded=mass_weight // 2,
+                points_max=mass_weight,
+                evidence_status="dominant_mode_marginal",
+                notes=f"dominant mode mass = {pct:.1f}% in [20, 50)%",
+            )
+        else:
+            missing.append("mass_participation")
+            mass_entry = CompletenessBreakdownEntry(
+                label="mass_participation",
+                points_awarded=0,
+                points_max=mass_weight,
+                evidence_status="dominant_mode_negligible",
+                notes=f"dominant mode mass = {pct:.1f}% < 20%",
+            )
+
+    return cov_entry, freq_entry, shape_entry, mass_entry
 
 
 def _entry_to_dict(entry: CompletenessBreakdownEntry) -> dict[str, Any]:

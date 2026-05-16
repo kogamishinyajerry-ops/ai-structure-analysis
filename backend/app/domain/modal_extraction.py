@@ -49,6 +49,10 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.services.reporting._schema_versions import (
+    CONVERGENCE_STUDY_SCHEMA_VERSION,
+)
+
 # ---------------------------------------------------------------------
 # SSOT constants
 # ---------------------------------------------------------------------
@@ -252,7 +256,10 @@ def parse_modal_dat(dat_path: Path, case_id: str) -> ModalResult:
         case_id=case_id,
         modes=tuple(modes),
         extraction_method="lanczos",  # CalculiX default for *FREQUENCY
-        schema_version="1.2.0",  # MUST stay in lockstep with CONVERGENCE_STUDY_SCHEMA_VERSION
+        # Phase 12 B fix to slice-A LOW finding: import the SSOT
+        # constant rather than hard-coding "1.2.0". A future MINOR
+        # bump now propagates here automatically.
+        schema_version=CONVERGENCE_STUDY_SCHEMA_VERSION,
     )
 
 

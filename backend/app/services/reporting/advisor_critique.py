@@ -286,6 +286,68 @@ class StubAdvisor:
                 "that the time step is dominated by the smallest "
                 "element rather than by mass scaling cutoff."
             )
+        elif context.convergence_kind == "modal":
+            # Phase 12 B — modal-specific advisor concerns. The four
+            # named concerns mirror the four modal-rubric quality axes
+            # so a reviewer reading the critique alongside the
+            # completeness scorecard sees a 1:1 correspondence.
+
+            # Mode-shape MAC concern (always surfaced — every modal
+            # case should review mode-shape orthogonality on the
+            # dominant pair).
+            mesh_concerns.append(
+                "modal convergence kind: review the Modal Assurance "
+                "Criterion (MAC) on the dominant-mode pair. A MAC < 0.95 "
+                "between successive mesh-refinement levels indicates the "
+                "mode shape is not yet converged — refine before reporting "
+                "the natural frequency as a Tier 1 candidate."
+            )
+
+            # Lanczos extraction method question (CalculiX default; the
+            # reviewer must confirm shift-and-invert convergence on
+            # poorly-conditioned cases, e.g., near-rigid-body modes).
+            bc_questions.append(
+                "modal convergence kind: CalculiX's *FREQUENCY card uses "
+                "Lanczos extraction by default. On poorly-conditioned "
+                "models (near-rigid-body modes; large mass ratios across "
+                "the geometry), Lanczos can stall or miss modes. Confirm "
+                "the dat-file STEP block reports the requested number of "
+                "modes converged without restart cycles."
+            )
+
+            # Mass participation prompt — read mode_count_target from
+            # context.extra if present (closes Phase 11 retro §2:
+            # AdvisorContext.extra was an unread slot).
+            target = context.extra.get("mode_count_target") if context.extra else None
+            if target is not None:
+                bc_questions.append(
+                    f"modal convergence kind: cumulative effective mass "
+                    f"participation in each significant direction MUST "
+                    f"reach >= 80% across the {target} extracted modes "
+                    f"before the modal sweep is considered complete. "
+                    f"Critical modes may otherwise be missing from the "
+                    f"sum (ASCE 7 / Eurocode 8 engineering-practice floor)."
+                )
+            else:
+                bc_questions.append(
+                    "modal convergence kind: cumulative effective mass "
+                    "participation in each significant direction MUST "
+                    "reach >= 80% across the extracted mode set before "
+                    "the modal sweep is considered complete (ASCE 7 / "
+                    "Eurocode 8 engineering-practice floor). Reviewer: "
+                    "supply `mode_count_target` in context.extra to pin "
+                    "the requested mode count for this case."
+                )
+
+            # Frequency tolerance vs analytical (load-bearing failure mode).
+            failure_modes.append(
+                "modal convergence kind: a numerical-vs-analytical "
+                "frequency residual > 5% on the dominant bending mode "
+                "indicates the structured mesh is too coarse OR the "
+                "Lanczos extraction has not converged. Both failure modes "
+                "look identical in the dat-file output; refine the mesh "
+                "AND request more modes to disambiguate before reporting."
+            )
 
         # Convergence-verdict correlated concerns.
         if context.convergence_combined_verdict == "candidate_observed_unstable":

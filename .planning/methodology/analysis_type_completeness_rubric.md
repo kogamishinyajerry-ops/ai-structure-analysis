@@ -47,7 +47,7 @@ Adding a new analysis type **requires updating both the tuple and the weights di
 | `energy_audit` | 15 | `energy_audit.status` inside metrics JSON: `closed_aggregate` = full, `partial_candidate` = 2/3, anything else = 0. |
 | `convergence_study` | 10–15 | `combined_verdict` or `convergence_combined_verdict` inside the convergence-study JSON. |
 
-## Ballistic / explicit_dynamics / modal — closing 25 pts
+## Ballistic / explicit_dynamics — closing 25 pts
 
 | Axis | Weight | Rationale |
 |---|---:|---|
@@ -56,7 +56,39 @@ Adding a new analysis type **requires updating both the tuple and the weights di
 | `generator_script` | 5 | Source-of-truth Python generator for the deck. |
 | `notes` | 5 | Free-form narrative `NOTES.md`. |
 
-> **modal note (Phase 12 A)**: the modal rubric reuses every ballistic axis verbatim — same weights, same scorers. `animation_manifest` is load-bearing here (mode-shape playback is the canonical modal artifact); `result_mesh` carries the per-mode deformed-mesh; `ballistic_metrics` carries the participation-factor + effective-modal-mass blocks under the inherited filename. The analytical Euler-Bernoulli cross-check (§Modal cross-check below) is a **separate slice-B advisor concern**, not a completeness axis.
+## modal — substantiated rubric (Phase 12 B replacement)
+
+The Phase 12 A modal rubric started as a verbatim copy of the ballistic rubric so the modal case could land before the advisor + scorer surfaces existed. Phase 12 B replaces the inherited ballistic optional-artifact axes with four modal-specific quality gates that mirror the four named slice-B advisor concerns, so a reviewer reading the completeness scorecard alongside the advisor critique sees a 1:1 correspondence.
+
+**Universal axes (rebalanced for modal)**:
+
+| Axis | Weight | Scored by |
+|---|---:|---|
+| `starter_deck` | 10 | File presence at `starter_deck_path`. |
+| `engine_deck` | 10 | File presence at `engine_deck_path`. |
+| `ballistic_metrics` | 10 | File presence at `ballistic_metrics_path`. Filename inheritance — the JSON inside carries the `modal_summary` block. |
+| `energy_audit` | 10 | `energy_audit.status` inside metrics JSON: `closed_aggregate` = full, `partial_candidate` = 2/3, anything else = 0. (Strain-energy distribution on a modal sweep.) |
+| `convergence_study` | 10 | `combined_verdict` inside convergence-study JSON, dispatched by the `convergence_kind == "modal"` branch of `trust_score._score_convergence_axis` (scores on `mode_count_sweep` only). |
+
+**Modal-specific axes (Phase 12 B substantiation, closing 50 pts)** — all read from `ballistic_metrics_path` JSON under a `modal_summary` block:
+
+| Axis | Weight | Scored by |
+|---|---:|---|
+| `mode_count_coverage` | 15 | `modal_summary.mode_count_coverage.{cumulative_y_pct, cumulative_z_pct}`: both ≥ 80% → full; both ≥ 50% → half; either < 50% or absent → 0. |
+| `freq_convergence` | 15 | `modal_summary.freq_convergence.dominant_mode_rel_err_pct`: \|err\| ≤ 1% → full; \|err\| ≤ 5% → half; > 5% or absent → 0. |
+| `mode_shape_quality` | 10 | `modal_summary.mode_shape_quality.dominant_mac`: MAC ≥ 0.95 → full; MAC ≥ 0.80 → half; < 0.80 or absent → 0. |
+| `mass_participation` | 10 | `modal_summary.mass_participation.dominant_mode_pct`: ≥ 50% → full; ≥ 20% → half; < 20% or absent → 0. |
+
+**Why these four**:
+
+* `mode_count_coverage` enforces the conservative engineering-practice floor (ASCE 7 / Eurocode 8) that cumulative effective mass participation in each significant direction must reach ≥ 80% before the modal sweep is considered complete. Missing critical modes is the silent-failure mode for modal extraction; this axis surfaces the gap.
+* `freq_convergence` substantiates the Euler-Bernoulli analytical cross-check from `modal_extraction` slice A as a completeness signal alongside its existing slice-B advisor concern. A reviewer who never opens the advisor critique still sees the convergence quality on the scorecard.
+* `mode_shape_quality` enforces the MAC discipline — orthogonality between successive mesh-refinement levels — that distinguishes a genuinely converged modal sweep from one where the natural frequency happens to be close but the shape is wrong.
+* `mass_participation` is the single most consequential per-mode quality gate; a "dominant" mode with < 20% effective mass is likely a numerical artifact, not a physical mode.
+
+**Dropped from modal**: `animation_manifest` / `result_mesh` / `notes`. These were inherited verbatim in Phase 12 A as scaffolding; the four named modal-specific axes do their load-bearing work (the MAC quality gate captures what the animation would; mass participation captures what the notes narrative would). `generator_script` is also dropped from the modal rubric because the optional-artifact axes are not part of the universal contract; a future case-author who wants to add it can do so without a rebalance because the import-time audit requires only the five universal axes.
+
+**Math check**: 5 universal × 10 + 4 modal-specific (15+15+10+10) = 50 + 50 = 100. Audited at module import by `_assert_rubric_weights_consistent()`.
 
 ## linear_static_pv — closing 25 pts (replacement axes)
 
@@ -125,9 +157,10 @@ To change a weight in `ANALYSIS_TYPE_RUBRIC_WEIGHTS`:
 
 ## Closure cross-references
 
-- Service module: `backend/app/services/reporting/case_completeness.py` (Phase 11 A; Phase 12 A added named PV weight constants — see `WEIGHT_BALLISTIC_METRICS_PV` / `WEIGHT_CONVERGENCE_STABLE_PV`)
-- Schema constants: `backend/app/services/reporting/_schema_versions.py::CASE_COMPLETENESS_SCHEMA_VERSION` (1.1.0); `CONVERGENCE_STUDY_SCHEMA_VERSION` (1.2.0 — Phase 12 A MINOR adds `modal` + `mode_count_sweep`)
+- Service module: `backend/app/services/reporting/case_completeness.py` (Phase 11 A; Phase 12 A added named PV weight constants `WEIGHT_BALLISTIC_METRICS_PV` / `WEIGHT_CONVERGENCE_STABLE_PV`; Phase 12 B substantiated the modal rubric with `WEIGHT_MODE_COUNT_COVERAGE` / `WEIGHT_FREQ_CONVERGENCE` / `WEIGHT_MODE_SHAPE_QUALITY` / `WEIGHT_MASS_PARTICIPATION` + modal-universal axes `WEIGHT_*_MODAL`)
+- Schema constants: `backend/app/services/reporting/_schema_versions.py::CASE_COMPLETENESS_SCHEMA_VERSION` (1.2.0 — Phase 12 B MINOR adds the four modal-specific axes); `CONVERGENCE_STUDY_SCHEMA_VERSION` (1.2.0 — Phase 12 A MINOR adds `modal` + `mode_count_sweep`)
 - Modal cross-check module: `backend/app/domain/modal_extraction.py` (Phase 12 A — Euler-Bernoulli β·L SSOT, .dat parser, residual report, cumulative mass-participation utility)
 - Trust-score downstream: `backend/app/services/reporting/trust_score.py::_score_convergence_axis` honors `convergence_kind` for `linear_static` and `modal` cases
-- Tests: `tests/test_phase11_analysis_type_rubric.py` (30 tests at slice A close); `tests/test_phase12_modal_extraction.py` (modal slice-A pins)
-- Blueprint dispositions: `.planning/FM-04A_PHASE11_BLUEPRINT.md` §3.A (Phase 11 A); `.planning/FM-04A_PHASE12_BLUEPRINT.md` §3.A (Phase 12 A)
+- Advisor downstream: `backend/app/services/reporting/advisor_critique.py::StubAdvisor.produce` carries a `convergence_kind == "modal"` branch surfacing four named modal concerns + reading `context.extra["mode_count_target"]` (closes Phase 11 retro §2)
+- Tests: `tests/test_phase11_analysis_type_rubric.py` (Phase 11 A); `tests/test_phase12_modal_extraction.py` (Phase 12 A); `tests/test_phase12_modal_advisor.py` (Phase 12 B — advisor branch + modal rubric substantiation pins)
+- Blueprint dispositions: `.planning/FM-04A_PHASE11_BLUEPRINT.md` §3.A (Phase 11 A); `.planning/FM-04A_PHASE12_BLUEPRINT.md` §3.A / §3.B (Phase 12 A + B)

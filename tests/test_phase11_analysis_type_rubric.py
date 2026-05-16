@@ -3,7 +3,10 @@
 Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
 Pins:
-* CASE_COMPLETENESS_SCHEMA_VERSION == "1.1.0" (Phase 11 A MINOR bump).
+* CASE_COMPLETENESS_SCHEMA_VERSION — version pin lives in
+  ``tests/test_schema_versions_stamping.py`` (parametrized). Phase 11 A
+  shipped 1.1.0; Phase 12 B bumped to 1.2.0 (modal substantiation).
+  The single Phase-11 pin was retired in Phase 12 B to keep one SSOT.
 * CONVERGENCE_STUDY_SCHEMA_VERSION — version pin lives in
   ``tests/test_schema_versions_stamping.py`` (parametrized). Phase 11 A
   shipped 1.1.0; Phase 12 A bumped to 1.2.0 (modal axis). The single
@@ -47,9 +50,6 @@ from pathlib import Path
 
 import pytest
 from app.services.reporting import case_completeness as cc
-from app.services.reporting._schema_versions import (
-    CASE_COMPLETENESS_SCHEMA_VERSION,
-)
 from app.services.reporting.case_completeness import (
     ANALYSIS_TYPE_RUBRIC_WEIGHTS,
     ANALYSIS_TYPE_TUPLE,
@@ -65,10 +65,9 @@ from app.services.reporting.case_completeness import (
 # ---------------------------------------------------------------------
 
 
-def test_case_completeness_schema_version_is_1_1_0() -> None:
-    assert CASE_COMPLETENESS_SCHEMA_VERSION == "1.1.0"
-
-
+# Phase 12 B: CASE_COMPLETENESS_SCHEMA_VERSION pin retired here in
+# favor of the centralized parametrized pin in
+# ``tests/test_schema_versions_stamping.py`` (which tracks every bump).
 # Phase 12 A: CONVERGENCE_STUDY_SCHEMA_VERSION pin retired here in
 # favor of the centralized parametrized pin in
 # ``tests/test_schema_versions_stamping.py`` (which tracks every bump).
@@ -342,7 +341,11 @@ def test_json_envelope_carries_analysis_type_on_pv(tmp_path: Path) -> None:
     score = score_case_completeness(_pv_inputs(tmp_path))
     payload = json.loads(render_case_completeness_json(score))
     assert payload["analysis_type"] == "linear_static_pv"
-    assert payload["schema_version"] == "1.1.0"
+    # schema_version pin is centralized in tests/test_schema_versions_stamping.py
+    # (Phase 12 B retirement of the duplicate Phase-11-era literal pin).
+    # Here we just assert the envelope carries SOME version string in the
+    # 1.x family.
+    assert payload["schema_version"].startswith("1.")
 
 
 # ---------------------------------------------------------------------
