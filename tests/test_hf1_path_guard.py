@@ -36,9 +36,29 @@ def guard():
 def test_zone_has_all_nine_categories(guard):
     """Per AR-2026-04-25-001 §3: HF1.1-HF1.7 (preserved) + HF1.8 (path-guard
     self-protection, NEW) + HF1.9 (.github/workflows/, NEW). docs/adr/ and
-    docs/governance/ moved out of HF1 entirely (now PR-protected zone)."""
+    docs/governance/ moved out of HF1 entirely (now PR-protected zone).
+
+    Phase 13 D (AR-2026-05-16-001) split HF1.7 into HF1.7a (signed-registry
+    hard-stop, ZONE entry's rule prefix updated) + HF1.7b (`*-candidate`
+    writable carve-out, applied in ``find_violations`` via
+    ``_is_candidate_carveout`` rather than as a ZONE entry). The carve-out
+    has no ZONE row of its own because it is a NEGATIVE rule (a "do NOT
+    trigger" rather than a "do trigger"). The set of ZONE rule prefixes
+    therefore covers HF1.1-HF1.6 + HF1.7a + HF1.8 + HF1.9; HF1.7b lives in
+    the helper, not the ZONE table.
+    """
     rule_prefixes = {entry.rule.split(" — ", 1)[0] for entry in guard.ZONE}
-    expected = {f"HF1.{i}" for i in range(1, 10)}
+    expected = {
+        "HF1.1",
+        "HF1.2",
+        "HF1.3",
+        "HF1.4",
+        "HF1.5",
+        "HF1.6",
+        "HF1.7a",  # split per AR-2026-05-16-001
+        "HF1.8",
+        "HF1.9",
+    }
     assert rule_prefixes == expected, (
         f"missing or extra HF1 zone categories: "
         f"got {sorted(rule_prefixes)}, expected {sorted(expected)}"
