@@ -21,7 +21,7 @@
 // Tier 1 / Tier 2 engineering candidate; not signed validation;
 // not benchmark agreement.
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import {
   ONBOARDING_LS_KEY,
@@ -32,6 +32,11 @@ import {
   type OnboardingStorage,
 } from '../onboardingTour';
 import type { UiMode } from '../uiMode';
+import {
+  installPolishStyles,
+  POLISH_CLASS_ADVANCED_MODE_PROMO,
+} from './polishStyles';
+import { useFocusTrap } from './useFocusTrap';
 
 export interface AdvancedModePromoProps {
   /** Current UI mode. The promo only shows when this is 'basic'. */
@@ -90,6 +95,13 @@ export function AdvancedModePromo({
   }, [tourDismissedInSession, resolvedTourStorage, resolvedPromptStorage]);
 
   const visible = shouldShowAdvancedPrompt(uiMode, tourDismissed, promptShown);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // FM-04a Phase 29 C — install polish styles for the entrance
+  // animation class + focus-trap (WCAG 2.4.3).
+  useEffect(() => {
+    installPolishStyles();
+  }, []);
+  useFocusTrap({ containerRef, active: visible });
 
   const markShownAndHide = useCallback(() => {
     resolvedPromptStorage.save(true);
@@ -109,13 +121,14 @@ export function AdvancedModePromo({
 
   return (
     <div
+      ref={containerRef}
       data-testid="advanced-mode-promo"
       role="dialog"
       aria-label="advanced mode promo"
       aria-live="polite"
       style={STYLES.backdrop}
     >
-      <div style={STYLES.card}>
+      <div className={POLISH_CLASS_ADVANCED_MODE_PROMO} style={STYLES.card}>
         <div style={STYLES.header}>
           <span style={STYLES.eyebrow}>Phase 25 C · Phase 28 D</span>
         </div>

@@ -15,6 +15,13 @@ import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
 import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
+// FM-04a Phase 29 C — App-root onboarding mounts.
+import { OnboardingTour } from './components/OnboardingTour';
+import { AdvancedModePromo } from './components/AdvancedModePromo';
+import {
+  createUiModeStorage as createAppUiModeStorage,
+  type UiMode as AppUiMode,
+} from './uiMode';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 // FM-04a Phase 21 D — most Visual-tab panel imports moved to
 // VisualTabPanel.tsx (extraction); App.tsx keeps only the ones
@@ -831,6 +838,21 @@ function App() {
           : activeCaseId
             ? 'Run a solver smoke or export the report with Tier 0 wording'
             : 'Review the uploaded report; select a gallery case before solver run';
+  // FM-04a Phase 29 C — App-root uiMode + tour-dismissed state.
+  // The OnboardingTour + AdvancedModePromo mount at App-root so
+  // tabs other than Visual receive onboarding. uiMode is forwarded
+  // to ResultMeshPlaybackPanel via the optional `uiMode` prop so
+  // the panel honors the same state.
+  const appUiModeStorage = useMemo(() => createAppUiModeStorage(), []);
+  const [appUiMode, setAppUiMode] = useState<AppUiMode>(() =>
+    appUiModeStorage.load(),
+  );
+  const [appTourDismissedInSession, setAppTourDismissedInSession] = useState(false);
+  const handleAppUiModeChange = (next: AppUiMode) => {
+    setAppUiMode(next);
+    appUiModeStorage.save(next);
+  };
+
   // FM-04a Phase 29 B — useTrustSections custom hook encapsulates
   // the 7-section build with granular per-section memoization
   // (Phase 28 D semantics preserved). Replaces ~240 LOC of inline
@@ -1201,6 +1223,20 @@ function App() {
 
   return (
     <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '240px 300px 1fr', height: '100vh' }}>
+      {/* FM-04a Phase 29 C — onboarding tour + advanced-mode auto-
+          promote mounted at App-root so reviewers landing on the
+          Narrative tab (or any future tab) still see onboarding.
+          Phase 28 D's prior mount was inside ResultMeshPlaybackPanel
+          and the Visual-tab-only coupling was flagged by the UX
+          audit. The promo's visibility is fully self-gated by its
+          storage predicate; uiMode lives in App-root via
+          appUiModeStorage / appUiMode below. */}
+      <OnboardingTour onDismissed={() => setAppTourDismissedInSession(true)} />
+      <AdvancedModePromo
+        uiMode={appUiMode}
+        tourDismissedInSession={appTourDismissedInSession}
+        onSwitchToAdvanced={() => handleAppUiModeChange('advanced')}
+      />
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
@@ -1342,6 +1378,8 @@ function App() {
                                             caseId={activeCaseId}
                                             apiBase={API_BASE}
                                             enabled={activeTab === 'visual'}
+                                            uiMode={appUiMode}
+                                            onUiModeChange={handleAppUiModeChange}
                                           />
                                         )}
                                         <div

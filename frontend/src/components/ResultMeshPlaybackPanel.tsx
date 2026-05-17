@@ -31,11 +31,8 @@ import type { StressComponent } from '../stressDerivatives';
 // panel because that's where Phase 23 B/C/D added the new control
 // surfaces. The tour persists dismissal in localStorage so it shows
 // exactly once across sessions.
-import { OnboardingTour } from './OnboardingTour';
-// FM-04a Phase 28 D — Advanced-mode auto-promote prompt. Rendered as
-// a sibling to OnboardingTour; visibility is fully self-gated by
-// the persisted prompt-shown flag and current uiMode.
-import { AdvancedModePromo } from './AdvancedModePromo';
+// FM-04a Phase 29 C — OnboardingTour + AdvancedModePromo mounts
+// lifted to App.tsx (App-root). Imports removed from this panel.
 // FM-04a Phase 24 D — multi-node probe list. Extends Phase 23 C
 // single-pick to a comparison list (max 8). State owned here so the
 // panel can render the table next to the viewport.
@@ -78,6 +75,12 @@ interface ResultMeshPlaybackPanelProps {
    * but requires σ-tensor payload not currently in result_mesh.json.
    * Documented gap in the Phase 22 D commit; deferred. */
   fieldUnits?: string;
+  /** FM-04a Phase 29 C — when supplied, the parent (App-root) owns
+   * the Basic/Advanced UI mode state. When undefined, the panel
+   * falls back to its prior internal state (preserves backward
+   * compatibility with tests that mount the panel directly). */
+  uiMode?: UiMode;
+  onUiModeChange?: (next: UiMode) => void;
 }
 
 interface ProjectedPolygon {
@@ -96,6 +99,8 @@ export function ResultMeshPlaybackPanel({
   apiBase,
   enabled = true,
   fieldUnits = 'Pa',
+  uiMode: uiModeProp,
+  onUiModeChange,
 }: ResultMeshPlaybackPanelProps) {
   const [result, setResult] = useState<{
     caseId: string;
@@ -135,10 +140,9 @@ export function ResultMeshPlaybackPanel({
   // after the animation timeout. While non-null the <tr> still
   // renders with the unmount CSS class.
   const [exitingProbeLabel, setExitingProbeLabel] = useState<number | null>(null);
-  // FM-04a Phase 28 D — in-session signal that the onboarding tour
-  // just dismissed. Triggers the Advanced-mode auto-promote prompt
-  // to re-read its storage flags without a page reload.
-  const [tourDismissedInSession, setTourDismissedInSession] = useState(false);
+  // FM-04a Phase 29 C — tour-dismissed signal is now owned by
+  // App-root since both OnboardingTour and AdvancedModePromo were
+  // lifted there. State removed from this panel.
   // FM-04a Phase 28 C — "Restored N probes from your last session"
   // toast. Set on initial case mount if loadProbeList returned >= 1
   // entries; cleared after 4 seconds (or click).
@@ -151,8 +155,20 @@ export function ResultMeshPlaybackPanel({
   // contract: toggling basic does NOT clear the threshold filter /
   // section cut / probe list / field component — only the UI is
   // hidden. Pinned by Phase 25 C tests.
+  // FM-04a Phase 29 C — uiMode ownership: if parent supplies it
+  // (App-root path), use the prop verbatim and forward changes
+  // through onUiModeChange. Otherwise fall back to internal state
+  // + storage adapter (preserves Phase 25 C contract for direct-
+  // mount tests).
   const uiModeStorage = useMemo(() => createUiModeStorage(), []);
-  const [uiMode, setUiMode] = useState<UiMode>(() => uiModeStorage.load());
+  const [internalUiMode, setInternalUiMode] = useState<UiMode>(() =>
+    uiModeProp ?? uiModeStorage.load(),
+  );
+  const uiMode = uiModeProp ?? internalUiMode;
+  const setUiMode = (next: UiMode) => {
+    if (uiModeProp === undefined) setInternalUiMode(next);
+    onUiModeChange?.(next);
+  };
   // FM-04a Phase 27 C — install Apple-tier polish stylesheet on
   // first mount. Used by gradient slider tracks (value-filter min/max)
   // and the section-cut readout. ProbeListPanel installs the same
@@ -188,7 +204,9 @@ export function ResultMeshPlaybackPanel({
   }, [caseId, probeList]);
   const handleUiModeChange = (next: UiMode) => {
     setUiMode(next);
-    uiModeStorage.save(next);
+    // Only the internal-state path needs to persist — the App-root
+    // path persists in its own hook.
+    if (uiModeProp === undefined) uiModeStorage.save(next);
   };
   const showThresholdFilter = shouldShowFeature(uiMode, 'threshold-filter');
   const showSectionCut = shouldShowFeature(uiMode, 'section-cut');
@@ -281,12 +299,11 @@ export function ResultMeshPlaybackPanel({
         gridTemplateRows: 'auto 1fr',
       }}
     >
-      <OnboardingTour onDismissed={() => setTourDismissedInSession(true)} />
-      <AdvancedModePromo
-        uiMode={uiMode}
-        tourDismissedInSession={tourDismissedInSession}
-        onSwitchToAdvanced={() => handleUiModeChange('advanced')}
-      />
+      {/* FM-04a Phase 29 C — OnboardingTour + AdvancedModePromo
+          lifted to App-root so reviewers landing on tabs OTHER than
+          Visual still see onboarding. When the panel is mounted
+          standalone (tests / future direct-mount paths), the tour
+          will simply not surface — App-root is the canonical owner. */}
       {/* FM-04a Phase 28 C — "Restored N probes" toast on case
           mount. Closes Phase 27 D's silent restoration miss. Click
           dismisses; auto-fades after 4 seconds. */}

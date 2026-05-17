@@ -4,7 +4,9 @@
 // dismissal to localStorage on first user interaction so the tour
 // surfaces exactly once.
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+
+import { useFocusTrap } from './useFocusTrap';
 
 import {
   ONBOARDING_INITIAL_STATE,
@@ -81,7 +83,13 @@ export function OnboardingTour({
     });
   }, [resolvedStorage, onDismissed]);
 
-  if (!shouldShowTour(state, persistedDismissed)) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const visible = shouldShowTour(state, persistedDismissed);
+  // FM-04a Phase 29 C — focus-trap (WCAG 2.4.3). Active only while
+  // the overlay is visible.
+  useFocusTrap({ containerRef, active: visible });
+
+  if (!visible) {
     return null;
   }
   const step = currentStep(state);
@@ -91,7 +99,7 @@ export function OnboardingTour({
   // Respects prefers-reduced-motion via CSS media query in the
   // injected <style> tag.
   return (
-    <div data-testid="onboarding-tour" role="dialog" aria-label="onboarding tour" style={STYLES.backdrop}>
+    <div ref={containerRef} data-testid="onboarding-tour" role="dialog" aria-label="onboarding tour" style={STYLES.backdrop}>
       <style>{ONBOARDING_TOUR_KEYFRAMES}</style>
       <div style={STYLES.card} className="onboarding-tour-card">
         <div style={STYLES.header}>

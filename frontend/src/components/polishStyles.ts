@@ -56,6 +56,7 @@ export const POLISH_CLASS_PROBE_ROW_UNMOUNT = 'fm04a-probe-row-unmount';
 export const POLISH_CLASS_GRADIENT_SLIDER = 'fm04a-gradient-slider';
 export const POLISH_CLASS_SECTION_CUT_READOUT = 'fm04a-section-cut-readout';
 export const POLISH_CLASS_RESTORED_TOAST = 'fm04a-restored-toast';
+export const POLISH_CLASS_ADVANCED_MODE_PROMO = 'fm04a-advanced-mode-promo';
 
 const POLISH_CSS = `
 @keyframes fm04a-probe-row-fade-in {
@@ -68,6 +69,10 @@ const POLISH_CSS = `
 }
 @keyframes fm04a-restored-toast-fade-in {
   from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fm04a-advanced-mode-promo-fade-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
@@ -96,6 +101,10 @@ const POLISH_CSS = `
   align-items: center;
   animation: fm04a-restored-toast-fade-in 200ms ease-out;
 }
+.${POLISH_CLASS_ADVANCED_MODE_PROMO} {
+  animation: fm04a-advanced-mode-promo-fade-slide-in 200ms ease-out;
+}
+
 .${POLISH_CLASS_RESTORED_TOAST} button {
   background: transparent;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -152,7 +161,8 @@ const POLISH_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .${POLISH_CLASS_PROBE_ROW_MOUNT},
   .${POLISH_CLASS_PROBE_ROW_UNMOUNT},
-  .${POLISH_CLASS_RESTORED_TOAST} {
+  .${POLISH_CLASS_RESTORED_TOAST},
+  .${POLISH_CLASS_ADVANCED_MODE_PROMO} {
     animation: none;
   }
   /* Phase 29 B — chevron transition disabled in reduce mode. The
