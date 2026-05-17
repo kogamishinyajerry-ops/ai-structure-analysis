@@ -16,6 +16,7 @@ import type { PickedNodeInfo } from './viewportRaycaster';
 import {
   PROBE_LIST_MAX,
   serializeProbeListAsCsv,
+  buildDiffPairs,
   type ProbeListState,
   probeCount,
 } from './probeList';
@@ -45,6 +46,23 @@ function formatScientific(value: number): string {
   if (!Number.isFinite(value)) return '—';
   if (value === 0) return '0';
   return value.toExponential(2);
+}
+
+/** FM-04a Phase 26 C — Δ formatter for the diff column.
+ *
+ * `null` → "—" (baseline itself, or unavailable due to null
+ *           fieldValue on either side)
+ * 0      → "0" (no sign-prefix wart)
+ * +Δ     → "+1.23e+4"
+ * −Δ     → "−1.23e+4"   (Unicode minus, not hyphen-minus — visually
+ *           distinguishable from font-rendering hyphens)
+ */
+function formatDiff(value: number | null): string {
+  if (value === null) return '—';
+  if (!Number.isFinite(value)) return '—';
+  if (value === 0) return '0';
+  const mag = Math.abs(value).toExponential(2);
+  return value > 0 ? `+${mag}` : `−${mag}`;
 }
 
 export function ProbeListPanel({
@@ -125,44 +143,86 @@ export function ProbeListPanel({
           No pinned probes. Click a node in the viewport, then "+ Pin".
         </div>
       ) : (
-        <table style={STYLES.table} data-testid="probe-list-table">
-          <thead>
-            <tr>
-              <th style={STYLES.th}>Node</th>
-              <th style={STYLES.th}>X (m)</th>
-              <th style={STYLES.th}>Y (m)</th>
-              <th style={STYLES.th}>Z (m)</th>
-              <th style={STYLES.th}>Value ({fieldUnits})</th>
-              <th style={STYLES.th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.entries.map((entry, index) => (
-              <tr key={entry.label} data-testid={`probe-row-${index}`}>
-                <td data-testid={`probe-row-${index}-label`} style={STYLES.td}>
-                  {entry.label}
-                </td>
-                <td style={STYLES.tdMono}>{formatScientific(entry.position[0])}</td>
-                <td style={STYLES.tdMono}>{formatScientific(entry.position[1])}</td>
-                <td style={STYLES.tdMono}>{formatScientific(entry.position[2])}</td>
-                <td style={STYLES.tdMono}>
-                  {entry.fieldValue === null ? '—' : formatScientific(entry.fieldValue)}
-                </td>
-                <td style={STYLES.td}>
-                  <button
-                    type="button"
-                    data-testid={`probe-remove-${entry.label}`}
-                    onClick={() => onRemove?.(entry.label)}
-                    style={STYLES.removeButton}
-                    aria-label={`Remove probe for node ${entry.label}`}
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        (() => {
+          // FM-04a Phase 26 C — diff column is rendered only when
+          // the list has ≥2 entries (a baseline + something to
+          // compare). With a single entry the column would be
+          // entirely null and just adds visual noise.
+          const showDiff = state.entries.length >= 2;
+          const diffPairs = buildDiffPairs(state);
+          return (
+            <table style={STYLES.table} data-testid="probe-list-table">
+              <thead>
+                <tr>
+                  <th style={STYLES.th}>Node</th>
+                  <th style={STYLES.th}>X (m)</th>
+                  <th style={STYLES.th}>Y (m)</th>
+                  <th style={STYLES.th}>Z (m)</th>
+                  <th style={STYLES.th}>Value ({fieldUnits})</th>
+                  {showDiff && (
+                    <th
+                      style={STYLES.th}
+                      data-testid="probe-diff-header"
+                      title="Δ vs first-pinned probe (baseline)"
+                    >
+                      Δ vs #1
+                    </th>
+                  )}
+                  <th style={STYLES.th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {diffPairs.map((pair, index) => {
+                  const { entry, diff, isBaseline } = pair;
+                  return (
+                    <tr key={entry.label} data-testid={`probe-row-${index}`}>
+                      <td
+                        data-testid={`probe-row-${index}-label`}
+                        style={STYLES.td}
+                      >
+                        {entry.label}
+                        {isBaseline && showDiff && (
+                          <span
+                            data-testid={`probe-row-${index}-baseline-tag`}
+                            style={STYLES.baselineTag}
+                            aria-label="baseline probe"
+                          >
+                            base
+                          </span>
+                        )}
+                      </td>
+                      <td style={STYLES.tdMono}>{formatScientific(entry.position[0])}</td>
+                      <td style={STYLES.tdMono}>{formatScientific(entry.position[1])}</td>
+                      <td style={STYLES.tdMono}>{formatScientific(entry.position[2])}</td>
+                      <td style={STYLES.tdMono}>
+                        {entry.fieldValue === null ? '—' : formatScientific(entry.fieldValue)}
+                      </td>
+                      {showDiff && (
+                        <td
+                          style={STYLES.tdMono}
+                          data-testid={`probe-row-${index}-diff`}
+                        >
+                          {formatDiff(diff)}
+                        </td>
+                      )}
+                      <td style={STYLES.td}>
+                        <button
+                          type="button"
+                          data-testid={`probe-remove-${entry.label}`}
+                          onClick={() => onRemove?.(entry.label)}
+                          style={STYLES.removeButton}
+                          aria-label={`Remove probe for node ${entry.label}`}
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          );
+        })()
       )}
     </div>
   );
@@ -311,5 +371,19 @@ const STYLES: Record<string, CSSProperties> = {
     fontSize: '0.9rem',
     lineHeight: 1,
     cursor: 'pointer',
+  },
+  baselineTag: {
+    display: 'inline-block',
+    marginLeft: 6,
+    padding: '0 6px',
+    background: 'rgba(37, 99, 235, 0.22)',
+    color: '#93c5fd',
+    border: '1px solid rgba(37, 99, 235, 0.4)',
+    borderRadius: 3,
+    fontSize: '0.58rem',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    verticalAlign: 'middle',
   },
 };

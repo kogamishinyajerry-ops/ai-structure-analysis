@@ -119,10 +119,13 @@ describe('Phase 24 D — probeList reducer', () => {
     expect(state.entries.map((e) => e.label)).toEqual([7, 42, 99, 11, 3])
 
     // Now render and verify the rendered row order matches.
+    // FM-04a Phase 26 C — the baseline row (index 0) now carries a
+    // "base" tag inside the same <td>; use textContent contains to
+    // tolerate the extra annotation.
     render(<ProbeListPanel state={state} />)
     for (let i = 0; i < state.entries.length; i++) {
       const labelEl = screen.getByTestId(`probe-row-${i}-label`)
-      expect(labelEl.textContent?.trim()).toBe(String(state.entries[i].label))
+      expect(labelEl.textContent).toContain(String(state.entries[i].label))
     }
   })
 
@@ -151,8 +154,10 @@ describe('Phase 24 D — ProbeListPanel component', () => {
     state = addProbeEntry(state, mockPick(42, 9.87e6))
     render(<ProbeListPanel state={state} />)
     expect(screen.getByTestId('probe-list-table')).toBeTruthy()
-    expect(screen.getByTestId('probe-row-0-label').textContent).toBe('7')
-    expect(screen.getByTestId('probe-row-1-label').textContent).toBe('42')
+    // FM-04a Phase 26 C — baseline row carries a "base" tag inside
+    // the same <td>; assert contains, not strict equality.
+    expect(screen.getByTestId('probe-row-0-label').textContent).toContain('7')
+    expect(screen.getByTestId('probe-row-1-label').textContent).toContain('42')
   })
 
   it('fires onRemove(label) when a remove button is clicked', () => {

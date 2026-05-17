@@ -123,3 +123,49 @@ function escapeCsvCell(value: string): string {
   }
   return value;
 }
+
+/** FM-04a Phase 26 C — diff pair against the baseline probe.
+ *
+ * Each entry pairs with its absolute Δ vs entry 0 (the BASELINE,
+ * which is the FIRST-pinned probe by D:-2 PIN-ORDER contract):
+ *
+ *   - baseline (index 0) itself has `diff: null` (Δ vs self is 0
+ *     but rendering null avoids the meaningless 0 row that
+ *     suggests a real measurement)
+ *   - any entry whose `fieldValue` is null gets `diff: null`
+ *   - any entry where the baseline's `fieldValue` is null gets
+ *     `diff: null` (no anchor to subtract from)
+ *   - otherwise `diff = entry.fieldValue - baseline.fieldValue`
+ *
+ * Reviewer narrative: "Pin the reference point first, then pin the
+ * comparison points. The Δ column reads stress concentration ratios
+ * without context-switching back to the legend gradient."
+ *
+ * Pure: returns a new array; mutates nothing.
+ */
+export interface ProbeDiffPair {
+  entry: PickedNodeInfo;
+  /** Δ = entry.fieldValue − baseline.fieldValue, or null when either
+   * side is null OR when this row IS the baseline. */
+  diff: number | null;
+  /** Whether this row is the baseline (entry index 0). */
+  isBaseline: boolean;
+}
+
+export function buildDiffPairs(state: ProbeListState): ProbeDiffPair[] {
+  if (state.entries.length === 0) return [];
+  const baseline = state.entries[0];
+  return state.entries.map((entry, index) => {
+    if (index === 0) {
+      return { entry, diff: null, isBaseline: true };
+    }
+    if (entry.fieldValue === null || baseline.fieldValue === null) {
+      return { entry, diff: null, isBaseline: false };
+    }
+    return {
+      entry,
+      diff: entry.fieldValue - baseline.fieldValue,
+      isBaseline: false,
+    };
+  });
+}
