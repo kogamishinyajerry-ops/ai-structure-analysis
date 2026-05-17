@@ -109,20 +109,32 @@ def test_tier_2_boundary_carries_not_signed_validation() -> None:
 @pytest.mark.parametrize(
     "case_id",
     [
-        "cylinder-pv-candidate",
+        # Phase 19 B promoted cylinder-pv-candidate via the verdict
+        # overlay — it is NO LONGER in the all-tier-1 set. The other
+        # 4 cohort cases stay at the Phase 18 B baseline.
         "rod-wave-impact-candidate",
         "swing-arm-fatigue-candidate",
         "ballistic-plate-candidate",
         "leak-shell-candidate",
     ],
 )
-def test_phase_18b_baseline_registry_is_all_tier_1(case_id: str) -> None:
-    """T:-4 — every registry entry is tier_1_candidate at Phase 18 B
-    baseline. Promoting cylinder-pv-candidate to tier_2_validated is
-    a deliberate future commit (Slice C or later, after ccx + analytical
-    cross-check is wired)."""
-    assert CLAIM_TIER_REGISTRY[case_id] == "tier_1_candidate"
+def test_un_cross_checked_cases_stay_tier_1(case_id: str) -> None:
+    """T:-4 (Phase 18 B baseline preservation) — every case WITHOUT a
+    `golden_samples/<case_id>/cross_check_verdict.yaml` artifact stays
+    at tier_1_candidate. Phase 19 B promotion only fires for the case
+    whose verdict overlay says PASS."""
     assert get_claim_tier(case_id) == "tier_1_candidate"
+
+
+def test_phase_19b_cylinder_pv_promoted_to_tier_2_validated() -> None:
+    """Phase 19 B verdict-overlay-driven promotion. The
+    `golden_samples/cylinder-pv-candidate/cross_check_verdict.yaml`
+    artifact (written by `scripts/cross_check_cylinder_pv.py` against
+    real ccx) records the analytical-vs-observed residual <
+    CROSS_CHECK_TOLERANCE_PCT (5%). The registry loader reads it at
+    module-load and promotes the case. This test pins that the
+    promotion is in effect."""
+    assert get_claim_tier("cylinder-pv-candidate") == "tier_2_validated"
 
 
 def test_unregistered_case_id_defaults_to_tier_1_candidate() -> None:
@@ -143,28 +155,52 @@ def test_get_claim_tier_refuses_signed_registry_shape(signed_id: str) -> None:
 
 def test_claim_tier_label_for_returns_tier_1_human_string() -> None:
     """``claim_tier_label_for`` composes the registry + labels; for
-    Phase 18 B baseline cases it returns the Phase 1-17 string."""
+    cases still at the Phase 18 B baseline (no cross-check verdict)
+    it returns the Phase 1-17 string. cylinder-pv-candidate was
+    promoted by Phase 19 B; pick a still-tier-1 case for this pin."""
     assert (
-        claim_tier_label_for("cylinder-pv-candidate")
+        claim_tier_label_for("rod-wave-impact-candidate")
         == "Tier 1 engineering candidate"
     )
 
 
 def test_claim_boundary_for_returns_tier_1_boundary_string() -> None:
     """``claim_boundary_for`` composes the registry + boundaries; for
-    Phase 18 B baseline cases it returns the Phase 1-17 string."""
+    cases still at the Phase 18 B baseline (no cross-check verdict)
+    it returns the Phase 1-17 string."""
     assert (
-        claim_boundary_for("cylinder-pv-candidate")
+        claim_boundary_for("rod-wave-impact-candidate")
         == "tier1_engineering_candidate; not_signed_validation; "
         "not_benchmark_agreement"
     )
 
 
+def test_claim_tier_label_for_returns_tier_2_label_after_promotion() -> None:
+    """Phase 19 B — cylinder-pv-candidate carries the Tier 2 human
+    label via the verdict overlay."""
+    assert (
+        claim_tier_label_for("cylinder-pv-candidate")
+        == "Tier 2 real-solver validated"
+    )
+
+
+def test_claim_boundary_for_returns_tier_2_boundary_after_promotion() -> None:
+    """Phase 19 B — cylinder-pv-candidate boundary copy carries the
+    cross-check substantiation marker."""
+    assert (
+        claim_boundary_for("cylinder-pv-candidate")
+        == "tier2_real_solver_validated; not_signed_validation; "
+        "cross_check_against_analytical"
+    )
+
+
 def test_register_tier_2_validated_promotes_known_case() -> None:
     """Promotion seam works; registry mutates; subsequent lookup
-    returns tier_2_validated. We restore the entry after to keep test
-    isolation."""
-    case_id = "cylinder-pv-candidate"
+    returns tier_2_validated. We pick a case that's still at
+    tier_1_candidate baseline (Phase 19 B promoted cylinder-pv via
+    the verdict overlay; pick rod-wave-impact here for an
+    independent promotion test) and restore the entry after."""
+    case_id = "rod-wave-impact-candidate"
     original = CLAIM_TIER_REGISTRY[case_id]
     try:
         register_tier_2_validated(case_id)

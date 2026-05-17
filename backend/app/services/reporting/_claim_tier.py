@@ -69,9 +69,14 @@ because real-solver validation is NOT signed validation, and adds
 ``cross_check_against_analytical`` to signal the substantiation."""
 
 # Per-case tier registry. The single source of truth for which case
-# gets which tier. Phase 18 B baseline: every case still at
-# tier_1_candidate; Slice A end-to-end ccx success is the gate for
-# flipping cylinder-pv-candidate.
+# gets which tier. Phase 19 B introduces verdict-driven promotion:
+# the static dict below is the BASELINE; the module-load hook
+# `_apply_verdict_overlay` below reads any
+# `golden_samples/<case_id>/cross_check_verdict.yaml` artifact
+# present and promotes the case to tier_2_validated when the
+# verdict is "PASS". Phase 18 B baseline (every case at
+# tier_1_candidate) is preserved unchanged when no verdict file
+# exists.
 CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     "cylinder-pv-candidate": "tier_1_candidate",
     "rod-wave-impact-candidate": "tier_1_candidate",
@@ -79,6 +84,42 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     "ballistic-plate-candidate": "tier_1_candidate",
     "leak-shell-candidate": "tier_1_candidate",
 }
+
+
+def _apply_verdict_overlay() -> None:
+    """Read each case's `golden_samples/<case_id>/cross_check_verdict.yaml`
+    (if present) and promote tier when the verdict is "PASS".
+
+    Phase 19 B promotion seam — the cross-check service writes the
+    verdict; this loader reads it at module-load. Failure modes
+    (missing file / malformed json / wrong verdict value) all
+    gracefully leave the registry at the baseline tier_1_candidate
+    — the loader never raises so a stale or absent verdict cannot
+    break import.
+    """
+    import json
+    from pathlib import Path
+
+    here = Path(__file__).resolve()
+    # backend/app/services/reporting/_claim_tier.py → repo root is 4 up
+    repo_root = here.parents[4]
+    golden = repo_root / "golden_samples"
+    if not golden.is_dir():
+        return
+    for case_id in list(CLAIM_TIER_REGISTRY):
+        verdict_path = golden / case_id / "cross_check_verdict.yaml"
+        if not verdict_path.is_file():
+            continue
+        try:
+            payload = json.loads(verdict_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        verdict = payload.get("verdict")
+        if verdict == "PASS":
+            CLAIM_TIER_REGISTRY[case_id] = "tier_2_validated"
+
+
+_apply_verdict_overlay()
 
 _SIGNED_REGISTRY_PATTERN = re.compile(r"^GS-\d{3}$")
 """HF1.7a defense — signed cases are NOT in this registry. A lookup
