@@ -24,6 +24,7 @@ import {
   ResultMeshWebGLViewport,
   type SectionCutState,
 } from './ResultMeshWebGLViewport';
+import type { StressComponent } from '../stressDerivatives';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -73,6 +74,11 @@ export function ResultMeshPlaybackPanel({
   // half the mesh along one axis; default null (no cut).
   const [deformationScale, setDeformationScale] = useState<number>(1);
   const [sectionCut, setSectionCut] = useState<SectionCutState | null>(null);
+  // FM-04a Phase 23 B — stress-tensor component switcher. Defaults to
+  // Mises; when the frame's elements carry a stressTensor the viewport
+  // recolors by the selected derivative. Falls back gracefully to the
+  // scalar `value` field when no tensor is present.
+  const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -305,6 +311,7 @@ export function ResultMeshPlaybackPanel({
                   playing={playing}
                   deformationScale={deformationScale}
                   sectionCut={sectionCut}
+                  fieldComponent={fieldComponent}
                 />
               ) : (
               <>
@@ -385,19 +392,65 @@ export function ResultMeshPlaybackPanel({
                       max {formatNumber(summary.valueMax)} {fieldUnits}
                     </span>
                   </div>
-                  <div
-                    data-testid="legend-field-component"
-                    style={{
-                      color: 'var(--text-muted)',
-                      fontSize: '0.62rem',
-                      letterSpacing: '0.04em',
-                      textTransform: 'uppercase',
-                      marginTop: 2,
-                    }}
-                    title="Phase 22 D honest scope: result_mesh.json carries a single scalar (Von Mises by default). σ_xx / σ_yy / σ_zz / max-principal switcher requires tensor payload upgrade."
-                  >
-                    {summary.fieldLabel || 'Von Mises'}
-                  </div>
+                  {/* FM-04a Phase 23 B — field-component switcher.
+                      When any element in the current frame carries a
+                      stressTensor, the dropdown is enabled and
+                      switches the WebGL viewport's per-vertex coloring
+                      via the tensor-derivative helpers. When the
+                      frame's elements have no tensor, the dropdown
+                      stays disabled with a tooltip naming the gap. */}
+                  {(() => {
+                    const tensorPresent = (summary.selectedFrame?.elements ?? []).some(
+                      (el) => Boolean(el.stressTensor),
+                    );
+                    return (
+                      <div
+                        data-testid="legend-field-component"
+                        style={{ marginTop: 2 }}
+                      >
+                        <select
+                          data-testid="legend-field-component-select"
+                          aria-label="Field component"
+                          disabled={!tensorPresent}
+                          value={fieldComponent}
+                          onChange={(event) =>
+                            setFieldComponent(event.target.value as StressComponent)
+                          }
+                          title={
+                            tensorPresent
+                              ? 'Switch field component (σ_xx / σ_yy / σ_zz / shear / Mises / principal)'
+                              : 'Stress tensor not present in result_mesh.json; only scalar value path active.'
+                          }
+                          style={{
+                            background: 'transparent',
+                            color: tensorPresent
+                              ? 'var(--text-primary)'
+                              : 'var(--text-muted)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 3,
+                            padding: '2px 6px',
+                            fontSize: '0.66rem',
+                            fontFamily:
+                              'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            cursor: tensorPresent ? 'pointer' : 'not-allowed',
+                            width: '100%',
+                          }}
+                        >
+                          <option value="mises">Von Mises</option>
+                          <option value="sxx">σ xx</option>
+                          <option value="syy">σ yy</option>
+                          <option value="szz">σ zz</option>
+                          <option value="sxy">τ xy</option>
+                          <option value="syz">τ yz</option>
+                          <option value="sxz">τ xz</option>
+                          <option value="max_principal">σ 1 (max principal)</option>
+                          <option value="min_principal">σ 3 (min principal)</option>
+                        </select>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>

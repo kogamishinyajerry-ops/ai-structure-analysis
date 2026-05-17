@@ -6,6 +6,15 @@ export interface ResultMeshNode {
   partRoles?: string[];
 }
 
+export interface ResultMeshStressTensor {
+  sxx: number;
+  syy: number;
+  szz: number;
+  sxy: number;
+  syz: number;
+  sxz: number;
+}
+
 export interface ResultMeshElement {
   label?: number;
   type?: string;
@@ -16,6 +25,12 @@ export interface ResultMeshElement {
   alive?: boolean;
   field?: string;
   value?: number;
+  /** FM-04a Phase 23 B — optional per-element stress tensor. When
+   * present, the WebGL viewport can render σ_xx / σ_yy / σ_zz /
+   * shear components / Mises / max-principal via the legend's
+   * field-component switcher. When absent, the viewport falls back
+   * to coloring by `value` (Phase 22 D path). */
+  stressTensor?: ResultMeshStressTensor;
 }
 
 export interface ResultMeshFrame {
@@ -158,7 +173,29 @@ function readElement(raw: Record<string, unknown>): ResultMeshElement {
     alive: asBoolean(raw.alive),
     field: asString(raw.field),
     value: asNumber(raw.value),
+    stressTensor: readStressTensor(raw.stressTensor),
   };
+}
+
+function readStressTensor(value: unknown): ResultMeshStressTensor | undefined {
+  if (!isRecord(value)) return undefined;
+  const sxx = asNumber(value.sxx);
+  const syy = asNumber(value.syy);
+  const szz = asNumber(value.szz);
+  const sxy = asNumber(value.sxy);
+  const syz = asNumber(value.syz);
+  const sxz = asNumber(value.sxz);
+  if (
+    sxx === undefined
+    || syy === undefined
+    || szz === undefined
+    || sxy === undefined
+    || syz === undefined
+    || sxz === undefined
+  ) {
+    return undefined;
+  }
+  return { sxx, syy, szz, sxy, syz, sxz };
 }
 
 function readModelTree(value: unknown): ResultMeshModelTreeNode[] {

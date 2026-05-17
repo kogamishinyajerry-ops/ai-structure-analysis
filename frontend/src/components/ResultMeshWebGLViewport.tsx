@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { ResultMeshElement, ResultMeshFrame } from '../resultMeshPlayback';
+import { componentValue, type StressComponent } from '../stressDerivatives';
 
 // FM-04a Phase 21 C — minimal three.js WebGL viewport for the
 // dynamic result-mesh playback. Reads the SAME `selectedFrame` shape
@@ -49,6 +50,11 @@ interface ResultMeshWebGLViewportProps {
   /** FM-04a Phase 22 B — section-cut clipping plane. When defined,
    * one half of the mesh is hidden. */
   sectionCut?: SectionCutState | null;
+  /** FM-04a Phase 23 B — stress-tensor component switcher. When the
+   * frame elements carry `stressTensor`, this prop selects which
+   * scalar derives the per-element color. Defaults to 'mises'.
+   * Elements without a tensor fall back to the `value` field. */
+  fieldComponent?: StressComponent;
 }
 
 // Tet (4-node) faces, 0-indexed into the connectivity array.
@@ -152,10 +158,17 @@ function colorForElement(
   element: ResultMeshElement,
   valueMin: number,
   valueMax: number,
+  fieldComponent: StressComponent = 'mises',
 ): [number, number, number] {
   if (element.alive === false) return [0.94, 0.27, 0.27]; // red for deleted
   if (element.partRole === 'projectile') return [0.9, 0.92, 0.94];
-  const v = element.value ?? valueMin;
+  // FM-04a Phase 23 B — when the element carries a stressTensor, the
+  // per-component switcher derives the scalar; fall back to `value`
+  // when no tensor present (Phase 22 D path).
+  const fallback = element.value ?? valueMin;
+  const v = element.stressTensor
+    ? componentValue(element.stressTensor, fieldComponent, fallback)
+    : fallback;
   const t = valueMax > valueMin ? (v - valueMin) / (valueMax - valueMin) : 0;
   return gradientStop(t);
 }
@@ -231,6 +244,7 @@ function buildBufferGeometry(
     nextFrame?: ResultMeshFrame | null;
     tInterp?: number;
     deformationScale?: number;
+    fieldComponent?: StressComponent;
   } = {},
 ): {
   geometry: THREE.BufferGeometry;
@@ -246,7 +260,12 @@ function buildBufferGeometry(
 
   const triangles: Triangle[] = [];
   for (const element of frame.elements) {
-    const color = colorForElement(element, valueMin, valueMax);
+    const color = colorForElement(
+      element,
+      valueMin,
+      valueMax,
+      options.fieldComponent ?? 'mises',
+    );
     triangles.push(...elementTriangles(element, nodeCoords, color));
   }
 
@@ -295,6 +314,7 @@ export function ResultMeshWebGLViewport({
   playing = false,
   deformationScale = 1,
   sectionCut = null,
+  fieldComponent = 'mises',
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -400,6 +420,7 @@ export function ResultMeshWebGLViewport({
         nextFrame: nextFrame ?? null,
         tInterp: animTInterp,
         deformationScale,
+        fieldComponent,
       },
     );
 
@@ -452,7 +473,7 @@ export function ResultMeshWebGLViewport({
     }
     setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut]);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent]);
 
   // Phase 22 B — animation loop. When `playing && nextFrame`, drive
   // `animTInterp` from 0 → 1 over a fixed duration so the parent's

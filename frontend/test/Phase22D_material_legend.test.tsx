@@ -173,9 +173,13 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
     )
     expect(screen.getByTestId('legend-min').textContent).toMatch(/\bPa\b/)
     expect(screen.getByTestId('legend-max').textContent).toMatch(/\bPa\b/)
-    expect(
-      screen.getByTestId('legend-field-component').textContent,
-    ).toBe('Von Mises')
+    // Phase 22 D shipped a read-only field-component chip; Phase 23 B
+    // promoted it to a dropdown switcher. The current selection is
+    // exposed via the select's value. Default is 'mises' (Von Mises).
+    const select = screen.getByTestId(
+      'legend-field-component-select',
+    ) as HTMLSelectElement
+    expect(select.value).toBe('mises')
   })
 
   it('overrides the units suffix when a custom value is passed', async () => {
