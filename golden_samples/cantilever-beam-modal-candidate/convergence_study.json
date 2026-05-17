@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "cantilever-beam-modal-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-17T18:06:19.383713+00:00",
+  "notes": "Phase 30 D PROOF-OF-PATTERN convergence study. Three gmsh C3D10 quadratic-tet mesh refinements (-clmax = 0.012/0.008/0.005 m). NOTE: gmsh only takes -clmax (upper bound) and the .geo file's Points fix the floor at cl=0.012; values larger than 0.012 produce identical meshes, so the lo refinement equals the canonical Phase 26 A mesh and the study refines FROM there. Each entry produced by a live ccx 2.23 + gmsh run (2026-05-18). Analytical reference is Euler-Bernoulli first natural frequency for a clamped-free uniform beam.",
+  "points": [
+    {
+      "label": "lo (cl=12mm)",
+      "refinement_param": 0.012,
+      "node_count": 1895,
+      "element_count": 814,
+      "observed_value": 66.92993,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.13255638048176335,
+      "verdict": "PASS"
+    },
+    {
+      "label": "mid (cl=8mm)",
+      "refinement_param": 0.008,
+      "node_count": 4731,
+      "element_count": 2233,
+      "observed_value": 66.91101,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.10425053933239802,
+      "verdict": "PASS"
+    },
+    {
+      "label": "hi (cl=5mm)",
+      "refinement_param": 0.005,
+      "node_count": 16125,
+      "element_count": 8802,
+      "observed_value": 66.89732,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.08376919866985877,
+      "verdict": "PASS"
+    }
+  ]
+}
