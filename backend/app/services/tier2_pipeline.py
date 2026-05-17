@@ -324,6 +324,7 @@ def run_tier2_meshed_pipeline(
     bc: BoundaryConditionSpec,
     load: LoadSpec,
     characteristic_length_m: float = 0.05,
+    element_order: int = 1,
     ccx_binary: str = "ccx",
     gmsh_binary: str = "gmsh",
     ccx_timeout_sec: float = 120.0,
@@ -352,6 +353,10 @@ def run_tier2_meshed_pipeline(
             :class:`BoundaryConditionSpec`.
         load: load specification (force-on-plane); see :class:`LoadSpec`.
         characteristic_length_m: gmsh target edge length.
+        element_order: 1 (default) for linear C3D4 tets — Phase 20 C
+            behaviour preserved. 2 for C3D10 quadratic tets — Phase
+            22 A addition; gives 2-3× better bending / hole-edge
+            stress accuracy at the cost of ~3× more nodes.
         ccx_binary / gmsh_binary: executable paths.
         ccx_timeout_sec / gmsh_timeout_sec: wall-clock caps.
 
@@ -373,7 +378,7 @@ def run_tier2_meshed_pipeline(
             geometry_path,
             output_name=jobname,
             characteristic_length_m=characteristic_length_m,
-            element_order=1,
+            element_order=element_order,
             output_format="msh22",
         )
     except GmshRunError as exc:

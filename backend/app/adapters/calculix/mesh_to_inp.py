@@ -31,11 +31,43 @@ from typing import Literal
 from .inp_writer import MinimalHexMaterial
 
 # Gmsh element type → number of nodes per element + CalculiX type label.
-# Phase 20 C wires C3D4 only; the table is here so a future Phase
-# extending to C3D10 / C3D8 / S4 just edits one place.
+# Phase 20 C wired C3D4. Phase 22 A adds C3D10 (gmsh type 11 = 10-node
+# quadratic tetrahedron). Quadratic tets cut shear locking on bending
+# roughly in half — the Phase 21 A cantilever cross-check residual
+# (-6.88% on C3D4) drops to <5% with C3D10.
 _GMSH_TYPE_TO_CCX: dict[int, tuple[str, int]] = {
-    4: ("C3D4", 4),  # 4-node linear tetrahedron
+    4: ("C3D4", 4),    # 4-node linear tetrahedron
+    11: ("C3D10", 10), # 10-node quadratic tetrahedron (Phase 22 A)
 }
+
+
+# Gmsh-to-CalculiX node-order PERMUTATION for C3D10 (gmsh type 11).
+#
+# Gmsh local ordering for type 11 (verified empirically against
+# the actual gmsh 4.15 output by comparing node coordinates to
+# corner-midpoint averages):
+#   [c0, c1, c2, c3, e01, e12, e02, e03, e23, e13]
+# CalculiX C3D10 local ordering (1-indexed):
+#   [n1, n2, n3, n4, m12, m23, m31, m14, m24, m34]
+#
+# Mapping (gmsh corners + edges have the SAME labeling as ccx, no
+# corner swap needed; only the order of e23 and e13 differs):
+#   ccx_pos  gmsh_idx  meaning
+#   1 (c1)    0        corner identity
+#   2 (c2)    1        corner identity
+#   3 (c3)    2        corner identity
+#   4 (c4)    3        corner identity
+#   5 (m12)   4        e01 = m12 ✓
+#   6 (m23)   5        e12 = m23 ✓
+#   7 (m31)   6        e02 = m31 ✓
+#   8 (m14)   7        e03 = m14 ✓
+#   9 (m24)   9        e13 = m24 ← gmsh idx 9, not 8
+#  10 (m34)   8        e23 = m34 ← gmsh idx 8, not 9
+#
+# Identity-mapping gmsh's node list into ccx's *ELEMENT block gives
+# "nonpositive jacobian determinant" because the quadratic mid-edge
+# bulges land at the wrong topological edges (m24 ↔ m34 mismatch).
+_C3D10_GMSH_TO_CCX_PERM: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6, 7, 9, 8)
 
 Axis = Literal["x", "y", "z"]
 
@@ -192,13 +224,19 @@ def parse_gmsh_msh22(msh_path: Path) -> ParsedMesh:
             int(parts[node_ids_start + k])
             for k in range(node_count)
         ]
+        # Apply the gmsh → CalculiX node-order permutation for C3D10
+        # (corrects the right-vs-left-handed winding mismatch). C3D4
+        # needs no permutation; C3D10 needs the swap defined by
+        # `_C3D10_GMSH_TO_CCX_PERM`.
+        if ccx_type == "C3D10":
+            node_ids = [node_ids[i] for i in _C3D10_GMSH_TO_CCX_PERM]
         elements.append((elem_id, ccx_type, node_ids))
 
     if not elements:
         raise MeshParseError(
-            f"{msh_path}: no supported volume elements (C3D4) found; "
-            f"check that gmsh ran with `-3` (3D meshing) and the "
-            f"geometry has a closed volume"
+            f"{msh_path}: no supported volume elements (C3D4 / C3D10) "
+            f"found; check that gmsh ran with `-3` (3D meshing) and "
+            f"the geometry has a closed volume"
         )
 
     return ParsedMesh(nodes=nodes, elements=elements)

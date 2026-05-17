@@ -96,6 +96,12 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # tier_2_validated waits for a Phase 21 Kirsch (σ_max = 3·σ_∞)
     # cross-check runner.
     "plate-with-hole-candidate": "tier_1_candidate",
+    # Phase 22 A — Euler buckling column candidate. The runner at
+    # `app.services.cross_check.buckling_runner.run_buckling_cross_check`
+    # composes a hex column INP with *BUCKLE step + Euler analytical
+    # cross-check (P_cr = π²EI/(kL)²). Promotion to tier_2_validated
+    # via verdict YAML when residual < 10%.
+    "euler-column-candidate": "tier_1_candidate",
 }
 
 

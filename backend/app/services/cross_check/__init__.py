@@ -64,6 +64,20 @@ from .plate_kirsch_runner import (
     run_plate_kirsch_cross_check,
     write_plate_kirsch_verdict_yaml,
 )
+# Phase 22 A — Euler column buckling cross-check + runner.
+from .buckling_euler import (
+    BUCKLING_CROSS_CHECK_TOLERANCE_PCT,
+    EULER_K_FACTOR,
+    EndCondition,
+    EulerValidityError,
+    compute_euler_critical_load,
+)
+from .buckling_runner import (
+    BucklingCrossCheckResult,
+    BucklingCrossCheckVerdict,
+    run_buckling_cross_check,
+    write_buckling_verdict_yaml,
+)
 
 __all__ = [
     "CROSS_CHECK_TOLERANCE_PCT",
@@ -97,4 +111,14 @@ __all__ = [
     "PlateKirschCrossCheckVerdict",
     "run_plate_kirsch_cross_check",
     "write_plate_kirsch_verdict_yaml",
+    # Phase 22 A
+    "BUCKLING_CROSS_CHECK_TOLERANCE_PCT",
+    "EULER_K_FACTOR",
+    "EndCondition",
+    "EulerValidityError",
+    "compute_euler_critical_load",
+    "BucklingCrossCheckResult",
+    "BucklingCrossCheckVerdict",
+    "run_buckling_cross_check",
+    "write_buckling_verdict_yaml",
 ]
