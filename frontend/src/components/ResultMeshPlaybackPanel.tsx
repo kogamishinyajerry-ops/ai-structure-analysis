@@ -42,6 +42,16 @@ import {
   clearAllProbes,
   removeProbeEntry,
 } from './probeList';
+// FM-04a Phase 25 C — Basic/Advanced UI mode. Hides advanced
+// control surfaces in basic mode without destroying their state
+// (C:-1 anti-gaming guard: state preservation across toggle).
+import {
+  UI_MODE_INITIAL,
+  createUiModeStorage,
+  shouldShowFeature,
+  type UiMode,
+} from '../uiMode';
+import { UiModeToggle } from './UiModeToggle';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -101,6 +111,20 @@ export function ResultMeshPlaybackPanel({
   // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
   const [probeList, setProbeList] = useState(PROBE_LIST_INITIAL_STATE);
+  // FM-04a Phase 25 C — Basic/Advanced UI mode. State preservation
+  // contract: toggling basic does NOT clear the threshold filter /
+  // section cut / probe list / field component — only the UI is
+  // hidden. Pinned by Phase 25 C tests.
+  const uiModeStorage = useMemo(() => createUiModeStorage(), []);
+  const [uiMode, setUiMode] = useState<UiMode>(() => uiModeStorage.load());
+  const handleUiModeChange = (next: UiMode) => {
+    setUiMode(next);
+    uiModeStorage.save(next);
+  };
+  const showThresholdFilter = shouldShowFeature(uiMode, 'threshold-filter');
+  const showSectionCut = shouldShowFeature(uiMode, 'section-cut');
+  const showFieldComponentSwitcher = shouldShowFeature(uiMode, 'field-component-switcher');
+  const showProbeListPanel = shouldShowFeature(uiMode, 'probe-list-panel');
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -208,6 +232,7 @@ export function ResultMeshPlaybackPanel({
             </div>
             <h3 style={{ margin: 0, fontSize: '1rem' }}>Result mesh playback</h3>
           </div>
+          <UiModeToggle mode={uiMode} onChange={handleUiModeChange} />
         </div>
         <div
           style={{
@@ -481,21 +506,24 @@ export function ResultMeshPlaybackPanel({
                   })()}
                 </div>
               )}
-              {/* FM-04a Phase 24 D — multi-node probe list (max 8). */}
-              <div style={{ marginTop: '10px' }}>
-                <ProbeListPanel
-                  state={probeList}
-                  activePick={activePick}
-                  fieldUnits={fieldUnits}
-                  onPinActive={() => {
-                    if (activePick) {
-                      setProbeList((s) => addProbeEntry(s, activePick));
-                    }
-                  }}
-                  onRemove={(label) => setProbeList((s) => removeProbeEntry(s, label))}
-                  onClearAll={() => setProbeList((s) => clearAllProbes(s))}
-                />
-              </div>
+              {/* FM-04a Phase 24 D — multi-node probe list (max 8).
+                  FM-04a Phase 25 C gated by uiMode advanced. */}
+              {showProbeListPanel && (
+                <div style={{ marginTop: '10px' }}>
+                  <ProbeListPanel
+                    state={probeList}
+                    activePick={activePick}
+                    fieldUnits={fieldUnits}
+                    onPinActive={() => {
+                      if (activePick) {
+                        setProbeList((s) => addProbeEntry(s, activePick));
+                      }
+                    }}
+                    onRemove={(label) => setProbeList((s) => removeProbeEntry(s, label))}
+                    onClearAll={() => setProbeList((s) => clearAllProbes(s))}
+                  />
+                </div>
+              )}
             </div>
 
             <div
