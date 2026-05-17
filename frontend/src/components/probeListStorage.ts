@@ -41,7 +41,13 @@ export function probeListStorageKey(caseId: string): string {
 
 /** Load the persisted probe list for `caseId`. Returns initial
  * state on ANY failure (missing key / malformed JSON / wrong shape /
- * storage unavailable). Never throws. */
+ * storage unavailable). Never throws.
+ *
+ * FM-04a Phase 29 D — emit a single console.warn on parse/shape
+ * failure so reviewers can debug a corrupted localStorage payload
+ * instead of getting a silent reset. The warning is keyed by
+ * caseId + reason; missing-key (raw === null) is NOT a warning
+ * (that's the normal first-load path). */
 export function loadProbeList(
   caseId: string,
   globalRef: typeof globalThis = globalThis,
@@ -51,10 +57,26 @@ export function loadProbeList(
   try {
     const raw = ls.getItem(probeListStorageKey(caseId));
     if (!raw) return PROBE_LIST_INITIAL_STATE;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isValidPersistedShape(parsed)) return PROBE_LIST_INITIAL_STATE;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      console.warn(
+        `[FM-04a probeListStorage] discarded malformed JSON for case '${caseId}': ${(err as Error).message}`,
+      );
+      return PROBE_LIST_INITIAL_STATE;
+    }
+    if (!isValidPersistedShape(parsed)) {
+      console.warn(
+        `[FM-04a probeListStorage] discarded wrong-shape payload for case '${caseId}'`,
+      );
+      return PROBE_LIST_INITIAL_STATE;
+    }
     return { entries: parsed.entries };
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[FM-04a probeListStorage] storage access failed for case '${caseId}': ${(err as Error).message}`,
+    );
     return PROBE_LIST_INITIAL_STATE;
   }
 }
