@@ -75,10 +75,14 @@ SNAP_3_LABEL = "2026-05-17T140000Z"
 # ---------------------------------------------------------------------
 
 
-def test_cohort_anomalies_schema_at_1_1_0() -> None:
-    """Phase 16 B MINOR bump COHORT_ANOMALIES_SCHEMA_VERSION
-    1.0.0 → 1.1.0 with bump-history docstring."""
-    assert COHORT_ANOMALIES_SCHEMA_VERSION == "1.1.0"
+def test_cohort_anomalies_schema_at_1_2_0() -> None:
+    """Phase 16 B introduced MINOR bump 1.0.0 → 1.1.0; Phase 17 A
+    introduced the subsequent 1.1.0 → 1.2.0 bump. The current SSOT
+    is 1.2.0; this test pins that. (Phase 16 B's
+    ``cohort_drift_attribution`` field is preserved intact at 1.2.0
+    — see ``test_back_compat_1_0_0_reader_still_parses`` for the
+    additive-bump back-compat audit.)"""
+    assert COHORT_ANOMALIES_SCHEMA_VERSION == "1.2.0"
 
 
 # ---------------------------------------------------------------------
@@ -350,7 +354,9 @@ def test_cohort_anomalies_envelope_carries_cohort_drift_field(
 
     report = build_cohort_anomalies(repo_root=seeded_5_case_arc)
     payload = json.loads(render_cohort_anomalies_json(report))
-    assert payload["schema_version"] == "1.1.0"
+    # Phase 17 A bumped 1.1.0 → 1.2.0 (additive); the Phase 16 B
+    # ``cohort_drift_attribution`` field is preserved at 1.2.0.
+    assert payload["schema_version"] == "1.2.0"
     assert payload["claim_tier"] == "Tier 1 engineering candidate"
     assert "not_signed_validation" in payload["claim_boundary"]
     assert "not_benchmark_agreement" in payload["claim_boundary"]

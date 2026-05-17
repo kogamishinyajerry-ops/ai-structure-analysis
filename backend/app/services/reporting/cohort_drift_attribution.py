@@ -1,4 +1,4 @@
-"""Tier 1 candidate cohort-scoped drift attribution (FM-04a Phase 16 B).
+"""Tier 1 candidate cohort-scoped drift attribution (FM-04a Phase 16 B + 17 A).
 
 Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
@@ -16,14 +16,21 @@ reads "case X has z = -2.0 on energy_audit" and asks "by HOW MUCH
 did the energy axis drop, expressed as a percentage of the axis
 weight?". Phase 15 C answered this PER CASE on the alerts + timeline
 envelopes. Phase 16 B answers the same question AT COHORT SCOPE on
-the cohort-anomalies envelope:
+the cohort-anomalies envelope (LATEST-pair view). Phase 17 A adds
+the CUMULATIVE view at cohort scope:
 
-* For every case in the cohort, compute the per-axis percentage delta
-  between the cohort's latest two snapshots (consumer of the SSOT
-  :func:`compute_drift_attribution`).
-* Find the (case, axis) pair with the largest absolute delta_pct.
-* Surface that pair as ``dominant_case_id`` + ``cohort_dominant_axis``
-  + ``cohort_max_abs_delta_pct``.
+* :func:`compute_cohort_drift_attribution` (Phase 16 B) — for every
+  case, compute the per-axis percentage delta between the cohort's
+  LATEST 2 snapshots. Answers "which case dominated cohort-wide
+  drift on the LATEST pair?".
+* :func:`compute_cohort_cumulative_drift_attribution` (Phase 17 A) —
+  for every case, compute the per-axis percentage delta between the
+  cohort's EARLIEST and LATEST snapshots. Answers "which case
+  dominated cohort-wide drift across the WHOLE arc?".
+* Both surface the same shape (``dominant_case_id`` +
+  ``cohort_dominant_axis`` + ``cohort_max_abs_delta_pct``) and share
+  the same SSOT aggregation + strictly-exceed floor + NaN-sentinel
+  logic via :func:`_aggregate_cohort_drift_for_pair`.
 
 What this surface does NOT do
 -----------------------------
@@ -126,6 +133,33 @@ def _discover_latest_snapshot_pair(repo_root: Path) -> tuple[str, str] | None:
     return labels[-2], labels[-1]
 
 
+def _discover_earliest_latest_snapshot_pair(
+    repo_root: Path,
+) -> tuple[str, str] | None:
+    """Walk ``reports/snapshots/`` and return the (earliest, latest)
+    pair of snapshot labels (chronological endpoints of the full arc).
+    Returns ``None`` when fewer than 2 valid snapshots exist.
+
+    Phase 17 A — sister to :func:`_discover_latest_snapshot_pair`;
+    used by :func:`compute_cohort_cumulative_drift_attribution` to
+    span the cohort's full arc rather than the latest consecutive
+    pair. When exactly 2 snapshots exist, the two discovery functions
+    return the SAME pair (the only possible pair degenerates to
+    both views being identical).
+    """
+    root = snapshots_root(repo_root)
+    if not root.is_dir():
+        return None
+    labels = sorted(
+        child.name
+        for child in root.iterdir()
+        if child.is_dir() and SNAPSHOT_LABEL_RE.fullmatch(child.name)
+    )
+    if len(labels) < 2:
+        return None
+    return labels[0], labels[-1]
+
+
 def _discover_cohort_cases(repo_root: Path) -> list[str]:
     """Walk ``golden_samples/`` and return signed-registry-filtered
     ``*-candidate`` case ids."""
@@ -147,36 +181,29 @@ def _discover_cohort_cases(repo_root: Path) -> list[str]:
     return cases
 
 
-def compute_cohort_drift_attribution(
+def _aggregate_cohort_drift_for_pair(
     *,
     repo_root: Path,
-    dominant_floor_pct: float = COHORT_DOMINANT_AXIS_FLOOR_PCT,
-) -> CohortDriftAttribution | None:
-    """Compute the cohort-scoped drift attribution across the latest
-    two cohort-wide snapshot labels.
+    prev_label: str,
+    curr_label: str,
+    dominant_floor_pct: float,
+) -> CohortDriftAttribution:
+    """Shared per-case aggregation for cohort-scoped drift across any
+    snapshot pair (latest-consecutive OR earliest-latest).
 
-    Returns ``None`` when fewer than 2 snapshots exist in
-    ``reports/snapshots/`` (no cohort-wide transition can be computed).
+    Walks the discovered cohort cases, builds per-case
+    :class:`DriftAttribution` between ``prev_label`` and ``curr_label``,
+    and finds the (case, axis) pair with the largest absolute delta_pct
+    strictly exceeding ``dominant_floor_pct``. Cases absent in either
+    of the two snapshots are silently skipped.
 
-    Args:
-        repo_root: project root (must contain ``golden_samples/`` and
-            ``reports/snapshots/``).
-        dominant_floor_pct: override the SSOT floor (default 5.0).
-            MUST be positive.
-
-    Raises:
-        ValueError: when ``dominant_floor_pct`` is non-positive.
+    Phase 17 A — extracted from
+    :func:`compute_cohort_drift_attribution` so the latest-pair
+    (Phase 16 B) and cumulative (Phase 17 A) call sites share the
+    same aggregation + strictly-exceed-floor + NaN-sentinel logic
+    (M:-2 anti-gaming: no inline aggregation math at the consumer
+    call sites).
     """
-    if dominant_floor_pct <= 0.0:
-        raise ValueError(
-            f"dominant_floor_pct must be > 0; got {dominant_floor_pct}"
-        )
-
-    pair = _discover_latest_snapshot_pair(repo_root)
-    if pair is None:
-        return None
-    prev_label, curr_label = pair
-
     cases = _discover_cohort_cases(repo_root)
     per_case: list[tuple[str, DriftAttribution]] = []
     cohort_dominant_axis: str | None = None
@@ -195,7 +222,7 @@ def compute_cohort_drift_attribution(
             None,
         )
         if prev_point is None or curr_point is None:
-            # Case absent in one of the two latest snapshots.
+            # Case absent in one of the two endpoints.
             continue
         att = compute_drift_attribution(
             {
@@ -237,6 +264,94 @@ def compute_cohort_drift_attribution(
         cohort_dominant_axis=cohort_dominant_axis,
         cohort_max_abs_delta_pct=cohort_max_abs_emit,
         dominant_case_id=dominant_case_id,
+    )
+
+
+def compute_cohort_drift_attribution(
+    *,
+    repo_root: Path,
+    dominant_floor_pct: float = COHORT_DOMINANT_AXIS_FLOOR_PCT,
+) -> CohortDriftAttribution | None:
+    """Compute the cohort-scoped drift attribution across the latest
+    two cohort-wide snapshot labels.
+
+    Returns ``None`` when fewer than 2 snapshots exist in
+    ``reports/snapshots/`` (no cohort-wide transition can be computed).
+
+    Args:
+        repo_root: project root (must contain ``golden_samples/`` and
+            ``reports/snapshots/``).
+        dominant_floor_pct: override the SSOT floor (default 5.0).
+            MUST be positive.
+
+    Raises:
+        ValueError: when ``dominant_floor_pct`` is non-positive.
+    """
+    if dominant_floor_pct <= 0.0:
+        raise ValueError(
+            f"dominant_floor_pct must be > 0; got {dominant_floor_pct}"
+        )
+
+    pair = _discover_latest_snapshot_pair(repo_root)
+    if pair is None:
+        return None
+    prev_label, curr_label = pair
+    return _aggregate_cohort_drift_for_pair(
+        repo_root=repo_root,
+        prev_label=prev_label,
+        curr_label=curr_label,
+        dominant_floor_pct=dominant_floor_pct,
+    )
+
+
+def compute_cohort_cumulative_drift_attribution(
+    *,
+    repo_root: Path,
+    dominant_floor_pct: float = COHORT_DOMINANT_AXIS_FLOOR_PCT,
+) -> CohortDriftAttribution | None:
+    """Compute the cohort-scoped drift attribution across the
+    EARLIEST and LATEST cohort-wide snapshot labels (cumulative view).
+
+    Returns ``None`` when fewer than 2 snapshots exist in
+    ``reports/snapshots/`` (no cohort-wide arc can be computed).
+
+    When exactly 2 snapshots exist, the (earliest, latest) pair
+    degenerates to the (prev, latest) pair from
+    :func:`compute_cohort_drift_attribution`; both functions return
+    a :class:`CohortDriftAttribution` with the SAME ``from_snapshot``
+    / ``to_snapshot`` endpoints. With 3+ snapshots, the cumulative
+    view spans the full arc while the latest-pair view only covers
+    the most recent transition — they answer different reviewer
+    questions (Phase 17 A blueprint §1 table).
+
+    Args:
+        repo_root: project root (must contain ``golden_samples/`` and
+            ``reports/snapshots/``).
+        dominant_floor_pct: override the SSOT floor (default 5.0).
+            MUST be positive.
+
+    Raises:
+        ValueError: when ``dominant_floor_pct`` is non-positive.
+
+    Phase 17 A. Sister to :func:`compute_cohort_drift_attribution`
+    (Phase 16 B); both consume the same
+    :func:`_aggregate_cohort_drift_for_pair` SSOT helper. Closes
+    Phase 16 retro §6.
+    """
+    if dominant_floor_pct <= 0.0:
+        raise ValueError(
+            f"dominant_floor_pct must be > 0; got {dominant_floor_pct}"
+        )
+
+    pair = _discover_earliest_latest_snapshot_pair(repo_root)
+    if pair is None:
+        return None
+    earliest_label, latest_label = pair
+    return _aggregate_cohort_drift_for_pair(
+        repo_root=repo_root,
+        prev_label=earliest_label,
+        curr_label=latest_label,
+        dominant_floor_pct=dominant_floor_pct,
     )
 
 

@@ -327,7 +327,7 @@ Tier 1 candidate cohort scorecard: aggregates latest trust score
 NOT promote any case to Tier 2 or substitute for signed validation.
 """
 
-COHORT_ANOMALIES_SCHEMA_VERSION = "1.1.0"
+COHORT_ANOMALIES_SCHEMA_VERSION = "1.2.0"
 """``cohort_anomalies`` HTTP response (Phase 8 E).
 
 Builder: ``backend.app.services.reporting.cohort_anomalies``.
@@ -354,6 +354,18 @@ Bump history:
   ``null`` when fewer than 2 cohort-wide snapshots exist. Closes
   Phase 15 retro §4 (per-axis percentage delta on cohort-scoped
   surfaces) + §6 (cross-axis-comparable cohort signal).
+* ``1.2.0`` (Phase 17 A · 2026-05-17) — additive MINOR bump:
+  introduces the optional ``cohort_cumulative_drift_attribution``
+  field carrying a :class:`CohortDriftAttribution` summary spanning
+  the cohort's EARLIEST → LATEST snapshot pair (parallel to the
+  Phase 16 B ``cohort_drift_attribution`` which spans the latest
+  consecutive pair). Answers the reviewer question "which case
+  dominated cohort-wide drift across the WHOLE arc?" distinct from
+  "...on the latest pair?". The same SSOT renderer is reused; the
+  new field defaults to ``null`` when fewer than 2 cohort-wide
+  snapshots exist. Pre-1.2.0 consumers ignoring the field continue
+  to function. Closes Phase 16 retro §6 (cohort-scoped cumulative
+  drift attribution).
 """
 
 TRUST_SCORE_PROVENANCE_SCHEMA_VERSION = "1.2.0"

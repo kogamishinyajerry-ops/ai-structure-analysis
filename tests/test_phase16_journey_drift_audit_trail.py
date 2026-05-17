@@ -369,7 +369,10 @@ def test_journey_step1_cohort_anomalies_carries_cohort_drift(
     assert res.status_code == 200, res.text
     body = res.json()
     assert_tier1_trio(body)
-    assert body["schema_version"] == "1.1.0", body["schema_version"]
+    # Phase 17 A bumped cohort-anomalies 1.1.0 → 1.2.0 additively
+    # (cohort_cumulative_drift_attribution field). The Phase 16 B
+    # cohort_drift_attribution field is preserved at 1.2.0.
+    assert body["schema_version"] == "1.2.0", body["schema_version"]
     drift = body.get("cohort_drift_attribution")
     assert drift is not None, (
         f"cohort-anomalies envelope missing cohort_drift_attribution; keys: {sorted(body.keys())}"

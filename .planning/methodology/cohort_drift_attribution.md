@@ -71,3 +71,40 @@ Consumer: `backend/app/services/reporting/cohort_anomalies.py` imports `compute_
 ## Reference
 
 Phase 16 D's reviewer journey "drift audit trail" exercises the `cohort_dominant_axis == "energy_audit"` + `dominant_case_id == LEAK_CASE_ID` path on the 5-case explicit_dynamics + linear_static_pv cohort. The Phase 16 retrospective at `.planning/retrospectives/fm04a_phase16_drift_attribution_cross_surface.md` will document the closure of Phase 15 retro §4 + §6 by this slice.
+
+## Cumulative cohort drift (Phase 17 A · 2026-05-17)
+
+Phase 16 B answers the reviewer question "which case dominated cohort-wide drift on the LATEST pair?" by walking the cohort's latest two consecutive snapshots. Phase 17 A adds a parallel surface answering "which case dominated cohort-wide drift across the WHOLE arc?" by walking the cohort's earliest and latest snapshots (regardless of how many intermediate snapshots exist).
+
+### Why both views?
+
+Consider a 3-snapshot arc where the leak case's energy axis is 15 → 15 → 0 (the regression strikes on the latest pair). The two views agree: both surface `dominant_case_id = LEAK_CASE_ID` + `cohort_dominant_axis = "energy_audit"` + `cohort_max_abs_delta_pct = 100.0`.
+
+Now consider a 3-snapshot arc where the leak case's energy axis is 15 → 0 → 15 (regression THEN recovery). The two views diverge:
+
+* Latest-pair view: snap-2 → snap-3 = 0 → 15 = +100% on energy_audit (technically recovery; the cohort dominant axis is `energy_audit` with positive `cohort_max_abs_delta_pct = 100.0`).
+* Cumulative view: snap-1 → snap-3 = 15 → 15 = 0% on energy_audit; sub-floor on every axis; cohort dominant axis collapses to `None`.
+
+The cumulative view surfaces the **post-arc posture** ("how much has the cohort drifted overall?") while the latest-pair view surfaces the **latest-transition urgency** ("what just happened?"). Both are reviewer-relevant. The "20 → 10 → 20" recovery example from `trust_score_drift_attribution.md` (Phase 16 A) extends to cohort scope identically.
+
+### Degenerate-case semantics
+
+* 0 snapshots: `compute_cohort_cumulative_drift_attribution` returns `None` (no arc).
+* 1 snapshot: returns `None` (no arc; cumulative needs >= 2 endpoints).
+* 2 snapshots: the (earliest, latest) pair degenerates to the (prev, latest) pair from the latest-pair view. The two surfaces return `CohortDriftAttribution` with the SAME endpoint labels and (in the absence of intermediate transitions) the SAME aggregate result. Cumulative semantics first diverge at 3+ snapshots.
+* 3+ snapshots: cumulative spans `snap-1 → snap-N` while latest-pair spans `snap-(N-1) → snap-N`.
+
+### What this surface does NOT do (Phase 17 A)
+
+* It does NOT replace the Phase 16 B latest-pair view; both are surfaced on cohort-anomalies (additive parallel views).
+* It does NOT carry a different floor; the same `COHORT_DOMINANT_AXIS_FLOOR_PCT = 5.0` is used (strictly-exceed semantic preserved).
+* It does NOT promote any case to Tier 2.
+* It does NOT distinguish the SHAPE of the arc (stuck vs recovery vs oscillating). It only reports the endpoint-to-endpoint percentage delta on each axis. A future phase candidate (out of scope) could surface arc-shape diagnostics.
+
+### Implementation: shared aggregation
+
+Both `compute_cohort_drift_attribution` (Phase 16 B) and `compute_cohort_cumulative_drift_attribution` (Phase 17 A) delegate per-case aggregation + strictly-exceed-floor + NaN-sentinel logic to `_aggregate_cohort_drift_for_pair(*, repo_root, prev_label, curr_label, dominant_floor_pct)`. The two compute functions differ only in which snapshot pair they discover (latest-consecutive vs earliest-latest). Future floor bumps require the single SSOT constant; future aggregation refactors require the single SSOT helper. M:-2 anti-gaming guard at module scope.
+
+### Bump policy
+
+The 5.0% floor is intentionally shared between latest-pair and cumulative views — they answer related reviewer questions and a divergence would be a source of confusion. A future phase that needs separate floors (e.g., cumulative drift needs a tighter threshold because the absolute delta is larger over a longer arc) would bump this section here with the rationale + the methodology bump-history entry.

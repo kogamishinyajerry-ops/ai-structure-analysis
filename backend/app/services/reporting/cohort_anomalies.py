@@ -108,14 +108,25 @@ class CohortAnomaliesReport:
     anomalies: tuple[AnomalyEvent, ...]
     claim_impact: str
     cohort_drift_attribution: object = None
-    """Phase 16 B — cohort-scoped per-axis percentage delta surface.
-    A :class:`CohortDriftAttribution` summarizing the per-case
-    drift_attribution between the cohort's latest 2 snapshots +
-    the cohort-level dominant (case, axis) pair. ``None`` when
-    fewer than 2 snapshots exist. Schema 1.1.0 additive field;
+    """Phase 16 B — cohort-scoped per-axis percentage delta surface
+    (LATEST-pair view). A :class:`CohortDriftAttribution` summarizing
+    the per-case drift_attribution between the cohort's latest 2
+    snapshots + the cohort-level dominant (case, axis) pair. ``None``
+    when fewer than 2 snapshots exist. Schema 1.1.0 additive field;
     pre-1.1.0 consumers that ignore the field continue to function.
     Cross-axis-comparable engineering signal that PARALLELS (not
     replaces) the z-score view above."""
+    cohort_cumulative_drift_attribution: object = None
+    """Phase 17 A — cohort-scoped per-axis percentage delta surface
+    (CUMULATIVE view, earliest → latest). A
+    :class:`CohortDriftAttribution` summarizing the per-case
+    drift_attribution between the cohort's earliest and latest
+    snapshots + the cohort-level dominant (case, axis) pair across
+    the full arc. Parallel to (not a replacement for) the Phase 16 B
+    latest-pair view above. When exactly 2 snapshots exist, the two
+    views degenerate to the same endpoints. ``None`` when fewer
+    than 2 snapshots exist. Schema 1.2.0 additive field; pre-1.2.0
+    consumers that ignore the field continue to function."""
 
 
 def severity_for(z_score: float) -> Severity:
@@ -193,12 +204,19 @@ def build_cohort_anomalies(
                         )
                     )
 
-    # Phase 16 B — cohort-scoped drift attribution. Imported here to
-    # avoid a circular import at module load (cohort_drift_attribution
-    # imports trust_score_timeline + trust_score_drift_attribution).
-    from .cohort_drift_attribution import compute_cohort_drift_attribution
+    # Phase 16 B + 17 A — cohort-scoped drift attribution (latest-pair
+    # and cumulative views). Imported here to avoid a circular import
+    # at module load (cohort_drift_attribution imports
+    # trust_score_timeline + trust_score_drift_attribution).
+    from .cohort_drift_attribution import (
+        compute_cohort_cumulative_drift_attribution,
+        compute_cohort_drift_attribution,
+    )
 
     cohort_drift = compute_cohort_drift_attribution(repo_root=repo_root)
+    cohort_cumulative_drift = compute_cohort_cumulative_drift_attribution(
+        repo_root=repo_root
+    )
 
     generated_at = (now_utc or datetime.now(UTC)).isoformat(timespec="seconds")
     report = CohortAnomaliesReport(
@@ -211,6 +229,7 @@ def build_cohort_anomalies(
         anomalies=tuple(anomalies),
         claim_impact=CLAIM_IMPACT_DEFAULT,
         cohort_drift_attribution=cohort_drift,
+        cohort_cumulative_drift_attribution=cohort_cumulative_drift,
     )
     _assert_no_overclaim(report)
     return report
@@ -245,10 +264,20 @@ def _report_to_dict(report: CohortAnomaliesReport) -> dict[str, object]:
         "claim_impact": report.claim_impact,
         # Phase 16 B — schema 1.1.0 additive field. ``null`` when
         # fewer than 2 snapshots exist; otherwise the cohort drift
-        # summary serialized via the SSOT helper. Pre-1.1.0 consumers
-        # that ignore the field continue to function.
+        # summary (latest pair) serialized via the SSOT helper.
+        # Pre-1.1.0 consumers that ignore the field continue to function.
         "cohort_drift_attribution": render_cohort_drift_attribution_dict(
             report.cohort_drift_attribution
+        ),
+        # Phase 17 A — schema 1.2.0 additive field. ``null`` when
+        # fewer than 2 snapshots exist; otherwise the cohort drift
+        # summary (cumulative, earliest → latest) via the SAME SSOT
+        # renderer. Cross-axis-comparable cohort signal across the
+        # full arc; parallel to (not replacement for) the latest-pair
+        # view above. Pre-1.2.0 consumers ignoring this field continue
+        # to function.
+        "cohort_cumulative_drift_attribution": render_cohort_drift_attribution_dict(
+            report.cohort_cumulative_drift_attribution
         ),
     }
 
