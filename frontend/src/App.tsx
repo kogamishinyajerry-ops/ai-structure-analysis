@@ -1,15 +1,11 @@
 import { useState, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import {
   Activity,
-  ChevronRight,
   Box,
   LayoutDashboard,
-  Play,
-  Loader2,
   Compass,
   ArrowRightLeft,
   BookOpen,
-  MessageSquare,
   Download,
   ShieldAlert,
   Database,
@@ -19,7 +15,7 @@ import {
 import './App.css';
 import { SensitivityForm } from './components/SensitivityForm';
 import { ComplianceBadge } from './components/ComplianceBadge';
-import { ChatPanel, type CaeReviewCard } from './components/ChatPanel';
+import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
 import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
@@ -54,7 +50,11 @@ import { MaterialPickerPanel } from './components/MaterialPickerPanel';
 // FM-04a Phase 19 D — extracted Case sidebar (Sidebar.tsx) so the App
 // shell stays under ~1900 LOC and the case-rail concerns can be tested
 // in isolation. All data-testids preserved.
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, type SidebarCandidateCase } from './components/Sidebar';
+// FM-04a Phase 20 D — Topbar + RightRail extractions, continuing the
+// shell-decomposition trajectory started in Phase 19 D.
+import { Topbar } from './components/Topbar';
+import { RightRail } from './components/RightRail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
   type Command,
@@ -1577,6 +1577,19 @@ function App() {
       {/* Case Sidebar — extracted to Sidebar.tsx in Phase 19 D */}
       <Sidebar
         availableCases={availableCases}
+        candidateCases={FALLBACK_CANDIDATE_CASES.map<SidebarCandidateCase>((c) => ({
+          caseId: c.caseId,
+          displayLabel: c.displayLabel ?? c.caseId,
+        }))}
+        selectedCandidateCaseId={selectedCandidateCaseId}
+        onSelectCandidateCase={(id) => {
+          setSelectedCandidateCaseId(id)
+          try {
+            window.localStorage.setItem('fm04a.candidateCaseId', id)
+          } catch {
+            /* no-op when storage is unavailable */
+          }
+        }}
         activeCaseId={activeCaseId}
         onSelectCase={(c) => selectCase(c)}
         activeExperiment={activeExperiment}
@@ -1587,41 +1600,18 @@ function App() {
       {/* Main Content Area */}
       <div style={{ display: 'grid', gridTemplateColumns: showChat ? '1fr 340px' : '1fr', height: '100vh', overflow: 'hidden' }}>
         <main style={{ overflowY: 'auto', background: 'var(--bg-base)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-            <header style={{ padding: '20px 40px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: 'rgba(2, 6, 23, 0.8)', backdropFilter: 'blur(8px)', zIndex: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                    Analysis <ChevronRight size={14} /> <span style={{ color: 'var(--text-primary)' }}>{activeCaseId || (file ? file.name : "Session")}</span>
-                </div>
-                {report && <ComplianceBadge status={report.metrics.status} standard="GB50017" />}
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-                <button onClick={() => setShowChat(!showChat)} style={{ padding: '8px 16px', borderRadius: '8px', background: showChat ? 'var(--accent)' : 'var(--bg-surface)', color: showChat ? '#000' : '#fff', border: '1px solid var(--border)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <MessageSquare size={16} /> Copilot
-                </button>
-                {activeCaseId && (
-                <div style={{ display: 'flex', gap: '8px' }}>
-                    <select 
-                        value={analysisType} 
-                        onChange={(e) => setAnalysisType(e.target.value as 'static' | 'modal' | 'buckling')}
-                        style={{ background: 'var(--bg-surface)', color: '#fff', border: '1px solid var(--border)', borderRadius: '8px', padding: '0 12px', fontSize: '0.85rem', outline: 'none' }}
-                    >
-                        <option value="static">Static Analysis</option>
-                        <option value="modal">Modal Analysis</option>
-                        <option value="buckling">Linear Buckling</option>
-                    </select>
-                    <button disabled={solving} onClick={runSolver} style={{ padding: '8px 16px', borderRadius: '8px', background: 'var(--accent)', color: '#000', border: 'none', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: solving ? 'not-allowed' : 'pointer', opacity: solving ? 0.6 : 1 }}>
-                        {solving ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} fill="currentColor" />}
-                        Run Solver
-                    </button>
-                    {solving && (
-                      <button onClick={stopSolver} style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(255,100,100,0.2)', color: '#ff6b6b', border: '1px solid rgba(255,100,100,0.3)', fontWeight: 600, cursor: 'pointer' }}>
-                        Stop
-                      </button>
-                    )}
-                </div>
-                )}
-            </div>
-            </header>
+            <Topbar
+              breadcrumbLabel={activeCaseId || (file ? file.name : "Session")}
+              badge={report && <ComplianceBadge status={report.metrics.status} standard="GB50017" />}
+              showRunControls={Boolean(activeCaseId)}
+              analysisType={analysisType}
+              onChangeAnalysisType={setAnalysisType}
+              solving={solving}
+              onRunSolver={runSolver}
+              onStopSolver={stopSolver}
+              showChat={showChat}
+              onToggleChat={() => setShowChat(!showChat)}
+            />
 
             <div style={{ padding: '40px', flex: 1 }}>
             <OperatorStatusPanel
@@ -1897,17 +1887,14 @@ function App() {
             )}
         </main>
 
-        {showChat && (
-            <aside style={{ borderLeft: '1px solid var(--border)', background: 'var(--bg-sidebar)', zIndex: 5 }}>
-                <ChatPanel
-                  caseId={activeCaseId}
-                  onExecuteAction={handleExecuteCopilotAction}
-                  reviewCards={caeReviewCards}
-                  claimTier={claimTier}
-                  allowedClaim={allowedClaim}
-                />
-            </aside>
-        )}
+        <RightRail
+            showChat={showChat}
+            caseId={activeCaseId}
+            onExecuteAction={handleExecuteCopilotAction}
+            reviewCards={caeReviewCards}
+            claimTier={claimTier}
+            allowedClaim={allowedClaim}
+        />
       </div>
     </div>
   );

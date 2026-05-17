@@ -8,6 +8,13 @@ import {
   type ResultMeshNode,
   type ResultMeshPayload,
 } from '../resultMeshPlayback';
+// FM-04a Phase 20 D — close the Phase 19 D scope-drift the UI agent
+// flagged: the legend was added, but the bespoke loading / error /
+// empty <div>s in this panel were never migrated to the SSOT
+// primitives. Migrating them now closes that finding.
+import { EmptyStateCard } from './EmptyStateCard';
+import { ErrorCard } from './ErrorCard';
+import { SkeletonCard } from './SkeletonCard';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -149,9 +156,21 @@ export function ResultMeshPlaybackPanel({
       </div>
 
       {loading ? (
-        <PanelState icon={<Loader2 size={22} className="animate-spin" />} title="Loading dynamic payload" />
+        <div data-testid="result-mesh-loading" style={{ padding: '14px' }}>
+          <SkeletonCard lines={4} label="Loading dynamic payload" />
+        </div>
       ) : error ? (
-        <PanelState icon={<AlertTriangle size={22} />} title={error} />
+        <div data-testid="result-mesh-error" style={{ padding: '14px' }}>
+          <ErrorCard
+            title="Could not load dynamic payload"
+            message={error}
+            code="RESULT-MESH-LOAD"
+            remediation={[
+              'Run the solver for this case via Topbar → Run Solver to produce a result_mesh.json.',
+              'Confirm the backend /visualize/result-mesh route responds for this case_id.',
+            ]}
+          />
+        </div>
       ) : summary ? (
         <div
           style={{
@@ -348,7 +367,13 @@ export function ResultMeshPlaybackPanel({
           </div>
         </div>
       ) : (
-        <PanelState icon={<AlertTriangle size={22} />} title="No active dynamic payload" />
+        <div data-testid="result-mesh-empty" style={{ padding: '14px' }}>
+          <EmptyStateCard
+            headline="No active dynamic payload"
+            body="Run an explicit-dynamics solver for this case to populate frames of stress + displacement evolution. Static-only cases will not surface a playback timeline."
+            glyph="∅"
+          />
+        </div>
       )}
     </section>
   );

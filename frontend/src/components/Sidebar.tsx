@@ -36,8 +36,25 @@ export interface SidebarExperimentStatus {
   runs: SidebarExperimentRun[]
 }
 
+export interface SidebarCandidateCase {
+  caseId: string
+  displayLabel: string
+}
+
 export interface SidebarProps {
   availableCases: SidebarCaseMetadata[]
+  /**
+   * FM-04a Phase 20 D — candidate-case roster surfaced inline in the
+   * left rail (closes the Phase 19 E UX finding that cylinder-pv was
+   * invisible from the Sidebar because it only existed in the
+   * candidate registry, not the DB-backed availableCases list).
+   * Selecting one fires `onSelectCandidateCase` (a distinct callback
+   * so the App can route candidate selection through the
+   * `selectedCandidateCaseId` state separately from DB cases).
+   */
+  candidateCases?: SidebarCandidateCase[]
+  selectedCandidateCaseId?: string | null
+  onSelectCandidateCase?: (caseId: string) => void
   activeCaseId: string | null
   onSelectCase: (c: SidebarCaseMetadata) => void
   activeExperiment: SidebarExperimentStatus | null
@@ -47,6 +64,9 @@ export interface SidebarProps {
 
 export function Sidebar({
   availableCases,
+  candidateCases,
+  selectedCandidateCaseId,
+  onSelectCandidateCase,
   activeCaseId,
   onSelectCase,
   activeExperiment,
@@ -192,6 +212,62 @@ export function Sidebar({
           </div>
         )}
       </div>
+
+      {/* Phase 20 D — candidate-case roster. Surfaces *-candidate
+          entries (cylinder-pv, plate-with-hole, cantilever, etc.)
+          in the left rail so the Phase 19 E UX finding "cylinder-pv
+          is invisible because it lives only in the candidate
+          registry" is closed. Only renders when the parent supplies
+          a non-empty list. */}
+      {candidateCases && candidateCases.length > 0 && (
+        <div data-testid="candidate-case-roster">
+          <div
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              marginBottom: '12px',
+              paddingLeft: '12px',
+            }}
+          >
+            Candidate Cases
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {candidateCases.map((cc) => {
+              const isActive = selectedCandidateCaseId === cc.caseId
+              return (
+                <button
+                  key={cc.caseId}
+                  type="button"
+                  onClick={() => onSelectCandidateCase?.(cc.caseId)}
+                  data-testid={`candidate-case-${cc.caseId}`}
+                  className={`case-item ${isActive ? 'active' : ''}`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '10px 12px',
+                    borderRadius: '8px',
+                    background: isActive
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'transparent',
+                    color: isActive
+                      ? 'var(--accent)'
+                      : 'var(--text-secondary)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  <Box size={16} /> {cc.displayLabel}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {activeExperiment && (
         <div
