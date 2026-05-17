@@ -415,13 +415,15 @@ def test_aspect_ratio_min_constant_pinned() -> None:
 # ---------------------------------------------------------------------
 
 
-def test_cantilever_beam_candidate_registered_as_tier_1() -> None:
-    """Phase 20 B adds the case to the registry baseline. Promotion
-    to tier_2_validated waits for Phase 21's cantilever_runner."""
-    assert (
-        CLAIM_TIER_REGISTRY["cantilever-beam-candidate"]
-        == "tier_1_candidate"
-    )
+def test_cantilever_beam_candidate_registered() -> None:
+    """Phase 20 B added the case to the registry as tier_1_candidate;
+    Phase 21 A's `cantilever_runner` promotes it to tier_2_validated
+    when the verdict YAML is present. The post-promotion pin lives in
+    `test_phase21a_cantilever_kirsch_runners.py
+    ::test_phase21a_validated_count_is_three`. Here we accept either
+    tier so the test survives the promotion."""
+    tier = CLAIM_TIER_REGISTRY["cantilever-beam-candidate"]
+    assert tier in {"tier_1_candidate", "tier_2_validated"}
 
 
 def test_cantilever_beam_candidate_notes_md_exists() -> None:

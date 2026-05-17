@@ -385,11 +385,16 @@ def test_write_meshed_static_inp_emits_plastic_when_curve_present(
 # ---------------------------------------------------------------------
 
 
-def test_plate_with_hole_candidate_registered_as_tier_1() -> None:
-    assert (
-        CLAIM_TIER_REGISTRY["plate-with-hole-candidate"]
-        == "tier_1_candidate"
-    )
+def test_plate_with_hole_candidate_registered() -> None:
+    """The case is in the registry. Phase 20 C registered it as
+    tier_1_candidate baseline; Phase 21 A's Kirsch cross-check
+    runner promotes it to tier_2_validated when the verdict file is
+    present on disk. The promoted-state pin lives in
+    `test_phase21a_cantilever_kirsch_runners.py
+    ::test_phase21a_validated_count_is_three` — here we only assert
+    the case is present and at one of the two valid tiers."""
+    tier = CLAIM_TIER_REGISTRY["plate-with-hole-candidate"]
+    assert tier in {"tier_1_candidate", "tier_2_validated"}
 
 
 def test_plate_with_hole_geo_file_exists() -> None:

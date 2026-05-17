@@ -39,6 +39,31 @@ from .cantilever_beam import (
     assert_slender_beam_envelope,
     compute_analytical_tip_deflection,
 )
+# Phase 21 A — meshed cross-check runners using Phase 20 C's
+# `run_tier2_meshed_pipeline`. The cantilever runner promotes
+# cantilever-beam-candidate; the plate-Kirsch runner promotes
+# plate-with-hole-candidate (both → tier_2_validated via verdict file).
+from .cantilever_runner import (
+    CANTILEVER_CROSS_CHECK_TOLERANCE_PCT,
+    CantileverCrossCheckResult,
+    CantileverCrossCheckVerdict,
+    run_cantilever_cross_check,
+    write_cantilever_verdict_yaml,
+)
+from .plate_kirsch import (
+    KIRSCH_INFINITE_K,
+    PLATE_FINITE_RATIO_MAX,
+    KirschValidityError,
+    compute_kirsch_peak_stress_pa,
+    kirsch_stress_concentration_factor,
+)
+from .plate_kirsch_runner import (
+    PLATE_KIRSCH_CROSS_CHECK_TOLERANCE_PCT,
+    PlateKirschCrossCheckResult,
+    PlateKirschCrossCheckVerdict,
+    run_plate_kirsch_cross_check,
+    write_plate_kirsch_verdict_yaml,
+)
 
 __all__ = [
     "CROSS_CHECK_TOLERANCE_PCT",
@@ -56,4 +81,20 @@ __all__ = [
     "CantileverValidityError",
     "assert_slender_beam_envelope",
     "compute_analytical_tip_deflection",
+    # Phase 21 A
+    "CANTILEVER_CROSS_CHECK_TOLERANCE_PCT",
+    "CantileverCrossCheckResult",
+    "CantileverCrossCheckVerdict",
+    "run_cantilever_cross_check",
+    "write_cantilever_verdict_yaml",
+    "KIRSCH_INFINITE_K",
+    "PLATE_FINITE_RATIO_MAX",
+    "KirschValidityError",
+    "compute_kirsch_peak_stress_pa",
+    "kirsch_stress_concentration_factor",
+    "PLATE_KIRSCH_CROSS_CHECK_TOLERANCE_PCT",
+    "PlateKirschCrossCheckResult",
+    "PlateKirschCrossCheckVerdict",
+    "run_plate_kirsch_cross_check",
+    "write_plate_kirsch_verdict_yaml",
 ]
