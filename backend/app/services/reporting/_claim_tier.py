@@ -158,6 +158,15 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # pin at corners), uniform pressure via *DLOAD P2. Promoted to
     # tier_2_validated by verdict YAML overlay.
     "plate-ss-shell-candidate": "tier_1_candidate",
+    # Phase 30 A — cantilever free-vibration *DYNAMIC. The FIRST
+    # transient time-integration case in the cohort. Reuses Phase 26 A
+    # geometry + analytical f_1; only the solver path is new (HHT-α
+    # implicit integration vs *FREQUENCY eigenvalue extraction).
+    # Closes FEA Dim 6 ballistic-readiness floor (50 → 75 rubric v1.0
+    # anchor) — first *DYNAMIC unlocks "transient implicit" anchor.
+    # Promoted to tier_2_validated by verdict YAML overlay on a
+    # PASS live ccx run.
+    "cantilever-dynamic-candidate": "tier_1_candidate",
 }
 
 
