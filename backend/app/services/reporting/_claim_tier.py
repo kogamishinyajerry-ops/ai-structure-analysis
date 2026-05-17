@@ -135,6 +135,19 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # slenderness range. Shell elements deferred to a future phase
     # because CalculiX shell-output reader plumbing is non-trivial.
     "cantilever-beam-modal-l50-candidate": "tier_1_candidate",
+    # Phase 28 A — cantilever Euler buckling (k=2.0). Second
+    # buckling case; reuses Phase 23 A's `buckling_b31_runner`
+    # verbatim with end_condition='fixed-free'. Tests the k-factor
+    # discipline of the Euler formula: cantilever P_cr is 1/4 of
+    # pinned-pinned P_cr at the same geometry. Live ccx 2026-05-17
+    # residual +0.0298% (tightest residual across all 8 validated
+    # cases). Honest scope: NO new element type (still B31), NO new
+    # solver kind (still *BUCKLE); the value-add is k-factor family
+    # validation at TWO points (k=1.0 pinned-pinned + k=2.0
+    # cantilever). C3D8 hex cantilever attempt in `buckling_runner.py`
+    # produced 256% residual due to shear locking; rejected and
+    # documented in NOTES.md.
+    "cantilever-buckle-candidate": "tier_1_candidate",
 }
 
 

@@ -242,6 +242,116 @@ def _write_pinned_pinned_buckle_inp(
     return inp_path
 
 
+def _write_cantilever_buckle_inp(
+    case_dir: Path,
+    *,
+    jobname: str,
+    length_m: float,
+    section_depth_m: float,
+    section_width_m: float,
+    n_elements_along: int,
+    youngs_modulus_pa: float,
+    poisson_ratio: float,
+    reference_load_n: float,
+) -> Path:
+    """Write a single-hex-thick column INP with *BUCKLE step for the
+    fixed-free (cantilever) end condition (k = 2.0).
+
+    Geometry + element layout: identical to the pinned-pinned
+    composer. Only the BCs differ.
+
+    Cantilever BCs:
+    * x=0 face (4 nodes): fully clamped in all 3 DOFs (the base
+      cannot translate OR rotate — the cantilever-buckling
+      assumption). This produces ~4x lower critical load vs
+      pinned-pinned (k=2.0 → P_cr = π²EI/(2L)² = π²EI/4L², quarter
+      of the pinned-pinned value).
+    * x=L face (tip): NO transverse constraints. The compressive
+      load is applied as nodal *CLOAD in -x direction; the tip can
+      translate freely in y and z, which is exactly what allows
+      the cantilever buckling mode (one-quarter-sine shape).
+
+    Anti-gaming guard A:-1: if the tip is also laterally pinned by
+    accident, the eigenvalue inflates to ~1.5x the cantilever
+    analytical and the verdict trips out of tolerance.
+    """
+    if not case_dir.is_dir():
+        raise FileNotFoundError(f"case_dir {case_dir!s} must exist")
+    if n_elements_along < 4:
+        raise ValueError(
+            f"n_elements_along must be >=4 to capture the buckling "
+            f"mode shape; got {n_elements_along}"
+        )
+
+    nodes: list[tuple[int, float, float, float]] = []
+    z_w = section_width_m
+    y_h = section_depth_m
+    dx = length_m / n_elements_along
+    for i in range(n_elements_along + 1):
+        x = i * dx
+        base = i * 4
+        nodes.append((base + 1, x, 0.0, 0.0))
+        nodes.append((base + 2, x, y_h, 0.0))
+        nodes.append((base + 3, x, y_h, z_w))
+        nodes.append((base + 4, x, 0.0, z_w))
+
+    elements: list[tuple[int, list[int]]] = []
+    for i in range(n_elements_along):
+        base_lo = i * 4
+        base_hi = (i + 1) * 4
+        elements.append(
+            (
+                i + 1,
+                [
+                    base_lo + 1, base_lo + 2, base_lo + 3, base_lo + 4,
+                    base_hi + 1, base_hi + 2, base_hi + 3, base_hi + 4,
+                ],
+            )
+        )
+
+    lines: list[str] = []
+    lines.append("*HEADING")
+    lines.append(f"Phase 28 A cantilever buckling column ({jobname})")
+    lines.append("*NODE")
+    for nid, x, y, z in nodes:
+        lines.append(f"{nid}, {x:.6f}, {y:.6f}, {z:.6f}")
+    lines.append("*ELEMENT, TYPE=C3D8, ELSET=EALL")
+    for eid, conn in elements:
+        lines.append(f"{eid}, " + ", ".join(str(n) for n in conn))
+    lines.append("*MATERIAL, NAME=EULERCOL")
+    lines.append("*ELASTIC")
+    lines.append(f"{youngs_modulus_pa:.6e}, {poisson_ratio:.6f}")
+    lines.append("*SOLID SECTION, ELSET=EALL, MATERIAL=EULERCOL")
+    # Cantilever BCs: x=0 face fully clamped (all 4 nodes pinned
+    # in all 3 DOFs). The tip is completely free; only the
+    # compressive load is applied at the tip. This is the
+    # canonical cantilever buckling condition (k=2.0 in Euler's
+    # formula).
+    lines.append("*BOUNDARY")
+    for base_node_id in (1, 2, 3, 4):
+        lines.append(f"{base_node_id}, 1, 3, 0.0")
+    tip_base = n_elements_along * 4
+    # NO transverse constraints on the tip — that's the whole
+    # point. Tip can deflect laterally as the column buckles.
+    lines.append("*STEP, PERTURBATION")
+    lines.append("*BUCKLE")
+    lines.append("4")
+    lines.append("*CLOAD")
+    load_per_node = reference_load_n / 4.0
+    for nid in (tip_base + 1, tip_base + 2, tip_base + 3, tip_base + 4):
+        lines.append(f"{nid}, 1, -{load_per_node:.6f}")
+    lines.append("*NODE FILE")
+    lines.append("U")
+    lines.append("*EL FILE")
+    lines.append("S")
+    lines.append("*END STEP")
+    lines.append("")
+
+    inp_path = case_dir / f"{jobname}.inp"
+    inp_path.write_text("\n".join(lines), encoding="utf-8")
+    return inp_path
+
+
 # FM-04a Phase 23 A — eigenvalue parser moved to shared
 # ``_buckle_dat_parser`` so the new B31 beam-element runner reuses
 # the same logic without duplicating it.
@@ -291,10 +401,25 @@ def run_buckling_cross_check(
         tolerance_pct: verdict tolerance (default 10%).
         reference_load_n: P_ref applied in the *BUCKLE step (default 1000 N).
     """
+    # FM-04a Phase 22 A — C3D8 hex runner ships pinned-pinned only.
+    # Phase 28 A attempted to extend to fixed-free (cantilever) with
+    # a fully-clamped base, but C3D8 linear hexes suffer severe shear
+    # locking when fully clamped: the cantilever observed P_cr came
+    # out at ~3.6× the analytical (compared to +0.21% for the existing
+    # pinned-pinned). Phase 23 A's B31 Timoshenko-beam runner DOES
+    # support all 4 end conditions cleanly (no locking) and is the
+    # correct path for fixed-free buckling validation. Phase 28 A
+    # pivots: cantilever-buckle-candidate is validated via the EXISTING
+    # buckling_b31_runner, NOT via this C3D8 hex runner. The
+    # `_write_cantilever_buckle_inp` function below is retained as
+    # documented honest-scope evidence that the C3D8 path was tried
+    # and rejected; it is NOT exposed to run_buckling_cross_check.
     if end_condition != "pinned-pinned":
         raise NotImplementedError(
-            f"Phase 22 A runner only ships pinned-pinned; got "
-            f"{end_condition!r}. Other end conditions: Phase 23+."
+            f"buckling_runner (C3D8 hex) ships pinned-pinned only; "
+            f"got {end_condition!r}. For fixed-free / fixed-pinned / "
+            f"fixed-fixed use `buckling_b31_runner.run_buckling_b31_cross_check` "
+            f"(Phase 23 A) — B31 Timoshenko beams avoid C3D8 locking."
         )
     if length_m <= 0 or section_depth_m <= 0 or section_width_m <= 0:
         raise ValueError(
