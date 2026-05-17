@@ -23,6 +23,7 @@ from .api.routes import (
     cohort_trend_anomalies,
     convergence_study,
     frd,
+    materials,
     projects,
     report,
     reproducibility_manifest,
@@ -129,6 +130,10 @@ app.include_router(cohort_anomalies.router, prefix="/api/v1")
 app.include_router(cohort_trend_anomalies.router, prefix="/api/v1")
 # FM-04a Phase 11 D — Tier 1 candidate AI advisor critique surface.
 app.include_router(advisor_critique.router, prefix="/api/v1")
+# FM-04a Phase 18 C/E — Materials library (steel-S355, aluminium-6061-T6,
+# titanium-Ti-6Al-4V). Read-only GET surface exposed for the
+# MaterialPickerPanel front-end + downstream Tier 2 INP composition.
+app.include_router(materials.router, prefix="/api/v1")
 
 
 @app.get("/")

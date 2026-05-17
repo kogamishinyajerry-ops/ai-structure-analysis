@@ -50,6 +50,15 @@ import { ProvenancePanel } from './components/ProvenancePanel';
 // ProvenancePanel below. The advisor surface is read-only / advisor-only
 // per the project four-question gate.
 import { AdvisorPanel } from './components/AdvisorPanel';
+// FM-04a Phase 18 D/E — Tier 2 workbench primitives (round 2 integration).
+import { CommandPalette } from './components/CommandPalette';
+import { MaterialPickerPanel } from './components/MaterialPickerPanel';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import {
+  type Command,
+  type CommandCategory,
+} from './commands/registry';
+import { FALLBACK_MATERIALS, type MaterialRecord } from './materialsClient';
 import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
@@ -468,6 +477,11 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
   const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
+  // FM-04a Phase 18 D/E — Cmd-K palette + selected material (round 2).
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialRecord>(
+    FALLBACK_MATERIALS[0],
+  );
   const [availableCases, setAvailableCases] = useState<CaseMetadata[]>([]);
   const [caseDetailsById, setCaseDetailsById] = useState<Record<string, CaseReferenceDetails>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -1442,11 +1456,100 @@ function App() {
     },
   ];
 
+  // FM-04a Phase 18 D/E — Cmd-K command registry (round 2 integration).
+  // Every action a reviewer needs to take from a keyboard / palette
+  // is registered here; new tasks land as new entries.
+  const _runSolverFromPalette = (): void => {
+    if (!activeCaseId) {
+      // No-op when no case is selected; the palette closes regardless.
+      console.warn('Run Solver command invoked with no active case selected.')
+      return
+    }
+    // Re-uses the existing solver flow; safer than duplicating fetch logic.
+    void fetch(`${API_BASE}/solver/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ case_id: activeCaseId, analysis_type: analysisType }),
+    })
+  }
+  const commands: Command[] = [
+    {
+      id: 'cmd-switch-tab-visual',
+      label: 'Switch to 3D Scene tab',
+      hotkey: 'g 1',
+      category: 'navigation' as CommandCategory,
+      handler: () => setActiveTab('visual'),
+    },
+    {
+      id: 'cmd-switch-tab-narrative',
+      label: 'Switch to Narrative tab',
+      hotkey: 'g 2',
+      category: 'navigation' as CommandCategory,
+      handler: () => setActiveTab('report'),
+    },
+    {
+      id: 'cmd-switch-tab-exploration',
+      label: 'Switch to Exploration tab',
+      hotkey: 'g 3',
+      category: 'navigation' as CommandCategory,
+      handler: () => setActiveTab('explore'),
+    },
+    {
+      id: 'cmd-run-solver',
+      label: 'Run CalculiX solver on active case',
+      description: activeCaseId
+        ? `Active case: ${activeCaseId}`
+        : 'No case selected — pick one first',
+      category: 'solver' as CommandCategory,
+      handler: _runSolverFromPalette,
+    },
+    {
+      id: 'cmd-pick-material-steel',
+      label: 'Pick material — Structural Steel S355',
+      category: 'material' as CommandCategory,
+      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[0]),
+    },
+    {
+      id: 'cmd-pick-material-aluminium',
+      label: 'Pick material — Aluminium 6061-T6',
+      category: 'material' as CommandCategory,
+      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[1]),
+    },
+    {
+      id: 'cmd-pick-material-titanium',
+      label: 'Pick material — Titanium Ti-6Al-4V',
+      category: 'material' as CommandCategory,
+      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[2]),
+    },
+    {
+      id: 'cmd-close-palette',
+      label: 'Close command palette',
+      hotkey: 'escape',
+      category: 'navigation' as CommandCategory,
+      handler: () => setPaletteOpen(false),
+    },
+  ]
+  useKeyboardShortcuts([
+    {
+      hotkey: 'mod+k',
+      handler: (e) => {
+        e.preventDefault()
+        setPaletteOpen((prev) => !prev)
+      },
+      fireInTextInput: true,
+    },
+  ])
+
   return (
     <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '240px 300px 1fr', height: '100vh' }}>
-      
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={commands}
+      />
+
       {/* Project Sidebar */}
-      <ProjectManager 
+      <ProjectManager
         selectedProjectId={selectedProjectId}
         onSelectProject={(id) => setSelectedProjectId(id)}
       />
@@ -1683,6 +1786,15 @@ function App() {
                         apiBase={API_BASE}
                         labelA={snapshotLabelA}
                         labelB={snapshotLabelB}
+                    />
+                    {/* FM-04a Phase 18 E (round 2) — materials library picker.
+                        Tier 1 banner inline; reviewer can swap material by
+                        click or via the Cmd-K palette. Selection wired to
+                        `selectedMaterial` state for downstream INP composition. */}
+                    <MaterialPickerPanel
+                        apiBase={API_BASE}
+                        selectedMaterialId={selectedMaterial.id}
+                        onMaterialChange={setSelectedMaterial}
                     />
                     <BulletPlateBlueprintPanel />
                 </div>
