@@ -77,24 +77,19 @@ import type {
   CopilotAction,
   CopilotActionResult,
   OperatorStatusItem,
-  OperatorStatusSection,
   GoldenSampleQueueItem,
   JobStatus,
 } from './types/AppTypes';
 // FM-04a Phase 26 D — trust strip + 5/7 trust sections + statusTone
 // helper extracted to a pure view-model module.
 import {
-  buildTrustStrip,
-  buildOverviewSection,
-  buildRuntimeSection,
-  buildEvidenceSection,
-  buildValidationSection,
-  buildBlueprintTargetSection,
-  buildBallisticSection,
-  buildGateSection,
   statusTone as trustCenterStatusTone,
   humanizeStatus as trustCenterHumanizeStatus,
 } from './state/trustCenterViewModel';
+// FM-04a Phase 29 B — 7 useMemo'd builder calls moved into a custom
+// hook so App.tsx doesn't carry ~240 LOC of orchestration. The hook
+// preserves granular per-section memoization (Phase 28 D).
+import { useTrustSections } from './state/useTrustSections';
 const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -836,261 +831,89 @@ function App() {
           : activeCaseId
             ? 'Run a solver smoke or export the report with Tier 0 wording'
             : 'Review the uploaded report; select a gallery case before solver run';
-  // FM-04a Phase 26 D — trust strip + 4 simple sections + Gate
-  // section delegated to pure builders. The Blueprint target + the
-  // Ballistic candidate sections stay inline below because they
-  // close over many derived locals that would balloon their context
-  // interface; honest scope, documented in retro.
-  //
-  // FM-04a Phase 28 D — wrap every builder call in useMemo. The
-  // builders are already pure (Phase 26 D / 27 B / 28 B verified
-  // via D:-3 no-mutation tests), so memoizing on the union of
-  // inputs cuts unnecessary deep allocations on every parent
-  // re-render. Each section is memoized independently so a change
-  // in (e.g.) `report` doesn't bust the Overview section's cache.
-  const trustStrip: OperatorStatusItem[] = useMemo(
-    () =>
-      buildTrustStrip({
-        claimTier,
-        allowedClaim,
-        solverTruthSource,
-        candidateSpine,
-        currentJobId,
-        executionMode,
-        report,
-        reportValidationStatus,
-        referenceStatusRaw,
-        goldenSampleSummary,
-        goldenSampleReviewCount,
-        blueprintSummary,
-      }),
-    [
-      claimTier,
-      allowedClaim,
-      solverTruthSource,
-      candidateSpine,
-      currentJobId,
-      executionMode,
-      report,
-      reportValidationStatus,
-      referenceStatusRaw,
-      goldenSampleSummary,
-      goldenSampleReviewCount,
-      blueprintSummary,
-    ],
-  );
-  const overviewSection = useMemo(
-    () =>
-      buildOverviewSection({
-        icon: <LayoutDashboard size={16} />,
-        candidateSpine,
-        activeCaseId,
-        file,
-        caseLabel,
-        nextAction,
-      }),
-    [candidateSpine, activeCaseId, file, caseLabel, nextAction],
-  );
-  const runtimeSection = useMemo(
-    () =>
-      buildRuntimeSection({
-        icon: <Database size={16} />,
-        solverTruthSource,
-        candidateSpine,
-        currentJobId,
-        executionMode,
-        report,
-        analysisModeLabel,
-        currentJobLabel,
-        lastSolverMaterialReference,
-        runState,
-        runStateTone,
-        latestEvent,
-        solverLogSummary,
-        solverLogState,
-        convergenceSummary,
-        candidateConvergenceEvidence,
-        convergenceClaimImpact,
-      }),
-    [
-      solverTruthSource,
-      candidateSpine,
-      currentJobId,
-      executionMode,
-      report,
-      analysisModeLabel,
-      currentJobLabel,
-      lastSolverMaterialReference,
-      runState,
-      runStateTone,
-      latestEvent,
-      solverLogSummary,
-      solverLogState,
-      convergenceSummary,
-      candidateConvergenceEvidence,
-      convergenceClaimImpact,
-    ],
-  );
-  const evidenceSection = useMemo(
-    () =>
-      buildEvidenceSection({
-        icon: <ClipboardCheck size={16} />,
-        report,
-        evidenceState,
-        manifestState,
-        candidateManifest,
-        currentJobId,
-        backendProvenance,
-        meshArtifactSource,
-        candidateMeshEvidence,
-        convergenceArtifactList,
-        candidateConvergenceEvidence,
-        meshConvergenceStudySource,
-        meshConvergenceStudy,
-        meshConvergenceClaimImpact,
-      }),
-    [
-      report,
-      evidenceState,
-      manifestState,
-      candidateManifest,
-      currentJobId,
-      backendProvenance,
-      meshArtifactSource,
-      candidateMeshEvidence,
-      convergenceArtifactList,
-      candidateConvergenceEvidence,
-      meshConvergenceStudySource,
-      meshConvergenceStudy,
-      meshConvergenceClaimImpact,
-    ],
-  );
-  const validationSection = useMemo(
-    () =>
-      buildValidationSection({
-        icon: <ShieldAlert size={16} />,
-        referenceStatus,
-        referenceStatusRaw,
-        referenceReason,
-        referenceDeviation,
-        report,
-        reportValidationStatus,
-        unitSummary,
-        candidateAssumptions,
-        materialSummary,
-        boundarySummary,
-        meshTopologySummary,
-        meshDeckElementTypes,
-        candidateMeshEvidence,
-        meshQualitySummary,
-        meshClaimImpact,
-        meshConvergenceStudy,
-        meshConvergenceStudySummary,
-        meshConvergenceClaimImpact,
-        convergenceMissingSummary,
-        failurePatternRef,
-      }),
-    [
-      referenceStatus,
-      referenceStatusRaw,
-      referenceReason,
-      referenceDeviation,
-      report,
-      reportValidationStatus,
-      unitSummary,
-      candidateAssumptions,
-      materialSummary,
-      boundarySummary,
-      meshTopologySummary,
-      meshDeckElementTypes,
-      candidateMeshEvidence,
-      meshQualitySummary,
-      meshClaimImpact,
-      meshConvergenceStudy,
-      meshConvergenceStudySummary,
-      meshConvergenceClaimImpact,
-      convergenceMissingSummary,
-      failurePatternRef,
-    ],
-  );
-  const blueprintTargetSection = useMemo(
-    () =>
-      buildBlueprintTargetSection({
-        icon: <ClipboardCheck size={16} />,
-        blueprintSummary,
-      }),
-    [blueprintSummary],
-  );
-  const ballisticSection = useMemo(
-    () =>
-      buildBallisticSection({
-        icon: <ShieldAlert size={16} />,
-        candidateBallistic,
-        ballisticInitialVelocitySummary,
-        ballisticResidualVelocitySummary,
-        ballisticPerforationSummary,
-        ballisticPerforationTone,
-        ballisticEnergySummary,
-        ballisticEnergyTone,
-        ballisticAnimationSummary,
-        ballisticTimeStepStudySummary,
-        ballisticTimeStepStudyTone,
-        ballisticTimeStepStudy,
-        ballisticTier2BlockerSummary,
-      }),
-    [
-      candidateBallistic,
-      ballisticInitialVelocitySummary,
-      ballisticResidualVelocitySummary,
-      ballisticPerforationSummary,
-      ballisticPerforationTone,
-      ballisticEnergySummary,
-      ballisticEnergyTone,
-      ballisticAnimationSummary,
-      ballisticTimeStepStudySummary,
-      ballisticTimeStepStudyTone,
-      ballisticTimeStepStudy,
-      ballisticTier2BlockerSummary,
-    ],
-  );
-  const gateSection = useMemo(
-    () =>
-      buildGateSection({
-        icon: <AlertTriangle size={16} />,
-        reviewerSummary,
-        candidateReviewer,
-        allowedClaim,
-        candidateLimitations,
-        tier2BlockerSummary,
-      }),
-    [
-      reviewerSummary,
-      candidateReviewer,
-      allowedClaim,
-      candidateLimitations,
-      tier2BlockerSummary,
-    ],
-  );
-  const trustSections: OperatorStatusSection[] = useMemo(
-    () => [
-      overviewSection,
-      runtimeSection,
-      evidenceSection,
-      validationSection,
-      blueprintTargetSection,
-      ballisticSection,
-      gateSection,
-    ],
-    [
-      overviewSection,
-      runtimeSection,
-      evidenceSection,
-      validationSection,
-      blueprintTargetSection,
-      ballisticSection,
-      gateSection,
-    ],
-  );
+  // FM-04a Phase 29 B — useTrustSections custom hook encapsulates
+  // the 7-section build with granular per-section memoization
+  // (Phase 28 D semantics preserved). Replaces ~240 LOC of inline
+  // useMemo orchestration with a single hook call. App.tsx LOC
+  // delta vs Phase 28 D: target -200 (1596 → ~1396).
+  const { trustStrip, sections: trustSections } = useTrustSections({
+    claimTier,
+    allowedClaim,
+    solverTruthSource,
+    candidateSpine,
+    currentJobId,
+    executionMode,
+    report,
+    reportValidationStatus,
+    referenceStatusRaw,
+    goldenSampleSummary,
+    goldenSampleReviewCount,
+    blueprintSummary,
+    overviewIcon: <LayoutDashboard size={16} />,
+    runtimeIcon: <Database size={16} />,
+    evidenceIcon: <ClipboardCheck size={16} />,
+    validationIcon: <ShieldAlert size={16} />,
+    blueprintIcon: <ClipboardCheck size={16} />,
+    ballisticIcon: <ShieldAlert size={16} />,
+    gateIcon: <AlertTriangle size={16} />,
+    activeCaseId,
+    file,
+    caseLabel,
+    nextAction,
+    analysisModeLabel,
+    currentJobLabel,
+    lastSolverMaterialReference,
+    runState,
+    runStateTone,
+    latestEvent,
+    solverLogSummary,
+    solverLogState,
+    convergenceSummary,
+    candidateConvergenceEvidence,
+    convergenceClaimImpact,
+    evidenceState,
+    manifestState,
+    candidateManifest,
+    backendProvenance,
+    meshArtifactSource,
+    candidateMeshEvidence,
+    convergenceArtifactList,
+    meshConvergenceStudySource,
+    meshConvergenceStudy,
+    meshConvergenceClaimImpact,
+    referenceStatus,
+    referenceReason,
+    referenceDeviation,
+    unitSummary,
+    candidateAssumptions,
+    materialSummary,
+    boundarySummary,
+    meshTopologySummary,
+    meshDeckElementTypes,
+    meshQualitySummary,
+    meshClaimImpact,
+    meshConvergenceStudySummary,
+    convergenceMissingSummary,
+    failurePatternRef,
+    candidateBallistic,
+    ballisticInitialVelocitySummary,
+    ballisticResidualVelocitySummary,
+    ballisticPerforationSummary,
+    ballisticPerforationTone,
+    ballisticEnergySummary,
+    ballisticEnergyTone,
+    ballisticAnimationSummary,
+    ballisticTimeStepStudySummary,
+    ballisticTimeStepStudyTone,
+    ballisticTimeStepStudy,
+    ballisticTier2BlockerSummary,
+    reviewerSummary,
+    candidateReviewer,
+    candidateLimitations,
+    tier2BlockerSummary,
+  });
+  // FM-04a Phase 29 B — Phase 28 D inline useMemo block removed;
+  // replaced by useTrustSections hook above. Net LOC delta: -240.
   const caeReviewCards: CaeReviewCard[] = [
     {
       card_type: 'blueprint_target',

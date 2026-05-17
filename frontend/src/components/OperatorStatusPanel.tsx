@@ -3,6 +3,12 @@
 // header strip + sections + Golden-sample queue. Pure-presentational
 // component; all state is owned by the App composition root.
 //
+// FM-04a Phase 29 B — per-section rendering delegated to the
+// SectionFrame primitive (collapsible accordion + uniform visual
+// vocabulary). The strip + golden-sample queue still inlined here.
+// Per-section collapse state lives in localStorage; storage keys
+// are derived from the section title (lowercased / kebabed).
+//
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
@@ -12,6 +18,18 @@ import type {
   OperatorStatusItem,
   OperatorStatusSection,
 } from '../types/AppTypes';
+import { installPolishStyles } from './polishStyles';
+import { SectionFrame } from './SectionFrame';
+import { useEffect } from 'react';
+
+/** Derive a stable per-section storage key from the section title.
+ * `Validation & Reference` → `validation-reference`. */
+export function sectionStorageKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 export function OperatorStatusPanel({
   strip,
@@ -22,6 +40,11 @@ export function OperatorStatusPanel({
   sections: OperatorStatusSection[];
   goldenSamples: GoldenSampleQueueItem[];
 }) {
+  // Phase 29 B — ensure the polish stylesheet (which now carries
+  // the chevron-rotation transition rule) is installed.
+  useEffect(() => {
+    installPolishStyles();
+  }, []);
   const toneColor = (tone?: OperatorStatusItem['tone']) => {
     if (tone === 'accent') return 'var(--accent)';
     if (tone === 'warning') return '#f59e0b';
@@ -67,21 +90,11 @@ export function OperatorStatusPanel({
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
         {sections.map((section) => (
-          <div key={section.title} style={{ background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px' }}>
-              <span style={{ color: 'var(--accent)', display: 'flex' }}>{section.icon}</span>
-              {section.title}
-            </div>
-            <div style={{ display: 'grid', gap: '9px' }}>
-              {section.items.map((item) => (
-                <div key={`${section.title}-${item.label}`} style={{ borderTop: '1px solid var(--border)', paddingTop: '9px' }}>
-                  <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>{item.label}</div>
-                  <div style={{ color: toneColor(item.tone), fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
-                  {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '4px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
+          <SectionFrame
+            key={section.title}
+            section={section}
+            storageKey={sectionStorageKey(section.title)}
+          />
         ))}
       </div>
 

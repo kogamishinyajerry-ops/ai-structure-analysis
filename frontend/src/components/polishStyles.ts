@@ -125,6 +125,13 @@ const POLISH_CSS = `
   background: transparent;
 }
 
+/* FM-04a Phase 29 B — SectionFrame chevron rotation transition.
+   Rotates between 0deg (expanded) and -90deg (collapsed). Honors
+   prefers-reduced-motion: reduce by jumping instantly. */
+.fm04a-section-frame-chevron {
+  transition: transform 180ms ease-out;
+}
+
 /* Section-cut position hover preview. Positioned by the React
    component; this just styles the readout itself. */
 .${POLISH_CLASS_SECTION_CUT_READOUT} {
@@ -147,6 +154,12 @@ const POLISH_CSS = `
   .${POLISH_CLASS_PROBE_ROW_UNMOUNT},
   .${POLISH_CLASS_RESTORED_TOAST} {
     animation: none;
+  }
+  /* Phase 29 B — chevron transition disabled in reduce mode. The
+     rotation itself still applies (so the visual state is correct);
+     only the transition timing is suppressed. */
+  .fm04a-section-frame-chevron {
+    transition: none;
   }
 }
 `;

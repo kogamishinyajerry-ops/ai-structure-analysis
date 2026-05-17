@@ -264,14 +264,26 @@ describe('Phase 28 D — AdvancedModePromo click handlers', () => {
 // 3. Trust-strip memoization (structural App.tsx scan)
 // ────────────────────────────────────────────────────────────────────
 
-describe('Phase 28 D — App.tsx wraps every trust builder in useMemo', () => {
+// FM-04a Phase 29 B — these structural App.tsx pins were valid for
+// Phase 28 D's inline useMemo block. Phase 29 B moved the entire
+// build into `useTrustSections` (frontend/src/state/useTrustSections.ts),
+// so the pins now target THAT file instead. Memoization semantics
+// are unchanged (granular per-section); only the home is different.
+
+describe('Phase 28 D — trust builder memoization (post Phase 29 B → hook)', () => {
+  const hookSource = readFileSync(
+    resolve(__dirname, '../src/state/useTrustSections.ts'),
+    'utf-8',
+  )
   const appSource = readFileSync(
     resolve(__dirname, '../src/App.tsx'),
     'utf-8',
   )
 
-  it('imports useMemo from react', () => {
-    expect(appSource).toMatch(/import\s*\{[^}]*\buseMemo\b[^}]*\}\s*from\s*['"]react['"]/)
+  it('useTrustSections hook imports useMemo from react', () => {
+    expect(hookSource).toMatch(
+      /import\s*\{[^}]*\buseMemo\b[^}]*\}\s*from\s*['"]react['"]/,
+    )
   })
 
   it.each([
@@ -283,22 +295,22 @@ describe('Phase 28 D — App.tsx wraps every trust builder in useMemo', () => {
     'buildBlueprintTargetSection',
     'buildBallisticSection',
     'buildGateSection',
-  ])('%s call site is wrapped in useMemo', (builder) => {
-    // The expected shape: `useMemo(\n  () =>\n    buildXxx({...})`.
-    // We assert the source contains a `useMemo(...) =>` followed
-    // (within ~80 chars of slack) by the builder name. That's enough
-    // to pin "the builder is inside a useMemo callback" without
-    // committing to an exact whitespace layout.
+  ])('%s call site is wrapped in useMemo inside the hook', (builder) => {
     const pattern = new RegExp(
-      `useMemo\\s*\\(\\s*\\(\\s*\\)\\s*=>[\\s\\S]{0,120}?${builder}\\s*\\(`,
+      `useMemo\\s*\\(\\s*\\(\\s*\\)\\s*=>[\\s\\S]{0,200}?${builder}\\s*\\(`,
     )
-    expect(appSource).toMatch(pattern)
+    expect(hookSource).toMatch(pattern)
   })
 
-  it('trustSections array is itself memoized', () => {
-    // `const trustSections: OperatorStatusSection[] = useMemo(`
+  it('sections array is itself memoized inside the hook', () => {
+    expect(hookSource).toMatch(
+      /const\s+sections\s*=\s*useMemo\s*\(/,
+    )
+  })
+
+  it('App.tsx consumes the hook (single useTrustSections call)', () => {
     expect(appSource).toMatch(
-      /const\s+trustSections\s*:\s*OperatorStatusSection\[\]\s*=\s*useMemo\s*\(/,
+      /\buseTrustSections\s*\(\s*\{/,
     )
   })
 })
