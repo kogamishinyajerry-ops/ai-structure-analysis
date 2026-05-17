@@ -251,10 +251,23 @@ function installWebGLStub() {
 let restoreGetContext: (() => void) | null = null
 beforeEach(() => {
   restoreGetContext = installWebGLStub()
+  // FM-04a Phase 26 B — these tests exercise the threshold-filter UI
+  // which is now gated by uiMode='advanced'. Pre-set localStorage so
+  // the filter row is rendered.
+  try {
+    window.localStorage.setItem('fm04a.ui.mode.v1', 'advanced')
+  } catch {
+    /* SSR fallback */
+  }
 })
 afterEach(() => {
   restoreGetContext?.()
   restoreGetContext = null
+  try {
+    window.localStorage.removeItem('fm04a.ui.mode.v1')
+  } catch {
+    /* SSR fallback */
+  }
 })
 
 const payloadWithFrame = {

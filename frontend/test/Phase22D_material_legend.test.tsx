@@ -14,7 +14,7 @@
 //     suite verifies the legend renders the units suffix + the
 //     current field label as a read-only display.
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Topbar } from '../src/components/Topbar'
 import { ResultMeshPlaybackPanel } from '../src/components/ResultMeshPlaybackPanel'
@@ -153,6 +153,23 @@ const dynamicPayload = {
 }
 
 describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
+  beforeEach(() => {
+    // FM-04a Phase 26 B — this test asserts on the field-component
+    // dropdown which is now gated by uiMode='advanced'. Pre-set
+    // localStorage so the dropdown is rendered.
+    try {
+      window.localStorage.setItem('fm04a.ui.mode.v1', 'advanced')
+    } catch {
+      /* SSR fallback */
+    }
+  })
+  afterEach(() => {
+    try {
+      window.localStorage.removeItem('fm04a.ui.mode.v1')
+    } catch {
+      /* SSR fallback */
+    }
+  })
   it('defaults the legend units to "Pa" and surfaces the field label', async () => {
     vi.stubGlobal(
       'fetch',

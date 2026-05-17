@@ -340,6 +340,8 @@ export function ResultMeshPlaybackPanel({
                   valueFilter={valueFilter}
                   onValueFilterChange={setValueFilter}
                   valueRange={[summary.valueMin, summary.valueMax]}
+                  showSectionCut={showSectionCut}
+                  showThresholdFilter={showThresholdFilter}
                 />
               )}
             </div>
@@ -451,8 +453,12 @@ export function ResultMeshPlaybackPanel({
                       switches the WebGL viewport's per-vertex coloring
                       via the tensor-derivative helpers. When the
                       frame's elements have no tensor, the dropdown
-                      stays disabled with a tooltip naming the gap. */}
-                  {(() => {
+                      stays disabled with a tooltip naming the gap.
+                      FM-04a Phase 26 B — gated by
+                      `showFieldComponentSwitcher`; basic mode hides
+                      the dropdown while preserving `fieldComponent`
+                      state in the parent (C:-1). */}
+                  {showFieldComponentSwitcher && (() => {
                     const tensorPresent = (summary.selectedFrame?.elements ?? []).some(
                       (el) => Boolean(el.stressTensor),
                     );
@@ -819,7 +825,15 @@ const panelTitleStyle = {
 // deformation magnification slider (1×..100×) + section-cut row
 // (axis radio + position slider + low/high half toggle).
 // Phase 23 D — extended with element-value threshold filter row.
-function ViewportDepthControls({
+// Phase 26 B — section-cut and threshold-filter rows are gated by
+// `showSectionCut` / `showThresholdFilter`. Defaults default to true
+// for back-compat with any call site that does not opt in. The
+// deformation row stays unconditional — it is not in
+// ADVANCED_FEATURE_IDS and is a fundamental rendering affordance.
+// State preservation (C:-1 anti-gaming guard): hiding a row does
+// NOT clear `sectionCut` / `valueFilter` in the parent — toggling
+// back to advanced restores the same values.
+export function ViewportDepthControls({
   deformationScale,
   onDeformationScaleChange,
   sectionCut,
@@ -827,6 +841,8 @@ function ViewportDepthControls({
   valueFilter,
   onValueFilterChange,
   valueRange,
+  showSectionCut = true,
+  showThresholdFilter = true,
 }: {
   deformationScale: number;
   onDeformationScaleChange: (value: number) => void;
@@ -835,6 +851,8 @@ function ViewportDepthControls({
   valueFilter: ValueFilterState | null;
   onValueFilterChange: (next: ValueFilterState | null) => void;
   valueRange: [number, number];
+  showSectionCut?: boolean;
+  showThresholdFilter?: boolean;
 }) {
   const cutEnabled = sectionCut !== null;
   const axis = sectionCut?.axis ?? 'x';
@@ -881,6 +899,7 @@ function ViewportDepthControls({
           data-testid="deformation-scale-input"
         />
       </label>
+      {showSectionCut && (
       <div
         data-testid="section-cut-control"
         style={{ display: 'grid', gap: 4 }}
@@ -978,7 +997,11 @@ function ViewportDepthControls({
           </div>
         )}
       </div>
-      {/* Phase 23 D — element-value threshold filter row. */}
+      )}
+      {/* Phase 23 D — element-value threshold filter row.
+          Phase 26 B — gated by showThresholdFilter (basic mode hides
+          the row while preserving valueFilter state in the parent). */}
+      {showThresholdFilter && (
       <div
         data-testid="value-filter-control"
         style={{ display: 'grid', gap: 4, gridColumn: '1 / -1' }}
@@ -1084,6 +1107,7 @@ function ViewportDepthControls({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -140,10 +140,24 @@ function installWebGLStub() {
 let restoreGetContext: (() => void) | null = null
 beforeEach(() => {
   restoreGetContext = installWebGLStub()
+  // FM-04a Phase 26 B — these tests exercise advanced-tier controls
+  // (section cut, threshold filter). UI_MODE_INITIAL is 'basic' which
+  // gates those rows out by default; pre-set localStorage to
+  // 'advanced' so the tests see the rows they expect.
+  try {
+    window.localStorage.setItem('fm04a.ui.mode.v1', 'advanced')
+  } catch {
+    /* SSR fallback */
+  }
 })
 afterEach(() => {
   restoreGetContext?.()
   restoreGetContext = null
+  try {
+    window.localStorage.removeItem('fm04a.ui.mode.v1')
+  } catch {
+    /* SSR fallback */
+  }
 })
 
 describe('buildNodeCoords — frame interpolation pin', () => {
