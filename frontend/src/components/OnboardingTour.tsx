@@ -75,9 +75,13 @@ export function OnboardingTour({
   const step = currentStep(state);
   if (step === null) return null;
 
+  // FM-04a Phase 25 D — fade + slide-in animation on first render.
+  // Respects prefers-reduced-motion via CSS media query in the
+  // injected <style> tag.
   return (
     <div data-testid="onboarding-tour" role="dialog" aria-label="onboarding tour" style={STYLES.backdrop}>
-      <div style={STYLES.card}>
+      <style>{ONBOARDING_TOUR_KEYFRAMES}</style>
+      <div style={STYLES.card} className="onboarding-tour-card">
         <div style={STYLES.header}>
           <span style={STYLES.shipped}>{step.shippedInPhase}</span>
           <span data-testid="onboarding-progress" style={STYLES.progress}>
@@ -125,6 +129,24 @@ export function OnboardingTour({
     </div>
   );
 }
+
+/** FM-04a Phase 25 D — fade + slide-in keyframes. Respects
+ * prefers-reduced-motion so motion-sensitive users see an instant
+ * appearance instead. */
+const ONBOARDING_TOUR_KEYFRAMES = `
+@keyframes fm04a-onboarding-fade-slide-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.onboarding-tour-card {
+  animation: fm04a-onboarding-fade-slide-in 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-tour-card {
+    animation: none;
+  }
+}
+`;
 
 const STYLES: Record<string, CSSProperties> = {
   backdrop: {

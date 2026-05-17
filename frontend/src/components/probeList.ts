@@ -82,3 +82,44 @@ export function hasProbe(state: ProbeListState, label: number): boolean {
 export function probeCount(state: ProbeListState): number {
   return state.entries.length;
 }
+
+/**
+ * Serialize the probe list to a CSV string. Header row +
+ * one row per entry, in PIN ORDER (carries Phase 24 D's D:-2
+ * anti-gaming guarantee to the export layer).
+ *
+ * Empty list → header-only string (still valid CSV).
+ *
+ * Phase 25 D D:-1 anti-gaming guard: any field containing a comma,
+ * a double-quote, or a newline gets RFC-4180 quoted; double-quotes
+ * inside such a field are doubled. Numeric NaN / ±∞ are serialized
+ * as the empty cell so spreadsheets don't choke. Null fieldValue
+ * becomes the empty cell too.
+ */
+export function serializeProbeListAsCsv(state: ProbeListState): string {
+  const header = 'node_label,x_m,y_m,z_m,field_value';
+  const rows = state.entries.map((entry) => {
+    const cells = [
+      formatNumericCell(entry.label),
+      formatNumericCell(entry.position[0]),
+      formatNumericCell(entry.position[1]),
+      formatNumericCell(entry.position[2]),
+      entry.fieldValue === null ? '' : formatNumericCell(entry.fieldValue),
+    ];
+    return cells.map(escapeCsvCell).join(',');
+  });
+  return [header, ...rows].join('\n') + '\n';
+}
+
+function formatNumericCell(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  // Use full-precision JS toString so reviewers can copy verbatim.
+  return String(value);
+}
+
+function escapeCsvCell(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
+}

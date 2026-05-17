@@ -15,6 +15,7 @@ import { type CSSProperties } from 'react';
 import type { PickedNodeInfo } from './viewportRaycaster';
 import {
   PROBE_LIST_MAX,
+  serializeProbeListAsCsv,
   type ProbeListState,
   probeCount,
 } from './probeList';
@@ -33,6 +34,11 @@ export interface ProbeListPanelProps {
   onClearAll?: () => void;
   /** Optional unit suffix appended to field values (default Pa). */
   fieldUnits?: string;
+  /** FM-04a Phase 25 D — optional CSV export handler. When provided
+   * (and the list is non-empty), an "Export CSV" button appears in
+   * the panel header. Phase 25 D wires the default download flow at
+   * the parent; this prop accepts an override for testing. */
+  onExportCsv?: (csv: string) => void;
 }
 
 function formatScientific(value: number): string {
@@ -48,12 +54,14 @@ export function ProbeListPanel({
   onRemove,
   onClearAll,
   fieldUnits = 'Pa',
+  onExportCsv,
 }: ProbeListPanelProps) {
   const count = probeCount(state);
   const pinDisabled =
     !activePick ||
     state.entries.some((e) => e.label === activePick.label) ||
     count >= PROBE_LIST_MAX;
+  const csvHandler = onExportCsv ?? defaultCsvExport;
 
   return (
     <div data-testid="probe-list-panel" style={STYLES.panel}>
@@ -65,14 +73,25 @@ export function ProbeListPanel({
           </div>
         </div>
         {count > 0 && (
-          <button
-            type="button"
-            data-testid="probe-clear-all"
-            onClick={() => onClearAll?.()}
-            style={STYLES.clearAllButton}
-          >
-            Clear all
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              data-testid="probe-export-csv"
+              onClick={() => csvHandler(serializeProbeListAsCsv(state))}
+              style={STYLES.exportButton}
+              aria-label="Export probe list to CSV"
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              data-testid="probe-clear-all"
+              onClick={() => onClearAll?.()}
+              style={STYLES.clearAllButton}
+            >
+              Clear all
+            </button>
+          </div>
         )}
       </div>
 
@@ -149,6 +168,28 @@ export function ProbeListPanel({
   );
 }
 
+/** Default CSV download flow — creates a Blob URL and triggers a
+ * synthetic <a download> click. Skipped when window/document is
+ * unavailable (SSR / test environments). Tests pass `onExportCsv`
+ * to inject a stub instead of invoking this. */
+function defaultCsvExport(csv: string): void {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  try {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.download = `probe-list-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    /* swallow — CSV export is a best-effort affordance */
+  }
+}
+
 const STYLES: Record<string, CSSProperties> = {
   panel: {
     background: 'rgba(15, 23, 42, 0.88)',
@@ -185,6 +226,16 @@ const STYLES: Record<string, CSSProperties> = {
     padding: '3px 8px',
     fontSize: '0.7rem',
     cursor: 'pointer',
+  },
+  exportButton: {
+    background: 'rgba(37, 99, 235, 0.18)',
+    border: '1px solid rgba(37, 99, 235, 0.45)',
+    color: '#93c5fd',
+    borderRadius: 4,
+    padding: '3px 8px',
+    fontSize: '0.7rem',
+    cursor: 'pointer',
+    fontWeight: 600,
   },
   activeRow: {
     display: 'flex',
