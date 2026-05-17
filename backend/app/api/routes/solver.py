@@ -19,6 +19,15 @@ class RunRequest(BaseModel):
     inp_path: Optional[str] = None
     analysis_type: str = "static" # static, modal, buckling
     num_modes: int = 5
+    # FM-04a Phase 18 E (round 3 honesty fix) — declare the field
+    # the frontend already sends so Pydantic stops silently dropping
+    # it. The field is received but NOT yet plumbed into the solver
+    # pipeline; tier_2_validated INP composition with this material
+    # is a Phase 19 priority-0.5 item per the round-3 agent reports
+    # (UX_round3.md + FEA_round3.md both flagged the previous
+    # frontend-only state as a false claim). Default None preserves
+    # back-compat for every pre-Phase-18 caller.
+    material_id: Optional[str] = None
 
 class JobResponse(BaseModel):
     job_id: str

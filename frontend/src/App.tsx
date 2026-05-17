@@ -642,10 +642,14 @@ function App() {
           case_id: activeCaseId,
           analysis_type: analysisType,
           num_modes: 5,
-          // Phase 18 E (round 3) — propagate the reviewer's material
-          // pick into the solver request body. Backend honours this on
-          // tier_2_validated paths only; tier_1_candidate fixtures
-          // ignore the field gracefully (additive, back-compat).
+          // Phase 18 E (round 3 honesty fix) — propagate the reviewer's
+          // material pick into the solver request body. Backend
+          // `RunRequest` now declares this field (post round-3 FEA agent
+          // disclosure: pre-fix the backend silently dropped it). The
+          // field is RECEIVED but NOT yet plumbed into the solver
+          // pipeline — Phase 19 priority-0.5 item closes the back-half.
+          // Until then the picker is a UI affordance with a wire-level
+          // contract, not an end-to-end material-swap-and-re-solve flow.
           material_id: selectedMaterial.id,
         }),
       });
@@ -1478,7 +1482,10 @@ function App() {
         case_id: activeCaseId,
         analysis_type: analysisType,
         // Phase 18 E (round 3) — palette-fired re-runs carry the
-        // material pick too; symmetric with the main solver flow above.
+        // material pick too; symmetric with the main solver flow.
+        // Same Phase 19 priority-0.5 caveat: field declared on the
+        // backend RunRequest model but not yet plumbed into the
+        // solver pipeline. Wire-level contract only.
         material_id: selectedMaterial.id,
       }),
     })
