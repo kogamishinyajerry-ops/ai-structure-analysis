@@ -1,19 +1,15 @@
-import { useState, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import {
   Activity,
   Box,
   LayoutDashboard,
   Compass,
-  ArrowRightLeft,
-  BookOpen,
-  Download,
   ShieldAlert,
   Database,
   ClipboardCheck,
   AlertTriangle
 } from 'lucide-react';
 import './App.css';
-import { SensitivityForm } from './components/SensitivityForm';
 import { ComplianceBadge } from './components/ComplianceBadge';
 import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
@@ -34,6 +30,12 @@ import { Sidebar, type SidebarCandidateCase } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 // FM-04a Phase 21 D — Visual tab body extracted out of App.tsx.
 import { VisualTabPanel } from './components/VisualTabPanel';
+// FM-04a Phase 22 C — Narrative + Exploration tab bodies +
+// OperatorStatusPanel + TabButton extracted from App.tsx.
+import { NarrativeTabPanel } from './components/NarrativeTabPanel';
+import { ExplorationTabPanel } from './components/ExplorationTabPanel';
+import { OperatorStatusPanel } from './components/OperatorStatusPanel';
+import { TabButton } from './components/TabButton';
 import { RightRail } from './components/RightRail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
@@ -59,326 +61,21 @@ import type {
 } from './trustCenterSummary';
 
 
-// --- Types ---
-interface CaseMetadata {
-  id: string;
-  name: string;
-  description: string;
-  type: string;
-  structure: string;
-  frd_path: string;
-}
-
-interface CaseReferenceDetails {
-  case_id?: string;
-  case_name?: string;
-  status?: string;
-  status_reason?: string;
-  failure_pattern_ref?: string;
-  metadata?: Record<string, unknown>;
-}
-
-interface ReportData {
-  summary: string;
-  metrics: {
-    max_displacement: number;
-    max_von_mises: number;
-    safety_factor: number;
-    status: 'PASS' | 'FAIL' | 'CRITICAL' | 'N/A';
-  };
-  validation: {
-    status: string;
-    error_percentage: number;
-  };
-  markdown: string;
-  candidate_report_spine?: CandidateReportSpine;
-  increments?: {
-    index: number;
-    step: number;
-    type: string;
-    value: number;
-    max_displacement: number;
-    max_von_mises: number;
-  }[];
-}
-
-interface CandidateArtifact {
-  kind: string;
-  status: string;
-  path: string;
-  file_name?: string;
-  sha256?: string;
-  size_bytes?: number;
-  description: string;
-  unavailable_reason?: string;
-  signals?: string[];
-}
-
-interface CandidateMeshEvidence {
-  status: string;
-  claim_impact: string;
-  result_mesh: {
-    source: string;
-    node_count: number;
-    element_count: number;
-    increment_count: number;
-  };
-  input_deck: {
-    status: string;
-    path?: string;
-    node_count?: number;
-    element_count?: number;
-    element_types?: Record<string, number>;
-    include_count?: number;
-    limitation?: string;
-    unavailable_reason?: string;
-  };
-  metadata: {
-    status: string;
-    source?: string;
-    artifacts: CandidateArtifact[];
-    generation_mode?: string | null;
-    mesh_level?: string | null;
-    element_order?: string | null;
-    thin_wall_detected?: boolean | null;
-    unavailable_reason?: string;
-  };
-  quality: {
-    status: string;
-    source?: string | null;
-    metrics: Record<string, unknown>;
-    thresholds?: Record<string, unknown>;
-    findings?: string[];
-    claim_impact?: string;
-    artifact_count?: number;
-    unavailable_reason?: string;
-  };
-  convergence_study: CandidateMeshConvergenceStudy;
-}
-
-interface CandidateMeshConvergenceStudy {
-  status: string;
-  source?: string;
-  study_status?: string;
-  parameter?: string;
-  metric?: string;
-  tolerance_pct?: number;
-  relative_change_pct?: number;
-  run_count?: number;
-  runs?: Record<string, unknown>[];
-  claim_boundary?: string;
-  claim_impact?: string;
-  unavailable_reason?: string;
-}
-
-interface CandidateConvergenceEvidence {
-  status: string;
-  claim_impact: string;
-  normal_termination: string;
-  latest_job_status?: string | null;
-  source_artifacts: CandidateArtifact[];
-  mesh_refinement_study?: CandidateMeshConvergenceStudy;
-  signals: string[];
-  missing_reasons: string[];
-}
-
-interface CandidateBallisticEvidence {
-  status: string;
-  claim_impact: string;
-  claim_boundary: string;
-  projectile_initial_velocity: {
-    status: string;
-    value_m_per_s?: number | null;
-    source?: string;
-    unavailable_reason?: string;
-  };
-  residual_velocity_candidate: {
-    status: string;
-    value_m_per_s?: number | null;
-    extraction_source?: string;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  perforation_marker: {
-    status: string;
-    evidence_path?: string | null;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  energy_balance_candidate: {
-    status: string;
-    source?: string;
-    initial_kinetic_energy_j?: number | null;
-    plastic_dissipation_j?: number | null;
-    contact_friction_j?: number | null;
-    hourglass_energy_j?: number | null;
-    residual_kinetic_energy_j?: number | null;
-    energy_ratio?: number | null;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  animation_manifest: {
-    status: string;
-    path?: string;
-    sha256?: string;
-    size_bytes?: number;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  time_step_series_summary: {
-    status: string;
-    source?: string;
-    step_count?: number | null;
-    min_dt_s?: number | null;
-    max_dt_s?: number | null;
-    mean_dt_s?: number | null;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  time_step_convergence_study: {
-    status: string;
-    source?: string;
-    study_status?: string;
-    parameter?: string;
-    metric?: string;
-    tolerance_pct?: number | null;
-    relative_change_pct?: number | null;
-    candidate_stability?: string;
-    run_count?: number;
-    runs?: Record<string, unknown>[];
-    claim_boundary?: string;
-    claim_impact?: string;
-    unavailable_reason?: string;
-  };
-  tier2_blockers_ballistic: string[];
-}
-
-interface CandidateReportSpine {
-  schema_version: string;
-  claim_tier: string;
-  allowed_claim: string;
-  no_overclaim: string;
-  case: {
-    case_id: string;
-    case_name: string;
-    expected_results_status: string;
-    status_reason: string;
-    failure_pattern_ref: string;
-  };
-  provenance: {
-    report_surface: string;
-    parser: string;
-    result_file_name: string;
-    original_filename: string;
-    file_size_bytes: number;
-    parse_time_s: number;
-    is_binary_frd: boolean;
-    node_count: number;
-    element_count: number;
-    increment_count: number;
-    solver_truth_source: string;
-  };
-  solver: {
-    truth_source: string;
-    latest_job_id?: string | null;
-    latest_job_status?: string | null;
-    normal_termination_state: string;
-    logs: {
-      status: string;
-      line_count?: number | null;
-      tail: string[];
-      artifact_paths: string[];
-      unavailable_reason?: string;
-    };
-  };
-  assumptions: {
-    unit_system: {
-      status: string;
-      stress_unit: string;
-      length_unit: string;
-    };
-    material: {
-      status: string;
-      value?: unknown;
-      unavailable_reason?: string;
-    };
-    boundary_conditions: {
-      status: string;
-      value?: unknown;
-      unavailable_reason?: string;
-    };
-    contact: {
-      status: string;
-      unavailable_reason?: string;
-    };
-  };
-  mesh_evidence?: CandidateMeshEvidence;
-  convergence_evidence?: CandidateConvergenceEvidence;
-  ballistic?: CandidateBallisticEvidence;
-  artifact_manifest: {
-    manifest_id: string;
-    hash_algorithm: string;
-    hash_count: number;
-    items: CandidateArtifact[];
-  };
-  limitations: string[];
-  reviewer_summary: {
-    verdict: string;
-    summary: string;
-    blocked_findings: string[];
-    next_actions: string[];
-  };
-  tier2_blockers: string[];
-}
-
-interface ExperimentStatus {
-  id: string;
-  parameter: string;
-  status: string;
-  runs: {
-      iteration: number;
-      value: number;
-      job_id: string;
-      status: string;
-      inp_path: string;
-  }[];
-}
-
-interface CopilotAction {
-  action_type: string;
-  parameters: Record<string, unknown>;
-  description: string;
-}
-
-interface CopilotActionResult {
-  job_id?: string;
-  experiment_id?: string;
-  message?: string;
-}
-
-interface OperatorStatusItem {
-  label: string;
-  value: string;
-  tone?: 'accent' | 'warning' | 'muted' | 'danger';
-  detail?: string;
-}
-
-interface OperatorStatusSection {
-  title: string;
-  icon: ReactNode;
-  items: OperatorStatusItem[];
-}
-
-interface GoldenSampleQueueItem {
-  caseId: string;
-  name: string;
-  status: string;
-  reason: string;
-  failurePatternRef: string;
-  tone: OperatorStatusItem['tone'];
-}
-
-type JobStatus = 'idle' | 'starting' | 'running' | 'stop_requested' | 'completed' | 'failed' | 'stopped' | 'connection_lost';
+// FM-04a Phase 22 C — types moved to ./types/AppTypes. Only the
+// subset directly referenced by App.tsx state + handlers is imported
+// here; tab-panel components import their own types.
+import type {
+  CaseMetadata,
+  CaseReferenceDetails,
+  ReportData,
+  ExperimentStatus,
+  CopilotAction,
+  CopilotActionResult,
+  OperatorStatusItem,
+  OperatorStatusSection,
+  GoldenSampleQueueItem,
+  JobStatus,
+} from './types/AppTypes';
 
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
@@ -1665,26 +1362,24 @@ function App() {
 
             <div style={{ padding: '0', flex: 1 }}>
                 {activeTab === 'explore' ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 500px) 1fr', gap: '32px' }}>
-                        <SensitivityForm activeCaseId={activeCaseId!} onRunStudy={handleRunStudy} loading={loading} />
-                        {activeExperiment && activeExperiment.status === 'COMPLETED' && (
-                        <div className="glass-panel" style={{ padding: '24px' }}>
-                            <h3 style={{ fontSize: '1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <ArrowRightLeft size={18} color="var(--accent)" /> Result Comparison
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {activeExperiment.runs.map((r, i) => (
-                                <div key={i} className="glass-panel" style={{ padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span>Iteration {i+1} (Value: {r.value})</span>
-                                    <button onClick={() => { if (comparedIndices) { if (comparedIndices[0] === i) setComparedIndices(null); else setComparedIndices([comparedIndices[0], i]); } else setComparedIndices([i, -1]); }} style={{ background: comparedIndices?.includes(i) ? 'var(--accent)' : 'transparent', border: '1px solid var(--accent)', color: comparedIndices?.includes(i) ? '#000' : 'var(--accent)', padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                                        {comparedIndices?.includes(i) ? 'Selected' : 'Compare'}
-                                    </button>
-                                </div>
-                                ))}
-                            </div>
-                        </div>
-                        )}
-                    </div>
+                    <ExplorationTabPanel
+                        activeCaseId={activeCaseId!}
+                        loading={loading}
+                        activeExperiment={activeExperiment}
+                        comparedIndices={comparedIndices}
+                        onCompareIndex={(i) => {
+                            if (comparedIndices) {
+                                if (comparedIndices[0] === i) {
+                                    setComparedIndices(null);
+                                } else {
+                                    setComparedIndices([comparedIndices[0], i]);
+                                }
+                            } else {
+                                setComparedIndices([i, -1]);
+                            }
+                        }}
+                        onRunStudy={handleRunStudy}
+                    />
                 ) : (
                     <>
                     {loading ? (
@@ -1740,21 +1435,10 @@ function App() {
                                         </div>
                                     </div>
                                 ) : (
-                                <div style={{ padding: '40px', color: 'var(--text-secondary)' }} className="report-markdown">
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <BookOpen size={20} color="var(--accent)" />
-                                            <h2 style={{ margin: 0 }}>Design Auditor Insight</h2>
-                                        </div>
-                                        <button 
-                                            onClick={downloadPDFReport}
-                                            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--accent)', padding: '6px 14px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                                        >
-                                            <Download size={14} /> Export PDF Document
-                                        </button>
-                                    </div>
-                                    <div dangerouslySetInnerHTML={{ __html: report.markdown.replace(/\n/g, '<br/>') }} />
-                                </div>
+                                    <NarrativeTabPanel
+                                        report={report}
+                                        onDownloadPDF={downloadPDFReport}
+                                    />
                                 )}
                             </div>
                         </div>
@@ -1790,109 +1474,6 @@ function App() {
       </div>
     </div>
   );
-}
-
-function OperatorStatusPanel({
-  strip,
-  sections,
-  goldenSamples,
-}: {
-  strip: OperatorStatusItem[];
-  sections: OperatorStatusSection[];
-  goldenSamples: GoldenSampleQueueItem[];
-}) {
-  const toneColor = (tone?: OperatorStatusItem['tone']) => {
-    if (tone === 'accent') return 'var(--accent)';
-    if (tone === 'warning') return '#f59e0b';
-    if (tone === 'danger') return '#ef4444';
-    return 'var(--text-primary)';
-  };
-
-  const toneBackground = (tone?: OperatorStatusItem['tone']) => {
-    if (tone === 'accent') return 'rgba(16, 185, 129, 0.08)';
-    if (tone === 'warning') return 'rgba(245, 158, 11, 0.08)';
-    if (tone === 'danger') return 'rgba(239, 68, 68, 0.08)';
-    return 'rgba(15, 23, 42, 0.55)';
-  };
-
-  const toneBorder = (tone?: OperatorStatusItem['tone']) => {
-    if (tone === 'accent') return 'rgba(16, 185, 129, 0.35)';
-    if (tone === 'warning') return 'rgba(245, 158, 11, 0.35)';
-    if (tone === 'danger') return 'rgba(239, 68, 68, 0.35)';
-    return 'var(--border)';
-  };
-
-  return (
-    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Validation and trust center">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
-          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Evidence-first workbench state</h2>
-        </div>
-        <div style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(239, 68, 68, 0.08)' }}>
-          not signed validation
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '18px' }}>
-        {strip.map((item) => (
-          <div key={item.label} style={{ background: toneBackground(item.tone), border: `1px solid ${toneBorder(item.tone)}`, borderRadius: '8px', padding: '12px', minHeight: '78px' }}>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
-            <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
-            {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
-        {sections.map((section) => (
-          <div key={section.title} style={{ background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px' }}>
-              <span style={{ color: 'var(--accent)', display: 'flex' }}>{section.icon}</span>
-              {section.title}
-            </div>
-            <div style={{ display: 'grid', gap: '9px' }}>
-              {section.items.map((item) => (
-                <div key={`${section.title}-${item.label}`} style={{ borderTop: '1px solid var(--border)', paddingTop: '9px' }}>
-                  <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>{item.label}</div>
-                  <div style={{ color: toneColor(item.tone), fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
-                  {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '4px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop: '14px', background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
-        <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ShieldAlert size={16} color="var(--accent)" />
-          Golden Sample Review Queue
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
-          {goldenSamples.map((sample) => (
-            <div key={sample.caseId} style={{ border: `1px solid ${toneBorder(sample.tone)}`, background: toneBackground(sample.tone), borderRadius: '8px', padding: '12px', minHeight: '106px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem' }}>{sample.caseId}</div>
-                <div style={{ color: toneColor(sample.tone), fontWeight: 800, fontSize: '0.68rem', textTransform: 'uppercase' }}>{sample.status}</div>
-              </div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', lineHeight: 1.35, marginBottom: '6px' }}>{sample.name}</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{sample.reason}</div>
-              <div style={{ color: toneColor(sample.tone), fontSize: '0.7rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{sample.failurePatternRef}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function TabButton({ active, onClick, label, icon }: { active: boolean, onClick: () => void, label: string, icon: ReactNode }) {
-  return (
-    <button onClick={onClick} style={{ padding: '8px 16px', border: 'none', borderRadius: '8px', background: active ? 'var(--accent)' : 'transparent', color: active ? '#000' : '#fff', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}>
-      {icon} {label}
-    </button>
-  )
 }
 
 export default App;

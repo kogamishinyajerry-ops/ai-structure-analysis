@@ -1,0 +1,109 @@
+// FM-04a Phase 22 C — extracted out of App.tsx as part of the
+// LOC-discipline trajectory. Renders the Validation & Trust Center
+// header strip + sections + Golden-sample queue. Pure-presentational
+// component; all state is owned by the App composition root.
+//
+// Tier 1 / Tier 2 engineering candidate; not signed validation; not
+// benchmark agreement.
+
+import { ShieldAlert } from 'lucide-react';
+import type {
+  GoldenSampleQueueItem,
+  OperatorStatusItem,
+  OperatorStatusSection,
+} from '../types/AppTypes';
+
+export function OperatorStatusPanel({
+  strip,
+  sections,
+  goldenSamples,
+}: {
+  strip: OperatorStatusItem[];
+  sections: OperatorStatusSection[];
+  goldenSamples: GoldenSampleQueueItem[];
+}) {
+  const toneColor = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'var(--accent)';
+    if (tone === 'warning') return '#f59e0b';
+    if (tone === 'danger') return '#ef4444';
+    return 'var(--text-primary)';
+  };
+
+  const toneBackground = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'rgba(16, 185, 129, 0.08)';
+    if (tone === 'warning') return 'rgba(245, 158, 11, 0.08)';
+    if (tone === 'danger') return 'rgba(239, 68, 68, 0.08)';
+    return 'rgba(15, 23, 42, 0.55)';
+  };
+
+  const toneBorder = (tone?: OperatorStatusItem['tone']) => {
+    if (tone === 'accent') return 'rgba(16, 185, 129, 0.35)';
+    if (tone === 'warning') return 'rgba(245, 158, 11, 0.35)';
+    if (tone === 'danger') return 'rgba(239, 68, 68, 0.35)';
+    return 'var(--border)';
+  };
+
+  return (
+    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Validation and trust center">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
+          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Evidence-first workbench state</h2>
+        </div>
+        <div style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(239, 68, 68, 0.08)' }}>
+          not signed validation
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+        {strip.map((item) => (
+          <div key={item.label} style={{ background: toneBackground(item.tone), border: `1px solid ${toneBorder(item.tone)}`, borderRadius: '8px', padding: '12px', minHeight: '78px' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
+            <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
+            {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+        {sections.map((section) => (
+          <div key={section.title} style={{ background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)', fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px' }}>
+              <span style={{ color: 'var(--accent)', display: 'flex' }}>{section.icon}</span>
+              {section.title}
+            </div>
+            <div style={{ display: 'grid', gap: '9px' }}>
+              {section.items.map((item) => (
+                <div key={`${section.title}-${item.label}`} style={{ borderTop: '1px solid var(--border)', paddingTop: '9px' }}>
+                  <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>{item.label}</div>
+                  <div style={{ color: toneColor(item.tone), fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
+                  {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '4px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: '14px', background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+        <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ShieldAlert size={16} color="var(--accent)" />
+          Golden Sample Review Queue
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
+          {goldenSamples.map((sample) => (
+            <div key={sample.caseId} style={{ border: `1px solid ${toneBorder(sample.tone)}`, background: toneBackground(sample.tone), borderRadius: '8px', padding: '12px', minHeight: '106px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem' }}>{sample.caseId}</div>
+                <div style={{ color: toneColor(sample.tone), fontWeight: 800, fontSize: '0.68rem', textTransform: 'uppercase' }}>{sample.status}</div>
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', lineHeight: 1.35, marginBottom: '6px' }}>{sample.name}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{sample.reason}</div>
+              <div style={{ color: toneColor(sample.tone), fontSize: '0.7rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{sample.failurePatternRef}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
