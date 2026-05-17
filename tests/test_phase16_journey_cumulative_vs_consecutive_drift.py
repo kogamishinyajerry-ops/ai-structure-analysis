@@ -41,7 +41,6 @@ Anti-gaming guards pinned (per Phase 16 binding rubric §3.D):
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 import subprocess
 import sys
@@ -53,11 +52,20 @@ import pytest
 from app.api.routes import trust_score_timeline as trust_score_timeline_route
 from app.main import app
 from app.services.reporting.cohort_snapshot import (
-    SnapshotCaseInput,
     write_cohort_snapshot,
 )
 
 from tests._test_utils import assert_tier1_trio
+
+# Phase 17 D consolidation: cohort-fixture helpers sourced from SSOT.
+# make_clean_leak_case_input accepts a suffix kwarg for per-arc
+# staging-dir isolation; make_regressed_leak_case_input accepts a
+# drop_optional_artifacts kwarg for the energy-only invariant.
+from tests._test_utils.cohort_fixtures import (
+    make_clean_leak_case_input,
+    make_explicit_dynamics_healthy_input,
+    make_regressed_leak_case_input,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -120,86 +128,6 @@ def client() -> _SyncASGIClient:
 # ---------------------------------------------------------------------
 
 
-def _stub_path(tmp: Path, name: str) -> Path:
-    p = tmp / name
-    if not p.exists():
-        p.write_text("# stub artifact for Phase 16 D journey 2", encoding="utf-8")
-    return p
-
-
-def _healthy_case_input(tmp: Path, case_id: str) -> SnapshotCaseInput:
-    fixture = tmp / "golden_samples" / case_id
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=fixture / "data" / "ballistic_metrics.json",
-        convergence_study_path=fixture / "data" / "convergence_study.json",
-        animation_manifest_path=fixture / "data" / "animation_manifest.json",
-        result_mesh_path=None,
-        generator_script_path=_stub_path(tmp, f"gen_{case_id.replace('-', '_')}_deck.py"),
-        notes_path=fixture / "NOTES.md",
-        analysis_type="explicit_dynamics",
-    )
-
-
-def _clean_leak_case_input(tmp: Path, case_id: str, suffix: str) -> SnapshotCaseInput:
-    """Clean leak case at full energy credit (15). The ``suffix`` keeps
-    per-arc clean staging directories disjoint so the same tmp can host
-    both arc-shape snapshots side-by-side."""
-    fixture = tmp / "golden_samples" / case_id
-    metrics_src = fixture / "data" / "ballistic_metrics.json"
-    payload = json.loads(metrics_src.read_text(encoding="utf-8"))
-    payload["energy_audit"]["status"] = "closed_aggregate"
-    payload["energy_audit"]["rationale"] = (
-        "Tier 1 candidate clean state. Not signed validation; not benchmark agreement."
-    )
-    clean_dir = tmp / f"phase16d_journey2_{suffix}" / case_id
-    clean_dir.mkdir(parents=True, exist_ok=True)
-    clean_metrics = clean_dir / "ballistic_metrics.json"
-    clean_metrics.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    conv_src = fixture / "data" / "convergence_study.json"
-    conv_payload = json.loads(conv_src.read_text(encoding="utf-8"))
-    conv_payload["combined_verdict"] = "candidate_observed_stable"
-    conv_payload["mesh_sweep"]["candidate_stability"] = "candidate_observed_stable"
-    conv_payload["dt_sweep"]["candidate_stability"] = "candidate_observed_stable"
-    conv_payload["mesh_sweep"]["rationale"] = "Tier 1 candidate clean state. Not signed validation."
-    conv_payload["dt_sweep"]["rationale"] = "Tier 1 candidate clean state. Not benchmark agreement."
-    clean_conv = clean_dir / "convergence_study.json"
-    clean_conv.write_text(json.dumps(conv_payload, indent=2), encoding="utf-8")
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=clean_metrics,
-        convergence_study_path=clean_conv,
-        animation_manifest_path=fixture / "data" / "animation_manifest.json",
-        result_mesh_path=None,
-        generator_script_path=_stub_path(tmp, f"gen_{case_id.replace('-', '_')}_deck.py"),
-        notes_path=fixture / "NOTES.md",
-        analysis_type="explicit_dynamics",
-    )
-
-
-def _regressed_leak_case_input(tmp: Path, case_id: str) -> SnapshotCaseInput:
-    """Leak case in the canonical regressed state (energy 0). Keeps all
-    optional artifacts present so the ONLY axis moving across the arc
-    is energy_audit (cleaner invariant)."""
-    fixture = tmp / "golden_samples" / case_id
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=fixture / "data" / "ballistic_metrics.json",
-        convergence_study_path=fixture / "data" / "convergence_study.json",
-        animation_manifest_path=fixture / "data" / "animation_manifest.json",
-        result_mesh_path=None,
-        generator_script_path=_stub_path(tmp, f"gen_{case_id.replace('-', '_')}_deck.py"),
-        notes_path=fixture / "NOTES.md",
-        analysis_type="explicit_dynamics",
-    )
-
-
 def _seed_arc(
     tmp: Path,
     *,
@@ -212,14 +140,16 @@ def _seed_arc(
     ``"regressed"``. Canonical + stiff cases stay healthy throughout."""
     for label, shape in zip(labels, leak_shape, strict=True):
         if shape == "clean":
-            leak_input = _clean_leak_case_input(tmp, LEAK_CASE_ID, f"{suffix}_{label}")
+            leak_input = make_clean_leak_case_input(tmp, LEAK_CASE_ID, suffix=f"{suffix}_{label}")
         elif shape == "regressed":
-            leak_input = _regressed_leak_case_input(tmp, LEAK_CASE_ID)
+            leak_input = make_regressed_leak_case_input(
+                tmp, LEAK_CASE_ID, drop_optional_artifacts=False
+            )
         else:  # pragma: no cover - defensive
             raise AssertionError(f"unexpected leak shape {shape!r}")
         snapshot = [
-            _healthy_case_input(tmp, "rod-wave-impact-candidate"),
-            _healthy_case_input(tmp, "rod-wave-impact-stiff-candidate"),
+            make_explicit_dynamics_healthy_input(tmp, "rod-wave-impact-candidate"),
+            make_explicit_dynamics_healthy_input(tmp, "rod-wave-impact-stiff-candidate"),
             leak_input,
         ]
         write_cohort_snapshot(snapshot, repo_root=tmp, snapshot_label=label)

@@ -45,11 +45,17 @@ from app.services.reporting.cohort_executive_summary import (
     WATCHING_TRUST_SCORE_MIN,
 )
 from app.services.reporting.cohort_snapshot import (
-    SnapshotCaseInput,
     write_cohort_snapshot,
 )
 from app.services.reporting.trust_score_timeline import (
     build_trust_score_timeline,
+)
+
+# Phase 17 D consolidation: cohort-fixture helpers sourced from SSOT.
+from tests._test_utils.cohort_fixtures import (
+    make_clean_leak_case_input,
+    make_explicit_dynamics_healthy_input,
+    make_regressed_leak_case_input,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -102,145 +108,32 @@ def seeded_repo(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return tmp
 
 
-def _stub_path(tmp: Path, name: str) -> Path:
-    """Write a tiny stub file under tmp_path and return its path —
-    used for starter/engine/generator decks where the case_completeness
-    rubric only checks presence."""
-    p = tmp / name
-    if not p.exists():
-        p.write_text("# stub artifact for Phase 15 B snapshot", encoding="utf-8")
-    return p
-
-
-def _healthy_case_input(
-    tmp: Path,
-    case_id: str,
-) -> SnapshotCaseInput:
-    """Full-credit case input pointing at the canonical fixture (the
-    on-disk Phase 15 A state). Used for snap-1 + snap-2 healthy
-    cases."""
-    fixture = tmp / "golden_samples" / case_id
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=fixture / "data" / "ballistic_metrics.json",
-        convergence_study_path=fixture / "data" / "convergence_study.json",
-        animation_manifest_path=fixture / "data" / "animation_manifest.json",
-        result_mesh_path=None,
-        generator_script_path=_stub_path(tmp, f"gen_{case_id.replace('-', '_')}_deck.py"),
-        notes_path=fixture / "NOTES.md",
-        analysis_type="explicit_dynamics",
-    )
-
-
-def _clean_leak_case_input(
-    tmp: Path,
-    case_id: str,
-) -> SnapshotCaseInput:
-    """Synthesize a CLEAN variant of the leak case for snap-1: rewrite
-    the leak case's ballistic_metrics so energy_audit.status =
-    closed_aggregate (the canonical Phase 15 A state has it set to
-    open_residual). This puts the leak case at full healthy credit
-    at snap-1 BEFORE the degradation arc starts."""
-    fixture = tmp / "golden_samples" / case_id
-    metrics_src = fixture / "data" / "ballistic_metrics.json"
-    payload = json.loads(metrics_src.read_text(encoding="utf-8"))
-    payload["energy_audit"]["status"] = "closed_aggregate"
-    payload["energy_audit"]["rationale"] = (
-        "Tier 1 candidate snap-1 healthy state; energy partition closed at "
-        "machine epsilon BEFORE the synthetic leak injection in later "
-        "snapshots. Not signed validation; not benchmark agreement."
-    )
-    # Write the clean variant to a tmp file so we don't mutate the
-    # on-disk Phase 15 A fixture.
-    clean_dir = tmp / "phase15b_snap1_clean" / case_id
-    clean_dir.mkdir(parents=True, exist_ok=True)
-    clean_metrics = clean_dir / "ballistic_metrics.json"
-    clean_metrics.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    # Convergence also needs to be patched to stable for snap-1.
-    conv_src = fixture / "data" / "convergence_study.json"
-    conv_payload = json.loads(conv_src.read_text(encoding="utf-8"))
-    conv_payload["combined_verdict"] = "candidate_observed_stable"
-    conv_payload["mesh_sweep"]["candidate_stability"] = "candidate_observed_stable"
-    conv_payload["dt_sweep"]["candidate_stability"] = "candidate_observed_stable"
-    conv_payload["mesh_sweep"]["rationale"] = (
-        "Tier 1 candidate snap-1 healthy state; convergence stable BEFORE "
-        "synthetic energy leak. Not signed validation."
-    )
-    conv_payload["dt_sweep"]["rationale"] = (
-        "Tier 1 candidate snap-1 healthy state. Not benchmark agreement."
-    )
-    clean_conv = clean_dir / "convergence_study.json"
-    clean_conv.write_text(json.dumps(conv_payload, indent=2), encoding="utf-8")
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=clean_metrics,
-        convergence_study_path=clean_conv,
-        animation_manifest_path=fixture / "data" / "animation_manifest.json",
-        result_mesh_path=None,
-        generator_script_path=_stub_path(tmp, f"gen_{case_id.replace('-', '_')}_deck.py"),
-        notes_path=fixture / "NOTES.md",
-        analysis_type="explicit_dynamics",
-    )
-
-
-def _regressed_leak_case_input(
-    tmp: Path,
-    case_id: str,
-) -> SnapshotCaseInput:
-    """snap-3 regressed variant of the leak case: canonical
-    energy_audit=open_residual + convergence_unstable PLUS three
-    optional artifacts omitted (animation_manifest, notes,
-    generator_script). Completeness drops from 75 to ~60; trust
-    falls below the 50-pt regressed bucket floor.
-
-    Per the Phase 13 C `cylinder-pv-collapsed-candidate` precedent:
-    the regressed-bucket trigger needs to drop EITHER multiple axes
-    OR multiple optional-evidence artifacts on top of the energy
-    failure — a single-axis collapse alone leaves trust in the
-    watching bucket."""
-    fixture = tmp / "golden_samples" / case_id
-    return SnapshotCaseInput(
-        case_id=case_id,
-        starter_deck_path=fixture / "data" / "model_00_0000.rad",
-        engine_deck_path=fixture / "data" / "model_00_0001.rad",
-        ballistic_metrics_path=fixture / "data" / "ballistic_metrics.json",
-        convergence_study_path=fixture / "data" / "convergence_study.json",
-        animation_manifest_path=None,  # OMITTED → completeness -5
-        result_mesh_path=None,
-        generator_script_path=None,  # OMITTED → completeness -5
-        notes_path=None,  # OMITTED → completeness -5
-        analysis_type="explicit_dynamics",
-    )
-
-
 @pytest.fixture(scope="module")
 def three_snapshot_arc(seeded_repo: Path) -> Path:
     """Write the 3 snapshots under seeded_repo/reports/snapshots/."""
     # Snap-1: all 3 healthy
     snap1_inputs = [
-        _healthy_case_input(seeded_repo, "rod-wave-impact-candidate"),
-        _healthy_case_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
-        _clean_leak_case_input(seeded_repo, "rod-wave-impact-energy-leak-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
+        make_clean_leak_case_input(
+            seeded_repo, "rod-wave-impact-energy-leak-candidate", suffix="phase15b_snap1_clean"
+        ),
     ]
     write_cohort_snapshot(snap1_inputs, repo_root=seeded_repo, snapshot_label=SNAP_1_LABEL)
 
     # Snap-2: canonical + stiff healthy; leak watching (Phase 15 A canonical leak state)
     snap2_inputs = [
-        _healthy_case_input(seeded_repo, "rod-wave-impact-candidate"),
-        _healthy_case_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
-        _healthy_case_input(seeded_repo, "rod-wave-impact-energy-leak-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-energy-leak-candidate"),
     ]
     write_cohort_snapshot(snap2_inputs, repo_root=seeded_repo, snapshot_label=SNAP_2_LABEL)
 
     # Snap-3: canonical + stiff healthy; leak regressed (no generator_script)
     snap3_inputs = [
-        _healthy_case_input(seeded_repo, "rod-wave-impact-candidate"),
-        _healthy_case_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
-        _regressed_leak_case_input(seeded_repo, "rod-wave-impact-energy-leak-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-candidate"),
+        make_explicit_dynamics_healthy_input(seeded_repo, "rod-wave-impact-stiff-candidate"),
+        make_regressed_leak_case_input(seeded_repo, "rod-wave-impact-energy-leak-candidate"),
     ]
     write_cohort_snapshot(snap3_inputs, repo_root=seeded_repo, snapshot_label=SNAP_3_LABEL)
     return seeded_repo
