@@ -43,6 +43,11 @@ import {
   type CommandCategory,
 } from './commands/registry';
 import { FALLBACK_MATERIALS, type MaterialRecord } from './materialsClient';
+// FM-04a Phase 25 B — palette + topbar config extracted for LOC discipline.
+import {
+  buildPaletteCommands,
+  buildTopbarMaterialOptions,
+} from './state/paletteCommands';
 import type { SignoffRecord } from './signoffHistoryClient';
 import { FALLBACK_CANDIDATE_CASES, findCandidateCase } from './candidateCaseRegistry';
 import {
@@ -1197,73 +1202,19 @@ function App() {
       }),
     })
   }
-  const commands: Command[] = [
-    {
-      id: 'cmd-switch-tab-visual',
-      label: 'Switch to 3D Scene tab',
-      hotkey: 'g 1',
-      category: 'navigation' as CommandCategory,
-      handler: () => setActiveTab('visual'),
+  const commands: Command[] = buildPaletteCommands({
+    setActiveTab,
+    runSolverFromPalette: _runSolverFromPalette,
+    pickMaterialByIndex: (i) => setSelectedMaterial(FALLBACK_MATERIALS[i]),
+    openMaterialPickerPanel: () => {
+      if (typeof document === 'undefined') return;
+      const target = document.getElementById('material-picker-panel');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
-    {
-      id: 'cmd-switch-tab-narrative',
-      label: 'Switch to Narrative tab',
-      hotkey: 'g 2',
-      category: 'navigation' as CommandCategory,
-      handler: () => setActiveTab('report'),
-    },
-    {
-      id: 'cmd-switch-tab-exploration',
-      label: 'Switch to Exploration tab',
-      hotkey: 'g 3',
-      category: 'navigation' as CommandCategory,
-      handler: () => setActiveTab('explore'),
-    },
-    {
-      id: 'cmd-run-solver',
-      label: 'Run CalculiX solver on active case',
-      description: activeCaseId
-        ? `Active case: ${activeCaseId}`
-        : 'No case selected — pick one first',
-      category: 'solver' as CommandCategory,
-      handler: _runSolverFromPalette,
-    },
-    {
-      id: 'cmd-pick-material-steel',
-      label: 'Pick material — Structural Steel S355',
-      category: 'material' as CommandCategory,
-      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[0]),
-    },
-    {
-      id: 'cmd-pick-material-aluminium',
-      label: 'Pick material — Aluminium 6061-T6',
-      category: 'material' as CommandCategory,
-      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[1]),
-    },
-    {
-      id: 'cmd-pick-material-titanium',
-      label: 'Pick material — Titanium Ti-6Al-4V',
-      category: 'material' as CommandCategory,
-      handler: () => setSelectedMaterial(FALLBACK_MATERIALS[2]),
-    },
-    {
-      id: 'cmd-material-picker-open',
-      label: 'Open material picker panel',
-      category: 'material' as CommandCategory,
-      handler: () => {
-        if (typeof document === 'undefined') return;
-        const target = document.getElementById('material-picker-panel');
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      },
-    },
-    {
-      id: 'cmd-close-palette',
-      label: 'Close command palette',
-      hotkey: 'escape',
-      category: 'navigation' as CommandCategory,
-      handler: () => setPaletteOpen(false),
-    },
-  ]
+    closePalette: () => setPaletteOpen(false),
+    activeCaseId,
+    materials: FALLBACK_MATERIALS,
+  });
   useKeyboardShortcuts([
     {
       hotkey: 'mod+k',
@@ -1335,10 +1286,7 @@ function App() {
               showChat={showChat}
               onToggleChat={() => setShowChat(!showChat)}
               materialReference={lastSolverMaterialReference}
-              materialOptions={FALLBACK_MATERIALS.map((m) => ({
-                id: m.id,
-                label: m.name,
-              }))}
+              materialOptions={buildTopbarMaterialOptions(FALLBACK_MATERIALS)}
               selectedMaterialId={selectedMaterial.id}
               onChangeMaterialId={(id) => {
                 const found = FALLBACK_MATERIALS.find((m) => m.id === id);
