@@ -1584,6 +1584,14 @@ function App() {
         selectedCandidateCaseId={selectedCandidateCaseId}
         onSelectCandidateCase={(id) => {
           setSelectedCandidateCaseId(id)
+          // Phase 20 E (round 1 → round 2 fix) — close the state-
+          // divergence defect the UX agent flagged: selecting a
+          // candidate previously left `activeCaseId` null so the
+          // Topbar's Run Solver button stayed hidden. Unify the
+          // selection now so the Phase 20 A material_id route flow
+          // (which keys on `activeCaseId`) is reachable end-to-end
+          // from the Sidebar candidate roster click.
+          setActiveCaseId(id)
           try {
             window.localStorage.setItem('fm04a.candidateCaseId', id)
           } catch {

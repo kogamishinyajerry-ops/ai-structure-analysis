@@ -107,6 +107,61 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     claimBoundary:
       'tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement',
   },
+  {
+    // Phase 19 B / Phase 20 — first tier_2_validated case (per the
+    // verdict-file-driven overlay in
+    // `backend/app/services/reporting/_claim_tier.py`). Surfaced in
+    // the fallback so the Phase 20 D Sidebar candidate roster shows
+    // it even when the live backend route is unreachable. Phase 20 E
+    // round-1 UX finding: omission of these three new candidates was
+    // a real defect; this commit closes it.
+    caseId: 'cylinder-pv-candidate',
+    displayLabel: 'Cylinder pressure vessel · Tier 2 validated (Phase 19 B)',
+    claimTier: 'Tier 2 validated (analytical hoop-stress cross-check)',
+    starterDeckRelpath: null,
+    engineDeckRelpath: null,
+    generatorScriptRelpath: 'scripts/cross_check_cylinder_pv.py',
+    notesExcerpt:
+      'cylinder-pv-candidate · first tier_2_validated case in the harness. ' +
+      'Lame thin-walled hoop stress σ=p·r/t cross-checked vs real ccx ' +
+      'wall coupon at -0.0039% residual (PASS). Verdict file at ' +
+      'golden_samples/cylinder-pv-candidate/cross_check_verdict.yaml.',
+    claimBoundary:
+      'tier2_real_solver_validated; not_signed_validation; ' +
+      'cross_check_against_analytical',
+  },
+  {
+    caseId: 'plate-with-hole-candidate',
+    displayLabel: 'Plate with hole · 100×50×5 mm, meshed pipeline (Phase 20 C)',
+    claimTier: 'Tier 1 engineering candidate',
+    starterDeckRelpath:
+      'golden_samples/plate-with-hole-candidate/data/plate_with_hole.geo',
+    engineDeckRelpath: null,
+    generatorScriptRelpath: null,
+    notesExcerpt:
+      'plate-with-hole-candidate · Phase 20 C demonstration of the ' +
+      'meshed Tier 2 pipeline. Real gmsh → C3D4 tet mesh → real ccx → ' +
+      'non-zero u_x field under tensile load. Kirsch σ_max = 3·σ_∞ ' +
+      'cross-check runner is Phase 21+ scope.',
+    claimBoundary:
+      'tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement',
+  },
+  {
+    caseId: 'cantilever-beam-candidate',
+    displayLabel: 'Cantilever beam · Euler-Bernoulli δ=PL³/(3EI) (Phase 20 B)',
+    claimTier: 'Tier 1 engineering candidate',
+    starterDeckRelpath: null,
+    engineDeckRelpath: null,
+    generatorScriptRelpath: null,
+    notesExcerpt:
+      'cantilever-beam-candidate · second analytical cross-check ' +
+      'companion. Phase 20 B shipped the analytical formula + validity ' +
+      'envelope; ccx-running runner is Phase 21+ scope (single-hex ' +
+      'coupons cannot capture bending; multi-element Gmsh path lands ' +
+      'this case at tier_2_validated).',
+    claimBoundary:
+      'tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement',
+  },
 ]
 
 // Server payload key → camelCase mapping for the React layer.

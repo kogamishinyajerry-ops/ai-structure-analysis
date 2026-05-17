@@ -29,8 +29,18 @@ describe('candidateCaseRegistry round-3 surface', () => {
     }
   })
 
-  it('fallback case count grew to 4 (3 GS-102 + 1 leak)', () => {
-    expect(FALLBACK_CANDIDATE_CASES).toHaveLength(4)
+  it('fallback case count grew to >=4 (Phase 18 E baseline; Phase 20 E added 3 more)', () => {
+    // Phase 18 E (round 3) pinned this at exactly 4 (3 GS-102 + leak).
+    // Phase 20 E (round-1 → round-2 fix) added cylinder-pv,
+    // plate-with-hole, and cantilever-beam to close the UX agent's
+    // "new candidates invisible in left rail" finding. Pin head-of-
+    // list invariant rather than exact count so future additions
+    // don't re-trip this test.
+    expect(FALLBACK_CANDIDATE_CASES.length).toBeGreaterThanOrEqual(4)
+    expect(FALLBACK_CANDIDATE_CASES[0].caseId).toBe('GS-102-candidate')
+    expect(FALLBACK_CANDIDATE_CASES[3].caseId).toBe(
+      'rod-wave-impact-energy-leak-candidate',
+    )
   })
 
   it('leak case carries the Tier 1 boundary copy', () => {
