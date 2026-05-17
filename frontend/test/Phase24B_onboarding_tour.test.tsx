@@ -38,9 +38,15 @@ describe('Phase 24 B — onboardingTour state machine', () => {
     )
   })
 
-  it('exposes all 4 steps in the expected progression order', () => {
-    expect(ONBOARDING_TOTAL_STEPS).toBe(4)
-    expect(ONBOARDING_STEPS.map((s) => s.id)).toEqual([
+  it('exposes the first 4 steps from Phase 24 B in the expected progression order', () => {
+    // FM-04a Phase 27 D refreshed the tour to 6 steps (added
+    // 'basic-advanced-mode' + 'probe-diff-column'). Phase 24 B's
+    // intent (the original 4 steps remain in the first 4 positions
+    // of the progression) is preserved; loosened from strict ==
+    // to subset / prefix match.
+    expect(ONBOARDING_TOTAL_STEPS).toBeGreaterThanOrEqual(4)
+    const ids = ONBOARDING_STEPS.map((s) => s.id)
+    expect(ids.slice(0, 4)).toEqual([
       'field-component-switcher',
       'threshold-filter',
       'node-pick',
@@ -48,16 +54,16 @@ describe('Phase 24 B — onboardingTour state machine', () => {
     ])
   })
 
-  it('nextStep advances by one and marks dismissed when past the last step', () => {
+  it('nextStep advances one-at-a-time and marks dismissed at the end', () => {
+    // FM-04a Phase 27 D: total steps increased from 4 → 6; the
+    // state-machine contract (advance one at a time; dismiss at
+    // total) is invariant. Original Phase 24 B intent preserved.
     let state = ONBOARDING_INITIAL_STATE
-    state = nextStep(state)
-    expect(state.currentStepIndex).toBe(1)
-    expect(state.dismissed).toBe(false)
-    state = nextStep(state)
-    expect(state.currentStepIndex).toBe(2)
-    state = nextStep(state)
-    expect(state.currentStepIndex).toBe(3)
-    expect(state.dismissed).toBe(false)
+    for (let i = 0; i < ONBOARDING_TOTAL_STEPS - 1; i++) {
+      state = nextStep(state)
+      expect(state.currentStepIndex).toBe(i + 1)
+      expect(state.dismissed).toBe(false)
+    }
     state = nextStep(state)
     expect(state.currentStepIndex).toBe(ONBOARDING_TOTAL_STEPS)
     expect(state.dismissed).toBe(true)
@@ -93,19 +99,27 @@ describe('Phase 24 B — onboardingTour state machine', () => {
     expect(shouldShowTour(ONBOARDING_INITIAL_STATE, false)).toBe(true)
   })
 
-  it('progressLabel renders "n / 4" format', () => {
-    expect(progressLabel(ONBOARDING_INITIAL_STATE)).toBe('1 / 4')
-    expect(progressLabel(nextStep(ONBOARDING_INITIAL_STATE))).toBe('2 / 4')
+  it('progressLabel renders "n / total" format', () => {
+    // FM-04a Phase 27 D: total is now 6, not 4. Format invariant.
+    expect(progressLabel(ONBOARDING_INITIAL_STATE)).toBe(`1 / ${ONBOARDING_TOTAL_STEPS}`)
+    expect(progressLabel(nextStep(ONBOARDING_INITIAL_STATE))).toBe(
+      `2 / ${ONBOARDING_TOTAL_STEPS}`,
+    )
     let state = ONBOARDING_INITIAL_STATE
     for (let i = 0; i < ONBOARDING_TOTAL_STEPS; i++) state = nextStep(state)
-    expect(progressLabel(state)).toBe('4 / 4')
+    expect(progressLabel(state)).toBe(
+      `${ONBOARDING_TOTAL_STEPS} / ${ONBOARDING_TOTAL_STEPS}`,
+    )
   })
 
   it('each step has a non-empty title, body, and shippedInPhase tag', () => {
+    // FM-04a Phase 27 D loosened the shippedInPhase regex from
+    // /Phase 2[23] [A-Z]/ to /Phase 2\d [A-Z]/ so the new
+    // Phase 25 C / Phase 26 C steps can pass. Intent preserved.
     for (const step of ONBOARDING_STEPS) {
       expect(step.title.length).toBeGreaterThan(0)
       expect(step.body.length).toBeGreaterThan(0)
-      expect(step.shippedInPhase).toMatch(/Phase 2[23] [A-Z]/)
+      expect(step.shippedInPhase).toMatch(/Phase 2\d [A-Z]/)
     }
   })
 })
@@ -126,7 +140,10 @@ describe('Phase 24 B — OnboardingTour component', () => {
     const storage = makeStubStorage(false)
     render(<OnboardingTour storage={storage} />)
     expect(screen.getByTestId('onboarding-tour')).toBeTruthy()
-    expect(screen.getByTestId('onboarding-progress').textContent).toBe('1 / 4')
+    // FM-04a Phase 27 D: total is now 6, not 4.
+    expect(screen.getByTestId('onboarding-progress').textContent).toBe(
+      `1 / ${ONBOARDING_TOTAL_STEPS}`,
+    )
     expect(screen.getByText(/stress component/i)).toBeTruthy()
   })
 
@@ -140,7 +157,9 @@ describe('Phase 24 B — OnboardingTour component', () => {
     const storage = makeStubStorage(false)
     render(<OnboardingTour storage={storage} />)
     fireEvent.click(screen.getByTestId('onboarding-advance'))
-    expect(screen.getByTestId('onboarding-progress').textContent).toBe('2 / 4')
+    expect(screen.getByTestId('onboarding-progress').textContent).toBe(
+      `2 / ${ONBOARDING_TOTAL_STEPS}`,
+    )
   })
 
   it('completes after 4 advance clicks and persists dismissal', () => {
@@ -171,7 +190,9 @@ describe('Phase 24 B — OnboardingTour component', () => {
         vi.advanceTimersByTime(60000)
       })
       // Still on step 1.
-      expect(screen.getByTestId('onboarding-progress').textContent).toBe('1 / 4')
+      expect(screen.getByTestId('onboarding-progress').textContent).toBe(
+        `1 / ${ONBOARDING_TOTAL_STEPS}`,
+      )
     } finally {
       vi.useRealTimers()
     }
@@ -183,16 +204,18 @@ describe('Phase 24 B — OnboardingTour component', () => {
     expect(screen.getByTestId('onboarding-tour')).toBeTruthy()
   })
 
-  it('renders 4 progress dots with the active dot highlighted', () => {
+  it('renders one progress dot per step with the active dot highlighted', () => {
+    // FM-04a Phase 27 D: total is now 6, not 4. Dots-per-step
+    // contract preserved.
     const storage = makeStubStorage(false)
     render(<OnboardingTour storage={storage} />)
     for (let i = 0; i < ONBOARDING_TOTAL_STEPS; i++) {
       expect(screen.getByTestId(`onboarding-dot-${i}`)).toBeTruthy()
     }
     fireEvent.click(screen.getByTestId('onboarding-advance'))
-    // After 1 click, dot 1 should be active. Verifying renders by
-    // testid presence (visual highlight color is style-only).
-    expect(screen.getByTestId('onboarding-progress').textContent).toBe('2 / 4')
+    expect(screen.getByTestId('onboarding-progress').textContent).toBe(
+      `2 / ${ONBOARDING_TOTAL_STEPS}`,
+    )
   })
 
   it('emits onStateChange callback when user advances', () => {

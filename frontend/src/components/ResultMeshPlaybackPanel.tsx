@@ -36,6 +36,8 @@ import { OnboardingTour } from './OnboardingTour';
 // single-pick to a comparison list (max 8). State owned here so the
 // panel can render the table next to the viewport.
 import { ProbeListPanel } from './ProbeListPanel';
+// FM-04a Phase 27 D — probe-list save/restore across sessions.
+import { loadProbeList, saveProbeList } from './probeListStorage';
 import {
   PROBE_LIST_INITIAL_STATE,
   addProbeEntry,
@@ -117,7 +119,12 @@ export function ResultMeshPlaybackPanel({
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
   // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
-  const [probeList, setProbeList] = useState(PROBE_LIST_INITIAL_STATE);
+  // FM-04a Phase 27 D — initial probe-list state is restored from
+  // localStorage scoped by case_id (corrupted/missing key → empty).
+  // Subsequent saves happen in a useEffect below.
+  const [probeList, setProbeList] = useState(() =>
+    caseId ? loadProbeList(caseId) : PROBE_LIST_INITIAL_STATE,
+  );
   // FM-04a Phase 25 C — Basic/Advanced UI mode. State preservation
   // contract: toggling basic does NOT clear the threshold filter /
   // section cut / probe list / field component — only the UI is
@@ -133,6 +140,19 @@ export function ResultMeshPlaybackPanel({
   useEffect(() => {
     installPolishStyles();
   }, []);
+  // FM-04a Phase 27 D — case_id change → swap to that case's
+  // persisted probe list (empty if none). The previous case's list
+  // is already saved by the save-effect below; we don't need to
+  // explicitly flush.
+  useEffect(() => {
+    if (caseId) setProbeList(loadProbeList(caseId));
+    else setProbeList(PROBE_LIST_INITIAL_STATE);
+  }, [caseId]);
+  // FM-04a Phase 27 D — persist probe-list state on every change
+  // (scoped by case_id; C:-1 anti-gaming guard at predicate level).
+  useEffect(() => {
+    if (caseId) saveProbeList(caseId, probeList);
+  }, [caseId, probeList]);
   const handleUiModeChange = (next: UiMode) => {
     setUiMode(next);
     uiModeStorage.save(next);
