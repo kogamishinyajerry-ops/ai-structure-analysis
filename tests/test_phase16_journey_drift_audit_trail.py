@@ -506,7 +506,10 @@ def test_journey_step5_signoff_history_get_shows_server_computed_drift(
     assert res.status_code == 200, res.text
     body = res.json()
     assert_tier1_trio(body)
-    assert body["schema_version"] == "1.1.0", body["schema_version"]
+    # Phase 17 B bumped signoff 1.1.0 → 1.2.0 additively (cumulative
+    # drift field); Phase 16 C drift_attribution_at_signoff_time
+    # field is preserved at 1.2.0.
+    assert body["schema_version"] == "1.2.0", body["schema_version"]
     records = body["records"]
     assert len(records) == 1, (
         f"expected exactly 1 record after the POST; got {len(records)}: {records}"

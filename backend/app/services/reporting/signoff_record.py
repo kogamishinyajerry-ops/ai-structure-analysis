@@ -203,6 +203,19 @@ class SignoffRecord:
     evolved past the signoff event). Schema 1.1.0 additive field;
     pre-1.1.0 consumers that ignore the field continue to function.
     """
+    cumulative_drift_attribution_at_signoff_time: object = None
+    """Phase 17 B — the per-case :class:`DriftAttribution` for the
+    case's CUMULATIVE arc (snap-1 → snap-N) AT WRITE TIME.
+    Server-computed; the A:-3 anti-gaming guard from Phase 16 C is
+    extended: ``write_signoff_record`` accepts NEITHER drift field
+    as a kwarg (latest-pair OR cumulative). ``None`` when fewer
+    than 2 snapshots exist for the case at write time. Parallel to
+    the Phase 16 C latest-pair pin; the cumulative pin answers
+    "what had drifted across the WHOLE arc at signoff time"
+    distinct from "what was drifting on the LATEST pair at signoff
+    time". Schema 1.2.0 additive field; pre-1.2.0 consumers that
+    ignore the field continue to function. Closes Phase 16 retro §2.
+    """
 
 
 # ----- write -----
@@ -243,13 +256,19 @@ def write_signoff_record(
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{stamp}.json"
 
-    # Phase 16 C — compute drift_attribution at write time from the
-    # case's latest snapshot pair (server-computed; A:-3 NOT trusted
-    # from any client-supplied input). Local import defers the cost
-    # when no snapshots exist; graceful degrade to None when the case
-    # has fewer than 2 timeline points.
+    # Phase 16 C + 17 B — compute drift_attribution at write time from
+    # the case's latest snapshot pair AND cumulative arc (server-
+    # computed; A:-3 NOT trusted from any client-supplied input on
+    # EITHER field). Local imports defer the cost when no snapshots
+    # exist; graceful degrade to None when the case has fewer than
+    # 2 timeline points.
     drift_attribution = _compute_drift_attribution_at_signoff_time(
         case_id, repo_root=repo_root
+    )
+    cumulative_drift_attribution = (
+        _compute_cumulative_drift_attribution_at_signoff_time(
+            case_id, repo_root=repo_root
+        )
     )
 
     record = SignoffRecord(
@@ -259,6 +278,7 @@ def write_signoff_record(
         signoff_utc=stamp,
         notes=notes,
         drift_attribution_at_signoff_time=drift_attribution,
+        cumulative_drift_attribution_at_signoff_time=cumulative_drift_attribution,
     )
     out_path.write_text(
         json.dumps(_record_to_dict(record), indent=2, sort_keys=True),
@@ -287,6 +307,34 @@ def _compute_drift_attribution_at_signoff_time(
     # transition; this is the load-bearing pair for "what was
     # regressing at signoff time".
     return timeline.inter_snapshot_drift_attribution[-1]
+
+
+def _compute_cumulative_drift_attribution_at_signoff_time(
+    case_id: str, *, repo_root: Path
+) -> object:
+    """Compute the per-case CUMULATIVE drift_attribution (snap-1 →
+    snap-N) at signoff write time. Returns ``None`` when fewer than
+    2 snapshots exist for the case (graceful degrade).
+
+    Server-computed only (anti-gaming guard A:-3 extended to BOTH
+    drift fields in Phase 17 B): the signoff POST body MUST NOT
+    carry ANY client-side drift_attribution field; the server walks
+    the on-disk snapshot tree at write time. Sister to
+    :func:`_compute_drift_attribution_at_signoff_time`; they
+    surface different reviewer questions on the same case (latest-
+    pair "what was drifting NOW" vs cumulative "what had drifted
+    across the WHOLE arc by the time the verdict was made").
+
+    Phase 17 B. Consumes the Phase 16 A
+    ``timeline.cumulative_drift_attribution`` SSOT field (which is
+    itself computed by the Phase 15 C SSOT helper). M:-2 anti-
+    gaming guard: no inline percentage / aggregation math at the
+    signoff call site.
+    """
+    from .trust_score_timeline import build_trust_score_timeline
+
+    timeline = build_trust_score_timeline(case_id, repo_root)
+    return timeline.cumulative_drift_attribution
 
 
 # ----- read -----
@@ -330,6 +378,12 @@ def read_signoff_history(case_id: str, *, repo_root: Path) -> list[SignoffRecord
                 drift_attribution_at_signoff_time=_parse_drift_attribution(
                     payload.get("drift_attribution_at_signoff_time")
                 ),
+                # Phase 17 B — additive cumulative drift field;
+                # 1.0.0/1.1.0-era records lack the key and read as
+                # ``None`` (back-compat extended).
+                cumulative_drift_attribution_at_signoff_time=_parse_drift_attribution(
+                    payload.get("cumulative_drift_attribution_at_signoff_time")
+                ),
             )
         )
     return records
@@ -369,6 +423,12 @@ def _record_to_dict(record: SignoffRecord) -> dict[str, object]:
     drift_dict = (
         render_drift_attribution_dict(drift) if drift is not None else None
     )
+    cumulative_drift = record.cumulative_drift_attribution_at_signoff_time
+    cumulative_drift_dict = (
+        render_drift_attribution_dict(cumulative_drift)
+        if cumulative_drift is not None
+        else None
+    )
     return {
         "schema_version": record.schema_version,
         "case_id": record.case_id,
@@ -383,6 +443,13 @@ def _record_to_dict(record: SignoffRecord) -> dict[str, object]:
         # fewer than 2 snapshots existed at write time. Pre-1.1.0
         # consumers that ignore the field continue to function.
         "drift_attribution_at_signoff_time": drift_dict,
+        # Phase 17 B — schema 1.2.0 additive cumulative drift field.
+        # ``null`` when fewer than 2 snapshots existed at write time.
+        # Server-computed via the Phase 16 A
+        # ``timeline.cumulative_drift_attribution`` SSOT (consumer
+        # IMPORTS, no inline math). Pre-1.2.0 consumers ignoring this
+        # field continue to function.
+        "cumulative_drift_attribution_at_signoff_time": cumulative_drift_dict,
     }
 
 

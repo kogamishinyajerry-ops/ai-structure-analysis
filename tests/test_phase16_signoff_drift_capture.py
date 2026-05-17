@@ -71,10 +71,13 @@ SNAP_3_LABEL = "2026-05-17T140000Z"
 # ---------------------------------------------------------------------
 
 
-def test_signoff_record_schema_at_1_1_0() -> None:
-    """Phase 16 C MINOR bump SIGNOFF_RECORD_SCHEMA_VERSION
-    1.0.0 → 1.1.0 with bump-history docstring."""
-    assert SIGNOFF_RECORD_SCHEMA_VERSION == "1.1.0"
+def test_signoff_record_schema_at_1_2_0() -> None:
+    """Phase 16 C introduced MINOR bump 1.0.0 → 1.1.0; Phase 17 B
+    introduced the subsequent 1.1.0 → 1.2.0 bump. The current SSOT
+    is 1.2.0; the Phase 16 C
+    ``drift_attribution_at_signoff_time`` field is preserved
+    intact (see the back-compat test below)."""
+    assert SIGNOFF_RECORD_SCHEMA_VERSION == "1.2.0"
 
 
 # ---------------------------------------------------------------------
@@ -424,7 +427,9 @@ def test_history_envelope_carries_drift_field_at_1_1_0(
     )
     report = build_signoff_history_report(LEAK_CASE_ID, repo_root=leak_arc_repo)
     payload = json.loads(render_signoff_history_json(report))
-    assert payload["schema_version"] == "1.1.0"
+    # Phase 17 B bumped 1.1.0 → 1.2.0 additively; the Phase 16 C
+    # drift_attribution_at_signoff_time field is preserved at 1.2.0.
+    assert payload["schema_version"] == "1.2.0"
     assert payload["claim_tier"] == "Tier 1 engineering candidate"
     assert "not_signed_validation" in payload["claim_boundary"]
     assert "not_benchmark_agreement" in payload["claim_boundary"]
@@ -553,7 +558,9 @@ def test_record_with_none_drift_renders_as_null(tmp_path: Path) -> None:
     assert len(record_files) == 1
     payload = json.loads(record_files[0].read_text(encoding="utf-8"))
     assert payload["drift_attribution_at_signoff_time"] is None
-    assert payload["schema_version"] == "1.1.0"
+    # Phase 17 B bumped 1.1.0 → 1.2.0 additively; the Phase 16 C
+    # drift_attribution_at_signoff_time field is preserved at 1.2.0.
+    assert payload["schema_version"] == "1.2.0"
 
 
 # ---------------------------------------------------------------------

@@ -473,7 +473,7 @@ Bump history:
   source payload.
 """
 
-SIGNOFF_RECORD_SCHEMA_VERSION = "1.1.0"
+SIGNOFF_RECORD_SCHEMA_VERSION = "1.2.0"
 """``signoff_record.json`` (Phase 8 A).
 
 Builder: ``backend.app.services.reporting.signoff_record``.
@@ -504,6 +504,20 @@ Bump history:
   consumers that ignore the field continue to function;
   back-compat reading defaults the field to ``None`` for older
   on-disk records.
+* ``1.2.0`` (Phase 17 B · 2026-05-17) — additive MINOR bump:
+  introduces the optional
+  ``cumulative_drift_attribution_at_signoff_time`` field carrying
+  the per-case :class:`DriftAttribution` for the case's
+  CUMULATIVE arc (snap-1 → snap-N) AT WRITE TIME. Parallel to the
+  Phase 16 C latest-pair pin; the cumulative pin answers "what
+  had drifted across the WHOLE arc at signoff time" distinct from
+  "what was drifting on the LATEST pair at signoff time".
+  SERVER-COMPUTED (the A:-3 anti-gaming guard is extended to BOTH
+  drift fields; ``write_signoff_record`` signature accepts NEITHER
+  kwarg). ``null`` when fewer than 2 snapshots exist. Pre-1.2.0
+  consumers ignoring the new field continue to function;
+  pre-1.2.0 on-disk records read the cumulative field as ``None``
+  via the back-compat reader. Closes Phase 16 retro §2.
 """
 
 # ----- rubric version (separate from emitted JSON contracts) -----
