@@ -110,6 +110,17 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # residual < 15% (honest envelope; Kirchhoff vs 3D + C3D10 mesh
     # discretization).
     "plate-simply-supported-candidate": "tier_1_candidate",
+    # Phase 26 A — slender steel cantilever first natural frequency.
+    # The runner at `app.services.cross_check.cantilever_modal_runner`
+    # composes a clamped-x=0 *FREQUENCY INP for a 0.5m × 20mm × 20mm
+    # beam (L/h=25, slender Euler-Bernoulli regime), runs ccx, parses
+    # the eigenfrequency list, filters rigid-body modes (A:-1 guard),
+    # and compares the first structural f_1 to the closed-form
+    # (β_1·L)²·√(EI/ρA)/(2π·L²) with β_1·L=1.875104. Promotion via
+    # verdict YAML when residual < 12%. Introduces the *FREQUENCY
+    # solver kind to the validated cohort (the four prior tier_2_
+    # validated cases all used linear-static + one linear-buckling).
+    "cantilever-beam-modal-candidate": "tier_1_candidate",
 }
 
 

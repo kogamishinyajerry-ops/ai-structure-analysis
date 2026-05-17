@@ -219,11 +219,12 @@ def test_phase25a_validated_count_is_five() -> None:
         f"Phase 25 A guard tripped — expected tier_2_validated cases "
         f"{expected} not contained in {validated}"
     )
-    # Strict-count pin: nothing has snuck into validated cohort beyond
-    # the planned 5 cases.
-    assert len(validated) == 5, (
-        f"validated count = {len(validated)}, expected 5; cohort={validated}"
-    )
+    # Phase 26 A loosens this from strict equality to subset-of so
+    # Phase N+1 promotions stay additive without rewriting the Phase
+    # 25 A guard — same pattern Phase 23 A → 25 A used to loosen
+    # Phase 21 A → 23 A's pin. Phase 25 intent (5 cases REQUIRED
+    # validated) preserved as guard against losing those 5 verdict
+    # files.
 
 
 def test_phase25a_plate_ss_verdict_yaml_persisted_on_disk() -> None:
