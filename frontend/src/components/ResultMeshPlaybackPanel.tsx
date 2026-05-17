@@ -52,6 +52,13 @@ import {
   type UiMode,
 } from '../uiMode';
 import { UiModeToggle } from './UiModeToggle';
+// FM-04a Phase 27 C — Apple-tier polish: gradient slider tracks +
+// section-cut position hover readout.
+import {
+  installPolishStyles,
+  POLISH_CLASS_GRADIENT_SLIDER,
+  POLISH_CLASS_SECTION_CUT_READOUT,
+} from './polishStyles';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -117,6 +124,15 @@ export function ResultMeshPlaybackPanel({
   // hidden. Pinned by Phase 25 C tests.
   const uiModeStorage = useMemo(() => createUiModeStorage(), []);
   const [uiMode, setUiMode] = useState<UiMode>(() => uiModeStorage.load());
+  // FM-04a Phase 27 C — install Apple-tier polish stylesheet on
+  // first mount. Used by gradient slider tracks (value-filter min/max)
+  // and the section-cut readout. ProbeListPanel installs the same
+  // sheet for its row-mount animation, but ResultMeshPlaybackPanel
+  // installs unconditionally because the sliders render even in
+  // basic mode (showProbeListPanel can be false).
+  useEffect(() => {
+    installPolishStyles();
+  }, []);
   const handleUiModeChange = (next: UiMode) => {
     setUiMode(next);
     uiModeStorage.save(next);
@@ -863,6 +879,12 @@ export function ViewportDepthControls({
   const filterMin = valueFilter?.minValue ?? vMin;
   const filterMax = valueFilter?.maxValue ?? vMax;
   const filterMode = valueFilter?.mode ?? 'inside';
+  // FM-04a Phase 27 C — section-cut hover preview state. true
+  // while the user is actively dragging the position slider; the
+  // floating readout above the slider shows the cut position in
+  // meters. False on release; the readout disappears.
+  const [isDraggingCutPosition, setIsDraggingCutPosition] =
+    useState<boolean>(false);
 
   return (
     <div
@@ -959,22 +981,49 @@ export function ViewportDepthControls({
               <option value="y">Y</option>
               <option value="z">Z</option>
             </select>
-            <input
-              aria-label="Section-cut position"
-              type="range"
-              min={-1}
-              max={1}
-              step={0.01}
-              value={positionM}
-              data-testid="section-cut-position"
-              onChange={(event) =>
-                onSectionCutChange({
-                  axis,
-                  positionM: Number(event.target.value),
-                  showLow,
-                })
-              }
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                aria-label="Section-cut position"
+                type="range"
+                min={-1}
+                max={1}
+                step={0.01}
+                value={positionM}
+                data-testid="section-cut-position"
+                className={POLISH_CLASS_GRADIENT_SLIDER}
+                style={{ flex: 1 }}
+                onChange={(event) =>
+                  onSectionCutChange({
+                    axis,
+                    positionM: Number(event.target.value),
+                    showLow,
+                  })
+                }
+                onMouseDown={() => setIsDraggingCutPosition(true)}
+                onMouseUp={() => setIsDraggingCutPosition(false)}
+                onMouseLeave={() => setIsDraggingCutPosition(false)}
+                onTouchStart={() => setIsDraggingCutPosition(true)}
+                onTouchEnd={() => setIsDraggingCutPosition(false)}
+              />
+              {/* FM-04a Phase 27 C — section-cut position hover
+                  readout. Only rendered while actively dragging; CSS
+                  positions it 120% above the slider thumb (rough
+                  approximation via translate-50% on the wrapping
+                  div's center; exact thumb-tracking would need a
+                  ref+resize-observer which is out of scope). */}
+              {isDraggingCutPosition && (
+                <div
+                  data-testid="section-cut-position-readout"
+                  className={POLISH_CLASS_SECTION_CUT_READOUT}
+                  style={{
+                    left: `${((positionM - -1) / 2) * 100}%`,
+                    top: 0,
+                  }}
+                >
+                  {axis} = {positionM.toFixed(2)} m
+                </div>
+              )}
+            </div>
             <button
               type="button"
               data-testid="section-cut-flip"
@@ -1050,6 +1099,7 @@ export function ViewportDepthControls({
                 step={(vMax - vMin) / 200 || 1}
                 value={filterMin}
                 data-testid="value-filter-min"
+                className={POLISH_CLASS_GRADIENT_SLIDER}
                 onChange={(event) =>
                   onValueFilterChange({
                     minValue: Number(event.target.value),
@@ -1071,6 +1121,7 @@ export function ViewportDepthControls({
                 step={(vMax - vMin) / 200 || 1}
                 value={filterMax}
                 data-testid="value-filter-max"
+                className={POLISH_CLASS_GRADIENT_SLIDER}
                 onChange={(event) =>
                   onValueFilterChange({
                     minValue: filterMin,

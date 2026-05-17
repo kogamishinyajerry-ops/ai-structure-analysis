@@ -10,7 +10,7 @@
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
-import { type CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 
 import type { PickedNodeInfo } from './viewportRaycaster';
 import {
@@ -20,6 +20,10 @@ import {
   type ProbeListState,
   probeCount,
 } from './probeList';
+import {
+  installPolishStyles,
+  POLISH_CLASS_PROBE_ROW_MOUNT,
+} from './polishStyles';
 
 export interface ProbeListPanelProps {
   state: ProbeListState;
@@ -74,6 +78,11 @@ export function ProbeListPanel({
   fieldUnits = 'Pa',
   onExportCsv,
 }: ProbeListPanelProps) {
+  // FM-04a Phase 27 C — install Apple-tier polish stylesheet once.
+  // Safe to call repeatedly; dedup-by-id at the DOM layer.
+  useEffect(() => {
+    installPolishStyles();
+  }, []);
   const count = probeCount(state);
   const pinDisabled =
     !activePick ||
@@ -175,7 +184,11 @@ export function ProbeListPanel({
                 {diffPairs.map((pair, index) => {
                   const { entry, diff, isBaseline } = pair;
                   return (
-                    <tr key={entry.label} data-testid={`probe-row-${index}`}>
+                    <tr
+                      key={entry.label}
+                      data-testid={`probe-row-${index}`}
+                      className={POLISH_CLASS_PROBE_ROW_MOUNT}
+                    >
                       <td
                         data-testid={`probe-row-${index}-label`}
                         style={STYLES.td}
