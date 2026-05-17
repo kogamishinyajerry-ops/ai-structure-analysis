@@ -62,6 +62,7 @@ from typing import Literal
 
 from ._schema_versions import COHORT_TREND_ANOMALIES_SCHEMA_VERSION
 from .acceptance_packet import CLAIM_BOUNDARY
+from .trust_score_drift_attribution import TRUST_AXIS_WEIGHTS
 from .trust_score_timeline import build_trust_score_timeline
 
 CLAIM_TIER = "Tier 1 engineering candidate"
@@ -128,6 +129,15 @@ class TrendEvent:
     slope: float
     point_count: int
     severity: Severity
+    percentage_delta_slope: float
+    """Slope normalized to percentage of axis weight per snapshot
+    (Phase 17 C · 2026-05-17 · MINOR bump 1.0.0 → 1.1.0). Computed as
+    ``raw_slope / TRUST_AXIS_WEIGHTS[axis] * 100.0``. Cross-axis
+    comparable: a ``-10.0`` value indicates the same relative urgency
+    on completeness (50-weight) as on energy_audit (15-weight), even
+    though the raw ``slope`` values differ by 3.33×. The raw ``slope``
+    field is preserved verbatim (parallel view, NOT replacement).
+    Closes Phase 16 retrospective carry-forward §1."""
 
 
 @dataclass(frozen=True)
@@ -163,6 +173,24 @@ def severity_for_slope(slope: float) -> Severity:
     if slope <= TREND_SLOPE_WARN_MAX:
         return "warn"
     return "info"
+
+
+def _percentage_delta_slope(raw_slope: float, axis: str) -> float:
+    """Normalize a raw weighted-axis-point slope to percentage of the
+    axis's total weight per snapshot (Phase 17 C anti-gaming guard M:-2).
+
+    Imports ``TRUST_AXIS_WEIGHTS`` from the Phase 15 C SSOT mapping;
+    NO inline weight constants. A future axis addition that lands in
+    ``TRUST_AXIS_WEIGHTS`` propagates here for free; an unknown axis
+    label raises ``KeyError`` (defended by Phase 17 C A:-2 probe).
+    """
+    if axis not in TRUST_AXIS_WEIGHTS:
+        raise KeyError(
+            f"unknown trust-score axis {axis!r}; expected one of "
+            f"{sorted(TRUST_AXIS_WEIGHTS)}"
+        )
+    weight = TRUST_AXIS_WEIGHTS[axis]
+    return round((raw_slope / weight) * 100.0, 6)
 
 
 def _least_squares_slope(values: list[int]) -> float:
@@ -244,12 +272,14 @@ def _build_event_for_axis(case_id: str, timeline, axis: str) -> TrendEvent | Non
     slope = _least_squares_slope(values)
     if slope > TREND_SLOPE_INFO_MAX:
         return None  # not regressing on this axis
+    rounded_slope = round(slope, 6)
     return TrendEvent(
         case_id=case_id,
         axis=axis,
-        slope=round(slope, 6),
+        slope=rounded_slope,
         point_count=len(values),
         severity=severity_for_slope(slope),
+        percentage_delta_slope=_percentage_delta_slope(rounded_slope, axis),
     )
 
 
@@ -273,6 +303,7 @@ def _report_to_dict(report: CohortTrendAnomaliesReport) -> dict[str, object]:
                 "slope": e.slope,
                 "point_count": e.point_count,
                 "severity": e.severity,
+                "percentage_delta_slope": e.percentage_delta_slope,
             }
             for e in report.anomalies
         ],

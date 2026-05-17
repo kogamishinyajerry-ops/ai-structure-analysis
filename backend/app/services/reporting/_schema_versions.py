@@ -408,8 +408,8 @@ Bump history:
   additive. Closes Phase 9 retrospective carry-forward §5.
 """
 
-COHORT_TREND_ANOMALIES_SCHEMA_VERSION = "1.0.0"
-"""``cohort_trend_anomalies`` HTTP response (Phase 9 D).
+COHORT_TREND_ANOMALIES_SCHEMA_VERSION = "1.1.0"
+"""``cohort_trend_anomalies`` HTTP response (Phase 9 D; Phase 17 C MINOR bump).
 
 Builder: ``backend.app.services.reporting.cohort_trend_anomalies``.
 
@@ -426,6 +426,25 @@ within-case degradation over time; they do NOT diagnose root
 cause, validate physics, or authorize Tier 2 promotion."
 
 Closes Phase 8 retrospective carry-forward §4.
+
+Bump history:
+* ``1.0.0`` (Phase 9 D) — initial schema: per-axis least-squares slope
+  in weighted-axis-points per snapshot + severity bucket per event.
+* ``1.1.0`` (Phase 17 C · 2026-05-17) — additive MINOR bump:
+  every ``TrendEvent`` now carries an additional
+  ``percentage_delta_slope: float`` field expressing the same slope
+  as a percentage of the axis's total weight per snapshot
+  (``raw_slope / TRUST_AXIS_WEIGHTS[axis] * 100.0``). The raw
+  ``slope`` field is preserved verbatim (parallel view, NOT
+  replacement). The new field makes slopes CROSS-AXIS COMPARABLE:
+  a ``-10.0`` percentage_delta_slope means the same relative urgency
+  on completeness (50-weight) as on energy_audit (15-weight), even
+  though the raw weighted-point slopes differ by 3.33×. Closes
+  Phase 16 retrospective carry-forward §1. Back-compat contract: a
+  pre-1.1.0 consumer that ignores ``percentage_delta_slope``
+  continues to function; the field is computed server-side from the
+  SSOT ``TRUST_AXIS_WEIGHTS`` mapping so axis weight changes
+  propagate without further bumps.
 """
 
 ADVISOR_CRITIQUE_SCHEMA_VERSION = "1.1.0"

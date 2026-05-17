@@ -133,8 +133,11 @@ def _seed_descending_timeline(
 # ---------------------------------------------------------------------
 
 
-def test_schema_version_is_1_0_0() -> None:
-    assert COHORT_TREND_ANOMALIES_SCHEMA_VERSION == "1.0.0"
+def test_schema_version_is_1_1_0() -> None:
+    # Phase 17 C bumped 1.0.0 → 1.1.0 additively (introduces the
+    # ``percentage_delta_slope`` field on every TrendEvent; raw
+    # ``slope`` field is preserved verbatim as a parallel view).
+    assert COHORT_TREND_ANOMALIES_SCHEMA_VERSION == "1.1.0"
 
 
 def test_trend_axes_tuple_pinned() -> None:

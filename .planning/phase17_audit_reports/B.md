@@ -1,0 +1,78 @@
+# Phase 17 B slice TAA — APPROVE — 63/63
+
+**Slice**: B — cumulative `drift_attribution_at_signoff_time` on signoff records (1.1.0 → 1.2.0)
+**Commit**: `6d8d8a4` on `claude/FM-04a-tier1-ballistic-candidate`
+**Date**: 2026-05-17
+**Audit posture**: read-only; source/test files unchanged by this audit. No writes under `golden_samples/**` or real `reports/snapshots/`. Real `reports/` paths byte-identical pre/post audit (40 snapshot files, 114 golden files unchanged).
+
+## Verdict
+
+**APPROVE.** Slice B meets the Phase 17 per-slice 6-axis sub-rubric stop condition (≥60/63 with every axis ≥95% of weight). The implementation is a clean additive 1.1.0 → 1.2.0 MINOR bump that extends the Phase 16 C latest-pair pin pattern to a new cumulative arc field. The A:-3 server-computed pin is correctly extended to BOTH drift fields via `inspect.signature` audit + forge-kwarg TypeError on both. The new cumulative helper is a 2-line pure-delegation wrapper around the Phase 16 A `timeline.cumulative_drift_attribution` SSOT — zero inline math at the signoff call site. Back-compat is verified through TWO regression layers (pre-1.2.0 reader returns cumulative None; pre-1.1.0 reader returns BOTH drift fields None). Tier 1 trio discipline preserved; forbidden-token grep clean across slice-added prose and methodology surfaces.
+
+## Per-axis score table
+
+| Axis | Cap | Score | Notes |
+|------|-----|-------|-------|
+| **M (Module discipline)** | 12 | **12/12** | M:-1 `SIGNOFF_RECORD_SCHEMA_VERSION` pinned exactly at `"1.2.0"` in `_schema_versions.py:476`; bump-history docstring `_schema_versions.py:507-521` cites Phase 17 B, explicitly notes "additive MINOR bump", "SERVER-COMPUTED", "A:-3 anti-gaming guard is extended to BOTH drift fields", "Closes Phase 16 retro §2". M:-2 `_compute_cumulative_drift_attribution_at_signoff_time` (`signoff_record.py:312-337`) is a 2-line body: `timeline = build_trust_score_timeline(case_id, repo_root); return timeline.cumulative_drift_attribution`. Source-file grep test (`test_cumulative_helper_imports_timeline_cumulative_ssot`, line 157) requires `timeline.cumulative_drift_attribution` literal AND forbids `per_axis_delta_pct[` indexing at signoff call site — both pass. Probe 6 independently grepped the module: only `float(dominant_delta_pct)` parser-cast hit (in `_parse_drift_attribution`, not signoff helper). Zero inline percentage / aggregation math. |
+| **T (Truth-pin / boundary)** | 15 | **15/15** | T:-3 stuck arc pin (`test_stuck_arc_signoff_carries_cumulative_drift_named_energy_axis`, lines 306-339): exact `==` boundary pins on cumulative `dominant_axis == "energy_audit"`, `dominant_delta_pct == -100.0`, `from_snapshot == SNAP_1_LABEL`, `to_snapshot == SNAP_3_LABEL`, schema 1.2.0, AND parallel latest-pair pins on `dominant_delta_pct == -100.0` + `from_snapshot == SNAP_2_LABEL` (snap-2 → snap-3 = 15 → 0). Both surfaces pinned exact on stuck arc. T:-4 recovery arc (`test_recovery_arc_cumulative_signoff_is_subfloor`, lines 347-378): cumulative `dominant_axis is None` + NaN sentinel via `math.isnan()` + endpoints SNAP_1_LABEL → SNAP_3_LABEL pinned; latest-pair surfaces energy_audit recovery at exactly `+100.0` (sign-correct). Degenerate case (`test_no_snapshots_signoff_carries_none_for_both_drift_fields`) pins both drift fields = None when no snapshots exist. Probe 14 mutation test: temp-mutating `_compute_cumulative_drift_attribution_at_signoff_time` to return None trips `test_stuck_arc_signoff_carries_cumulative_drift_named_energy_axis` (returncode 1) — pin is load-bearing, not coincidental. |
+| **C (Claim discipline)** | 12 | **12/12** | C:-1 Tier 1 trio `claim_tier` / `claim_boundary` / `claim_impact` preserved on dataclass (`signoff_record.py:192-194`), serialized envelope (`_record_to_dict`, lines 439-441), AND back-compat reader (`read_signoff_history`, lines 373-375). Dedicated test `test_record_to_dict_preserves_tier1_trio_at_1_2_0` (line 579) pins `schema_version == "1.2.0"`, `claim_tier == "Tier 1 engineering candidate"`, both `not_signed_validation` AND `not_benchmark_agreement` substrings in `claim_boundary`, AND both drift field keys present in rendered envelope. Probe 1 forbidden-token grep on the slice-B test file: zero hits across all 9 SSOT tokens. Probe 2 forbidden-token grep on `signoff_record.py` only flags negated form (`no "<token>"` in docstring lines 42-43) and audit-haystack list literals (lines 145-158, `_FORBIDDEN_NOTES_TOKENS` + `_ENVELOPE_FORBIDDEN_TOKENS`); zero positive claims. New cumulative-field docstring (`signoff_record.py:206-218`) uses Tier 1 wording compliant phrasing: "Server-computed; the A:-3 anti-gaming guard from Phase 16 C is extended". Zero forbidden token leakage to slice-added prose. |
+| **A (Anti-gaming)** | 8 | **8/8** | A:-3 server-computed pin EXTENDED — `inspect.signature(write_signoff_record).parameters` audit pins BOTH `drift_attribution_at_signoff_time` AND `cumulative_drift_attribution_at_signoff_time` are absent (two separate tests, lines 94-103 + 106-116). Probe 4 independently confirmed: `Parameters: ['case_id', 'reviewer', 'verdict', 'notes', 'repo_root', 'now_utc']` — zero drift params. Defense-in-depth forge-kwarg tests (lines 119-134 + 137-149) raise TypeError with field-name in error message on each. Probe 5 independently exercised both forges: `latest-pair forge -> TypeError: write_signoff_record() got an unexpected keyword argument 'drift_attribution_at_signoff_time'` and `cumulative forge -> TypeError: ... 'cumulative_drift_attribution_at_signoff_time'`. Both ANY-client-input paths sealed. M:-2 SSOT delegation pinned by `test_cumulative_helper_imports_timeline_cumulative_ssot` — requires literal `timeline.cumulative_drift_attribution` AND forbids `per_axis_delta_pct[` at signoff site. Probe 7 verified helper body is pure 2-line delegation. |
+| **E (Edge-case + back-compat)** | 8 | **8/8** | Pre-1.2.0 back-compat: `test_back_compat_pre_1_2_0_record_reads_cumulative_as_none` (line 447) writes a 1.1.0 on-disk record carrying ONLY the Phase 16 C latest-pair field; reader pins latest-pair parses as `DriftAttribution` + cumulative reads as `None`. Pre-1.1.0 back-compat: `test_back_compat_pre_1_1_0_record_reads_both_drift_fields_as_none` (line 500) writes 1.0.0 record carrying NEITHER drift field; pins both read as `None`. Corrupted-blob graceful degrade: `test_corrupted_cumulative_drift_blob_reads_as_none` (line 536) writes 1.2.0 records with malformed cumulative field (string + list); both read as None. Round-trip JSON preservation: `test_round_trip_json_preserves_both_drift_fields` (line 408) writes signoff, reads back via `read_signoff_history`, pins both drift fields round-trip intact at schema 1.2.0 with matched dominant_axis + endpoint labels. Both helpers callable directly (line 609) — guards against future helper-signature drift. **Informational note (carry-forward, not slice B regression)**: `_parse_drift_attribution` raises KeyError on a dict missing required keys (e.g. `{"foo": "bar"}`); slice B's corrupted-blob test exercises string/list only. This narrow defensive-parser shape is inherited from Phase 16 C SSOT, not introduced here. Score retained at 8/8 because the inherited shape is sufficient for back-compat use (real on-disk records either carry the full shape, are None, or are absent). |
+| **V (Verification + traceability)** | 8 | **8/8** | Slice B test file: 16 tests, 16/16 passed in 0.43s (probe re-confirmed). Phase 15/16/17 sweep: 183 passed, 0 failed (probe re-confirmed). All snapshot writes scoped to `tmp_path` / fixture-derived tmp_path — verified by probe (19 `repo_root=` arg sites all resolve to `tmp_path` or `stuck_arc_tmp` / `recovery_arc_tmp` which derive from tmp_path via `_seed_leak_only`). Real `reports/snapshots/` (40 files) + `golden_samples/` (114 files) + `reports/signoffs/` (3 files) byte-identical pre/post audit. Phase 16 test files updated to expect schema 1.2.0 (3 assertions in `test_phase16_signoff_drift_capture.py` + 1 in `test_phase16_journey_drift_audit_trail.py`) — additive bump acknowledged downstream. Commit SHA `6d8d8a4` traced. Slice TAA report filed at `.planning/phase17_audit_reports/B.md`. |
+
+**Total: 63/63.** Every axis at 100% of weight (≥95% threshold satisfied).
+
+## Probe log (≥10 probes)
+
+| # | Probe | Outcome |
+|---|-------|---------|
+| 1 | Forbidden-token grep on slice B test file (9 SSOT tokens) | **PASS** — zero hits |
+| 2 | Forbidden-token grep on `signoff_record.py` (slice-touched module) | **PASS** — all hits are negated form (`no "<token>"` in docstring) or audit-haystack list literals; zero positive claims |
+| 3 | Bump-history docstring presence for `SIGNOFF_RECORD_SCHEMA_VERSION 1.2.0` | **PASS** — `_schema_versions.py:507-521` carries 15-line entry citing Phase 17 B, additive MINOR, server-computed, "Closes Phase 16 retro §2" |
+| 4 | `inspect.signature(write_signoff_record)` parameter audit | **PASS** — only `case_id`, `reviewer`, `verdict`, `notes`, `repo_root`, `now_utc`; zero drift kwargs |
+| 5 | Forge `drift_attribution_at_signoff_time` AND `cumulative_drift_attribution_at_signoff_time` as kwargs | **PASS** — both raise TypeError with field name in error message |
+| 6 | Inline-math grep at signoff call site (`per_axis_delta_pct[`, `dominant_delta_pct =`, `float(.*delta.*)`) | **PASS** — only `float(dominant_delta_pct)` cast in parser path (not the signoff compute helper); zero aggregation math |
+| 7 | Cumulative helper body inspection (`_compute_cumulative_drift_attribution_at_signoff_time`) | **PASS** — pure 2-line delegation: `timeline = build_trust_score_timeline(case_id, repo_root); return timeline.cumulative_drift_attribution` |
+| 8 | `repo_root=` arg site audit across slice B test file (19 sites) | **PASS** — all resolve to `tmp_path`, `stuck_arc_tmp`, or `recovery_arc_tmp` (the fixture-tmp-path derivatives); zero real-repo writes |
+| 9 | Tier 1 trio (claim_tier / claim_boundary / claim_impact) present on dataclass + serialized envelope + back-compat reader | **PASS** — all 3 fields landed on all 3 paths (`signoff_record.py:192-194` + `:439-441` + `:373-375`) |
+| 10 | Serialized record field count via `_record_to_dict` | **PASS** — 11 fields (8 base + 2 drift + schema_version); no extra/spurious fields added |
+| 11 | Empty case_id + GS-001 signed-registry case_id refusal still raised | **PASS** — `ValueError: Signoff record requires a non-empty case_id` + `ValueError: Signoff record refuses signed registry case_id='GS-001'` |
+| 12 | No real solver / no real LLM imports in slice B test file (`openai`, `anthropic`, `openradioss`, `calculix`, `abaqus`, `nastran`, `requests.post`, `subprocess.*solver`) | **PASS** — only one `subprocess.check_call` invocation, used to drive the Phase 15 A generator script (synthetic fixture only) |
+| 13 | Stuck arc T:-3 boundary pin re-run isolated | **PASS** — single test passes in 0.25s |
+| 14 | Mutation probe: temp-mutate `_compute_cumulative_drift_attribution_at_signoff_time` to return None and re-run stuck arc test | **PASS** — test FAILS (returncode 1) under mutation → cumulative-at-signoff boundary pin is load-bearing, not coincidental |
+| 15 | Defensive `_parse_drift_attribution` shape: None / list / string / int → None graceful; malformed dict (missing required key) → KeyError | **MIXED** — None/list/string/int all graceful (return None); malformed-dict-shape raises KeyError. This inherited Phase 16 C SSOT shape; not introduced or regressed by slice B. Informational; does not block APPROVE because slice B's tests don't claim malformed-dict graceful and real on-disk records produced by `_record_to_dict` always carry the full shape |
+| 16 | Real `reports/snapshots/` (40 files) + `golden_samples/` (114 files) + `reports/signoffs/` (3 files) byte-identical pre/post audit run | **PASS** — counts unchanged; no leak from tmp into real paths |
+| 17 | Commit SHA pin: `6d8d8a4 FM-04a Phase 17 B: cumulative drift_attribution_at_signoff_time (1.1.0 -> 1.2.0)` | **PASS** — visible at `git log --oneline -1`, branch tip on `claude/FM-04a-tier1-ballistic-candidate` |
+
+**Bonus sweep verification**: Phase 15/16/17 selector at slice B HEAD: `183 passed, 2386 deselected, 3 warnings in 5.82s`. Exact match to expected count.
+
+## Constraint-honor checklist
+
+- [x] Auditing only; no source/test modifications applied
+- [x] Never touched `^GS-\d{3}$` signed-registry entries (`_assert_candidate_case_id` enforces refusal; probe 11 confirmed)
+- [x] No writes under `golden_samples/**` (all snapshot writes scoped to `tmp_path` / fixture-derived tmp_path; probe 8 confirmed; probe 16 byte-identity)
+- [x] HF1.7a signed-registry hard-stop preserved (`_CASE_ID_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")` at line 163, enforced at line 167)
+- [x] HF1.7b `*-candidate` carve-out IN FORCE (positive case_id `rod-wave-impact-energy-leak-candidate` + `test-candidate` accepted; signed-registry refused)
+- [x] HF1.8 path-guard `_assert_not_in_golden_samples` enforced (lines 479-486; called at write-time line 255)
+- [x] No real OpenRadioss / no real LLM invocations (probe 12 confirmed; only synthetic JSON fixtures + a deterministic generator script)
+- [x] Tier 1 disclaimer trio enforced on every signoff envelope at 1.2.0 (probe 9 + `test_record_to_dict_preserves_tier1_trio_at_1_2_0`)
+- [x] 9 forbidden positive-claim tokens absent outside negated form in slice-added prose (probes 1 + 2)
+- [x] `tmp_path`-only snapshot writes verified (probe 8)
+- [x] AI-advisor-only posture preserved (no driver-mode AI; no LLM calls)
+- [x] No push, no PR, no Linear / Notion writes performed during audit
+- [x] Commit SHA `6d8d8a4` traced (probe 17)
+- [x] Slice TAA report filed at `.planning/phase17_audit_reports/B.md`
+
+## Specific deficiencies (if any)
+
+None blocking. One informational note:
+
+**Inherited `_parse_drift_attribution` malformed-dict shape (probe 15)**: When the on-disk JSON blob is a `dict` but missing one of the required keys (`from_snapshot`, `to_snapshot`, `per_axis_delta_pct`), `_parse_drift_attribution` raises `KeyError` rather than returning None. The slice B `test_corrupted_cumulative_drift_blob_reads_as_none` exercises only the string + list malformed cases. This shape is inherited verbatim from the Phase 16 C SSOT helper; slice B did not regress it. Real-world impact is bounded: a record produced by `_record_to_dict` always carries the full shape (or `None`), so the malformed-dict-shape path is only reachable via hand-edited on-disk corruption. If a future phase wants tighter graceful degrade on this corner, the fix is a one-line `try/except KeyError, ValueError: return None` wrapper in `_parse_drift_attribution`. **Not blocking** — does not violate any rubric axis at the slice-B scope; flagged for the FINAL whole-arc TAA's awareness.
+
+## Suggested upgrades
+
+None required. Slice B meets the per-slice 6-axis sub-rubric at every axis with zero margin loss. Stop condition (≥60/63 AND every axis ≥95%) satisfied with full margin.
+
+## Final verdict
+
+**APPROVE — 63/63.** Slice B is a clean additive 1.1.0 → 1.2.0 MINOR bump that correctly extends the Phase 16 C A:-3 server-computed pin pattern to a new cumulative-arc drift field. The new helper is pure delegation to the Phase 16 A `timeline.cumulative_drift_attribution` SSOT — zero inline math, zero duplicate-computation risk. Both drift fields are sealed from client forge attempts (signature audit + TypeError on both kwargs). Back-compat is verified at TWO regression layers (pre-1.2.0 reads cumulative=None; pre-1.1.0 reads both=None). Tier 1 trio + forbidden-token discipline preserved. Stop condition satisfied with full margin. Matches the slice A bar (63/63).
