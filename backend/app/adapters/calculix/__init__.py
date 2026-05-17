@@ -1,13 +1,38 @@
-"""CalculiX (.frd) Layer-1 adapter — RFC-001 §4.5 W2.
+"""CalculiX (.frd) Layer-1 adapter.
 
-Lands the first concrete ``ReaderHandle`` implementation per
-``docs/RFC-001-strategic-pivot-and-mvp.md`` §6.4 W2 done-criterion:
-GS-001 σ_max within 5 % of the analytical solution.
-
-ADR-001/003/004 enforced: no derived quantities, no UNIT inference,
-no IO caching at this layer.
+* ``CalculiXReader`` — RFC-001 §4.5 W2 ``ReaderHandle`` over ``.frd``
+  result files. ADR-001/003/004 enforced: no derived quantities, no
+  UNIT inference, no IO caching at this layer.
+* ``CalculiXRunner`` — FM-04a Phase 18 A subprocess runner that
+  invokes the real ``ccx`` binary on a ``case_dir/<jobname>.inp``
+  and returns paths to the produced ``.frd`` + ``.dat`` artifacts.
+  The runner is paired with ``CalculiXReader`` (runner produces the
+  ``.frd``; reader parses it).
+* ``inp_writer`` — Phase 18 A minimal-hex INP writer for smoke runs.
 """
 
+from .inp_writer import (
+    DEFAULT_STEEL,
+    MinimalHexMaterial,
+    write_minimal_hex_inp,
+)
 from .reader import CalculiXReader
+from .runner import (
+    DEFAULT_CCX_BINARY,
+    DEFAULT_TIMEOUT_SEC,
+    CalculiXRunError,
+    CalculiXRunner,
+    CalculiXRunResult,
+)
 
-__all__ = ["CalculiXReader"]
+__all__ = [
+    "CalculiXReader",
+    "CalculiXRunner",
+    "CalculiXRunResult",
+    "CalculiXRunError",
+    "DEFAULT_CCX_BINARY",
+    "DEFAULT_TIMEOUT_SEC",
+    "DEFAULT_STEEL",
+    "MinimalHexMaterial",
+    "write_minimal_hex_inp",
+]

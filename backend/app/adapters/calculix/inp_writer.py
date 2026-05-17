@@ -1,0 +1,157 @@
+"""CalculiX Layer-1 adapter — minimal INP input file writer (Phase 18 A).
+
+Generates valid linear-static ``.inp`` solver input files for the
+real ``ccx`` subprocess (paired with :class:`CalculiXRunner`).
+
+Phase 18 A scope: a single canonical "smoke" geometry — one C3D8
+hex element fixed at the bottom face with a uniform z-direction
+nodal load on the top face. This is the minimum complete model that
+proves the runner → solver → ``.frd`` chain works end-to-end on a
+real ccx invocation without depending on external mesh generation
+(Slice C territory).
+
+Phase 18 C will extend this module with mesh + material composition
+(Gmsh-meshed geometries + materials library lookups).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+
+@dataclass(frozen=True)
+class MinimalHexMaterial:
+    """Linear elastic material for the minimal-hex smoke INP.
+
+    Phase 18 A only supports linear elastic; Phase 18 C extends to
+    the full materials library.
+
+    Attributes:
+        name: material label written into the INP (uppercase, no
+            spaces; CalculiX is sensitive to label characters).
+        youngs_modulus_pa: Young's modulus in pascals.
+        poisson_ratio: dimensionless.
+    """
+
+    name: str
+    youngs_modulus_pa: float
+    poisson_ratio: float
+
+
+# Phase 18 A defaults — structural steel, S355 grade, SI units.
+# The Phase 18 C materials library will surface these (and more) via
+# JSON; Phase 18 A inlines the default so the smoke test is self-
+# contained and doesn't take a dependency on the C-slice loader.
+DEFAULT_STEEL = MinimalHexMaterial(
+    name="STEEL_S355",
+    youngs_modulus_pa=210e9,
+    poisson_ratio=0.3,
+)
+
+
+def write_minimal_hex_inp(
+    case_dir: Path,
+    *,
+    jobname: str,
+    material: MinimalHexMaterial = DEFAULT_STEEL,
+    edge_length_m: float = 0.1,
+    top_face_load_n: float = -1000.0,
+) -> Path:
+    """Write a minimal single-C3D8-hex linear-static INP file.
+
+    Geometry: a single hex element with corners at
+    ``(0, 0, 0)..(L, L, L)`` where ``L = edge_length_m``.
+
+    Boundary conditions: bottom face (z=0; nodes 1-4) fully clamped
+    (DOF 1, 2, 3). Top face (z=L; nodes 5-8) carries the
+    ``top_face_load_n`` nodal load on DOF 3 (z-direction). A negative
+    value compresses the element; a positive value places it in
+    tension.
+
+    Args:
+        case_dir: workspace directory; must exist.
+        jobname: INP filename stem; the written file is
+            ``case_dir/<jobname>.inp``.
+        material: linear elastic material descriptor.
+        edge_length_m: hex edge length in meters (default 100 mm).
+        top_face_load_n: total z-direction load applied across the
+            top face, split equally among the 4 top nodes (default
+            -1000 N, i.e., 250 N compressive per corner node).
+
+    Returns:
+        Absolute path to the written INP file.
+    """
+    if not case_dir.is_dir():
+        raise FileNotFoundError(
+            f"case_dir {case_dir!s} must exist before writing INP"
+        )
+    if edge_length_m <= 0:
+        raise ValueError(
+            f"edge_length_m must be positive; got {edge_length_m}"
+        )
+    if material.youngs_modulus_pa <= 0:
+        raise ValueError(
+            f"material.youngs_modulus_pa must be positive; got "
+            f"{material.youngs_modulus_pa}"
+        )
+    if not (0.0 < material.poisson_ratio < 0.5):
+        raise ValueError(
+            f"material.poisson_ratio must be in (0, 0.5); got "
+            f"{material.poisson_ratio}"
+        )
+
+    e_pa = material.youngs_modulus_pa
+    nu = material.poisson_ratio
+    length = float(edge_length_m)
+    load_per_node = float(top_face_load_n) / 4.0
+
+    # 8 corners of a unit-ish hex aligned with the global axes.
+    # CalculiX C3D8 node ordering: bottom face counter-clockwise
+    # viewed from above (1-2-3-4), top face counter-clockwise
+    # viewed from above (5-6-7-8), with 5 directly above 1, etc.
+    nodes = (
+        (1, 0.0, 0.0, 0.0),
+        (2, length, 0.0, 0.0),
+        (3, length, length, 0.0),
+        (4, 0.0, length, 0.0),
+        (5, 0.0, 0.0, length),
+        (6, length, 0.0, length),
+        (7, length, length, length),
+        (8, 0.0, length, length),
+    )
+
+    lines: list[str] = []
+    lines.append(f"*HEADING")
+    lines.append(f"Phase 18 A minimal-hex smoke ({jobname})")
+    lines.append(f"*NODE")
+    for node_id, x, y, z in nodes:
+        lines.append(f"{node_id}, {x:.6f}, {y:.6f}, {z:.6f}")
+    lines.append(f"*ELEMENT, TYPE=C3D8, ELSET=EALL")
+    lines.append(f"1, 1, 2, 3, 4, 5, 6, 7, 8")
+    lines.append(f"*MATERIAL, NAME={material.name}")
+    lines.append(f"*ELASTIC")
+    lines.append(f"{e_pa:.6e}, {nu:.6f}")
+    lines.append(f"*SOLID SECTION, ELSET=EALL, MATERIAL={material.name}")
+    # Bottom face fully clamped: nodes 1-4 fixed in all 3 DOFs.
+    lines.append(f"*BOUNDARY")
+    for node_id in (1, 2, 3, 4):
+        lines.append(f"{node_id}, 1, 3, 0.0")
+    # Step: linear static; nodal load on top face (z=L) DOF 3.
+    lines.append(f"*STEP")
+    lines.append(f"*STATIC")
+    lines.append(f"*CLOAD")
+    for node_id in (5, 6, 7, 8):
+        lines.append(f"{node_id}, 3, {load_per_node:.6f}")
+    # Result requests: nodal displacement + stress tensor (the .frd
+    # output the CalculiXReader Layer-1 adapter expects to parse).
+    lines.append(f"*NODE FILE")
+    lines.append(f"U")
+    lines.append(f"*EL FILE")
+    lines.append(f"S")
+    lines.append(f"*END STEP")
+    lines.append(f"")  # trailing newline
+
+    inp_path = case_dir / f"{jobname}.inp"
+    inp_path.write_text("\n".join(lines), encoding="utf-8")
+    return inp_path
