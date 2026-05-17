@@ -1,0 +1,235 @@
+"""Tier 2 solver pipeline — FM-04a Phase 19 A.
+
+Composes the Phase 18 building blocks into a single end-to-end
+function that takes a case workspace + a material id + linear-static
+parameters and returns a :class:`Tier2RunResult` carrying the ccx
+``.frd`` path + the resolved material reference (for audit trail).
+
+Layer split (RFC-001 §4.5):
+* This service consumes Layer-1 adapters (``CalculiXRunner`` +
+  ``write_minimal_hex_inp``) and the Layer-3 materials SSOT
+  (``app.services.materials.get_material``).
+* It is **purpose-built for Tier 2 candidate runs** — the existing
+  async-streaming ``app.services.solver.SolverService`` keeps the
+  Phase 1-17 reviewer flow intact; Tier 2 candidate runs go through
+  here so the regression surface stays narrow.
+
+Phase 19 A scope: minimal-hex Tier 2 run with picker-chosen material.
+Phase 19 B extends this with the analytical cross-check + tier
+promotion.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from app.adapters.calculix import (
+    CalculiXRunError,
+    CalculiXRunner,
+    CalculiXRunResult,
+    DEFAULT_STEEL,
+    MinimalHexMaterial,
+    write_minimal_hex_inp,
+)
+from app.services.materials import (
+    Material,
+    MaterialNotFoundError,
+    get_material,
+)
+
+
+class Tier2PipelineError(RuntimeError):
+    """Raised when the Tier 2 pipeline cannot complete a run.
+
+    Wraps subordinate errors (unknown material id, ccx failure) with
+    a uniform surface so the calling route / UI can render one
+    consistent error path.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str,
+        cause: Exception | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.cause = cause
+
+
+@dataclass(frozen=True)
+class Tier2RunResult:
+    """Outcome of a Phase 19 Tier 2 pipeline run.
+
+    Attributes:
+        material_resolved: the :class:`Material` actually used in the
+            run (may be the DEFAULT_STEEL when ``material_id`` was
+            omitted; the reviewer sees the resolved id in the audit
+            trail).
+        material_reference: the citation string carried with the
+            material (e.g., "EN 10025-2:2019 §7.3").
+        ccx_result: the underlying :class:`CalculiXRunResult` (frd
+            path, runtime, etc.).
+        inp_path: absolute path to the composed INP file.
+    """
+
+    material_resolved: Material
+    material_reference: str
+    ccx_result: CalculiXRunResult
+    inp_path: Path
+
+
+def resolve_material(material_id: str | None) -> Material | MinimalHexMaterial:
+    """Resolve a UI-supplied ``material_id`` to a SSOT material.
+
+    Args:
+        material_id: stable id from the materials library, or ``None``
+            (the reviewer omitted the pick → fall back to
+            :data:`DEFAULT_STEEL` for back-compat with Phase 18 A).
+
+    Returns:
+        Either a :class:`app.services.materials.api.Material` (when
+        the lookup succeeds) or the :data:`DEFAULT_STEEL`
+        :class:`MinimalHexMaterial` (when ``material_id`` is None).
+
+    Raises:
+        Tier2PipelineError: when ``material_id`` is non-None but
+            unknown to the library. The error carries the original
+            :class:`MaterialNotFoundError` so the audit surface can
+            cite the failed lookup explicitly.
+    """
+    if material_id is None or material_id == "":
+        return DEFAULT_STEEL
+    try:
+        return get_material(material_id)
+    except MaterialNotFoundError as exc:
+        raise Tier2PipelineError(
+            f"material_id {material_id!r} not in library; reviewer "
+            f"must pick from app/services/materials/library.json",
+            stage="resolve_material",
+            cause=exc,
+        ) from exc
+
+
+def material_to_hex_descriptor(
+    material: Material | MinimalHexMaterial,
+) -> MinimalHexMaterial:
+    """Convert a Material (or pass-through a MinimalHexMaterial) into
+    the shape the Phase 18 A INP writer expects.
+
+    The conversion is lossy w.r.t. density + yield + ultimate
+    (the linear-static INP doesn't carry them); they are preserved
+    on the audit trail via :attr:`Tier2RunResult.material_reference`.
+    """
+    if isinstance(material, MinimalHexMaterial):
+        return material
+    # Material id may include hyphens; CalculiX requires the label
+    # to be alphanumeric + underscore. Upper-case canonicalises.
+    label = material.id.replace("-", "_").upper()
+    return MinimalHexMaterial(
+        name=label,
+        youngs_modulus_pa=material.youngs_modulus_pa,
+        poisson_ratio=material.poisson_ratio,
+    )
+
+
+def material_reference_for_audit(
+    material: Material | MinimalHexMaterial,
+) -> str:
+    """Return the citation reference string for the audit trail.
+
+    The Phase 18 A :data:`DEFAULT_STEEL` is a :class:`MinimalHexMaterial`
+    with no reference field — the function returns an inline
+    description so the audit always carries non-empty provenance.
+    """
+    if isinstance(material, MinimalHexMaterial):
+        return (
+            f"Phase 18 A inline default ({material.name}; "
+            f"E={material.youngs_modulus_pa:.3e} Pa; "
+            f"ν={material.poisson_ratio})"
+        )
+    return material.reference
+
+
+def run_tier2_minimal_hex(
+    case_dir: Path,
+    *,
+    jobname: str,
+    material_id: str | None,
+    edge_length_m: float = 0.1,
+    top_face_load_n: float = -1000.0,
+    ccx_binary: str = "ccx",
+    timeout_sec: float = 30.0,
+) -> Tier2RunResult:
+    """End-to-end Tier 2 minimal-hex pipeline.
+
+    Steps:
+      1. Resolve ``material_id`` to a SSOT :class:`Material` (or fall
+         back to :data:`DEFAULT_STEEL` when None).
+      2. Compose the linear-static INP with the chosen material via
+         :func:`write_minimal_hex_inp`.
+      3. Invoke the real ``ccx`` subprocess via :class:`CalculiXRunner`.
+      4. Return :class:`Tier2RunResult` carrying the resolved material
+         + ccx result + INP path.
+
+    Args:
+        case_dir: workspace directory (must exist); not a signed
+            registry shape (HF1.7a defense applies via
+            :class:`CalculiXRunner`).
+        jobname: stem for the INP / log / .frd files.
+        material_id: SSOT material library id, or ``None`` for default.
+        edge_length_m: hex edge length in meters (passed through).
+        top_face_load_n: total load on top face (passed through).
+        ccx_binary: ccx executable path; default `"ccx"` from PATH.
+        timeout_sec: wall-clock cap on the ccx invocation.
+
+    Raises:
+        Tier2PipelineError: on any stage failure (unknown material,
+            INP write refused, ccx error). The ``stage`` attribute
+            indicates where it failed.
+    """
+    material = resolve_material(material_id)
+    hex_descriptor = material_to_hex_descriptor(material)
+    try:
+        inp_path = write_minimal_hex_inp(
+            case_dir,
+            jobname=jobname,
+            material=hex_descriptor,
+            edge_length_m=edge_length_m,
+            top_face_load_n=top_face_load_n,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise Tier2PipelineError(
+            f"INP composition refused: {exc}",
+            stage="write_inp",
+            cause=exc,
+        ) from exc
+
+    runner = CalculiXRunner(ccx_binary=ccx_binary, timeout_sec=timeout_sec)
+    try:
+        ccx_result = runner.run(case_dir, jobname)
+    except CalculiXRunError as exc:
+        raise Tier2PipelineError(
+            f"ccx subprocess failed: {exc}",
+            stage="run_ccx",
+            cause=exc,
+        ) from exc
+
+    return Tier2RunResult(
+        material_resolved=material,
+        material_reference=material_reference_for_audit(material),
+        ccx_result=ccx_result,
+        inp_path=inp_path,
+    )
+
+
+__all__ = [
+    "Tier2PipelineError",
+    "Tier2RunResult",
+    "resolve_material",
+    "material_to_hex_descriptor",
+    "material_reference_for_audit",
+    "run_tier2_minimal_hex",
+]
