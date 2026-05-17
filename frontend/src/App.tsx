@@ -90,9 +90,12 @@ import {
   buildEvidenceSection,
   buildValidationSection,
   buildBlueprintTargetSection,
+  buildBallisticSection,
   buildGateSection,
   statusTone as trustCenterStatusTone,
+  humanizeStatus as trustCenterHumanizeStatus,
 } from './state/trustCenterViewModel';
+const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
@@ -107,12 +110,9 @@ const SOLVER_FAILURE_MARKERS = [
 const isSolverFailureLog = (message: string) =>
   SOLVER_FAILURE_MARKERS.some(marker => message.includes(marker));
 
-const humanizeStatus = (status?: string) => {
-  if (!status) return 'Unknown';
-  return status
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-};
+// FM-04a Phase 28 B — re-exported from state/trustCenterViewModel so
+// buildBallisticSection composes it. Local alias preserves existing
+// callsites with no churn.
 
 // FM-04a Phase 26 D — re-exported from state/trustCenterViewModel.
 // The body lives there so the builders compose it; this alias
@@ -926,20 +926,21 @@ function App() {
       icon: <ClipboardCheck size={16} />,
       blueprintSummary,
     }),
-    {
-      title: 'Ballistic candidate',
+    buildBallisticSection({
       icon: <ShieldAlert size={16} />,
-      items: [
-        { label: 'Ballistic block', value: candidateBallistic ? humanizeStatus(candidateBallistic.status) : 'Not surfaced', tone: candidateBallistic?.status === 'candidate_observed' ? 'warning' : 'muted', detail: candidateBallistic?.claim_impact ?? 'Tier 1 candidate; not signed validation; not benchmark agreement' },
-        { label: 'Initial velocity', value: ballisticInitialVelocitySummary, tone: candidateBallistic?.projectile_initial_velocity.status === 'declared' ? 'accent' : 'muted' },
-        { label: 'Residual velocity', value: ballisticResidualVelocitySummary, tone: candidateBallistic?.residual_velocity_candidate.status === 'candidate_observed' ? 'warning' : 'muted', detail: 'Tier 1 candidate; not benchmark agreement' },
-        { label: 'Perforation marker', value: ballisticPerforationSummary, tone: ballisticPerforationTone, detail: 'perforated_candidate is NOT "perforation completed"' },
-        { label: 'Energy balance', value: ballisticEnergySummary, tone: ballisticEnergyTone, detail: candidateBallistic?.energy_balance_candidate.claim_impact ?? 'energy ratio is a Tier 1 candidate health indicator only' },
-        { label: 'Animation manifest', value: ballisticAnimationSummary, tone: candidateBallistic?.animation_manifest.status === 'available' ? 'accent' : 'muted' },
-        { label: 'Time-step convergence', value: ballisticTimeStepStudySummary, tone: ballisticTimeStepStudyTone, detail: ballisticTimeStepStudy?.claim_impact ?? 'Tier 2 dt convergence is reserved for FM-04b' },
-        { label: 'Ballistic Tier 2 blockers', value: ballisticTier2BlockerSummary, tone: 'danger' },
-      ],
-    },
+      candidateBallistic,
+      ballisticInitialVelocitySummary,
+      ballisticResidualVelocitySummary,
+      ballisticPerforationSummary,
+      ballisticPerforationTone,
+      ballisticEnergySummary,
+      ballisticEnergyTone,
+      ballisticAnimationSummary,
+      ballisticTimeStepStudySummary,
+      ballisticTimeStepStudyTone,
+      ballisticTimeStepStudy,
+      ballisticTier2BlockerSummary,
+    }),
     buildGateSection({
       icon: <AlertTriangle size={16} />,
       reviewerSummary,

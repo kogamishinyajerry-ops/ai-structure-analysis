@@ -37,6 +37,15 @@ export function statusTone(status?: string): OperatorStatusItem['tone'] {
   return 'warning';
 }
 
+/** FM-04a Phase 28 B — moved from App.tsx so buildBallisticSection
+ * can compose it. snake_case_status → "Snake Case Status". */
+export function humanizeStatus(status?: string): string {
+  if (!status) return 'Unknown';
+  return status
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 // ---------------------------------------------------------------------
 // trustStrip
 // ---------------------------------------------------------------------
@@ -322,6 +331,92 @@ export function buildBlueprintTargetSection(
       { label: 'Started slices', value: `${s.startedSlices} local frontend/docs slice(s) started`, tone: 'accent' },
       { label: 'Next deferred slice', value: s.nextSlice, tone: 'warning' },
       { label: 'Tier 2 blockers', value: `${s.blockerCount} blocker(s) still active`, tone: 'danger' },
+    ],
+  };
+}
+
+// FM-04a Phase 28 B — Ballistic candidate section context.
+// Wider interface than Blueprint target (11 items, 6+ derived
+// summary strings, 3 tone-discriminator variables); honest-scope
+// trade documented in commit. This is the LAST of the 7 trust
+// sections to extract; completes the Phase 26 D arc started with
+// the simpler Overview/Runtime/Evidence/Validation/Gate sections.
+export interface BallisticSectionContext {
+  icon: ReactNode;
+  candidateBallistic: {
+    status: string;
+    claim_impact?: string;
+    projectile_initial_velocity: { status: string };
+    residual_velocity_candidate: { status: string };
+    energy_balance_candidate: { claim_impact?: string };
+    animation_manifest: { status: string };
+  } | null;
+  ballisticInitialVelocitySummary: string;
+  ballisticResidualVelocitySummary: string;
+  ballisticPerforationSummary: string;
+  ballisticPerforationTone: OperatorStatusItem['tone'];
+  ballisticEnergySummary: string;
+  ballisticEnergyTone: OperatorStatusItem['tone'];
+  ballisticAnimationSummary: string;
+  ballisticTimeStepStudySummary: string;
+  ballisticTimeStepStudyTone: OperatorStatusItem['tone'];
+  ballisticTimeStepStudy: { claim_impact?: string } | null;
+  ballisticTier2BlockerSummary: string;
+}
+
+export function buildBallisticSection(
+  ctx: BallisticSectionContext,
+): OperatorStatusSection {
+  const b = ctx.candidateBallistic;
+  return {
+    title: 'Ballistic candidate',
+    icon: ctx.icon,
+    items: [
+      {
+        label: 'Ballistic block',
+        value: b ? humanizeStatus(b.status) : 'Not surfaced',
+        tone: b?.status === 'candidate_observed' ? 'warning' : 'muted',
+        detail: b?.claim_impact ?? 'Tier 1 candidate; not signed validation; not benchmark agreement',
+      },
+      {
+        label: 'Initial velocity',
+        value: ctx.ballisticInitialVelocitySummary,
+        tone: b?.projectile_initial_velocity.status === 'declared' ? 'accent' : 'muted',
+      },
+      {
+        label: 'Residual velocity',
+        value: ctx.ballisticResidualVelocitySummary,
+        tone: b?.residual_velocity_candidate.status === 'candidate_observed' ? 'warning' : 'muted',
+        detail: 'Tier 1 candidate; not benchmark agreement',
+      },
+      {
+        label: 'Perforation marker',
+        value: ctx.ballisticPerforationSummary,
+        tone: ctx.ballisticPerforationTone,
+        detail: 'perforated_candidate is NOT "perforation completed"',
+      },
+      {
+        label: 'Energy balance',
+        value: ctx.ballisticEnergySummary,
+        tone: ctx.ballisticEnergyTone,
+        detail: b?.energy_balance_candidate.claim_impact ?? 'energy ratio is a Tier 1 candidate health indicator only',
+      },
+      {
+        label: 'Animation manifest',
+        value: ctx.ballisticAnimationSummary,
+        tone: b?.animation_manifest.status === 'available' ? 'accent' : 'muted',
+      },
+      {
+        label: 'Time-step convergence',
+        value: ctx.ballisticTimeStepStudySummary,
+        tone: ctx.ballisticTimeStepStudyTone,
+        detail: ctx.ballisticTimeStepStudy?.claim_impact ?? 'Tier 2 dt convergence is reserved for FM-04b',
+      },
+      {
+        label: 'Ballistic Tier 2 blockers',
+        value: ctx.ballisticTier2BlockerSummary,
+        tone: 'danger',
+      },
     ],
   };
 }
