@@ -349,8 +349,11 @@ def test_phase21a_validated_count_is_three() -> None:
     verdict YAMLs for cantilever-beam-candidate + plate-with-hole-
     candidate under golden_samples/, the overlay in _claim_tier.py
     promotes both. Combined with the Phase 19 B cylinder-pv promotion,
-    the registry now lists exactly 3 tier_2_validated cases. A drive-by
-    edit that removes either verdict file trips this test."""
+    the registry lists AT LEAST the 3 Phase-21-era tier_2_validated
+    cases. Later phases may add more (Phase 23 A added euler-column);
+    this pin asserts the Phase 21 set is a subset of the current
+    validated set so a drive-by edit that removes any of the three
+    Phase-21-era verdict files still trips this test."""
     from app.services.reporting._claim_tier import CLAIM_TIER_REGISTRY
 
     validated = {
@@ -358,11 +361,15 @@ def test_phase21a_validated_count_is_three() -> None:
         for case_id, tier in CLAIM_TIER_REGISTRY.items()
         if tier == "tier_2_validated"
     }
-    assert validated == {
+    phase21_era_validated = {
         "cylinder-pv-candidate",
         "cantilever-beam-candidate",
         "plate-with-hole-candidate",
-    }, f"unexpected tier_2_validated set: {validated}"
+    }
+    assert phase21_era_validated.issubset(validated), (
+        f"phase 21 validated subset missing from registry: "
+        f"{phase21_era_validated - validated}"
+    )
 
 
 def test_phase21a_cantilever_verdict_yaml_persisted_on_disk() -> None:

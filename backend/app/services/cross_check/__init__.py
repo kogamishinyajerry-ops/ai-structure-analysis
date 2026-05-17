@@ -78,6 +78,13 @@ from .buckling_runner import (
     run_buckling_cross_check,
     write_buckling_verdict_yaml,
 )
+# Phase 23 A — B31 Timoshenko beam-element buckling runner that
+# matches the 1D Euler analytical. Replaces the C3D8 solid-element
+# path that landed ~10× off in Phase 22 A.
+from .buckling_b31_runner import (
+    BucklingB31RunResult,
+    run_buckling_b31_cross_check,
+)
 
 __all__ = [
     "CROSS_CHECK_TOLERANCE_PCT",
@@ -121,4 +128,7 @@ __all__ = [
     "BucklingCrossCheckVerdict",
     "run_buckling_cross_check",
     "write_buckling_verdict_yaml",
+    # Phase 23 A
+    "BucklingB31RunResult",
+    "run_buckling_b31_cross_check",
 ]

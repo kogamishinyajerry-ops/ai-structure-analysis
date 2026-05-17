@@ -1,8 +1,19 @@
-# euler-column-candidate — Phase 22 A
+# euler-column-candidate — Phase 22 A (infrastructure) + Phase 23 A (promotion)
 
-**Tier:** `tier_2_validated` (promoted Phase 22 A · 2026-05-17). Verdict
+**Tier:** `tier_2_validated` (promoted Phase 23 A · 2026-05-17). Verdict
 file `cross_check_verdict.yaml` carries a PASS verdict from
-`run_buckling_cross_check`.
+`run_buckling_b31_cross_check` (B31 Timoshenko beam-element runner).
+
+**Promotion path:**
+* Phase 22 A: built `run_buckling_cross_check` (C3D8 solid-element)
+  + analytical helper. Solid-element verdict landed ~10× off Euler
+  analytical (37,360 N vs 1,727 N) — honest scope reduction recorded
+  FAIL verdict, case stayed tier_1_candidate.
+* Phase 23 A: shipped `run_buckling_b31_cross_check` using ccx B31
+  Timoshenko beam elements. Procedural INP composer (no gmsh). 20
+  B31 elements along the column length. Observed P_cr 1730.7 N vs
+  analytical 1727.2 N → **residual 0.21%** (vs 10% tolerance).
+  Verdict PASS; case promoted to tier_2_validated.
 
 ## Geometry
 

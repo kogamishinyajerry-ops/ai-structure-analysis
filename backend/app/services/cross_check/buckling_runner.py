@@ -30,13 +30,15 @@ so the ``_claim_tier.py`` overlay promotes the case to
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Final, Literal
 
 from app.adapters.calculix import CalculiXRunError, CalculiXRunner
+from app.services.cross_check._buckle_dat_parser import (
+    parse_lowest_buckling_eigenvalue,
+)
 from app.services.materials import get_material
 
 from .buckling_euler import (
@@ -240,62 +242,10 @@ def _write_pinned_pinned_buckle_inp(
     return inp_path
 
 
-_DAT_EIGENVALUE_RE = re.compile(
-    r"^\s*\d+\s+([\-+]?\d+\.\d+(?:E[+\-]?\d+)?)",
-    re.IGNORECASE,
-)
-
-
-def _parse_lowest_buckling_eigenvalue(dat_path: Path) -> float:
-    """Read CalculiX's `.dat` file and return the lowest eigenvalue.
-
-    The .dat file is the canonical place ccx writes *BUCKLE output.
-    CalculiX 2.21+ uses the header ``B U C K L I N G   F A C T O R``:
-
-        B U C K L I N G   F A C T O R   O U T P U T
-
-         MODE NO       BUCKLING
-                        FACTOR
-
-              1   0.1234567E+05
-              2   0.2345678E+05
-              ...
-
-    Older ccx releases used ``E I G E N V A L U E`` — both
-    spellings accepted here for forward compat.
-
-    Returns the lowest mode's load multiplier (the first numeric row
-    under the header).
-    """
-    if not dat_path.is_file():
-        raise FileNotFoundError(
-            f".dat file missing at {dat_path!s}; ccx may not have "
-            f"completed the *BUCKLE step"
-        )
-    text = dat_path.read_text(encoding="utf-8", errors="replace")
-    in_eigen_block = False
-    for line in text.splitlines():
-        stripped = line.strip().upper()
-        if (
-            "B U C K L I N G" in stripped
-            or "E I G E N V A L U E" in stripped
-        ):
-            in_eigen_block = True
-            continue
-        if not in_eigen_block:
-            continue
-        if "MODE NO" in stripped or "FACTOR" in stripped:
-            continue
-        match = _DAT_EIGENVALUE_RE.match(line)
-        if match:
-            return float(match.group(1))
-    raise CalculiXRunError(
-        f"no eigenvalue found in {dat_path}; *BUCKLE step may have "
-        f"failed without writing output",
-        returncode=None,
-        stderr_tail="",
-        stdout_tail="",
-    )
+# FM-04a Phase 23 A — eigenvalue parser moved to shared
+# ``_buckle_dat_parser`` so the new B31 beam-element runner reuses
+# the same logic without duplicating it.
+_parse_lowest_buckling_eigenvalue = parse_lowest_buckling_eigenvalue
 
 
 def run_buckling_cross_check(

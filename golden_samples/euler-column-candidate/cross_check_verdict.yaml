@@ -1,0 +1,21 @@
+{
+  "analytical_p_cr_n": 1727.1807701906378,
+  "case_id": "euler-column-candidate",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical",
+  "claim_tier": "tier_2_validated",
+  "eigenvalue": 1.730738,
+  "end_condition": "pinned-pinned",
+  "generated_at": "2026-05-17T12:07:55.557121+00:00",
+  "k_factor": 1.0,
+  "length_m": 1.0,
+  "material_id": "steel-s355",
+  "n_elements": 20,
+  "observed_p_cr_n": 1730.738,
+  "p_ref_n": 1000.0,
+  "residual_pct": 0.20595584844136888,
+  "runner": "buckling_b31_runner",
+  "section_depth_m": 0.01,
+  "section_width_m": 0.01,
+  "tolerance_pct": 10.0,
+  "verdict": "PASS"
+}
