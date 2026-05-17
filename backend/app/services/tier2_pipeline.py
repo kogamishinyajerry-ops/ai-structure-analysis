@@ -132,6 +132,10 @@ def material_to_hex_descriptor(
         name=label,
         youngs_modulus_pa=material.youngs_modulus_pa,
         poisson_ratio=material.poisson_ratio,
+        # Phase 20 B — forward the optional plasticity curve so the
+        # INP writer can emit *PLASTIC when the SSOT material carries
+        # a hardening definition.
+        plastic_hardening_curve=material.plastic_hardening_curve,
     )
 
 

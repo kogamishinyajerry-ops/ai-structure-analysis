@@ -53,6 +53,12 @@ class Material:
         reference: citation string identifying the property source
             (textbook / standard / database). Required for every
             entry; loader refuses entries without it.
+        plastic_hardening_curve: optional list of
+            ``(plastic_strain, true_stress_pa)`` pairs ordered by
+            ascending plastic strain (per CalculiX ``*PLASTIC``
+            convention). The first row must be ``(0.0, yield_stress)``.
+            Phase 20 B: when present, the INP writer emits a
+            ``*PLASTIC`` block so ccx promotes to a nonlinear run.
     """
 
     id: str
@@ -63,6 +69,7 @@ class Material:
     yield_stress_pa: Optional[float]
     ultimate_stress_pa: Optional[float]
     reference: str
+    plastic_hardening_curve: Optional[tuple[tuple[float, float], ...]] = None
 
 
 def _validate_entry(entry: dict, *, index: int) -> Material:
@@ -143,6 +150,77 @@ def _validate_entry(entry: dict, *, index: int) -> Material:
                 f"material {mid!r} (#{index}) ultimate_stress_pa "
                 f"({sigma_u}) must be >= yield_stress_pa ({sigma_y})"
             )
+    # Phase 20 B — optional plastic hardening curve.
+    hardening_curve: Optional[tuple[tuple[float, float], ...]] = None
+    raw_curve = entry.get("plastic_hardening_curve")
+    if raw_curve is not None:
+        if sigma_y is None:
+            raise MaterialLibraryError(
+                f"material {mid!r} (#{index}) declares "
+                f"plastic_hardening_curve but has no yield_stress_pa; "
+                f"the curve's first row anchors at yield, so the "
+                f"yield must be defined"
+            )
+        if not isinstance(raw_curve, list) or len(raw_curve) < 2:
+            raise MaterialLibraryError(
+                f"material {mid!r} (#{index}) plastic_hardening_curve "
+                f"must be a list of >=2 [plastic_strain, stress] pairs"
+            )
+        validated_pairs: list[tuple[float, float]] = []
+        prev_strain: Optional[float] = None
+        for pair_idx, pair in enumerate(raw_curve):
+            if (
+                not isinstance(pair, list)
+                or len(pair) != 2
+                or not all(isinstance(v, (int, float)) for v in pair)
+            ):
+                raise MaterialLibraryError(
+                    f"material {mid!r} (#{index}) "
+                    f"plastic_hardening_curve row {pair_idx} must be "
+                    f"a 2-element [strain, stress] numeric pair; got "
+                    f"{pair!r}"
+                )
+            strain = float(pair[0])
+            stress = float(pair[1])
+            if strain < 0:
+                raise MaterialLibraryError(
+                    f"material {mid!r} (#{index}) "
+                    f"plastic_hardening_curve row {pair_idx} has "
+                    f"negative plastic_strain {strain}; CalculiX "
+                    f"*PLASTIC requires non-negative strains"
+                )
+            if stress <= 0:
+                raise MaterialLibraryError(
+                    f"material {mid!r} (#{index}) "
+                    f"plastic_hardening_curve row {pair_idx} has "
+                    f"non-positive stress {stress}"
+                )
+            if prev_strain is not None and strain <= prev_strain:
+                raise MaterialLibraryError(
+                    f"material {mid!r} (#{index}) "
+                    f"plastic_hardening_curve plastic strains must be "
+                    f"strictly increasing; row {pair_idx} strain "
+                    f"{strain} <= row {pair_idx - 1} strain "
+                    f"{prev_strain}"
+                )
+            prev_strain = strain
+            validated_pairs.append((strain, stress))
+        if validated_pairs[0][0] != 0.0:
+            raise MaterialLibraryError(
+                f"material {mid!r} (#{index}) "
+                f"plastic_hardening_curve first row must anchor at "
+                f"plastic_strain=0.0 (the yield point); got "
+                f"{validated_pairs[0][0]}"
+            )
+        if abs(validated_pairs[0][1] - sigma_y) > 1.0:
+            # 1 Pa tolerance covers JSON float round-trip noise.
+            raise MaterialLibraryError(
+                f"material {mid!r} (#{index}) "
+                f"plastic_hardening_curve first row stress "
+                f"({validated_pairs[0][1]} Pa) must equal "
+                f"yield_stress_pa ({sigma_y} Pa)"
+            )
+        hardening_curve = tuple(validated_pairs)
     return Material(
         id=mid,
         name=str(entry["name"]),
@@ -152,6 +230,7 @@ def _validate_entry(entry: dict, *, index: int) -> Material:
         yield_stress_pa=sigma_y,
         ultimate_stress_pa=sigma_u,
         reference=reference.strip(),
+        plastic_hardening_curve=hardening_curve,
     )
 
 

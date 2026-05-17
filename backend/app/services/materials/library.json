@@ -9,7 +9,11 @@
       "density_kg_m3": 7850.0,
       "yield_stress_pa": 355000000.0,
       "ultimate_stress_pa": 510000000.0,
-      "reference": "EN 10025-2:2019 §7.3 (S355 grade, room temperature)"
+      "reference": "EN 10025-2:2019 §7.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C §C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+      "plastic_hardening_curve": [
+        [0.0, 355000000.0],
+        [0.2, 510000000.0]
+      ]
     },
     {
       "id": "aluminium-6061-t6",
@@ -19,7 +23,11 @@
       "density_kg_m3": 2700.0,
       "yield_stress_pa": 276000000.0,
       "ultimate_stress_pa": 310000000.0,
-      "reference": "MMPDS-2023 §3.6.1.0 (6061-T6 wrought, sheet, longitudinal, room temperature)"
+      "reference": "MMPDS-2023 §3.6.1.0 (6061-T6 wrought, sheet, longitudinal, room temperature); plastic_hardening_curve bilinear approximation per MMPDS-2023 §9.2 stress-strain method (yield 276 MPa, ultimate 310 MPa at 12% plastic strain)",
+      "plastic_hardening_curve": [
+        [0.0, 276000000.0],
+        [0.12, 310000000.0]
+      ]
     },
     {
       "id": "titanium-ti-6al-4v",

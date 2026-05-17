@@ -24,19 +24,25 @@ from pathlib import Path
 class MinimalHexMaterial:
     """Linear elastic material for the minimal-hex smoke INP.
 
-    Phase 18 A only supports linear elastic; Phase 18 C extends to
-    the full materials library.
+    Phase 18 A only supports linear elastic; Phase 20 B adds optional
+    bilinear (or piecewise linear) plasticity via the hardening curve.
 
     Attributes:
         name: material label written into the INP (uppercase, no
             spaces; CalculiX is sensitive to label characters).
         youngs_modulus_pa: Young's modulus in pascals.
         poisson_ratio: dimensionless.
+        plastic_hardening_curve: optional list of
+            ``(plastic_strain, true_stress_pa)`` pairs ordered by
+            ascending plastic strain. When present, the INP writer
+            emits a ``*PLASTIC`` block so ccx promotes to a nonlinear
+            (NLGEOM-capable) run. Phase 20 B addition.
     """
 
     name: str
     youngs_modulus_pa: float
     poisson_ratio: float
+    plastic_hardening_curve: tuple[tuple[float, float], ...] | None = None
 
 
 # Phase 18 A defaults — structural steel, S355 grade, SI units.
@@ -132,6 +138,16 @@ def write_minimal_hex_inp(
     lines.append(f"*MATERIAL, NAME={material.name}")
     lines.append(f"*ELASTIC")
     lines.append(f"{e_pa:.6e}, {nu:.6f}")
+    # Phase 20 B — optional bilinear / piecewise-linear plasticity.
+    # When the material carries a hardening curve, emit *PLASTIC so
+    # ccx auto-promotes to a nonlinear run. The curve is written
+    # exactly as CalculiX's *PLASTIC consumes it: ``stress_pa,
+    # plastic_strain`` per row (note the column order is the inverse
+    # of the dataclass tuple ordering).
+    if material.plastic_hardening_curve is not None:
+        lines.append(f"*PLASTIC")
+        for plastic_strain, stress_pa in material.plastic_hardening_curve:
+            lines.append(f"{stress_pa:.6e}, {plastic_strain:.6f}")
     lines.append(f"*SOLID SECTION, ELSET=EALL, MATERIAL={material.name}")
     # Bottom face fully clamped: nodes 1-4 fixed in all 3 DOFs.
     lines.append(f"*BOUNDARY")

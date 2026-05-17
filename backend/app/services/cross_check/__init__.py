@@ -29,6 +29,16 @@ from .cylinder_pv_runner import (
     run_cylinder_pv_cross_check,
     write_verdict_yaml,
 )
+# Phase 20 B — second analytical cross-check (Euler-Bernoulli
+# cantilever tip deflection). The ccx-running runner is Phase 21+
+# scope; Phase 20 B ships the analytical half + validity envelope.
+from .cantilever_beam import (
+    CANTILEVER_ASPECT_RATIO_MIN,
+    SMALL_DEFLECTION_RATIO_MAX,
+    CantileverValidityError,
+    assert_slender_beam_envelope,
+    compute_analytical_tip_deflection,
+)
 
 __all__ = [
     "CROSS_CHECK_TOLERANCE_PCT",
@@ -41,4 +51,9 @@ __all__ = [
     "load_verdict_yaml",
     "run_cylinder_pv_cross_check",
     "write_verdict_yaml",
+    "CANTILEVER_ASPECT_RATIO_MIN",
+    "SMALL_DEFLECTION_RATIO_MAX",
+    "CantileverValidityError",
+    "assert_slender_beam_envelope",
+    "compute_analytical_tip_deflection",
 ]

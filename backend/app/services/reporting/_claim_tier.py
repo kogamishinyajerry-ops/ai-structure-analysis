@@ -83,6 +83,13 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     "swing-arm-fatigue-candidate": "tier_1_candidate",
     "ballistic-plate-candidate": "tier_1_candidate",
     "leak-shell-candidate": "tier_1_candidate",
+    # Phase 20 B addition — slender cantilever beam candidate for the
+    # second analytical cross-check (Euler-Bernoulli tip-deflection).
+    # Baseline tier_1; promotion to tier_2_validated waits for a
+    # Phase 21 cantilever runner (Slice C's Gmsh-meshed pipeline lands
+    # the multi-element bending capability that single-hex coupons
+    # cannot provide).
+    "cantilever-beam-candidate": "tier_1_candidate",
 }
 
 
