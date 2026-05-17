@@ -22,6 +22,7 @@ import { SkeletonCard } from './SkeletonCard';
 // deformationScale / sectionCut props.
 import {
   ResultMeshWebGLViewport,
+  type PickedNodeInfo,
   type SectionCutState,
   type ValueFilterState,
 } from './ResultMeshWebGLViewport';
@@ -31,6 +32,16 @@ import type { StressComponent } from '../stressDerivatives';
 // surfaces. The tour persists dismissal in localStorage so it shows
 // exactly once across sessions.
 import { OnboardingTour } from './OnboardingTour';
+// FM-04a Phase 24 D — multi-node probe list. Extends Phase 23 C
+// single-pick to a comparison list (max 8). State owned here so the
+// panel can render the table next to the viewport.
+import { ProbeListPanel } from './ProbeListPanel';
+import {
+  PROBE_LIST_INITIAL_STATE,
+  addProbeEntry,
+  clearAllProbes,
+  removeProbeEntry,
+} from './probeList';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -87,6 +98,9 @@ export function ResultMeshPlaybackPanel({
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
   // FM-04a Phase 23 D — element-value threshold filter.
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
+  // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
+  const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
+  const [probeList, setProbeList] = useState(PROBE_LIST_INITIAL_STATE);
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -325,6 +339,7 @@ export function ResultMeshPlaybackPanel({
                   sectionCut={sectionCut}
                   fieldComponent={fieldComponent}
                   valueFilter={valueFilter}
+                  onNodePicked={setActivePick}
                 />
               ) : (
               <>
@@ -466,6 +481,21 @@ export function ResultMeshPlaybackPanel({
                   })()}
                 </div>
               )}
+              {/* FM-04a Phase 24 D — multi-node probe list (max 8). */}
+              <div style={{ marginTop: '10px' }}>
+                <ProbeListPanel
+                  state={probeList}
+                  activePick={activePick}
+                  fieldUnits={fieldUnits}
+                  onPinActive={() => {
+                    if (activePick) {
+                      setProbeList((s) => addProbeEntry(s, activePick));
+                    }
+                  }}
+                  onRemove={(label) => setProbeList((s) => removeProbeEntry(s, label))}
+                  onClearAll={() => setProbeList((s) => clearAllProbes(s))}
+                />
+              </div>
             </div>
 
             <div

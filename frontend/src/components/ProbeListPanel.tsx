@@ -1,0 +1,264 @@
+// FM-04a Phase 24 D — multi-node probe list panel.
+//
+// Renders the pinned-node table next to the WebGL viewport. Each row
+// shows the node label, xyz coords in scientific notation, the field
+// value (Mises / σ_xx etc — same scalar the gradient is coloring by),
+// and a small remove button.
+//
+// Pin order is preserved — see D:-2 anti-gaming guard in probeList.ts.
+//
+// Tier 1 / Tier 2 engineering candidate; not signed validation; not
+// benchmark agreement.
+
+import { type CSSProperties } from 'react';
+
+import type { PickedNodeInfo } from './viewportRaycaster';
+import {
+  PROBE_LIST_MAX,
+  type ProbeListState,
+  probeCount,
+} from './probeList';
+
+export interface ProbeListPanelProps {
+  state: ProbeListState;
+  /** Optional active pick that hasn't been pinned yet. Shown in the
+   * "Pin current" affordance row when present. */
+  activePick?: PickedNodeInfo | null;
+  /** Called when the user clicks the "+ Pin current pick" button. */
+  onPinActive?: () => void;
+  /** Called with the node label of the row whose remove button was
+   * clicked. */
+  onRemove?: (label: number) => void;
+  /** Called when the user clicks the "Clear all" button. */
+  onClearAll?: () => void;
+  /** Optional unit suffix appended to field values (default Pa). */
+  fieldUnits?: string;
+}
+
+function formatScientific(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  if (value === 0) return '0';
+  return value.toExponential(2);
+}
+
+export function ProbeListPanel({
+  state,
+  activePick,
+  onPinActive,
+  onRemove,
+  onClearAll,
+  fieldUnits = 'Pa',
+}: ProbeListPanelProps) {
+  const count = probeCount(state);
+  const pinDisabled =
+    !activePick ||
+    state.entries.some((e) => e.label === activePick.label) ||
+    count >= PROBE_LIST_MAX;
+
+  return (
+    <div data-testid="probe-list-panel" style={STYLES.panel}>
+      <div style={STYLES.header}>
+        <div>
+          <div style={STYLES.label}>Probe list</div>
+          <div data-testid="probe-list-count" style={STYLES.count}>
+            {count} / {PROBE_LIST_MAX} pinned
+          </div>
+        </div>
+        {count > 0 && (
+          <button
+            type="button"
+            data-testid="probe-clear-all"
+            onClick={() => onClearAll?.()}
+            style={STYLES.clearAllButton}
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {activePick && (
+        <div style={STYLES.activeRow}>
+          <div>
+            <div style={STYLES.activeLabel}>Current pick</div>
+            <div style={STYLES.activeNode}>
+              Node {activePick.label}
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="probe-pin-active"
+            onClick={() => onPinActive?.()}
+            disabled={pinDisabled}
+            style={{
+              ...STYLES.pinButton,
+              opacity: pinDisabled ? 0.5 : 1,
+              cursor: pinDisabled ? 'not-allowed' : 'pointer',
+            }}
+            aria-disabled={pinDisabled}
+          >
+            + Pin
+          </button>
+        </div>
+      )}
+
+      {count === 0 ? (
+        <div data-testid="probe-list-empty" style={STYLES.empty}>
+          No pinned probes. Click a node in the viewport, then "+ Pin".
+        </div>
+      ) : (
+        <table style={STYLES.table} data-testid="probe-list-table">
+          <thead>
+            <tr>
+              <th style={STYLES.th}>Node</th>
+              <th style={STYLES.th}>X (m)</th>
+              <th style={STYLES.th}>Y (m)</th>
+              <th style={STYLES.th}>Z (m)</th>
+              <th style={STYLES.th}>Value ({fieldUnits})</th>
+              <th style={STYLES.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.entries.map((entry, index) => (
+              <tr key={entry.label} data-testid={`probe-row-${index}`}>
+                <td data-testid={`probe-row-${index}-label`} style={STYLES.td}>
+                  {entry.label}
+                </td>
+                <td style={STYLES.tdMono}>{formatScientific(entry.position[0])}</td>
+                <td style={STYLES.tdMono}>{formatScientific(entry.position[1])}</td>
+                <td style={STYLES.tdMono}>{formatScientific(entry.position[2])}</td>
+                <td style={STYLES.tdMono}>
+                  {entry.fieldValue === null ? '—' : formatScientific(entry.fieldValue)}
+                </td>
+                <td style={STYLES.td}>
+                  <button
+                    type="button"
+                    data-testid={`probe-remove-${entry.label}`}
+                    onClick={() => onRemove?.(entry.label)}
+                    style={STYLES.removeButton}
+                    aria-label={`Remove probe for node ${entry.label}`}
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+const STYLES: Record<string, CSSProperties> = {
+  panel: {
+    background: 'rgba(15, 23, 42, 0.88)',
+    border: '1px solid rgba(148, 163, 184, 0.25)',
+    borderRadius: 8,
+    padding: '12px 14px',
+    color: '#e2e8f0',
+    fontSize: '0.8rem',
+    width: '100%',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  label: {
+    fontSize: '0.7rem',
+    fontWeight: 800,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  count: {
+    fontSize: '0.72rem',
+    color: '#cbd5e1',
+    marginTop: 2,
+  },
+  clearAllButton: {
+    background: 'transparent',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    color: '#cbd5e1',
+    borderRadius: 4,
+    padding: '3px 8px',
+    fontSize: '0.7rem',
+    cursor: 'pointer',
+  },
+  activeRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '8px 10px',
+    background: 'rgba(37, 99, 235, 0.18)',
+    borderRadius: 5,
+    marginBottom: 8,
+    fontSize: '0.78rem',
+  },
+  activeLabel: {
+    fontSize: '0.65rem',
+    color: '#93c5fd',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  activeNode: {
+    fontWeight: 600,
+    color: '#e0e7ff',
+  },
+  pinButton: {
+    background: '#2563eb',
+    color: 'white',
+    border: 'none',
+    borderRadius: 4,
+    padding: '4px 12px',
+    fontWeight: 600,
+    fontSize: '0.72rem',
+  },
+  empty: {
+    color: '#94a3b8',
+    fontSize: '0.74rem',
+    fontStyle: 'italic',
+    padding: '12px 6px',
+    textAlign: 'center',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  },
+  th: {
+    textAlign: 'left',
+    padding: '4px 6px',
+    color: '#94a3b8',
+    fontSize: '0.65rem',
+    textTransform: 'uppercase',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.2)',
+  },
+  td: {
+    padding: '5px 6px',
+    fontSize: '0.74rem',
+    color: '#e2e8f0',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
+  },
+  tdMono: {
+    padding: '5px 6px',
+    fontSize: '0.72rem',
+    color: '#cbd5e1',
+    borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  },
+  removeButton: {
+    background: 'transparent',
+    border: '1px solid rgba(148, 163, 184, 0.35)',
+    color: '#fca5a5',
+    borderRadius: 3,
+    width: 22,
+    height: 22,
+    padding: 0,
+    fontSize: '0.9rem',
+    lineHeight: 1,
+    cursor: 'pointer',
+  },
+};
