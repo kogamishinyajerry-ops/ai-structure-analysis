@@ -23,13 +23,15 @@ export type AdvancedFeatureId =
   | 'threshold-filter'
   | 'section-cut'
   | 'field-component-switcher'
-  | 'probe-list-panel';
+  | 'probe-list-panel'
+  | 'companion-viewport';
 
 export const ADVANCED_FEATURE_IDS: readonly AdvancedFeatureId[] = [
   'threshold-filter',
   'section-cut',
   'field-component-switcher',
   'probe-list-panel',
+  'companion-viewport',
 ] as const;
 
 /** Two-state UI mode. Default is 'basic' on first load. */

@@ -32,7 +32,10 @@ describe('Phase 25 C — uiMode state machine', () => {
   })
 
   it('lists all advanced features the gate covers', () => {
+    // FM-04a Phase 30 B — registry extended with 'companion-viewport'.
+    // The list is additive; pre-Phase-30 features must remain.
     expect([...ADVANCED_FEATURE_IDS].sort()).toEqual([
+      'companion-viewport',
       'field-component-switcher',
       'probe-list-panel',
       'section-cut',

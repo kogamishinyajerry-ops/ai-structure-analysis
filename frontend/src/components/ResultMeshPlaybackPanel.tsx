@@ -26,6 +26,17 @@ import {
   type SectionCutState,
   type ValueFilterState,
 } from './ResultMeshWebGLViewport';
+// FM-04a Phase 30 B — companion viewport for 2-quadrant section-cut
+// comparison. Independent section-cut state, shared field/component/
+// threshold/playback state.
+import { CompanionViewport } from './CompanionViewport';
+import {
+  loadCompanionEnabled,
+  saveCompanionEnabled,
+  loadCompanionSectionCut,
+  saveCompanionSectionCut,
+  computeCompanionInitialCut,
+} from './companionViewportStorage';
 import type { StressComponent } from '../stressDerivatives';
 // FM-04a Phase 24 B — onboarding tour mounted into the result-mesh
 // panel because that's where Phase 23 B/C/D added the new control
@@ -127,6 +138,19 @@ export function ResultMeshPlaybackPanel({
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
   // FM-04a Phase 23 D — element-value threshold filter.
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
+  // FM-04a Phase 30 B — companion-viewport state. Two independent
+  // pieces of state, both persisted to localStorage:
+  //   1. showCompanionViewport — whether the 2-quadrant layout is on.
+  //   2. companionSectionCut    — companion's independent cut state.
+  // C:-1 anti-gaming guard: toggling Compare off does NOT clear
+  // companionSectionCut; reopening restores the same position.
+  // D:-1: default OFF (additive — existing reviewers see no change).
+  const [showCompanionViewport, setShowCompanionViewport] = useState<boolean>(
+    () => loadCompanionEnabled(),
+  );
+  const [companionSectionCut, setCompanionSectionCut] = useState<SectionCutState>(
+    () => loadCompanionSectionCut() ?? computeCompanionInitialCut(null),
+  );
   // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
   // FM-04a Phase 27 D — initial probe-list state is restored from
@@ -202,6 +226,15 @@ export function ResultMeshPlaybackPanel({
   useEffect(() => {
     if (caseId) saveProbeList(caseId, probeList);
   }, [caseId, probeList]);
+  // FM-04a Phase 30 B — persist companion-viewport state. Two
+  // independent effects so the enabled flag and the cut position
+  // persist on their own cadences.
+  useEffect(() => {
+    saveCompanionEnabled(showCompanionViewport);
+  }, [showCompanionViewport]);
+  useEffect(() => {
+    saveCompanionSectionCut(companionSectionCut);
+  }, [companionSectionCut]);
   const handleUiModeChange = (next: UiMode) => {
     setUiMode(next);
     // Only the internal-state path needs to persist — the App-root
@@ -212,6 +245,18 @@ export function ResultMeshPlaybackPanel({
   const showSectionCut = shouldShowFeature(uiMode, 'section-cut');
   const showFieldComponentSwitcher = shouldShowFeature(uiMode, 'field-component-switcher');
   const showProbeListPanel = shouldShowFeature(uiMode, 'probe-list-panel');
+  // FM-04a Phase 30 B — Compare-cuts toggle visibility. Gated on
+  // advanced mode (the 2-quadrant layout is a power-user affordance).
+  // State (showCompanionViewport + companionSectionCut) is NEVER
+  // cleared by gating — only the toggle button is hidden. Pinned by
+  // Phase 30 B C:-1 invariant test.
+  const showCompanionViewportToggle = shouldShowFeature(uiMode, 'companion-viewport');
+  // Effective render flag: companion only renders when (a) the user
+  // has enabled it AND (b) advanced mode is current AND (c) the
+  // primary viewport is in WebGL mode (SVG fallback has no shared
+  // contract with the companion).
+  const companionViewportActive =
+    showCompanionViewport && showCompanionViewportToggle;
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -408,6 +453,49 @@ export function ResultMeshPlaybackPanel({
                 fontSize: '0.7rem',
               }}
             >
+              {showCompanionViewportToggle && viewportMode === 'webgl' && (
+                <button
+                  type="button"
+                  data-testid="compare-cuts-toggle"
+                  aria-pressed={companionViewportActive}
+                  onClick={() =>
+                    setShowCompanionViewport((current) => {
+                      const next = !current;
+                      // When turning ON for the first time AND the
+                      // persisted cut is the default, seed from the
+                      // primary's current cut so the companion starts
+                      // at a useful position (mirror axis, flipped
+                      // half). C:-1: never overwrite a user-edited
+                      // companion cut here — only reseed if the cut
+                      // is still at the storage default.
+                      if (next && sectionCut !== null) {
+                        const persisted = loadCompanionSectionCut();
+                        if (persisted === null) {
+                          setCompanionSectionCut(
+                            computeCompanionInitialCut(sectionCut),
+                          );
+                        }
+                      }
+                      return next;
+                    })
+                  }
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: companionViewportActive
+                      ? 'var(--accent)'
+                      : 'transparent',
+                    color: companionViewportActive
+                      ? '#000'
+                      : 'var(--text-secondary)',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Compare cuts
+                </button>
+              )}
               <button
                 type="button"
                 data-testid="viewport-toggle-webgl"
@@ -460,9 +548,35 @@ export function ResultMeshPlaybackPanel({
                 />
               )}
             </div>
+            {/* FM-04a Phase 30 B — viewport row. When the Compare-cuts
+                toggle is on AND the primary is in WebGL mode, the row
+                renders as a 2-quadrant flex layout with the companion
+                beside the primary. When off, the primary fills the
+                entire row (D:-1: zero behavior change for default-off
+                state). */}
             <div
+              data-testid="viewport-row"
               style={{
                 minHeight: '210px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+              }}
+            >
+            <div
+              data-testid="viewport-flex-row"
+              style={{
+                display: 'flex',
+                gap: 12,
+                flex: 1,
+                minHeight: '210px',
+              }}
+            >
+            <div
+              data-testid="primary-viewport-slot"
+              style={{
+                flex: 1,
+                minWidth: 0,
                 border: '1px solid var(--border)',
                 borderRadius: '8px',
                 background: '#020617',
@@ -627,41 +741,69 @@ export function ResultMeshPlaybackPanel({
                   })()}
                 </div>
               )}
-              {/* FM-04a Phase 24 D — multi-node probe list (max 8).
-                  FM-04a Phase 25 C gated by uiMode advanced. */}
-              {showProbeListPanel && (
-                <div style={{ marginTop: '10px' }}>
-                  <ProbeListPanel
-                    state={probeList}
-                    activePick={activePick}
-                    fieldUnits={fieldUnits}
-                    exitingLabel={exitingProbeLabel}
-                    onPinActive={() => {
-                      if (activePick) {
-                        setProbeList((s) => addProbeEntry(s, activePick));
-                      }
-                    }}
-                    onRemove={(label) => {
-                      // FM-04a Phase 28 C — exit-animation timing:
-                      // mark the row as exiting (parent re-renders
-                      // with the unmount class), then after the
-                      // 150ms animation duration actually call
-                      // removeProbeEntry and clear the exiting flag.
-                      // E:-1 guard: total settle time ≤ 200ms so the
-                      // user never perceives a stuck removal.
-                      setExitingProbeLabel(label);
-                      setTimeout(() => {
-                        setProbeList((s) => removeProbeEntry(s, label));
-                        setExitingProbeLabel((current) =>
-                          current === label ? null : current,
-                        );
-                      }, 150);
-                    }}
-                    onClearAll={() => setProbeList((s) => clearAllProbes(s))}
-                  />
-                </div>
-              )}
-            </div>
+            </div>{/* close primary-viewport-slot */}
+            {/* FM-04a Phase 30 B — companion viewport (2-quadrant
+                split). Only renders when (a) showCompanionViewport
+                is true AND (b) advanced UI mode is current (the
+                Compare-cuts toggle is the only way to flip it on,
+                and that toggle itself is advanced-mode gated) AND
+                (c) primary is in WebGL mode (SVG fallback has no
+                section-cut contract). All shared props are passed
+                BY VALUE — companion's sectionCut is independent. */}
+            {companionViewportActive && viewportMode === 'webgl' && (
+              <CompanionViewport
+                frame={summary.selectedFrame}
+                valueMin={summary.valueMin}
+                valueMax={summary.valueMax}
+                nextFrame={nextFrame}
+                playing={playing}
+                deformationScale={deformationScale}
+                fieldComponent={fieldComponent}
+                valueFilter={valueFilter}
+                sectionCut={companionSectionCut}
+                onSectionCutChange={setCompanionSectionCut}
+              />
+            )}
+            </div>{/* close viewport-flex-row */}
+            {/* FM-04a Phase 24 D — multi-node probe list (max 8).
+                FM-04a Phase 25 C gated by uiMode advanced.
+                FM-04a Phase 30 B — lifted out of primary-viewport-slot
+                so the 2-quadrant layout does not push it under one
+                column. Renders below both viewports as a row of its
+                own inside the viewport-row column flex. */}
+            {showProbeListPanel && (
+              <div data-testid="probe-list-row">
+                <ProbeListPanel
+                  state={probeList}
+                  activePick={activePick}
+                  fieldUnits={fieldUnits}
+                  exitingLabel={exitingProbeLabel}
+                  onPinActive={() => {
+                    if (activePick) {
+                      setProbeList((s) => addProbeEntry(s, activePick));
+                    }
+                  }}
+                  onRemove={(label) => {
+                    // FM-04a Phase 28 C — exit-animation timing:
+                    // mark the row as exiting (parent re-renders
+                    // with the unmount class), then after the
+                    // 150ms animation duration actually call
+                    // removeProbeEntry and clear the exiting flag.
+                    // E:-1 guard: total settle time ≤ 200ms so the
+                    // user never perceives a stuck removal.
+                    setExitingProbeLabel(label);
+                    setTimeout(() => {
+                      setProbeList((s) => removeProbeEntry(s, label));
+                      setExitingProbeLabel((current) =>
+                        current === label ? null : current,
+                      );
+                    }, 150);
+                  }}
+                  onClearAll={() => setProbeList((s) => clearAllProbes(s))}
+                />
+              </div>
+            )}
+            </div>{/* close viewport-row */}
 
             <div
               style={{
