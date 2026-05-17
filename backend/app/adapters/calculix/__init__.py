@@ -15,6 +15,7 @@ from .inp_writer import (
     DEFAULT_STEEL,
     MinimalHexMaterial,
     write_minimal_hex_inp,
+    write_modal_hex_inp,
 )
 from .reader import CalculiXReader
 from .runner import (
@@ -35,4 +36,5 @@ __all__ = [
     "DEFAULT_STEEL",
     "MinimalHexMaterial",
     "write_minimal_hex_inp",
+    "write_modal_hex_inp",
 ]

@@ -155,3 +155,107 @@ def write_minimal_hex_inp(
     inp_path = case_dir / f"{jobname}.inp"
     inp_path.write_text("\n".join(lines), encoding="utf-8")
     return inp_path
+
+
+def write_modal_hex_inp(
+    case_dir: Path,
+    *,
+    jobname: str,
+    material: MinimalHexMaterial = DEFAULT_STEEL,
+    edge_length_m: float = 0.1,
+    density_kg_m3: float = 7850.0,
+    num_modes: int = 5,
+) -> Path:
+    """Write a single-C3D8-hex modal-eigenvalue INP — Phase 19 C.
+
+    Same geometry as :func:`write_minimal_hex_inp` but the step is a
+    ``*FREQUENCY`` modal extraction instead of linear static. The
+    bottom face is clamped (so the eigenmodes have proper boundary
+    conditions, not free-free); top face is free. ccx writes the
+    requested ``num_modes`` natural frequencies to the .frd `MODES`
+    block and the corresponding mode shapes to `DISP`.
+
+    Args:
+        case_dir: workspace; must exist.
+        jobname: INP filename stem.
+        material: linear elastic material (E + ν used; density
+            supplied separately because Phase 18 A's
+            :class:`MinimalHexMaterial` doesn't carry density —
+            avoiding a schema bump on that dataclass).
+        edge_length_m: hex edge in meters.
+        density_kg_m3: mass density in kg/m³; required for modal
+            (eigenvalue depends on `K - λM`).
+        num_modes: number of eigenfrequencies to compute (default 5).
+
+    Returns:
+        Absolute path to the written INP.
+    """
+    if not case_dir.is_dir():
+        raise FileNotFoundError(
+            f"case_dir {case_dir!s} must exist before writing INP"
+        )
+    if edge_length_m <= 0:
+        raise ValueError(f"edge_length_m must be positive; got {edge_length_m}")
+    if material.youngs_modulus_pa <= 0:
+        raise ValueError(
+            f"material.youngs_modulus_pa must be positive; got "
+            f"{material.youngs_modulus_pa}"
+        )
+    if not (0.0 < material.poisson_ratio < 0.5):
+        raise ValueError(
+            f"material.poisson_ratio must be in (0, 0.5); got "
+            f"{material.poisson_ratio}"
+        )
+    if density_kg_m3 <= 0:
+        raise ValueError(
+            f"density_kg_m3 must be positive; got {density_kg_m3}"
+        )
+    if num_modes < 1:
+        raise ValueError(f"num_modes must be >= 1; got {num_modes}")
+
+    e_pa = material.youngs_modulus_pa
+    nu = material.poisson_ratio
+    length = float(edge_length_m)
+
+    nodes = (
+        (1, 0.0, 0.0, 0.0),
+        (2, length, 0.0, 0.0),
+        (3, length, length, 0.0),
+        (4, 0.0, length, 0.0),
+        (5, 0.0, 0.0, length),
+        (6, length, 0.0, length),
+        (7, length, length, length),
+        (8, 0.0, length, length),
+    )
+
+    lines: list[str] = []
+    lines.append("*HEADING")
+    lines.append(f"Phase 19 C modal-hex ({jobname}, {num_modes} modes)")
+    lines.append("*NODE")
+    for nid, x, y, z in nodes:
+        lines.append(f"{nid}, {x:.6f}, {y:.6f}, {z:.6f}")
+    lines.append("*ELEMENT, TYPE=C3D8, ELSET=EALL")
+    lines.append("1, 1, 2, 3, 4, 5, 6, 7, 8")
+    lines.append(f"*MATERIAL, NAME={material.name}")
+    lines.append("*ELASTIC")
+    lines.append(f"{e_pa:.6e}, {nu:.6f}")
+    lines.append("*DENSITY")
+    lines.append(f"{density_kg_m3:.6f}")
+    lines.append(f"*SOLID SECTION, ELSET=EALL, MATERIAL={material.name}")
+    # Bottom face fully clamped (cantilever-style modal extraction).
+    lines.append("*BOUNDARY")
+    for nid in (1, 2, 3, 4):
+        lines.append(f"{nid}, 1, 3, 0.0")
+    # Modal step. CalculiX accepts solver name on *FREQUENCY; default
+    # is Lanczos. `num_modes` eigenvalues requested.
+    lines.append("*STEP")
+    lines.append("*FREQUENCY")
+    lines.append(f"{num_modes}")
+    lines.append("*NODE FILE")
+    lines.append("U")
+    lines.append("*END STEP")
+    lines.append("")
+
+    inp_path = case_dir / f"{jobname}.inp"
+    inp_path.write_text("\n".join(lines), encoding="utf-8")
+    return inp_path

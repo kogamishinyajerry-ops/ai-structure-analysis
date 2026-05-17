@@ -61,10 +61,14 @@ def test_default_library_path_exists() -> None:
     )
 
 
-def test_list_materials_returns_three_baseline_entries() -> None:
+def test_list_materials_first_three_baseline_entries_preserved() -> None:
+    """Phase 18 C baseline (3 materials) preserved at the head of the
+    library in stable order. Phase 19 C appends 5 more — verified by
+    a separate test below. Splitting the assertion keeps the
+    Phase 18 contract pinned even as the library grows."""
     materials = list_materials()
-    assert len(materials) == 3
-    ids = [m.id for m in materials]
+    assert len(materials) >= 3
+    ids = [m.id for m in materials[:3]]
     assert ids == [
         "steel-s355",
         "aluminium-6061-t6",

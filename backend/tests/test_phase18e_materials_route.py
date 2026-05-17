@@ -53,10 +53,13 @@ def route_mod():
     return _load_materials_route_module()
 
 
-def test_list_handler_returns_three_baseline_materials(route_mod) -> None:
+def test_list_handler_returns_phase_18c_baseline_first(route_mod) -> None:
+    """Phase 18 C baseline 3 materials remain at the head of the
+    payload list. Phase 19 C appends 5 more — pinned by Slice C
+    tests separately."""
     body = route_mod.get_materials_list()
-    assert body["count"] == 3
-    ids = [m["id"] for m in body["materials"]]
+    assert body["count"] >= 3
+    ids = [m["id"] for m in body["materials"]][:3]
     assert ids == [
         "steel-s355",
         "aluminium-6061-t6",
