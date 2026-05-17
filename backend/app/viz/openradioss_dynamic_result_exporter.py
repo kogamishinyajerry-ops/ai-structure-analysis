@@ -428,6 +428,7 @@ def _build_json_frame(
         for index in range(frame.coords.shape[0])
     ]
 
+    has_tensor = frame.stress is not None and frame.stress.shape[1] >= 6
     elements: list[dict[str, Any]] = []
     for label, face in enumerate(faces, start=1):
         element_index = face["element_index"]
@@ -449,6 +450,16 @@ def _build_json_frame(
         }
         if field == "von_mises":
             element["mises"] = value
+        if has_tensor:
+            row = frame.stress[element_index]
+            element["stressTensor"] = {
+                "sxx": _safe_float(row[0]),
+                "syy": _safe_float(row[1]),
+                "szz": _safe_float(row[2]),
+                "sxy": _safe_float(row[3]),
+                "syz": _safe_float(row[4]),
+                "sxz": _safe_float(row[5]),
+            }
         elements.append(element)
 
     ranges = _field_ranges(values, alive=frame.alive, max_displacement=float(disp_mag.max()))
