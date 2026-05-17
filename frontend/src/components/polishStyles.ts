@@ -52,17 +52,58 @@ export function isPolishInstalled(): boolean {
 /** Stable class names exported for the components that consume them
  * (no string-leak duplication between TS and CSS). */
 export const POLISH_CLASS_PROBE_ROW_MOUNT = 'fm04a-probe-row-mount';
+export const POLISH_CLASS_PROBE_ROW_UNMOUNT = 'fm04a-probe-row-unmount';
 export const POLISH_CLASS_GRADIENT_SLIDER = 'fm04a-gradient-slider';
 export const POLISH_CLASS_SECTION_CUT_READOUT = 'fm04a-section-cut-readout';
+export const POLISH_CLASS_RESTORED_TOAST = 'fm04a-restored-toast';
 
 const POLISH_CSS = `
 @keyframes fm04a-probe-row-fade-in {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+@keyframes fm04a-probe-row-fade-out {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+@keyframes fm04a-restored-toast-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 .${POLISH_CLASS_PROBE_ROW_MOUNT} {
   animation: fm04a-probe-row-fade-in 200ms ease-out;
+}
+
+.${POLISH_CLASS_PROBE_ROW_UNMOUNT} {
+  animation: fm04a-probe-row-fade-out 150ms ease-in forwards;
+}
+
+.${POLISH_CLASS_RESTORED_TOAST} {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+  padding: 6px 10px 6px 12px;
+  background: rgba(2, 6, 23, 0.92);
+  color: #93c5fd;
+  border: 1px solid rgba(37, 99, 235, 0.45);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-family: inherit;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  animation: fm04a-restored-toast-fade-in 200ms ease-out;
+}
+.${POLISH_CLASS_RESTORED_TOAST} button {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #cbd5e1;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 0.66rem;
+  cursor: pointer;
 }
 
 /* Threshold-filter slider gradient track. Matches the legend
@@ -102,7 +143,9 @@ const POLISH_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .${POLISH_CLASS_PROBE_ROW_MOUNT} {
+  .${POLISH_CLASS_PROBE_ROW_MOUNT},
+  .${POLISH_CLASS_PROBE_ROW_UNMOUNT},
+  .${POLISH_CLASS_RESTORED_TOAST} {
     animation: none;
   }
 }

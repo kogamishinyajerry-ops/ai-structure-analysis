@@ -60,6 +60,7 @@ import {
   installPolishStyles,
   POLISH_CLASS_GRADIENT_SLIDER,
   POLISH_CLASS_SECTION_CUT_READOUT,
+  POLISH_CLASS_RESTORED_TOAST,
 } from './polishStyles';
 
 interface ResultMeshPlaybackPanelProps {
@@ -125,6 +126,19 @@ export function ResultMeshPlaybackPanel({
   const [probeList, setProbeList] = useState(() =>
     caseId ? loadProbeList(caseId) : PROBE_LIST_INITIAL_STATE,
   );
+  // FM-04a Phase 28 C — node label currently fading OUT via the
+  // unmount animation. Set BEFORE the actual removeProbeEntry; cleared
+  // after the animation timeout. While non-null the <tr> still
+  // renders with the unmount CSS class.
+  const [exitingProbeLabel, setExitingProbeLabel] = useState<number | null>(null);
+  // FM-04a Phase 28 C — "Restored N probes from your last session"
+  // toast. Set on initial case mount if loadProbeList returned >= 1
+  // entries; cleared after 4 seconds (or click).
+  const [restoredCount, setRestoredCount] = useState<number>(() => {
+    if (!caseId) return 0;
+    const loaded = loadProbeList(caseId);
+    return loaded.entries.length;
+  });
   // FM-04a Phase 25 C — Basic/Advanced UI mode. State preservation
   // contract: toggling basic does NOT clear the threshold filter /
   // section cut / probe list / field component — only the UI is
@@ -141,13 +155,24 @@ export function ResultMeshPlaybackPanel({
     installPolishStyles();
   }, []);
   // FM-04a Phase 27 D — case_id change → swap to that case's
-  // persisted probe list (empty if none). The previous case's list
-  // is already saved by the save-effect below; we don't need to
-  // explicitly flush.
+  // persisted probe list (empty if none). Phase 28 C also surfaces
+  // the "Restored N probes" toast on a non-empty load.
   useEffect(() => {
-    if (caseId) setProbeList(loadProbeList(caseId));
-    else setProbeList(PROBE_LIST_INITIAL_STATE);
+    if (caseId) {
+      const loaded = loadProbeList(caseId);
+      setProbeList(loaded);
+      setRestoredCount(loaded.entries.length);
+    } else {
+      setProbeList(PROBE_LIST_INITIAL_STATE);
+      setRestoredCount(0);
+    }
   }, [caseId]);
+  // FM-04a Phase 28 C — auto-dismiss the restored toast after 4s.
+  useEffect(() => {
+    if (restoredCount === 0) return;
+    const timer = setTimeout(() => setRestoredCount(0), 4000);
+    return () => clearTimeout(timer);
+  }, [restoredCount]);
   // FM-04a Phase 27 D — persist probe-list state on every change
   // (scoped by case_id; C:-1 anti-gaming guard at predicate level).
   useEffect(() => {
@@ -249,6 +274,30 @@ export function ResultMeshPlaybackPanel({
       }}
     >
       <OnboardingTour />
+      {/* FM-04a Phase 28 C — "Restored N probes" toast on case
+          mount. Closes Phase 27 D's silent restoration miss. Click
+          dismisses; auto-fades after 4 seconds. */}
+      {restoredCount > 0 && (
+        <div
+          data-testid="probe-restored-toast"
+          className={POLISH_CLASS_RESTORED_TOAST}
+          role="status"
+          aria-live="polite"
+        >
+          <span>
+            Restored {restoredCount} pinned probe
+            {restoredCount === 1 ? '' : 's'} from your last session
+          </span>
+          <button
+            type="button"
+            data-testid="probe-restored-toast-dismiss"
+            onClick={() => setRestoredCount(0)}
+            aria-label="Dismiss restored probes notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div
         style={{
           padding: '14px 16px',
@@ -556,12 +605,28 @@ export function ResultMeshPlaybackPanel({
                     state={probeList}
                     activePick={activePick}
                     fieldUnits={fieldUnits}
+                    exitingLabel={exitingProbeLabel}
                     onPinActive={() => {
                       if (activePick) {
                         setProbeList((s) => addProbeEntry(s, activePick));
                       }
                     }}
-                    onRemove={(label) => setProbeList((s) => removeProbeEntry(s, label))}
+                    onRemove={(label) => {
+                      // FM-04a Phase 28 C — exit-animation timing:
+                      // mark the row as exiting (parent re-renders
+                      // with the unmount class), then after the
+                      // 150ms animation duration actually call
+                      // removeProbeEntry and clear the exiting flag.
+                      // E:-1 guard: total settle time ≤ 200ms so the
+                      // user never perceives a stuck removal.
+                      setExitingProbeLabel(label);
+                      setTimeout(() => {
+                        setProbeList((s) => removeProbeEntry(s, label));
+                        setExitingProbeLabel((current) =>
+                          current === label ? null : current,
+                        );
+                      }, 150);
+                    }}
                     onClearAll={() => setProbeList((s) => clearAllProbes(s))}
                   />
                 </div>

@@ -23,6 +23,7 @@ import {
 import {
   installPolishStyles,
   POLISH_CLASS_PROBE_ROW_MOUNT,
+  POLISH_CLASS_PROBE_ROW_UNMOUNT,
 } from './polishStyles';
 
 export interface ProbeListPanelProps {
@@ -44,6 +45,11 @@ export interface ProbeListPanelProps {
    * the panel header. Phase 25 D wires the default download flow at
    * the parent; this prop accepts an override for testing. */
   onExportCsv?: (csv: string) => void;
+  /** FM-04a Phase 28 C — node label currently being animated OUT.
+   * The parent sets this BEFORE actually removing the probe (so the
+   * <tr> still exists for the unmount animation); after the animation
+   * duration the parent removes the entry and clears this. */
+  exitingLabel?: number | null;
 }
 
 function formatScientific(value: number): string {
@@ -77,6 +83,7 @@ export function ProbeListPanel({
   onClearAll,
   fieldUnits = 'Pa',
   onExportCsv,
+  exitingLabel = null,
 }: ProbeListPanelProps) {
   // FM-04a Phase 27 C — install Apple-tier polish stylesheet once.
   // Safe to call repeatedly; dedup-by-id at the DOM layer.
@@ -183,11 +190,16 @@ export function ProbeListPanel({
               <tbody>
                 {diffPairs.map((pair, index) => {
                   const { entry, diff, isBaseline } = pair;
+                  const isExiting = exitingLabel === entry.label;
                   return (
                     <tr
                       key={entry.label}
                       data-testid={`probe-row-${index}`}
-                      className={POLISH_CLASS_PROBE_ROW_MOUNT}
+                      className={
+                        isExiting
+                          ? POLISH_CLASS_PROBE_ROW_UNMOUNT
+                          : POLISH_CLASS_PROBE_ROW_MOUNT
+                      }
                     >
                       <td
                         data-testid={`probe-row-${index}-label`}
