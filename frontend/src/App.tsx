@@ -19,34 +19,12 @@ import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
 import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
-import { BulletPlateBlueprintPanel } from './components/BulletPlateBlueprintPanel';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
-import { CandidateCasePicker } from './components/CandidateCasePicker';
-import { AcceptancePacketPanel } from './components/AcceptancePacketPanel';
-import { CaseComparisonPanel } from './components/CaseComparisonPanel';
-import { ConvergenceStudyViewer } from './components/ConvergenceStudyViewer';
-import { CohortDashboardPanel } from './components/CohortDashboardPanel';
-import { CohortSubstantiationPanel } from './components/CohortSubstantiationPanel';
-import { CaseCompletenessCard } from './components/CaseCompletenessCard';
-import { ReviewerBundlePanel } from './components/ReviewerBundlePanel';
-import { ArchivedPacketDiffPanel } from './components/ArchivedPacketDiffPanel';
-import { CohortSnapshotPanel } from './components/CohortSnapshotPanel';
-import { ReproducibilityManifestCard } from './components/ReproducibilityManifestCard';
-import { TrustScoreGauge } from './components/TrustScoreGauge';
-import { DriftNarrativePanel } from './components/DriftNarrativePanel';
-import { TrustScoreTimelineChart } from './components/TrustScoreTimelineChart';
-import { SignoffHistoryPanel } from './components/SignoffHistoryPanel';
-import { CohortExecutiveSummaryPanel } from './components/CohortExecutiveSummaryPanel';
-import { CohortAnomaliesPanel } from './components/CohortAnomaliesPanel';
-import { CohortTrendAnomaliesPanel } from './components/CohortTrendAnomaliesPanel';
-import { ProvenancePanel } from './components/ProvenancePanel';
-// FM-04a Phase 11 E — AI advisor critique panel; mounted adjacent to
-// ProvenancePanel below. The advisor surface is read-only / advisor-only
-// per the project four-question gate.
-import { AdvisorPanel } from './components/AdvisorPanel';
-// FM-04a Phase 18 D/E — Tier 2 workbench primitives (round 2 integration).
+// FM-04a Phase 21 D — most Visual-tab panel imports moved to
+// VisualTabPanel.tsx (extraction); App.tsx keeps only the ones
+// referenced outside the extracted tab (e.g. ResultMeshPlaybackPanel
+// mounted under the Truth-chain area, the Cmd-K palette).
 import { CommandPalette } from './components/CommandPalette';
-import { MaterialPickerPanel } from './components/MaterialPickerPanel';
 // FM-04a Phase 19 D — extracted Case sidebar (Sidebar.tsx) so the App
 // shell stays under ~1900 LOC and the case-rail concerns can be tested
 // in isolation. All data-testids preserved.
@@ -54,6 +32,8 @@ import { Sidebar, type SidebarCandidateCase } from './components/Sidebar';
 // FM-04a Phase 20 D — Topbar + RightRail extractions, continuing the
 // shell-decomposition trajectory started in Phase 19 D.
 import { Topbar } from './components/Topbar';
+// FM-04a Phase 21 D — Visual tab body extracted out of App.tsx.
+import { VisualTabPanel } from './components/VisualTabPanel';
 import { RightRail } from './components/RightRail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
@@ -498,6 +478,12 @@ function App() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [currentJobStatus, setCurrentJobStatus] = useState<JobStatus>('idle');
   const [currentJobAnalysis, setCurrentJobAnalysis] = useState<'static' | 'modal' | 'buckling'>('static');
+  // FM-04a Phase 21 D — surface the material reference returned by
+  // /solver/run (Phase 20 A wired the route end-to-end but no UI
+  // consumer existed; reviewers couldn't see which material was
+  // actually used after pressing Run Solver). Cleared on each run start.
+  const [lastSolverMaterialReference, setLastSolverMaterialReference] =
+    useState<string | null>(null);
   const [activeExperiment, setActiveExperiment] = useState<ExperimentStatus | null>(null);
   const [comparedIndices, setComparedIndices] = useState<[number, number] | null>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -635,6 +621,7 @@ function App() {
     setCurrentJobId(null);
     setCurrentJobStatus('starting');
     setCurrentJobAnalysis(analysisType);
+    setLastSolverMaterialReference(null);
     
     try {
       const response = await fetch(`${API_BASE}/solver/run`, {
@@ -666,6 +653,18 @@ function App() {
       if (data.job_id) {
         setCurrentJobId(data.job_id);
         setCurrentJobStatus('running');
+        // FM-04a Phase 21 D — capture the cited material reference
+        // returned by /solver/run (Phase 20 A end-to-end wiring). When
+        // present, render it in the topbar status surface and prepend
+        // it to the log stream so reviewers see WHICH material entry
+        // ccx is actually solving against.
+        if (typeof data.material_reference === 'string' && data.material_reference) {
+          setLastSolverMaterialReference(data.material_reference);
+          setLogs(prev => [
+            ...prev,
+            `[REF] material: ${data.material_reference}`,
+          ]);
+        }
         connectToLogs(data.job_id);
       } else {
         setLogs(prev => [...prev, "[ERROR] Solver start failed: missing job id"]);
@@ -1153,6 +1152,15 @@ function App() {
         { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
         { label: 'Analysis mode', value: analysisModeLabel },
         { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
+        // FM-04a Phase 21 D — material citation from /solver/run.
+        // Phase 20 A wired the field end-to-end; Phase 21 D surfaces
+        // it here so reviewers see WHICH material ccx actually used.
+        {
+          label: 'Material reference',
+          value: lastSolverMaterialReference ?? 'No solver run with material citation yet',
+          tone: lastSolverMaterialReference ? 'accent' : 'muted',
+          detail: lastSolverMaterialReference ?? undefined,
+        },
         { label: 'Run state', value: runState, tone: runStateTone },
         { label: 'Latest event', value: latestEvent },
         { label: 'Solver logs', value: solverLogSummary, tone: solverLogState?.status === 'unavailable' ? 'warning' : candidateSpine ? 'accent' : 'muted', detail: solverLogState?.unavailable_reason },
@@ -1619,6 +1627,7 @@ function App() {
               onStopSolver={stopSolver}
               showChat={showChat}
               onToggleChat={() => setShowChat(!showChat)}
+              materialReference={lastSolverMaterialReference}
             />
 
             <div style={{ padding: '40px', flex: 1 }}>
@@ -1635,148 +1644,23 @@ function App() {
             </div>
 
             {activeTab === 'visual' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <CohortDashboardPanel
-                        apiBase={API_BASE}
-                        selectedCaseId={selectedCandidateCaseId}
-                        onSelectCase={(id) => {
-                            setSelectedCandidateCaseId(id);
-                            try {
-                                window.localStorage.setItem('fm04a.candidateCaseId', id);
-                            } catch {
-                                /* no-op when storage is unavailable */
-                            }
-                        }}
-                    />
-                    {/*
-                        FM-04a Phase 12 I — Cohort substantiation panel.
-                        Consumes the Phase 12 E `cohortDashboardClient.ts`
-                        orchestrator + its load-bearing X:-2 defensive
-                        parsers. Rendered as a SECOND cohort surface
-                        alongside (not replacing) the legacy
-                        CohortDashboardPanel; the two surfaces serve
-                        different blueprints (#04 vs #07) and Phase 13
-                        may unify them once both are observed-stable.
-                        Component-level contract pinned by
-                        `frontend/test/CohortSubstantiationPanel.test.tsx`;
-                        visual integration requires running dev-server
-                        smoke (deferred as Phase 13 carry-forward).
-                    */}
-                    <CohortSubstantiationPanel apiBase={API_BASE} />
-                    <CaseCompletenessCard
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                    />
-                    <CandidateCasePicker
-                        apiBase={API_BASE}
-                        selectedCaseId={selectedCandidateCaseId}
-                        onSelect={(id) => {
-                            setSelectedCandidateCaseId(id);
-                            try {
-                                window.localStorage.setItem('fm04a.candidateCaseId', id);
-                            } catch {
-                                /* no-op when storage is unavailable */
-                            }
-                        }}
-                    />
-                    <AcceptancePacketPanel
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                    />
-                    <ConvergenceStudyViewer
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                    />
-                    <CaseComparisonPanel
-                        apiBase={API_BASE}
-                        cases={FALLBACK_CANDIDATE_CASES}
-                        caseA={comparisonCaseA}
-                        caseB={comparisonCaseB}
-                        onSelectA={(id) => {
-                            setComparisonCaseA(id);
-                            try {
-                                window.localStorage.setItem('fm04a.comparisonCaseA', id);
-                            } catch {
-                                /* no-op when storage is unavailable */
-                            }
-                        }}
-                        onSelectB={(id) => {
-                            setComparisonCaseB(id);
-                            try {
-                                window.localStorage.setItem('fm04a.comparisonCaseB', id);
-                            } catch {
-                                /* no-op when storage is unavailable */
-                            }
-                        }}
-                    />
-                    <ReviewerBundlePanel apiBase={API_BASE} />
-                    <ArchivedPacketDiffPanel apiBase={API_BASE} />
-                    <ReproducibilityManifestCard
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                    />
-                    <CohortExecutiveSummaryPanel apiBase={API_BASE} />
-                    <CohortAnomaliesPanel apiBase={API_BASE} />
-                    <CohortTrendAnomaliesPanel apiBase={API_BASE} />
-                    <TrustScoreGauge
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                        latestSignoffVerdict={latestSignoff?.verdict ?? null}
-                        latestSignoffReviewer={latestSignoff?.reviewer ?? null}
-                        latestSignoffUtc={latestSignoff?.signoffUtc ?? null}
-                    />
-                    <SignoffHistoryPanel
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                        onLatestRecord={setLatestSignoff}
-                    />
-                    <TrustScoreTimelineChart
-                        apiBase={API_BASE}
-                        caseId={selectedCandidateCaseId}
-                    />
-                    <CohortSnapshotPanel
-                        apiBase={API_BASE}
-                        selectedLabelA={snapshotLabelA}
-                        selectedLabelB={snapshotLabelB}
-                        onSelectLabelA={setSnapshotLabelA}
-                        onSelectLabelB={setSnapshotLabelB}
-                    />
-                    {/* FM-04a Phase 9 E — Provenance panel; only mounts when a
-                        snapshot label is known so we never fire a fetch with
-                        empty params (Phase 9 anti-gaming guard X: -2). */}
-                    {selectedCandidateCaseId && snapshotLabelA && (
-                        <ProvenancePanel
-                            apiBase={API_BASE}
-                            caseId={selectedCandidateCaseId}
-                            snapshotLabel={snapshotLabelA}
-                        />
-                    )}
-                    {/* FM-04a Phase 11 E — Advisor critique panel; same mount
-                        guard as ProvenancePanel above. The advisor surface is
-                        advisor-only (NOT driver); reviewer agency preserved. */}
-                    {selectedCandidateCaseId && snapshotLabelA && (
-                        <AdvisorPanel
-                            apiBase={API_BASE}
-                            caseId={selectedCandidateCaseId}
-                            snapshotLabel={snapshotLabelA}
-                        />
-                    )}
-                    <DriftNarrativePanel
-                        apiBase={API_BASE}
-                        labelA={snapshotLabelA}
-                        labelB={snapshotLabelB}
-                    />
-                    {/* FM-04a Phase 18 E (round 2) — materials library picker.
-                        Tier 1 banner inline; reviewer can swap material by
-                        click or via the Cmd-K palette. Selection wired to
-                        `selectedMaterial` state for downstream INP composition. */}
-                    <MaterialPickerPanel
-                        apiBase={API_BASE}
-                        selectedMaterialId={selectedMaterial.id}
-                        onMaterialChange={setSelectedMaterial}
-                    />
-                    <BulletPlateBlueprintPanel />
-                </div>
+                <VisualTabPanel
+                    apiBase={API_BASE}
+                    selectedCandidateCaseId={selectedCandidateCaseId}
+                    onSelectCandidateCaseId={setSelectedCandidateCaseId}
+                    comparisonCaseA={comparisonCaseA}
+                    comparisonCaseB={comparisonCaseB}
+                    onSelectComparisonA={setComparisonCaseA}
+                    onSelectComparisonB={setComparisonCaseB}
+                    snapshotLabelA={snapshotLabelA}
+                    snapshotLabelB={snapshotLabelB}
+                    onSelectSnapshotLabelA={setSnapshotLabelA}
+                    onSelectSnapshotLabelB={setSnapshotLabelB}
+                    selectedMaterial={selectedMaterial}
+                    onMaterialChange={setSelectedMaterial}
+                    latestSignoff={latestSignoff}
+                    onLatestSignoff={setLatestSignoff}
+                />
             )}
 
             <div style={{ padding: '0', flex: 1 }}>

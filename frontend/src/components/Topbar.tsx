@@ -31,6 +31,12 @@ export interface TopbarProps {
   onStopSolver: () => void
   showChat: boolean
   onToggleChat: () => void
+  /** FM-04a Phase 21 D — when /solver/run returns a material
+   * citation (Phase 20 A end-to-end wiring), surface it next to the
+   * breadcrumb so reviewers see WHICH material the solver actually
+   * used. Truncated to its first ~60 chars in the inline chip; the
+   * full citation sits in the OperatorStatusPanel "Runtime" section. */
+  materialReference?: string | null
 }
 
 export function Topbar(props: TopbarProps) {
@@ -45,6 +51,7 @@ export function Topbar(props: TopbarProps) {
     onStopSolver,
     showChat,
     onToggleChat,
+    materialReference,
   } = props
   return (
     <header
@@ -79,6 +86,30 @@ export function Topbar(props: TopbarProps) {
           </span>
         </div>
         {badge}
+        {materialReference && (
+          <span
+            data-testid="topbar-material-reference"
+            title={materialReference}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 10px',
+              borderRadius: 999,
+              border: '1px solid rgba(96, 165, 250, 0.35)',
+              background: 'rgba(96, 165, 250, 0.12)',
+              color: '#bfdbfe',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              maxWidth: 320,
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            MATL · {materialReference}
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', gap: '12px' }}>
         <button
