@@ -17,6 +17,18 @@ from .inp_writer import (
     write_minimal_hex_inp,
     write_modal_hex_inp,
 )
+# FM-04a Phase 20 C — Gmsh .msh → CalculiX INP adapter; bridges the
+# orphaned Phase 18 C GmshRunner into the Tier 2 pipeline so meshed
+# CAD geometries become solvable end-to-end.
+from .mesh_to_inp import (
+    BoundaryConditionSpec,
+    LoadSpec,
+    MeshParseError,
+    ParsedMesh,
+    PlanarSelection,
+    parse_gmsh_msh22,
+    write_meshed_static_inp,
+)
 from .reader import CalculiXReader
 from .runner import (
     DEFAULT_CCX_BINARY,
@@ -37,4 +49,11 @@ __all__ = [
     "MinimalHexMaterial",
     "write_minimal_hex_inp",
     "write_modal_hex_inp",
+    "BoundaryConditionSpec",
+    "LoadSpec",
+    "MeshParseError",
+    "ParsedMesh",
+    "PlanarSelection",
+    "parse_gmsh_msh22",
+    "write_meshed_static_inp",
 ]

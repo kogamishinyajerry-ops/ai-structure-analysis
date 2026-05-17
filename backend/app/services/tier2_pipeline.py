@@ -25,11 +25,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.adapters.calculix import (
+    BoundaryConditionSpec,
     CalculiXRunError,
     CalculiXRunner,
     CalculiXRunResult,
     DEFAULT_STEEL,
+    LoadSpec,
+    MeshParseError,
     MinimalHexMaterial,
+    parse_gmsh_msh22,
+    write_meshed_static_inp,
     write_minimal_hex_inp,
 )
 from app.services.materials import (
@@ -37,6 +42,7 @@ from app.services.materials import (
     MaterialNotFoundError,
     get_material,
 )
+from app.services.meshing.gmsh_runner import GmshRunError, GmshRunner
 
 
 class Tier2PipelineError(RuntimeError):
@@ -286,12 +292,156 @@ def run_tier2_minimal_hex(
     )
 
 
+@dataclass(frozen=True)
+class Tier2MeshedRunResult:
+    """Outcome of a Phase 20 C Tier 2 meshed pipeline run.
+
+    Attributes:
+        material_resolved: the :class:`Material` actually used.
+        material_reference: the citation string for audit.
+        ccx_result: the :class:`CalculiXRunResult` (frd path, runtime).
+        inp_path: absolute path to the composed INP file.
+        mesh_path: absolute path to the gmsh-produced .msh file.
+        node_count: number of nodes in the parsed mesh.
+        element_count: number of volume elements (C3D4 in Phase 20 C).
+    """
+
+    material_resolved: Material
+    material_reference: str
+    ccx_result: CalculiXRunResult
+    inp_path: Path
+    mesh_path: Path
+    node_count: int
+    element_count: int
+
+
+def run_tier2_meshed_pipeline(
+    case_dir: Path,
+    *,
+    jobname: str,
+    geometry_path: Path,
+    material_id: str | None,
+    bc: BoundaryConditionSpec,
+    load: LoadSpec,
+    characteristic_length_m: float = 0.05,
+    ccx_binary: str = "ccx",
+    gmsh_binary: str = "gmsh",
+    ccx_timeout_sec: float = 120.0,
+    gmsh_timeout_sec: float = 300.0,
+) -> Tier2MeshedRunResult:
+    """End-to-end Tier 2 pipeline on a meshed CAD geometry.
+
+    Steps:
+      1. Resolve ``material_id`` via the SSOT library.
+      2. Invoke real ``gmsh`` to mesh ``geometry_path`` into
+         ``<case_dir>/<jobname>.msh`` (ASCII v2.2, linear tets).
+      3. Parse the .msh file → ``ParsedMesh`` (nodes + C3D4 elements).
+      4. Compose a linear-static INP with the picked material + BC
+         + load specifications (BC selects nodes by coordinate plane).
+      5. Invoke real ``ccx`` on the composed INP.
+      6. Return :class:`Tier2MeshedRunResult` with audit trail.
+
+    Args:
+        case_dir: workspace directory (must exist; HF1.7a refused
+            on signed-registry shapes via GmshRunner + CalculiXRunner).
+        jobname: stem for all output artifacts.
+        geometry_path: input CAD file (must resolve inside case_dir;
+            extensions .step / .stp / .stl / .brep / .geo supported).
+        material_id: SSOT library id, or None for DEFAULT_STEEL.
+        bc: boundary condition (clamp-by-plane); see
+            :class:`BoundaryConditionSpec`.
+        load: load specification (force-on-plane); see :class:`LoadSpec`.
+        characteristic_length_m: gmsh target edge length.
+        ccx_binary / gmsh_binary: executable paths.
+        ccx_timeout_sec / gmsh_timeout_sec: wall-clock caps.
+
+    Raises:
+        Tier2PipelineError: on any stage failure; the ``stage``
+            attribute names where it failed (resolve_material /
+            run_gmsh / parse_mesh / write_inp / run_ccx).
+    """
+    material = resolve_material(material_id)
+    hex_descriptor = material_to_hex_descriptor(material)
+
+    # Step 2 — gmsh mesh production.
+    gmsh_runner = GmshRunner(
+        gmsh_binary=gmsh_binary, timeout_sec=gmsh_timeout_sec
+    )
+    try:
+        gmsh_result = gmsh_runner.run(
+            case_dir,
+            geometry_path,
+            output_name=jobname,
+            characteristic_length_m=characteristic_length_m,
+            element_order=1,
+            output_format="msh22",
+        )
+    except GmshRunError as exc:
+        raise Tier2PipelineError(
+            f"gmsh subprocess failed: {exc}",
+            stage="run_gmsh",
+            cause=exc,
+        ) from exc
+
+    # Step 3 — parse the .msh file.
+    try:
+        parsed_mesh = parse_gmsh_msh22(gmsh_result.mesh_path)
+    except (FileNotFoundError, MeshParseError) as exc:
+        raise Tier2PipelineError(
+            f"mesh parse refused: {exc}",
+            stage="parse_mesh",
+            cause=exc,
+        ) from exc
+
+    # Step 4 — compose the INP from the parsed mesh + material + BC.
+    try:
+        inp_path = write_meshed_static_inp(
+            case_dir,
+            jobname=jobname,
+            mesh=parsed_mesh,
+            material=hex_descriptor,
+            bc=bc,
+            load=load,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise Tier2PipelineError(
+            f"INP composition refused: {exc}",
+            stage="write_inp",
+            cause=exc,
+        ) from exc
+
+    # Step 5 — invoke ccx.
+    ccx_runner = CalculiXRunner(
+        ccx_binary=ccx_binary, timeout_sec=ccx_timeout_sec
+    )
+    try:
+        ccx_result = ccx_runner.run(case_dir, jobname)
+    except CalculiXRunError as exc:
+        raise Tier2PipelineError(
+            f"ccx subprocess failed: {exc}",
+            stage="run_ccx",
+            cause=exc,
+        ) from exc
+
+    return Tier2MeshedRunResult(
+        material_resolved=material,
+        material_reference=material_reference_for_audit(material),
+        ccx_result=ccx_result,
+        inp_path=inp_path,
+        mesh_path=gmsh_result.mesh_path,
+        node_count=len(parsed_mesh.nodes),
+        element_count=len(parsed_mesh.elements),
+    )
+
+
 __all__ = [
     "Tier2PipelineError",
     "Tier2RunResult",
+    "Tier2MeshedRunResult",
     "resolve_material",
     "material_to_hex_descriptor",
     "material_reference_for_audit",
     "compose_material_id_inp",
     "run_tier2_minimal_hex",
+    "run_tier2_meshed_pipeline",
 ]

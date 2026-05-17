@@ -90,6 +90,12 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # the multi-element bending capability that single-hex coupons
     # cannot provide).
     "cantilever-beam-candidate": "tier_1_candidate",
+    # Phase 20 C — first meshed-pipeline demonstration case. The .geo
+    # at golden_samples/plate-with-hole-candidate/data/plate_with_hole.geo
+    # drives gmsh → C3D4 → ccx end-to-end. Promotion to
+    # tier_2_validated waits for a Phase 21 Kirsch (σ_max = 3·σ_∞)
+    # cross-check runner.
+    "plate-with-hole-candidate": "tier_1_candidate",
 }
 
 
