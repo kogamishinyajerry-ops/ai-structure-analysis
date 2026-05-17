@@ -81,6 +81,17 @@ import type {
   GoldenSampleQueueItem,
   JobStatus,
 } from './types/AppTypes';
+// FM-04a Phase 26 D — trust strip + 5/7 trust sections + statusTone
+// helper extracted to a pure view-model module.
+import {
+  buildTrustStrip,
+  buildOverviewSection,
+  buildRuntimeSection,
+  buildEvidenceSection,
+  buildValidationSection,
+  buildGateSection,
+  statusTone as trustCenterStatusTone,
+} from './state/trustCenterViewModel';
 
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
@@ -102,12 +113,10 @@ const humanizeStatus = (status?: string) => {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 };
 
-const statusTone = (status?: string): OperatorStatusItem['tone'] => {
-  if (!status) return 'muted';
-  if (['pass', 'passed', 'completed', 'accept'].includes(status.toLowerCase())) return 'accent';
-  if (['fail', 'failed', 'critical', 'rejected'].includes(status.toLowerCase())) return 'danger';
-  return 'warning';
-};
+// FM-04a Phase 26 D — re-exported from state/trustCenterViewModel.
+// The body lives there so the builders compose it; this alias
+// preserves the existing callsites' identifier without churn.
+const statusTone = trustCenterStatusTone;
 
 const compactText = (value?: string, fallback = 'No backend detail surfaced') =>
   value && value.trim().length > 0 ? value : fallback;
@@ -826,80 +835,92 @@ function App() {
           : activeCaseId
             ? 'Run a solver smoke or export the report with Tier 0 wording'
             : 'Review the uploaded report; select a gallery case before solver run';
-  const trustStrip: OperatorStatusItem[] = [
-    { label: 'Claim tier', value: claimTier, tone: 'warning', detail: allowedClaim },
-    { label: 'Solver truth', value: solverTruthSource, tone: candidateSpine || currentJobId ? 'accent' : 'warning' },
-    { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
-    { label: 'Validation status', value: reportValidationStatus, tone: report?.validation.status ? statusTone(report.validation.status) : statusTone(referenceStatusRaw) },
-    { label: 'Golden samples', value: goldenSampleSummary, tone: goldenSampleReviewCount > 0 ? 'warning' : 'accent' },
-    { label: 'Blueprint target', value: blueprintSummary.label, tone: 'warning', detail: `${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount} anchors covered by ${blueprintSummary.availableEvidenceCount} available evidence ref(s); ${blueprintSummary.allowedClaim}` },
-    { label: 'Allowed claim', value: 'not signed validation', tone: 'danger', detail: allowedClaim },
-  ];
+  // FM-04a Phase 26 D — trust strip + 4 simple sections + Gate
+  // section delegated to pure builders. The Blueprint target + the
+  // Ballistic candidate sections stay inline below because they
+  // close over many derived locals that would balloon their context
+  // interface; honest scope, documented in retro.
+  const trustStrip: OperatorStatusItem[] = buildTrustStrip({
+    claimTier,
+    allowedClaim,
+    solverTruthSource,
+    candidateSpine,
+    currentJobId,
+    executionMode,
+    report,
+    reportValidationStatus,
+    referenceStatusRaw,
+    goldenSampleSummary,
+    goldenSampleReviewCount,
+    blueprintSummary,
+  });
   const trustSections: OperatorStatusSection[] = [
-    {
-      title: 'Overview',
+    buildOverviewSection({
       icon: <LayoutDashboard size={16} />,
-      items: [
-        { label: 'Milestone', value: candidateSpine ? 'FM-03 Candidate Report Spine' : 'FM-01 Web Console Operator Shell', tone: 'accent' },
-        { label: 'Work control', value: 'User blueprint scope; no Linear/Notion external write in this local slice', tone: 'warning' },
-        { label: 'Active case', value: caseLabel, tone: activeCaseId || file ? 'accent' : 'muted' },
-        { label: 'Next action', value: nextAction, tone: 'accent' },
-      ],
-    },
-    {
-      title: 'Runtime',
+      candidateSpine,
+      activeCaseId,
+      file,
+      caseLabel,
+      nextAction,
+    }),
+    buildRuntimeSection({
       icon: <Database size={16} />,
-      items: [
-        { label: 'Solver truth source', value: solverTruthSource, tone: candidateSpine || currentJobId ? 'accent' : 'warning' },
-        { label: 'Execution mode', value: executionMode, tone: candidateSpine || currentJobId ? 'accent' : report ? 'warning' : 'muted' },
-        { label: 'Analysis mode', value: analysisModeLabel },
-        { label: 'Current job', value: currentJobLabel, tone: currentJobId ? 'accent' : 'muted' },
-        // FM-04a Phase 21 D — material citation from /solver/run.
-        // Phase 20 A wired the field end-to-end; Phase 21 D surfaces
-        // it here so reviewers see WHICH material ccx actually used.
-        {
-          label: 'Material reference',
-          value: lastSolverMaterialReference ?? 'No solver run with material citation yet',
-          tone: lastSolverMaterialReference ? 'accent' : 'muted',
-          detail: lastSolverMaterialReference ?? undefined,
-        },
-        { label: 'Run state', value: runState, tone: runStateTone },
-        { label: 'Latest event', value: latestEvent },
-        { label: 'Solver logs', value: solverLogSummary, tone: solverLogState?.status === 'unavailable' ? 'warning' : candidateSpine ? 'accent' : 'muted', detail: solverLogState?.unavailable_reason },
-        { label: 'Solver convergence', value: convergenceSummary, tone: candidateConvergenceEvidence ? 'warning' : 'muted', detail: convergenceClaimImpact },
-      ],
-    },
-    {
-      title: 'Evidence',
+      solverTruthSource,
+      candidateSpine,
+      currentJobId,
+      executionMode,
+      report,
+      analysisModeLabel,
+      currentJobLabel,
+      lastSolverMaterialReference,
+      runState,
+      runStateTone,
+      latestEvent,
+      solverLogSummary,
+      solverLogState,
+      convergenceSummary,
+      candidateConvergenceEvidence,
+      convergenceClaimImpact,
+    }),
+    buildEvidenceSection({
       icon: <ClipboardCheck size={16} />,
-      items: [
-        { label: 'Evidence state', value: evidenceState, tone: report ? 'accent' : 'warning' },
-        { label: 'Manifest / hashes', value: manifestState, tone: candidateManifest ? 'accent' : currentJobId ? 'warning' : 'muted' },
-        { label: 'Backend provenance', value: backendProvenance },
-        { label: 'Artifact list', value: candidateManifest ? candidateManifest.items.map((item) => `${item.kind}:${item.status}`).join(', ') : 'No candidate artifact list surfaced', tone: candidateManifest ? 'accent' : 'muted' },
-        { label: 'Mesh artifact source', value: meshArtifactSource, tone: candidateMeshEvidence ? 'accent' : 'muted' },
-        { label: 'Convergence artifacts', value: convergenceArtifactList, tone: candidateConvergenceEvidence ? 'accent' : 'muted' },
-        { label: 'Mesh convergence study', value: meshConvergenceStudySource, tone: meshConvergenceStudy?.status === 'available' ? 'accent' : 'warning', detail: meshConvergenceClaimImpact },
-        { label: 'Runtime SSOT', value: 'runs/ directory + CI artifacts; UI only surfaces current session state', tone: 'muted' },
-      ],
-    },
-    {
-      title: 'Validation',
+      report,
+      evidenceState,
+      manifestState,
+      candidateManifest,
+      currentJobId,
+      backendProvenance,
+      meshArtifactSource,
+      candidateMeshEvidence,
+      convergenceArtifactList,
+      candidateConvergenceEvidence,
+      meshConvergenceStudySource,
+      meshConvergenceStudy,
+      meshConvergenceClaimImpact,
+    }),
+    buildValidationSection({
       icon: <ShieldAlert size={16} />,
-      items: [
-        { label: 'Golden sample status', value: referenceStatus, tone: statusTone(referenceStatusRaw), detail: referenceReason },
-        { label: 'Reference deviation', value: referenceDeviation, tone: report?.validation.status ? statusTone(report.validation.status) : 'muted' },
-        { label: 'Report validation', value: reportValidationStatus, tone: report?.validation.status ? statusTone(report.validation.status) : 'muted' },
-        { label: 'Units', value: unitSummary, tone: candidateAssumptions ? 'accent' : 'warning' },
-        { label: 'Material', value: materialSummary, tone: candidateAssumptions?.material.status === 'declared' ? 'accent' : 'warning' },
-        { label: 'BC / loads', value: boundarySummary, tone: candidateAssumptions?.boundary_conditions.status === 'declared' ? 'accent' : 'warning' },
-        { label: 'Mesh topology', value: meshTopologySummary, tone: candidateMeshEvidence ? 'accent' : 'warning', detail: meshDeckElementTypes },
-        { label: 'Mesh quality', value: meshQualitySummary, tone: candidateMeshEvidence?.quality.status === 'available' ? 'accent' : 'warning', detail: candidateMeshEvidence?.quality.unavailable_reason ?? meshClaimImpact },
-        { label: 'Mesh convergence', value: meshConvergenceStudySummary, tone: meshConvergenceStudy?.status === 'available' ? 'accent' : 'warning', detail: meshConvergenceClaimImpact },
-        { label: 'Convergence gaps', value: convergenceMissingSummary, tone: 'warning' },
-        { label: 'FailurePattern', value: failurePatternRef, tone: failurePatternRef.startsWith('FP-') ? 'warning' : 'muted' },
-      ],
-    },
+      referenceStatus,
+      referenceStatusRaw,
+      referenceReason,
+      referenceDeviation,
+      report,
+      reportValidationStatus,
+      unitSummary,
+      candidateAssumptions,
+      materialSummary,
+      boundarySummary,
+      meshTopologySummary,
+      meshDeckElementTypes,
+      candidateMeshEvidence,
+      meshQualitySummary,
+      meshClaimImpact,
+      meshConvergenceStudy,
+      meshConvergenceStudySummary,
+      meshConvergenceClaimImpact,
+      convergenceMissingSummary,
+      failurePatternRef,
+    }),
     {
       title: 'Blueprint target',
       icon: <ClipboardCheck size={16} />,
@@ -929,17 +950,14 @@ function App() {
         { label: 'Ballistic Tier 2 blockers', value: ballisticTier2BlockerSummary, tone: 'danger' },
       ],
     },
-    {
-      title: 'Gate',
+    buildGateSection({
       icon: <AlertTriangle size={16} />,
-      items: [
-        { label: 'Reviewer gate', value: reviewerSummary, tone: candidateReviewer?.verdict === 'candidate_ready_for_review' ? 'accent' : 'warning', detail: candidateReviewer?.summary },
-        { label: 'Human / Claude handoff', value: 'Required before milestone acceptance or signed claim promotion', tone: 'warning' },
-        { label: 'Allowed claim', value: allowedClaim, tone: 'danger' },
-        { label: 'Limitations', value: candidateLimitations.length > 0 ? candidateLimitations.join('; ') : 'No candidate limitations surfaced', tone: 'warning' },
-        { label: 'Tier 2 blockers', value: tier2BlockerSummary, tone: 'danger' },
-      ],
-    },
+      reviewerSummary,
+      candidateReviewer,
+      allowedClaim,
+      candidateLimitations,
+      tier2BlockerSummary,
+    }),
   ];
   const caeReviewCards: CaeReviewCard[] = [
     {
