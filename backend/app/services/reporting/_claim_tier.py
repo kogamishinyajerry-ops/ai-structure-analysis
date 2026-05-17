@@ -102,6 +102,14 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # cross-check (P_cr = π²EI/(kL)²). Promotion to tier_2_validated
     # via verdict YAML when residual < 10%.
     "euler-column-candidate": "tier_1_candidate",
+    # Phase 25 A — simply-supported plate, uniform pressure. The runner
+    # at `app.services.cross_check.plate_ss_runner` composes a
+    # 4-edge clamp + corner-pin INP for a 1m × 1m × 20mm plate, runs
+    # ccx, and compares the center deflection to the Timoshenko α=0.00406
+    # closed-form. Promotion to tier_2_validated via verdict YAML when
+    # residual < 15% (honest envelope; Kirchhoff vs 3D + C3D10 mesh
+    # discretization).
+    "plate-simply-supported-candidate": "tier_1_candidate",
 }
 
 

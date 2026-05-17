@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "plate-simply-supported-candidate",
+  "verdict": "PASS",
+  "tolerance_pct": 15.0,
+  "residual_pct": -5.78704054566123,
+  "analytical_w_center_m": -0.00026389999999999996,
+  "observed_w_center_m": -0.000248628,
+  "flexural_rigidity_d": 153846.15384615387,
+  "side_length_m": 1.0,
+  "thickness_m": 0.02,
+  "pressure_pa": 10000.0,
+  "applied_force_n": 10000.0,
+  "small_deflection_ratio": 0.012431399999999999,
+  "node_count": 4420,
+  "element_count": 2125,
+  "material_id": "steel-s355",
+  "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C \u00a7C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+  "generated_at_utc": "2026-05-17T13:56:41.710122+00:00",
+  "cross_check_kind": "plate_simply_supported_timoshenko",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
+}

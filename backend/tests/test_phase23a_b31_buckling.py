@@ -265,9 +265,15 @@ def test_phase23a_validated_count_is_four() -> None:
     PASS verdict YAML for euler-column-candidate under
     `golden_samples/`, the overlay in `_claim_tier.py` promotes the
     case. Combined with the Phase 19 B + Phase 21 A promotions, the
-    registry now lists exactly 4 tier_2_validated cases (was 3 at end
-    of Phase 22). A drive-by edit that removes any verdict file trips
-    this pin."""
+    registry now lists tier_2_validated cases including the 4 Phase
+    18-23 cases. A drive-by edit that removes any of those verdict
+    files trips this pin.
+
+    Phase 25 A loosens this from strict equality to subset-of so that
+    future Phase N+1 promotions are additive without rewriting the
+    Phase 23 A guard. The same pattern was used by Phase 23 A to
+    loosen Phase 21 A's pin.
+    """
     from app.services.reporting._claim_tier import CLAIM_TIER_REGISTRY
 
     validated = {
@@ -275,12 +281,16 @@ def test_phase23a_validated_count_is_four() -> None:
         for case_id, tier in CLAIM_TIER_REGISTRY.items()
         if tier == "tier_2_validated"
     }
-    assert validated == {
+    required = {
         "cylinder-pv-candidate",
         "cantilever-beam-candidate",
         "plate-with-hole-candidate",
         "euler-column-candidate",
-    }, f"unexpected tier_2_validated set: {validated}"
+    }
+    assert required.issubset(validated), (
+        f"Phase 23 A guard tripped — required tier_2_validated set "
+        f"{required} not contained in {validated}"
+    )
 
 
 def test_phase23a_euler_column_verdict_yaml_persisted_on_disk() -> None:
