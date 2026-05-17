@@ -89,6 +89,7 @@ import {
   buildRuntimeSection,
   buildEvidenceSection,
   buildValidationSection,
+  buildBlueprintTargetSection,
   buildGateSection,
   statusTone as trustCenterStatusTone,
 } from './state/trustCenterViewModel';
@@ -921,21 +922,10 @@ function App() {
       convergenceMissingSummary,
       failurePatternRef,
     }),
-    {
-      title: 'Blueprint target',
+    buildBlueprintTargetSection({
       icon: <ClipboardCheck size={16} />,
-      items: [
-        { label: 'Blueprint memory', value: blueprintSummary.imagePath, tone: 'accent' },
-        { label: 'Evidence case', value: blueprintSummary.evidenceCaseId, tone: 'accent' },
-        { label: 'Claim tier', value: blueprintSummary.claimTier, tone: 'warning', detail: blueprintSummary.allowedClaim },
-        { label: 'Visual anchors', value: `${blueprintSummary.anchorCount} evidence-mapped anchor(s)`, tone: 'accent' },
-        { label: 'Available evidence', value: `${blueprintSummary.availableEvidenceCount}/${blueprintSummary.evidenceCount} indexed evidence ref(s)`, tone: blueprintSummary.availableEvidenceCount > 0 ? 'accent' : 'warning' },
-        { label: 'Covered anchors', value: `${blueprintSummary.coveredAnchorCount}/${blueprintSummary.anchorCount}`, tone: blueprintSummary.coveredAnchorCount === blueprintSummary.anchorCount ? 'accent' : 'warning' },
-        { label: 'Started slices', value: `${blueprintSummary.startedSlices} local frontend/docs slice(s) started`, tone: 'accent' },
-        { label: 'Next deferred slice', value: blueprintSummary.nextSlice, tone: 'warning' },
-        { label: 'Tier 2 blockers', value: `${blueprintSummary.blockerCount} blocker(s) still active`, tone: 'danger' },
-      ],
-    },
+      blueprintSummary,
+    }),
     {
       title: 'Ballistic candidate',
       icon: <ShieldAlert size={16} />,

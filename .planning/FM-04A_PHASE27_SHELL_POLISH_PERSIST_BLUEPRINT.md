@@ -18,39 +18,49 @@ The 99 target remains multi-phase. Phase 27's honest target is a
 
 ## Slice plan (5 implementation slices + audit slice)
 
-### Slice A — 7th validated case · S4 shell element clamped plate
+### Slice A — 7th validated case · second cantilever modal at L/h = 50
 
-**Why**: FEA Dim 1 (element library breadth) has been stuck at
-65/100 since Phase 18 (B31 beam introduction). Shell elements are
-the single biggest unlock for Dim 1 — commercial-CAE parity (Abaqus
-/ ANSYS / CalculiX) all support shells. Phase 27 A introduces the
-**first shell-element validated case** to the cohort.
+**HONEST SCOPE PIVOT (recorded before execution)**: original blueprint
+goal was a shell-element S4 case to lift FEA Dim 1 (element library
+breadth, stuck at 65/100 since Phase 18). Reconnaissance during
+Phase 27 A scoping revealed that CalculiX shell elements (S4 / S4R)
+undergo an internal 3D expansion in the solver, and the `.frd` output
+displacements are labelled at the expanded nodes — not the original
+mid-surface nodes the runner picked. Mapping back requires non-trivial
+extension of `app/adapters/calculix/reader.py` AND validation against
+a known shell-expansion convention; that plumbing is its own phase
+of work. Phase 27 A pivots to a SIMPLER 7th case that exercises a
+DIFFERENT axis of FEA discipline — the Euler-Bernoulli analytical
+envelope at the SLENDERNESS EXTREME.
+
+**Why**: Phase 26 A validated cantilever modal at L/h = 25 (well
+inside Euler-Bernoulli regime). A second case at L/h = 50 (DOUBLE the
+slenderness) exercises the SAME analytical helper at a much more
+extreme aspect ratio. If the analytical holds, the envelope is more
+trustworthy across the regime; if the residual degrades, we learn
+where the regime actually breaks (honest envelope testing).
 
 **Plan**:
-- Geometry: 1.0m × 1.0m × 0.020m steel square plate (a/t = 50, deep
-  Kirchhoff regime); generated via gmsh as **2D surface mesh** (not
-  3D solid).
-- Element: **S4 (linear shell, 4 nodes)** with `*SHELL SECTION` for
-  thickness; CalculiX's standard shell formulation.
-- Boundary: 4-edge clamped (u_x = u_y = u_z = rotation = 0).
-- Load: uniform pressure (top-face equivalent nodal load).
-- Analytical: **Roark Table 11.4 case 1b** —
-  `w_center = α·q·a⁴/D` with α = 0.00138 for clamped square ν = 0.3
-  (Timoshenko & Woinowsky-Krieger §31; distinct from the Phase 25 A
-  α = 0.00406 simply-supported case).
-- Tolerance: 12% (shell discretization is tighter than C3D10 solid).
-- Runner: self-contained pattern (Phase 25 A + 26 A established);
-  hand-rolled INP composing S4 elements + `*SHELL SECTION` +
-  4-edge clamp + pressure-equivalent load.
-- Validity envelope: a/t ≥ 20 (thin-shell Kirchhoff regime).
-- Anti-gaming guard A:-1 — shell normal direction pinned at predicate
-  level (S4 element node-ordering convention; reverse order flips
-  the +z normal → catastrophic stiffness sign error).
+- Geometry: 1.000 m × 0.020 m × 0.020 m steel cantilever (L/h = 50,
+  4× more slender than Phase 26 A's L/h = 25; still inside the L/h
+  ≥ 10 validity envelope per Euler-Bernoulli regime).
+- Reuse Phase 26 A's `cantilever_modal_runner.run_cantilever_modal_cross_check`
+  verbatim — just point it at a new `.geo` and verdict directory.
+- Analytical: same `f_1 = (β·L)²·√(EI/ρA)/(2π·L²)` with β·L = 1.875104.
+  At 2× length, f_1 scales as 1/L² → f_1 ≈ 16.71 Hz (vs Phase 26 A's
+  66.84 Hz).
+- Same 12% tolerance band.
+- Same A:-1 anti-gaming guard (rigid-body-mode filter) carries
+  forward from Phase 26 A.
 
 **Validated count**: 6 → **7**.
-**FEA Dim 1**: 65 → **75** (shell elements enter cohort).
-**FEA Dim 4**: 72 → 74 (S4 shell-bending solver kind distinct from
-prior solid `*STATIC` linear elastic).
+**FEA Dim 1**: 65 → 65 (NO change — still C3D10/B31/C3D4/C3D8 cohort;
+shells honestly deferred to dedicated phase).
+**FEA Dim 2 (validated cases)**: 76 → 80 (+4 from 7th case).
+**FEA Dim 3 (envelope honesty)**: 88 → 91 (+3 from envelope tested
+at TWO aspect ratios across 4× the slenderness range).
+**FEA Dim 4 (solver kinds)**: 72 → 72 (NO change — still
+`*FREQUENCY` for the second modal; no new solver kind).
 
 ### Slice B — Blueprint target section extraction · honest LOC reduction
 

@@ -274,6 +274,58 @@ export function buildValidationSection(
   };
 }
 
+// FM-04a Phase 27 B — Blueprint target section context bundle.
+// blueprintSummary is already a typed bundle in App.tsx (closed
+// over there); this context just carries that one object + icon.
+// Keeping the interface narrow is the explicit lesson from Phase
+// 26 D (where wider contexts grew App.tsx LOC).
+export interface BlueprintTargetSectionContext {
+  icon: ReactNode;
+  blueprintSummary: {
+    label: string;
+    imagePath: string;
+    evidenceCaseId: string;
+    claimTier: string;
+    allowedClaim: string;
+    anchorCount: number;
+    coveredAnchorCount: number;
+    availableEvidenceCount: number;
+    evidenceCount: number;
+    startedSlices: number;
+    nextSlice: string;
+    blockerCount: number;
+  };
+}
+
+export function buildBlueprintTargetSection(
+  ctx: BlueprintTargetSectionContext,
+): OperatorStatusSection {
+  const s = ctx.blueprintSummary;
+  return {
+    title: 'Blueprint target',
+    icon: ctx.icon,
+    items: [
+      { label: 'Blueprint memory', value: s.imagePath, tone: 'accent' },
+      { label: 'Evidence case', value: s.evidenceCaseId, tone: 'accent' },
+      { label: 'Claim tier', value: s.claimTier, tone: 'warning', detail: s.allowedClaim },
+      { label: 'Visual anchors', value: `${s.anchorCount} evidence-mapped anchor(s)`, tone: 'accent' },
+      {
+        label: 'Available evidence',
+        value: `${s.availableEvidenceCount}/${s.evidenceCount} indexed evidence ref(s)`,
+        tone: s.availableEvidenceCount > 0 ? 'accent' : 'warning',
+      },
+      {
+        label: 'Covered anchors',
+        value: `${s.coveredAnchorCount}/${s.anchorCount}`,
+        tone: s.coveredAnchorCount === s.anchorCount ? 'accent' : 'warning',
+      },
+      { label: 'Started slices', value: `${s.startedSlices} local frontend/docs slice(s) started`, tone: 'accent' },
+      { label: 'Next deferred slice', value: s.nextSlice, tone: 'warning' },
+      { label: 'Tier 2 blockers', value: `${s.blockerCount} blocker(s) still active`, tone: 'danger' },
+    ],
+  };
+}
+
 export interface GateSectionContext {
   icon: ReactNode;
   reviewerSummary: string;
