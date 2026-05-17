@@ -29,12 +29,18 @@ export interface OnboardingTourProps {
   /** Called every time the user advances or dismisses; useful for
    * higher-level telemetry. */
   onStateChange?: (next: OnboardingState) => void;
+  /** FM-04a Phase 28 D — fired exactly once when the tour
+   * transitions to dismissed (either Skip click or Done on the last
+   * step). The parent uses this to surface the Advanced-mode
+   * auto-promote prompt in the same session without a page reload. */
+  onDismissed?: () => void;
 }
 
 export function OnboardingTour({
   storage,
   forceShow = false,
   onStateChange,
+  onDismissed,
 }: OnboardingTourProps) {
   const resolvedStorage = useMemo<OnboardingStorage>(
     () => storage ?? createLocalStorageBackedStore(),
@@ -55,19 +61,25 @@ export function OnboardingTour({
       if (next.dismissed && !prev.dismissed) {
         resolvedStorage.save(true);
         setPersistedDismissed(true);
+        // FM-04a Phase 28 D — fire the one-shot dismissed signal so
+        // the Advanced-mode promo can surface this session.
+        onDismissed?.();
       }
       return next;
     });
-  }, [resolvedStorage]);
+  }, [resolvedStorage, onDismissed]);
 
   const handleSkip = useCallback(() => {
     setState((prev) => {
+      if (prev.dismissed) return prev;
       const next = dismissTour(prev);
       resolvedStorage.save(true);
       setPersistedDismissed(true);
+      // FM-04a Phase 28 D — same one-shot signal on the Skip path.
+      onDismissed?.();
       return next;
     });
-  }, [resolvedStorage]);
+  }, [resolvedStorage, onDismissed]);
 
   if (!shouldShowTour(state, persistedDismissed)) {
     return null;

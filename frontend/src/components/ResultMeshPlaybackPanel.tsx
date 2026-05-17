@@ -32,6 +32,10 @@ import type { StressComponent } from '../stressDerivatives';
 // surfaces. The tour persists dismissal in localStorage so it shows
 // exactly once across sessions.
 import { OnboardingTour } from './OnboardingTour';
+// FM-04a Phase 28 D — Advanced-mode auto-promote prompt. Rendered as
+// a sibling to OnboardingTour; visibility is fully self-gated by
+// the persisted prompt-shown flag and current uiMode.
+import { AdvancedModePromo } from './AdvancedModePromo';
 // FM-04a Phase 24 D — multi-node probe list. Extends Phase 23 C
 // single-pick to a comparison list (max 8). State owned here so the
 // panel can render the table next to the viewport.
@@ -131,6 +135,10 @@ export function ResultMeshPlaybackPanel({
   // after the animation timeout. While non-null the <tr> still
   // renders with the unmount CSS class.
   const [exitingProbeLabel, setExitingProbeLabel] = useState<number | null>(null);
+  // FM-04a Phase 28 D — in-session signal that the onboarding tour
+  // just dismissed. Triggers the Advanced-mode auto-promote prompt
+  // to re-read its storage flags without a page reload.
+  const [tourDismissedInSession, setTourDismissedInSession] = useState(false);
   // FM-04a Phase 28 C — "Restored N probes from your last session"
   // toast. Set on initial case mount if loadProbeList returned >= 1
   // entries; cleared after 4 seconds (or click).
@@ -273,7 +281,12 @@ export function ResultMeshPlaybackPanel({
         gridTemplateRows: 'auto 1fr',
       }}
     >
-      <OnboardingTour />
+      <OnboardingTour onDismissed={() => setTourDismissedInSession(true)} />
+      <AdvancedModePromo
+        uiMode={uiMode}
+        tourDismissedInSession={tourDismissedInSession}
+        onSwitchToAdvanced={() => handleUiModeChange('advanced')}
+      />
       {/* FM-04a Phase 28 C — "Restored N probes" toast on case
           mount. Closes Phase 27 D's silent restoration miss. Click
           dismisses; auto-fades after 4 seconds. */}

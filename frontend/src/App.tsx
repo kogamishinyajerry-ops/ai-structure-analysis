@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
 import {
   Activity,
   Box,
@@ -841,31 +841,78 @@ function App() {
   // Ballistic candidate sections stay inline below because they
   // close over many derived locals that would balloon their context
   // interface; honest scope, documented in retro.
-  const trustStrip: OperatorStatusItem[] = buildTrustStrip({
-    claimTier,
-    allowedClaim,
-    solverTruthSource,
-    candidateSpine,
-    currentJobId,
-    executionMode,
-    report,
-    reportValidationStatus,
-    referenceStatusRaw,
-    goldenSampleSummary,
-    goldenSampleReviewCount,
-    blueprintSummary,
-  });
-  const trustSections: OperatorStatusSection[] = [
-    buildOverviewSection({
-      icon: <LayoutDashboard size={16} />,
+  //
+  // FM-04a Phase 28 D — wrap every builder call in useMemo. The
+  // builders are already pure (Phase 26 D / 27 B / 28 B verified
+  // via D:-3 no-mutation tests), so memoizing on the union of
+  // inputs cuts unnecessary deep allocations on every parent
+  // re-render. Each section is memoized independently so a change
+  // in (e.g.) `report` doesn't bust the Overview section's cache.
+  const trustStrip: OperatorStatusItem[] = useMemo(
+    () =>
+      buildTrustStrip({
+        claimTier,
+        allowedClaim,
+        solverTruthSource,
+        candidateSpine,
+        currentJobId,
+        executionMode,
+        report,
+        reportValidationStatus,
+        referenceStatusRaw,
+        goldenSampleSummary,
+        goldenSampleReviewCount,
+        blueprintSummary,
+      }),
+    [
+      claimTier,
+      allowedClaim,
+      solverTruthSource,
       candidateSpine,
-      activeCaseId,
-      file,
-      caseLabel,
-      nextAction,
-    }),
-    buildRuntimeSection({
-      icon: <Database size={16} />,
+      currentJobId,
+      executionMode,
+      report,
+      reportValidationStatus,
+      referenceStatusRaw,
+      goldenSampleSummary,
+      goldenSampleReviewCount,
+      blueprintSummary,
+    ],
+  );
+  const overviewSection = useMemo(
+    () =>
+      buildOverviewSection({
+        icon: <LayoutDashboard size={16} />,
+        candidateSpine,
+        activeCaseId,
+        file,
+        caseLabel,
+        nextAction,
+      }),
+    [candidateSpine, activeCaseId, file, caseLabel, nextAction],
+  );
+  const runtimeSection = useMemo(
+    () =>
+      buildRuntimeSection({
+        icon: <Database size={16} />,
+        solverTruthSource,
+        candidateSpine,
+        currentJobId,
+        executionMode,
+        report,
+        analysisModeLabel,
+        currentJobLabel,
+        lastSolverMaterialReference,
+        runState,
+        runStateTone,
+        latestEvent,
+        solverLogSummary,
+        solverLogState,
+        convergenceSummary,
+        candidateConvergenceEvidence,
+        convergenceClaimImpact,
+      }),
+    [
       solverTruthSource,
       candidateSpine,
       currentJobId,
@@ -882,9 +929,27 @@ function App() {
       convergenceSummary,
       candidateConvergenceEvidence,
       convergenceClaimImpact,
-    }),
-    buildEvidenceSection({
-      icon: <ClipboardCheck size={16} />,
+    ],
+  );
+  const evidenceSection = useMemo(
+    () =>
+      buildEvidenceSection({
+        icon: <ClipboardCheck size={16} />,
+        report,
+        evidenceState,
+        manifestState,
+        candidateManifest,
+        currentJobId,
+        backendProvenance,
+        meshArtifactSource,
+        candidateMeshEvidence,
+        convergenceArtifactList,
+        candidateConvergenceEvidence,
+        meshConvergenceStudySource,
+        meshConvergenceStudy,
+        meshConvergenceClaimImpact,
+      }),
+    [
       report,
       evidenceState,
       manifestState,
@@ -898,9 +963,34 @@ function App() {
       meshConvergenceStudySource,
       meshConvergenceStudy,
       meshConvergenceClaimImpact,
-    }),
-    buildValidationSection({
-      icon: <ShieldAlert size={16} />,
+    ],
+  );
+  const validationSection = useMemo(
+    () =>
+      buildValidationSection({
+        icon: <ShieldAlert size={16} />,
+        referenceStatus,
+        referenceStatusRaw,
+        referenceReason,
+        referenceDeviation,
+        report,
+        reportValidationStatus,
+        unitSummary,
+        candidateAssumptions,
+        materialSummary,
+        boundarySummary,
+        meshTopologySummary,
+        meshDeckElementTypes,
+        candidateMeshEvidence,
+        meshQualitySummary,
+        meshClaimImpact,
+        meshConvergenceStudy,
+        meshConvergenceStudySummary,
+        meshConvergenceClaimImpact,
+        convergenceMissingSummary,
+        failurePatternRef,
+      }),
+    [
       referenceStatus,
       referenceStatusRaw,
       referenceReason,
@@ -921,13 +1011,34 @@ function App() {
       meshConvergenceClaimImpact,
       convergenceMissingSummary,
       failurePatternRef,
-    }),
-    buildBlueprintTargetSection({
-      icon: <ClipboardCheck size={16} />,
-      blueprintSummary,
-    }),
-    buildBallisticSection({
-      icon: <ShieldAlert size={16} />,
+    ],
+  );
+  const blueprintTargetSection = useMemo(
+    () =>
+      buildBlueprintTargetSection({
+        icon: <ClipboardCheck size={16} />,
+        blueprintSummary,
+      }),
+    [blueprintSummary],
+  );
+  const ballisticSection = useMemo(
+    () =>
+      buildBallisticSection({
+        icon: <ShieldAlert size={16} />,
+        candidateBallistic,
+        ballisticInitialVelocitySummary,
+        ballisticResidualVelocitySummary,
+        ballisticPerforationSummary,
+        ballisticPerforationTone,
+        ballisticEnergySummary,
+        ballisticEnergyTone,
+        ballisticAnimationSummary,
+        ballisticTimeStepStudySummary,
+        ballisticTimeStepStudyTone,
+        ballisticTimeStepStudy,
+        ballisticTier2BlockerSummary,
+      }),
+    [
       candidateBallistic,
       ballisticInitialVelocitySummary,
       ballisticResidualVelocitySummary,
@@ -940,16 +1051,46 @@ function App() {
       ballisticTimeStepStudyTone,
       ballisticTimeStepStudy,
       ballisticTier2BlockerSummary,
-    }),
-    buildGateSection({
-      icon: <AlertTriangle size={16} />,
+    ],
+  );
+  const gateSection = useMemo(
+    () =>
+      buildGateSection({
+        icon: <AlertTriangle size={16} />,
+        reviewerSummary,
+        candidateReviewer,
+        allowedClaim,
+        candidateLimitations,
+        tier2BlockerSummary,
+      }),
+    [
       reviewerSummary,
       candidateReviewer,
       allowedClaim,
       candidateLimitations,
       tier2BlockerSummary,
-    }),
-  ];
+    ],
+  );
+  const trustSections: OperatorStatusSection[] = useMemo(
+    () => [
+      overviewSection,
+      runtimeSection,
+      evidenceSection,
+      validationSection,
+      blueprintTargetSection,
+      ballisticSection,
+      gateSection,
+    ],
+    [
+      overviewSection,
+      runtimeSection,
+      evidenceSection,
+      validationSection,
+      blueprintTargetSection,
+      ballisticSection,
+      gateSection,
+    ],
+  );
   const caeReviewCards: CaeReviewCard[] = [
     {
       card_type: 'blueprint_target',

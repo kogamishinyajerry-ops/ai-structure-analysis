@@ -183,6 +183,97 @@ export function createLocalStorageBackedStore(
   };
 }
 
+// ────────────────────────────────────────────────────────────────────
+// FM-04a Phase 28 D — Advanced-mode auto-promote prompt.
+//
+// Closes a gap in the Phase 27 D refresh: the tour now includes a
+// 'basic-advanced-mode' step that introduces the Basic/Advanced
+// toggle, but new users default to Basic mode and the tour ends
+// without surfacing Advanced. The tour-completion → Basic-mode
+// reviewer never sees the threshold filter / section cut / probe
+// list / field-component switcher that the tour just covered.
+//
+// Phase 28 D: when the tour transitions to dismissed AND the user is
+// still in Basic mode AND the one-shot localStorage flag has not
+// been set, surface a single follow-up prompt offering "Switch to
+// Advanced". Click either button sets the flag so the prompt
+// never re-surfaces.
+//
+// Anti-gaming guard D:-1 (additive promotion):
+//   * Flag is independent of the tour's dismissed key — the prompt is
+//     additive UX, not part of the tour state machine.
+//   * Flag is single-version (v1) — future revisions bump the key.
+//
+// All helpers below are pure (no I/O outside the explicit storage
+// adapter); the React component imports them and supplies its own
+// dispatcher.
+// ────────────────────────────────────────────────────────────────────
+
+/** Stable localStorage key for the "have we already nudged this user
+ * to Advanced mode" flag. v1 — bumped only when the prompt copy/UX
+ * changes materially. */
+export const ADVANCED_PROMPT_LS_KEY = 'fm04a.tour.advanced-prompt.v1.shown';
+
+export interface AdvancedPromptStorage {
+  load: () => boolean;
+  save: (shown: boolean) => void;
+}
+
+/** Default localStorage-backed storage for the advanced-mode prompt
+ * one-shot flag. Falls back to no-op when localStorage is unavailable
+ * (SSR / test envs without jsdom). Caller can inject a stub. */
+export function createAdvancedPromptStorage(
+  globalRef: typeof globalThis = globalThis,
+): AdvancedPromptStorage {
+  const ls = (globalRef as { localStorage?: Storage }).localStorage;
+  if (!ls) {
+    return {
+      load: () => false,
+      save: () => {
+        /* no-op */
+      },
+    };
+  }
+  return {
+    load: () => {
+      try {
+        return ls.getItem(ADVANCED_PROMPT_LS_KEY) === 'true';
+      } catch {
+        return false;
+      }
+    },
+    save: (shown) => {
+      try {
+        ls.setItem(ADVANCED_PROMPT_LS_KEY, shown ? 'true' : 'false');
+      } catch {
+        /* swallow quota / SecurityError */
+      }
+    },
+  };
+}
+
+/**
+ * Pure predicate: should the Advanced-mode promo be visible?
+ *
+ *   - True iff ALL of:
+ *       (a) tour has been dismissed (persisted in storage), AND
+ *       (b) the user is in Basic mode, AND
+ *       (c) the one-shot prompt-shown flag has NOT been set yet.
+ *
+ * D:-1 — independent of in-session state; only the three persisted
+ * inputs matter. The caller is responsible for resolving them.
+ */
+export function shouldShowAdvancedPrompt(
+  uiMode: 'basic' | 'advanced',
+  tourDismissedInStorage: boolean,
+  promptAlreadyShown: boolean,
+): boolean {
+  if (!tourDismissedInStorage) return false;
+  if (uiMode !== 'basic') return false;
+  if (promptAlreadyShown) return false;
+  return true;
+}
+
 /** Resolve the currently-active step (or null when dismissed / past-end). */
 export function currentStep(state: OnboardingState): OnboardingStep | null {
   if (state.dismissed) return null;
