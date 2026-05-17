@@ -55,6 +55,26 @@ interface ResultMeshWebGLViewportProps {
    * scalar derives the per-element color. Defaults to 'mises'.
    * Elements without a tensor fall back to the `value` field. */
   fieldComponent?: StressComponent;
+  /** FM-04a Phase 23 C — node-pick callback. Fires when the reviewer
+   * left-clicks the canvas (without dragging) and the raycaster
+   * finds a node within hit tolerance. Forwards a `PickedNodeInfo`
+   * to the parent so the panel can surface the probe in its info
+   * pane. Passing `null` indicates "no pick" (Escape pressed or
+   * click missed all geometry). */
+  onNodePicked?: (info: PickedNodeInfo | null) => void;
+}
+
+/** FM-04a Phase 23 C — payload of a successful node pick. */
+export interface PickedNodeInfo {
+  /** Original node label from the frame's `nodes` list. */
+  label: number;
+  /** World-space coordinates (m). */
+  position: [number, number, number];
+  /** The scalar value the viewport is currently coloring by
+   * (Mises / σ_xx / etc — depends on `fieldComponent`). Falls back
+   * to `value` when no tensor is present. May be `null` when no
+   * element near the picked node carries a value. */
+  fieldValue: number | null;
 }
 
 // Tet (4-node) faces, 0-indexed into the connectivity array.
@@ -292,6 +312,58 @@ function buildBufferGeometry(
   return { geometry, bounds, triangleCount: triangles.length };
 }
 
+/** FM-04a Phase 23 C — find the closest node in the frame to a
+ * world-space point. Used after raycasting to map an intersection
+ * point back to a frame node label. Returns null when the frame
+ * has no nodes. */
+export function findClosestNode(
+  frame: ResultMeshFrame,
+  worldPoint: [number, number, number],
+  nodeCoords: Map<number, [number, number, number]>,
+): { label: number; position: [number, number, number]; distance: number } | null {
+  let best: { label: number; position: [number, number, number]; distance: number } | null = null;
+  for (const node of frame.nodes) {
+    const coords = nodeCoords.get(node.label);
+    if (!coords) continue;
+    const dx = coords[0] - worldPoint[0];
+    const dy = coords[1] - worldPoint[1];
+    const dz = coords[2] - worldPoint[2];
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (best === null || d2 < best.distance) {
+      best = {
+        label: node.label,
+        position: [coords[0], coords[1], coords[2]],
+        distance: d2,
+      };
+    }
+  }
+  if (best) {
+    return { ...best, distance: Math.sqrt(best.distance) };
+  }
+  return null;
+}
+
+/** FM-04a Phase 23 C — find the field value of the element nearest
+ * (in connectivity) to the picked node. Walks the frame's elements
+ * to find one whose connectivity contains `nodeLabel`; returns its
+ * derived scalar via the same component-switcher path. Returns null
+ * when no element references this node or the candidate element has
+ * no value. */
+export function fieldValueAtNode(
+  frame: ResultMeshFrame,
+  nodeLabel: number,
+  fieldComponent: StressComponent,
+): number | null {
+  for (const element of frame.elements) {
+    if (!element.connectivity?.includes(nodeLabel)) continue;
+    if (element.stressTensor) {
+      return componentValue(element.stressTensor, fieldComponent, element.value ?? 0);
+    }
+    if (element.value !== undefined) return element.value;
+  }
+  return null;
+}
+
 function detectWebGLSupport(): boolean {
   if (typeof window === 'undefined' || typeof document === 'undefined') return false;
   try {
@@ -315,6 +387,7 @@ export function ResultMeshWebGLViewport({
   deformationScale = 1,
   sectionCut = null,
   fieldComponent = 'mises',
+  onNodePicked,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -333,6 +406,8 @@ export function ResultMeshWebGLViewport({
   const [triangleCount, setTriangleCount] = useState<number>(0);
   // Phase 22 B — frame-to-frame animation tInterp state.
   const [animTInterp, setAnimTInterp] = useState<number>(0);
+  // Phase 23 C — picked node state for the HUD overlay.
+  const [pickedNode, setPickedNode] = useState<PickedNodeInfo | null>(null);
 
   // Initialise + dispose the three.js context once.
   useEffect(() => {
@@ -518,15 +593,22 @@ export function ResultMeshWebGLViewport({
     let dragging: 'orbit' | 'pan' | null = null;
     let lastX = 0;
     let lastY = 0;
+    let dragStartedAt = { x: 0, y: 0 };
+    let totalDragDistance = 0;
     const ROTATE_SPEED = 0.005;
     const PAN_SPEED = 0.0015;
     const ZOOM_FACTOR = 0.12;
+    // Phase 23 C — click vs drag threshold (px). A mouseup within
+    // this radius of mousedown counts as a click → triggers raycast.
+    const CLICK_PX_THRESHOLD = 4;
 
     const onMouseDown = (e: MouseEvent) => {
       if (e.button === 0) dragging = 'orbit';
       else if (e.button === 2) dragging = 'pan';
       lastX = e.clientX;
       lastY = e.clientY;
+      dragStartedAt = { x: e.clientX, y: e.clientY };
+      totalDragDistance = 0;
       e.preventDefault();
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -535,6 +617,7 @@ export function ResultMeshWebGLViewport({
       const dy = e.clientY - lastY;
       lastX = e.clientX;
       lastY = e.clientY;
+      totalDragDistance += Math.abs(dx) + Math.abs(dy);
       if (dragging === 'orbit') {
         state.azimuth -= dx * ROTATE_SPEED;
         state.elevation = Math.max(
@@ -552,7 +635,52 @@ export function ResultMeshWebGLViewport({
       }
       renderScene(state);
     };
-    const onMouseUp = () => {
+    const onMouseUp = (e: MouseEvent) => {
+      // Phase 23 C — if the mouseup is close to the mousedown (i.e.
+      // a click, not a drag), trigger a raycast pick.
+      const totalDelta =
+        Math.abs(e.clientX - dragStartedAt.x)
+        + Math.abs(e.clientY - dragStartedAt.y);
+      if (
+        e.button === 0
+        && totalDelta <= CLICK_PX_THRESHOLD
+        && totalDragDistance <= CLICK_PX_THRESHOLD
+        && frame
+        && state.mesh
+      ) {
+        const rect = dom.getBoundingClientRect();
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), state.camera);
+        const hits = ray.intersectObject(state.mesh, false);
+        if (hits.length > 0) {
+          const worldPoint: [number, number, number] = [
+            hits[0].point.x,
+            hits[0].point.y,
+            hits[0].point.z,
+          ];
+          // Rebuild the same node coord map the geometry build used
+          // so we map the world hit back to a frame node label.
+          const nodeCoords = buildNodeCoords(
+            frame,
+            nextFrame ?? null,
+            animTInterp,
+            deformationScale,
+          );
+          const closest = findClosestNode(frame, worldPoint, nodeCoords);
+          if (closest) {
+            const fieldValue = fieldValueAtNode(frame, closest.label, fieldComponent);
+            const info: PickedNodeInfo = {
+              label: closest.label,
+              position: closest.position,
+              fieldValue,
+            };
+            setPickedNode(info);
+            onNodePicked?.(info);
+          }
+        }
+      }
       dragging = null;
     };
     const onWheel = (e: WheelEvent) => {
@@ -563,19 +691,29 @@ export function ResultMeshWebGLViewport({
     };
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
 
+    // Phase 23 C — Escape clears the picked node.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPickedNode(null);
+        onNodePicked?.(null);
+      }
+    };
+
     dom.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     dom.addEventListener('wheel', onWheel, { passive: false });
     dom.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('keydown', onKeyDown);
     return () => {
       dom.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
       dom.removeEventListener('wheel', onWheel);
       dom.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('keydown', onKeyDown);
     };
-  }, [triangleCount]);
+  }, [triangleCount, frame, nextFrame, animTInterp, deformationScale, fieldComponent, onNodePicked]);
 
   const message = useMemo(() => {
     if (!supported) return 'WebGL not available — falling back to SVG body';
@@ -639,8 +777,56 @@ export function ResultMeshWebGLViewport({
           pointerEvents: 'none',
         }}
       >
-        DRAG · ORBIT  ·  R-DRAG · PAN  ·  WHEEL · ZOOM
+        DRAG · ORBIT  ·  R-DRAG · PAN  ·  WHEEL · ZOOM  ·  CLICK · PROBE  ·  ESC · CLEAR
       </div>
+      {pickedNode && (
+        <div
+          data-testid="webgl-picked-node-hud"
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            color: '#e2e8f0',
+            fontSize: '0.72rem',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+            background: 'rgba(2, 6, 23, 0.85)',
+            border: '1px solid rgba(96, 165, 250, 0.45)',
+            borderRadius: 4,
+            padding: '8px 12px',
+            lineHeight: 1.45,
+            pointerEvents: 'none',
+            minWidth: 180,
+          }}
+        >
+          <div
+            style={{
+              color: '#60a5fa',
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              marginBottom: 4,
+            }}
+          >
+            NODE {pickedNode.label}
+          </div>
+          <div data-testid="webgl-picked-node-coords">
+            x: {pickedNode.position[0].toExponential(3)}
+            <br />
+            y: {pickedNode.position[1].toExponential(3)}
+            <br />
+            z: {pickedNode.position[2].toExponential(3)}
+          </div>
+          {pickedNode.fieldValue !== null && (
+            <div
+              data-testid="webgl-picked-node-field"
+              style={{ marginTop: 4, color: '#fbbf24' }}
+            >
+              {fieldComponent}: {pickedNode.fieldValue.toExponential(3)}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
