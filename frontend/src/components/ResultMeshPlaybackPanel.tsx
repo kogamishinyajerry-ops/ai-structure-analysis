@@ -18,7 +18,12 @@ import { SkeletonCard } from './SkeletonCard';
 // FM-04a Phase 21 C — three.js WebGL viewport. Reads the same
 // `summary.selectedFrame` the SVG panel consumes; the SVG body stays
 // as a fallback when WebGL is unavailable or the user toggles to it.
-import { ResultMeshWebGLViewport } from './ResultMeshWebGLViewport';
+// FM-04a Phase 22 B — same import now carries nextFrame / playing /
+// deformationScale / sectionCut props.
+import {
+  ResultMeshWebGLViewport,
+  type SectionCutState,
+} from './ResultMeshWebGLViewport';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -54,6 +59,12 @@ export function ResultMeshPlaybackPanel({
   // path (still the test fallback when WebGL is unavailable). Default
   // is 'webgl' so reviewers see the 3D viewport on first open.
   const [viewportMode, setViewportMode] = useState<'webgl' | 'svg'>('webgl');
+  // FM-04a Phase 22 B — viewport depth controls. Deformation
+  // magnification scales (deformed - undeformed) so small-strain
+  // results are visible; default 1× (true coords). Section cut hides
+  // half the mesh along one axis; default null (no cut).
+  const [deformationScale, setDeformationScale] = useState<number>(1);
+  const [sectionCut, setSectionCut] = useState<SectionCutState | null>(null);
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -99,6 +110,18 @@ export function ResultMeshPlaybackPanel({
     [payload, frameIndex],
   );
   const frameCount = summary?.frameCount ?? 0;
+
+  // FM-04a Phase 22 B — next frame for WebGL interpolation. When the
+  // current frame is the last one, nextFrame is null and the viewport
+  // falls back to single-frame render. Loop wrap-around is handled by
+  // the parent's setInterval; the WebGL viewport interpolates only
+  // forward to the linearly-adjacent frame.
+  const nextFrame = useMemo(() => {
+    if (!payload || !summary) return null;
+    if (summary.selectedFrameIndex + 1 >= summary.frameCount) return null;
+    return summarizeResultMeshPlayback(payload, summary.selectedFrameIndex + 1)
+      .selectedFrame;
+  }, [payload, summary]);
 
   useEffect(() => {
     if (!playing || frameCount <= 1) return;
@@ -190,7 +213,14 @@ export function ResultMeshPlaybackPanel({
             minHeight: 0,
           }}
         >
-          <div style={{ minHeight: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', gap: '12px' }}>
+          <div
+            style={{
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateRows: 'auto auto 1fr auto',
+              gap: '12px',
+            }}
+          >
             <div
               data-testid="viewport-mode-toggle"
               style={{
@@ -238,6 +268,16 @@ export function ResultMeshPlaybackPanel({
                 SVG
               </button>
             </div>
+            <div data-testid="viewport-depth-controls-slot">
+              {viewportMode === 'webgl' && (
+                <ViewportDepthControls
+                  deformationScale={deformationScale}
+                  onDeformationScaleChange={setDeformationScale}
+                  sectionCut={sectionCut}
+                  onSectionCutChange={setSectionCut}
+                />
+              )}
+            </div>
             <div
               style={{
                 minHeight: '210px',
@@ -253,6 +293,10 @@ export function ResultMeshPlaybackPanel({
                   frame={summary.selectedFrame}
                   valueMin={summary.valueMin}
                   valueMax={summary.valueMax}
+                  nextFrame={nextFrame}
+                  playing={playing}
+                  deformationScale={deformationScale}
+                  sectionCut={sectionCut}
                 />
               ) : (
               <>
@@ -621,3 +665,158 @@ const panelTitleStyle = {
   fontWeight: 800,
   marginBottom: '8px',
 } satisfies CSSProperties;
+
+// FM-04a Phase 22 B — depth controls for the WebGL viewport:
+// deformation magnification slider (1×..100×) + section-cut row
+// (axis radio + position slider + low/high half toggle).
+function ViewportDepthControls({
+  deformationScale,
+  onDeformationScaleChange,
+  sectionCut,
+  onSectionCutChange,
+}: {
+  deformationScale: number;
+  onDeformationScaleChange: (value: number) => void;
+  sectionCut: SectionCutState | null;
+  onSectionCutChange: (next: SectionCutState | null) => void;
+}) {
+  const cutEnabled = sectionCut !== null;
+  const axis = sectionCut?.axis ?? 'x';
+  const positionM = sectionCut?.positionM ?? 0;
+  const showLow = sectionCut?.showLow ?? true;
+
+  return (
+    <div
+      data-testid="viewport-depth-controls"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: 10,
+        padding: '8px 10px',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        background: 'rgba(15, 23, 42, 0.45)',
+        fontSize: '0.72rem',
+        color: 'var(--text-secondary)',
+      }}
+    >
+      <label
+        data-testid="deformation-scale-control"
+        style={{ display: 'grid', gap: 4 }}
+      >
+        <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+          Deformation ×{deformationScale.toFixed(0)}
+        </span>
+        <input
+          aria-label="Deformation magnification"
+          type="range"
+          min={1}
+          max={100}
+          step={1}
+          value={deformationScale}
+          onChange={(event) =>
+            onDeformationScaleChange(Number(event.target.value))
+          }
+          data-testid="deformation-scale-input"
+        />
+      </label>
+      <div
+        data-testid="section-cut-control"
+        style={{ display: 'grid', gap: 4 }}
+      >
+        <label
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="section-cut-toggle"
+            checked={cutEnabled}
+            onChange={(event) =>
+              onSectionCutChange(
+                event.target.checked
+                  ? { axis: 'x', positionM: 0, showLow: true }
+                  : null,
+              )
+            }
+          />
+          Section cut
+        </label>
+        {cutEnabled && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr auto',
+              gap: 6,
+              alignItems: 'center',
+            }}
+          >
+            <select
+              aria-label="Section-cut axis"
+              data-testid="section-cut-axis"
+              value={axis}
+              onChange={(event) =>
+                onSectionCutChange({
+                  axis: event.target.value as 'x' | 'y' | 'z',
+                  positionM,
+                  showLow,
+                })
+              }
+              style={{
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 3,
+                padding: '2px 4px',
+              }}
+            >
+              <option value="x">X</option>
+              <option value="y">Y</option>
+              <option value="z">Z</option>
+            </select>
+            <input
+              aria-label="Section-cut position"
+              type="range"
+              min={-1}
+              max={1}
+              step={0.01}
+              value={positionM}
+              data-testid="section-cut-position"
+              onChange={(event) =>
+                onSectionCutChange({
+                  axis,
+                  positionM: Number(event.target.value),
+                  showLow,
+                })
+              }
+            />
+            <button
+              type="button"
+              data-testid="section-cut-flip"
+              onClick={() =>
+                onSectionCutChange({ axis, positionM, showLow: !showLow })
+              }
+              style={{
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 3,
+                padding: '2px 6px',
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                cursor: 'pointer',
+              }}
+            >
+              {showLow ? '−' : '+'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -24,10 +24,31 @@ import type { ResultMeshElement, ResultMeshFrame } from '../resultMeshPlayback';
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
+export interface SectionCutState {
+  /** Axis the clipping plane is perpendicular to. */
+  axis: 'x' | 'y' | 'z';
+  /** Position along the axis (m) at which the plane sits. */
+  positionM: number;
+  /** When true, render only the "low" half (coord < positionM).
+   * When false, render only the "high" half. */
+  showLow: boolean;
+}
+
 interface ResultMeshWebGLViewportProps {
   frame: ResultMeshFrame | null;
   valueMin: number;
   valueMax: number;
+  /** FM-04a Phase 22 B — frame-to-frame animation. When defined +
+   * playing=true, the viewport interpolates node positions between
+   * `frame` and `nextFrame` at 60fps via requestAnimationFrame. When
+   * undefined, falls back to Phase 21 C single-frame static render. */
+  nextFrame?: ResultMeshFrame | null;
+  playing?: boolean;
+  /** FM-04a Phase 22 B — deformation magnification (1× default). */
+  deformationScale?: number;
+  /** FM-04a Phase 22 B — section-cut clipping plane. When defined,
+   * one half of the mesh is hidden. */
+  sectionCut?: SectionCutState | null;
 }
 
 // Tet (4-node) faces, 0-indexed into the connectivity array.
@@ -143,18 +164,85 @@ export function colorForValueFraction(t: number): [number, number, number] {
   return gradientStop(t);
 }
 
-function buildBufferGeometry(frame: ResultMeshFrame, valueMin: number, valueMax: number): {
+/** Phase 22 B — build node-coordinate map honouring optional
+ * deformation magnification AND optional frame interpolation. When
+ * `nextFrame` is provided + `tInterp` ∈ (0, 1), node positions blend
+ * linearly between the two frames' DEFORMED coordinates (or fall
+ * back to undeformed coords when deformed is absent). The
+ * `deformationScale` multiplier amplifies the deformed displacement
+ * relative to undeformed for visualization on small-strain results. */
+export function buildNodeCoords(
+  frame: ResultMeshFrame,
+  nextFrame: ResultMeshFrame | null | undefined,
+  tInterp: number,
+  deformationScale: number,
+): Map<number, [number, number, number]> {
+  const nodeCoords = new Map<number, [number, number, number]>();
+  // Index nextFrame nodes by label for blend lookup.
+  const nextByLabel = new Map<number, [number, number, number]>();
+  if (nextFrame && tInterp > 0) {
+    for (const nn of nextFrame.nodes) {
+      const p = nn.deformed ?? nn.coordinates;
+      if (p && p.length >= 3) {
+        nextByLabel.set(nn.label, [p[0], p[1], p[2]]);
+      }
+    }
+  }
+  const t = nextFrame ? Math.max(0, Math.min(1, tInterp)) : 0;
+  for (const node of frame.nodes) {
+    const undef = node.coordinates;
+    const def = node.deformed ?? node.coordinates;
+    if (!def || def.length < 3) continue;
+    const baseX = def[0];
+    const baseY = def[1];
+    const baseZ = def[2];
+    // Magnify deformation relative to undeformed coords when available.
+    let x = baseX;
+    let y = baseY;
+    let z = baseZ;
+    if (
+      deformationScale !== 1 &&
+      undef &&
+      undef.length >= 3 &&
+      node.deformed &&
+      node.deformed.length >= 3
+    ) {
+      x = undef[0] + (node.deformed[0] - undef[0]) * deformationScale;
+      y = undef[1] + (node.deformed[1] - undef[1]) * deformationScale;
+      z = undef[2] + (node.deformed[2] - undef[2]) * deformationScale;
+    }
+    // Blend toward nextFrame when t > 0.
+    const nxt = nextByLabel.get(node.label);
+    if (nxt && t > 0) {
+      x = x + (nxt[0] - x) * t;
+      y = y + (nxt[1] - y) * t;
+      z = z + (nxt[2] - z) * t;
+    }
+    nodeCoords.set(node.label, [x, y, z]);
+  }
+  return nodeCoords;
+}
+
+function buildBufferGeometry(
+  frame: ResultMeshFrame,
+  valueMin: number,
+  valueMax: number,
+  options: {
+    nextFrame?: ResultMeshFrame | null;
+    tInterp?: number;
+    deformationScale?: number;
+  } = {},
+): {
   geometry: THREE.BufferGeometry;
   bounds: THREE.Box3;
   triangleCount: number;
 } {
-  const nodeCoords = new Map<number, [number, number, number]>();
-  for (const node of frame.nodes) {
-    const point = node.deformed ?? node.coordinates;
-    if (point && point.length >= 3) {
-      nodeCoords.set(node.label, [point[0], point[1], point[2]]);
-    }
-  }
+  const nodeCoords = buildNodeCoords(
+    frame,
+    options.nextFrame ?? null,
+    options.tInterp ?? 0,
+    options.deformationScale ?? 1,
+  );
 
   const triangles: Triangle[] = [];
   for (const element of frame.elements) {
@@ -203,6 +291,10 @@ export function ResultMeshWebGLViewport({
   frame,
   valueMin,
   valueMax,
+  nextFrame,
+  playing = false,
+  deformationScale = 1,
+  sectionCut = null,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -210,6 +302,7 @@ export function ResultMeshWebGLViewport({
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     mesh: THREE.Mesh | null;
+    clipPlane: THREE.Plane;
     target: THREE.Vector3;
     radius: number;
     azimuth: number;
@@ -218,6 +311,8 @@ export function ResultMeshWebGLViewport({
   } | null>(null);
   const [supported] = useState<boolean>(detectWebGLSupport);
   const [triangleCount, setTriangleCount] = useState<number>(0);
+  // Phase 22 B — frame-to-frame animation tInterp state.
+  const [animTInterp, setAnimTInterp] = useState<number>(0);
 
   // Initialise + dispose the three.js context once.
   useEffect(() => {
@@ -234,6 +329,9 @@ export function ResultMeshWebGLViewport({
     }
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setClearColor(0x020617);
+    // FM-04a Phase 22 B — enable local clipping so the section-cut
+    // plane can hide one half of the mesh on demand.
+    renderer.localClippingEnabled = true;
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 10000);
@@ -263,6 +361,8 @@ export function ResultMeshWebGLViewport({
       scene,
       camera,
       mesh: null,
+      // Inactive clip plane until a sectionCut prop tells us otherwise.
+      clipPlane: new THREE.Plane(new THREE.Vector3(1, 0, 0), Infinity),
       target: new THREE.Vector3(0, 0, 0),
       radius: 1,
       azimuth: Math.PI / 4,
@@ -284,7 +384,8 @@ export function ResultMeshWebGLViewport({
     };
   }, [supported]);
 
-  // Build / rebuild geometry when the selected frame changes.
+  // Build / rebuild geometry when the selected frame, animation
+  // interpolation, magnification, or nextFrame changes.
   useEffect(() => {
     const state = stateRef.current;
     if (!state || !frame) {
@@ -295,6 +396,11 @@ export function ResultMeshWebGLViewport({
       frame,
       valueMin,
       valueMax,
+      {
+        nextFrame: nextFrame ?? null,
+        tInterp: animTInterp,
+        deformationScale,
+      },
     );
 
     if (state.mesh) {
@@ -303,11 +409,30 @@ export function ResultMeshWebGLViewport({
       (state.mesh.material as THREE.Material).dispose();
     }
 
+    // Phase 22 B — clip planes wired into the material when a
+    // section-cut state is active.
+    const clippingPlanes: THREE.Plane[] = [];
+    if (sectionCut) {
+      const axisIdx = { x: 0, y: 1, z: 2 }[sectionCut.axis];
+      const normal = new THREE.Vector3(
+        axisIdx === 0 ? 1 : 0,
+        axisIdx === 1 ? 1 : 0,
+        axisIdx === 2 ? 1 : 0,
+      );
+      if (sectionCut.showLow) normal.multiplyScalar(-1);
+      const dist = sectionCut.showLow ? sectionCut.positionM : -sectionCut.positionM;
+      state.clipPlane.normal.copy(normal);
+      state.clipPlane.constant = dist;
+      clippingPlanes.push(state.clipPlane);
+    }
+
     const material = new THREE.MeshPhongMaterial({
       vertexColors: true,
       flatShading: false,
       side: THREE.DoubleSide,
       shininess: 35,
+      clippingPlanes,
+      clipShadows: true,
     });
     const mesh = new THREE.Mesh(geometry, material);
     state.scene.add(mesh);
@@ -327,7 +452,39 @@ export function ResultMeshWebGLViewport({
     }
     setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax]);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut]);
+
+  // Phase 22 B — animation loop. When `playing && nextFrame`, drive
+  // `animTInterp` from 0 → 1 over a fixed duration so the parent's
+  // setInterval-based frame advance is smoothed by per-frame
+  // interpolation. When playing stops or nextFrame disappears, snap
+  // back to 0 (i.e. render the source frame, undeformed by blend).
+  useEffect(() => {
+    if (!playing || !nextFrame) {
+      setAnimTInterp(0);
+      return;
+    }
+    let rafId = 0;
+    let cancelled = false;
+    const startedAt = performance.now();
+    // Match the parent setInterval cadence (240ms) so the animation
+    // arrives at t=1 around the moment the frame advances.
+    const DURATION_MS = 220;
+    const tick = () => {
+      if (cancelled) return;
+      const elapsed = performance.now() - startedAt;
+      const t = Math.min(1, elapsed / DURATION_MS);
+      setAnimTInterp(t);
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [playing, nextFrame, frame]);
 
   // Mouse interactions: orbit (left drag), pan (right drag), zoom
   // (wheel). Hand-rolled rather than via three/examples/OrbitControls
@@ -487,6 +644,7 @@ declare const stateRefShape:
       scene: THREE.Scene;
       camera: THREE.PerspectiveCamera;
       mesh: THREE.Mesh | null;
+      clipPlane: THREE.Plane;
       target: THREE.Vector3;
       radius: number;
       azimuth: number;
