@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0.0",
+  "materials": [
+    {
+      "id": "steel-s355",
+      "name": "Structural Steel S355",
+      "youngs_modulus_pa": 210000000000.0,
+      "poisson_ratio": 0.3,
+      "density_kg_m3": 7850.0,
+      "yield_stress_pa": 355000000.0,
+      "ultimate_stress_pa": 510000000.0,
+      "reference": "EN 10025-2:2019 §7.3 (S355 grade, room temperature)"
+    },
+    {
+      "id": "aluminium-6061-t6",
+      "name": "Aluminium 6061-T6",
+      "youngs_modulus_pa": 68900000000.0,
+      "poisson_ratio": 0.33,
+      "density_kg_m3": 2700.0,
+      "yield_stress_pa": 276000000.0,
+      "ultimate_stress_pa": 310000000.0,
+      "reference": "MMPDS-2023 §3.6.1.0 (6061-T6 wrought, sheet, longitudinal, room temperature)"
+    },
+    {
+      "id": "titanium-ti-6al-4v",
+      "name": "Titanium Ti-6Al-4V",
+      "youngs_modulus_pa": 113800000000.0,
+      "poisson_ratio": 0.342,
+      "density_kg_m3": 4430.0,
+      "yield_stress_pa": 880000000.0,
+      "ultimate_stress_pa": 950000000.0,
+      "reference": "MMPDS-2023 §5.4.1.0 (Ti-6Al-4V annealed bar, room temperature)"
+    }
+  ]
+}
