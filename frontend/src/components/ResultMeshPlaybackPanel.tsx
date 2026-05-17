@@ -26,6 +26,11 @@ import {
   type ValueFilterState,
 } from './ResultMeshWebGLViewport';
 import type { StressComponent } from '../stressDerivatives';
+// FM-04a Phase 24 B — onboarding tour mounted into the result-mesh
+// panel because that's where Phase 23 B/C/D added the new control
+// surfaces. The tour persists dismissal in localStorage so it shows
+// exactly once across sessions.
+import { OnboardingTour } from './OnboardingTour';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -169,6 +174,7 @@ export function ResultMeshPlaybackPanel({
         gridTemplateRows: 'auto 1fr',
       }}
     >
+      <OnboardingTour />
       <div
         style={{
           padding: '14px 16px',
