@@ -22,6 +22,12 @@ export interface CandidateCaseRecord {
   generatorScriptRelpath: string | null
   notesExcerpt: string | null
   claimBoundary: string
+  // FM-04a Phase 18 E (round 3) — optional human display label for
+  // the picker dropdown + Cmd-K palette. When absent the picker
+  // falls back to ``caseId``. Adopted incrementally so this stays
+  // back-compat with payloads from the live route (which doesn't
+  // emit this field yet).
+  displayLabel?: string
 }
 
 export interface CandidateCaseRegistryPayload {
@@ -36,9 +42,11 @@ export interface CandidateCaseRegistryPayload {
 // render the picker even when /api/v1/candidate-cases is unreachable.
 // Mirrors the on-disk directory contents committed in
 // `golden_samples/*-candidate/` and the matching `scripts/gen_*` files.
+// Phase 18 E (round 3) — gained human displayLabel + leak case entry.
 export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'GS-102-candidate',
+    displayLabel: 'GS-102 · Single-hex demo (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-candidate/data/model_00_0000.rad',
     engineDeckRelpath: 'golden_samples/GS-102-candidate/data/model_00_0001.rad',
@@ -52,6 +60,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'GS-102-refined-candidate',
+    displayLabel: 'GS-102 refined · 4×3×3 plate + 2×2×2 projectile (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
       'golden_samples/GS-102-refined-candidate/data/model_00_0000.rad',
@@ -67,6 +76,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'GS-102-hifi-candidate',
+    displayLabel: 'GS-102 hi-fi · 7.62×51 AP vs Weldox 460E @ V0=600 m/s (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-hifi-candidate/data/model_00_0000.rad',
     engineDeckRelpath: 'golden_samples/GS-102-hifi-candidate/data/model_00_0001.rad',
@@ -75,6 +85,25 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
       'GS-102-hifi-candidate · 7.62x51 AP-class projectile vs 100x100x8 mm ' +
       'Weldox 460E plate at V0 = 600 m/s. Tier 1 only; not signed validation; ' +
       'not benchmark agreement.',
+    claimBoundary:
+      'tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement',
+  },
+  {
+    // Phase 18 E (round 3) — leak case promoted into the fallback so
+    // novice reviewers can find it without the live backend route.
+    // UX agent round-2 finding: case was invisible in the fallback
+    // path until now.
+    caseId: 'rod-wave-impact-energy-leak-candidate',
+    displayLabel: 'Rod-wave impact · ENERGY LEAK case (Tier 1)',
+    claimTier: 'Tier 1 engineering candidate',
+    starterDeckRelpath: null,
+    engineDeckRelpath: null,
+    generatorScriptRelpath: null,
+    notesExcerpt:
+      'rod-wave-impact-energy-leak-candidate · the canonical "what does ' +
+      'a broken case look like?" fixture. Hidden energy leak appears in ' +
+      'the .frd; the cohort drift surface flags it. Tier 1 only; not ' +
+      'signed validation; not benchmark agreement.',
     claimBoundary:
       'tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement',
   },

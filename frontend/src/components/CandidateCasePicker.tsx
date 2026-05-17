@@ -88,7 +88,9 @@ export function CandidateCasePicker({
           </option>
           {cases.map((c) => (
             <option key={c.caseId} value={c.caseId}>
-              {c.caseId}
+              {/* Phase 18 E (round 3) — surface human displayLabel
+                  when available; falls back to caseId for back-compat. */}
+              {c.displayLabel ?? c.caseId}
             </option>
           ))}
         </select>

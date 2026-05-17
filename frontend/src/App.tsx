@@ -638,10 +638,15 @@ function App() {
       const response = await fetch(`${API_BASE}/solver/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           case_id: activeCaseId,
           analysis_type: analysisType,
-          num_modes: 5
+          num_modes: 5,
+          // Phase 18 E (round 3) — propagate the reviewer's material
+          // pick into the solver request body. Backend honours this on
+          // tier_2_validated paths only; tier_1_candidate fixtures
+          // ignore the field gracefully (additive, back-compat).
+          material_id: selectedMaterial.id,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -1469,7 +1474,13 @@ function App() {
     void fetch(`${API_BASE}/solver/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ case_id: activeCaseId, analysis_type: analysisType }),
+      body: JSON.stringify({
+        case_id: activeCaseId,
+        analysis_type: analysisType,
+        // Phase 18 E (round 3) — palette-fired re-runs carry the
+        // material pick too; symmetric with the main solver flow above.
+        material_id: selectedMaterial.id,
+      }),
     })
   }
   const commands: Command[] = [
@@ -1563,6 +1574,25 @@ function App() {
           </div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Structure<span style={{ color: 'var(--accent)' }}>AI</span></h2>
         </div>
+        {/* FM-04a Phase 18 E (round 3) — discoverable Cmd-K hint.
+            Addresses UX agent round-2 finding that the palette was
+            real but undiscoverable. Clicking the chip also opens it. */}
+        <button
+          type="button"
+          onClick={() => setPaletteOpen(true)}
+          data-testid="cmd-k-hint"
+          aria-label="Open command palette (Cmd-K)"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: '8px', padding: '6px 10px', borderRadius: '6px',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem',
+            textAlign: 'left',
+          }}
+        >
+          <span>Command palette</span>
+          <kbd style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.08)', fontFamily: 'ui-monospace, Menlo, monospace' }}>⌘K</kbd>
+        </button>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button className="nav-item active" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '8px', background: 'var(--accent-glow)', color: 'var(--accent)', border: 'none', cursor: 'pointer', textAlign: 'left', fontWeight: 600 }}>

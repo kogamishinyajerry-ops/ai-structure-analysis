@@ -22,6 +22,10 @@
 //     critique. Reviewer agency is preserved at every step.
 
 import { useEffect, useState } from 'react'
+// FM-04a Phase 18 E (round 3) — adopt the SSOT loading + error
+// primitives in place of bespoke divs (UI agent round-2 finding).
+import { ErrorCard } from './ErrorCard'
+import { SkeletonCard } from './SkeletonCard'
 import {
   FOUR_QUESTION_GATE_KEYS,
   REFUSED_CLAIMS_MAX_ITEMS,
@@ -116,17 +120,22 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
       </header>
 
       {loading && (
-        <div data-testid="advisor-panel-loading" style={{ fontSize: '0.8rem' }}>
-          Loading advisor critique…
+        <div data-testid="advisor-panel-loading">
+          <SkeletonCard lines={4} label="Loading advisor critique" />
         </div>
       )}
 
       {error && !loading && (
-        <div
-          data-testid="advisor-panel-error"
-          style={{ fontSize: '0.8rem', color: '#b00020' }}
-        >
-          {error}
+        <div data-testid="advisor-panel-error">
+          <ErrorCard
+            title="Could not load advisor critique"
+            message={error}
+            code="ADVISOR-LOAD"
+            remediation={[
+              'Check the backend /api/v1/advisor-critique/ route responds.',
+              'If the live LLM is offline, the advisor falls back to a stub critique — that is expected behaviour.',
+            ]}
+          />
         </div>
       )}
 
