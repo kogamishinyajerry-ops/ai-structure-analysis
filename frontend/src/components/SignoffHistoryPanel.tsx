@@ -16,6 +16,11 @@ import {
 } from '../signoffHistoryClient.ts'
 import { TIER1_BANNER } from '../trustCenterSummary.ts'
 import { SignoffSubmissionForm } from './SignoffSubmissionForm.tsx'
+// FM-04a Phase 19 D — adopt the Phase 18 D primitives (UI agent
+// round-2 adoption finding).
+import { EmptyStateCard } from './EmptyStateCard'
+import { ErrorCard } from './ErrorCard'
+import { SkeletonCard } from './SkeletonCard'
 
 export interface SignoffHistoryPanelProps {
   apiBase: string
@@ -126,15 +131,31 @@ export function SignoffHistoryPanel({
         />
       )}
       {caseId && loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
+        <div data-testid="signoff-history-loading">
+          <SkeletonCard lines={3} label="Loading signoff history" />
+        </div>
       )}
       {caseId && error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>{error}</div>
+        <div data-testid="signoff-history-error">
+          <ErrorCard
+            title="Could not load signoff history"
+            message={error}
+            code="SIGNOFF-LOAD"
+            remediation={[
+              'Confirm the backend /api/v1/signoff-history/<case-id> route responds.',
+              'Verify the case_id is in the registry (Tier 1 fallback OR live route).',
+            ]}
+          />
+        </div>
       )}
 
       {report && report.recordCount === 0 && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-          no signoffs yet for this candidate.
+        <div data-testid="signoff-history-empty">
+          <EmptyStateCard
+            headline="No signoffs yet"
+            body="This candidate has no signoff records yet. Use the form above to record one."
+            glyph="✎"
+          />
         </div>
       )}
 

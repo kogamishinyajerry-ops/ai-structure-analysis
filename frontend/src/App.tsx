@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
-import { 
-  FileUp, 
-  Activity, 
+import {
+  Activity,
   ChevronRight,
-  Zap,
   Box,
   LayoutDashboard,
   Play,
@@ -53,6 +51,10 @@ import { AdvisorPanel } from './components/AdvisorPanel';
 // FM-04a Phase 18 D/E — Tier 2 workbench primitives (round 2 integration).
 import { CommandPalette } from './components/CommandPalette';
 import { MaterialPickerPanel } from './components/MaterialPickerPanel';
+// FM-04a Phase 19 D — extracted Case sidebar (Sidebar.tsx) so the App
+// shell stays under ~1900 LOC and the case-rail concerns can be tested
+// in isolation. All data-testids preserved.
+import { Sidebar } from './components/Sidebar';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import {
   type Command,
@@ -1572,73 +1574,15 @@ function App() {
         onSelectProject={(id) => setSelectedProjectId(id)}
       />
 
-      {/* Case Sidebar */}
-      <aside className="glass-sidebar" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: 'var(--accent)', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Zap size={24} color="#000" />
-          </div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Structure<span style={{ color: 'var(--accent)' }}>AI</span></h2>
-        </div>
-        {/* FM-04a Phase 18 E (round 3) — discoverable Cmd-K hint.
-            Addresses UX agent round-2 finding that the palette was
-            real but undiscoverable. Clicking the chip also opens it. */}
-        <button
-          type="button"
-          onClick={() => setPaletteOpen(true)}
-          data-testid="cmd-k-hint"
-          aria-label="Open command palette (Cmd-K)"
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: '8px', padding: '6px 10px', borderRadius: '6px',
-            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-            color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.75rem',
-            textAlign: 'left',
-          }}
-        >
-          <span>Command palette</span>
-          <kbd style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(255,255,255,0.08)', fontFamily: 'ui-monospace, Menlo, monospace' }}>⌘K</kbd>
-        </button>
-
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button className="nav-item active" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '8px', background: 'var(--accent-glow)', color: 'var(--accent)', border: 'none', cursor: 'pointer', textAlign: 'left', fontWeight: 600 }}>
-            <LayoutDashboard size={18} /> Workbench
-          </button>
-        </nav>
-
-        {/* Case Gallery */}
-        <div>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', paddingLeft: '12px' }}>Case Gallery</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {availableCases.map(c => (
-              <button key={c.id} onClick={() => selectCase(c)} className={`case-item ${activeCaseId === c.id ? 'active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '8px', background: activeCaseId === c.id ? 'rgba(255,255,255,0.05)' : 'transparent', color: activeCaseId === c.id ? 'var(--accent)' : 'var(--text-secondary)', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '0.875rem' }}>
-                <Box size={16} /> {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {activeExperiment && (
-           <div className="glass-panel" style={{ padding: '16px' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: '8px' }}>EXP: {activeExperiment.parameter.toUpperCase()}</div>
-              {activeExperiment.runs.map(r => (
-                  <div key={r.iteration} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
-                     <span>V={r.value}</span>
-                     <span style={{ color: r.status === 'COMPLETED' ? 'var(--accent)' : 'var(--text-muted)' }}>{r.status}</span>
-                  </div>
-              ))}
-           </div>
-        )}
-
-        <div style={{ marginTop: 'auto' }}>
-          <label className="glass-panel" style={{ display: 'block', padding: '20px', textAlign: 'center', border: '2px dashed var(--border)', cursor: 'pointer', transition: 'border-color 0.2s' }}>
-            <input type="file" onChange={handleFileUpload} style={{ display: 'none' }} />
-            <FileUp size={24} style={{ marginBottom: '8px', color: 'var(--text-secondary)' }} />
-            <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>Upload FRD</div>
-          </label>
-        </div>
-      </aside>
+      {/* Case Sidebar — extracted to Sidebar.tsx in Phase 19 D */}
+      <Sidebar
+        availableCases={availableCases}
+        activeCaseId={activeCaseId}
+        onSelectCase={(c) => selectCase(c)}
+        activeExperiment={activeExperiment}
+        onFileUpload={handleFileUpload}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
 
       {/* Main Content Area */}
       <div style={{ display: 'grid', gridTemplateColumns: showChat ? '1fr 340px' : '1fr', height: '100vh', overflow: 'hidden' }}>

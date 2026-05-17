@@ -201,6 +201,51 @@ export function ResultMeshPlaybackPanel({
                   No renderable mesh frame
                 </div>
               )}
+              {/* FM-04a Phase 19 D — stress-contour color legend.
+                  Phase 18 UX agent finding T5: contour overlay existed
+                  internally (blue→green→orange) but no legend told the
+                  reviewer what colour means what stress. The legend
+                  below makes the color scale legible without requiring
+                  a WebGL rewrite (Phase 20+ scope). */}
+              {projection.length > 0 && summary && (
+                <div
+                  data-testid="stress-contour-legend"
+                  style={{
+                    position: 'absolute',
+                    right: 16,
+                    bottom: 16,
+                    background: 'rgba(2, 6, 23, 0.78)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: 6,
+                    padding: '8px 12px',
+                    color: '#e2e8f0',
+                    fontSize: '0.7rem',
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    minWidth: 140,
+                  }}
+                  aria-label="Field-value color legend"
+                >
+                  <div style={{ opacity: 0.75, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Field value
+                  </div>
+                  <div
+                    style={{
+                      height: 8,
+                      borderRadius: 4,
+                      background:
+                        'linear-gradient(to right, #2563eb 0%, #10b981 50%, #f97316 100%)',
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>min {formatNumber(summary.valueMin)}</span>
+                    <span>max {formatNumber(summary.valueMax)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div

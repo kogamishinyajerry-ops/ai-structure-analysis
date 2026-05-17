@@ -8,6 +8,11 @@
 // FM-04b blockers list rendered alongside the aggregate.
 
 import { useEffect, useMemo, useState } from 'react'
+// FM-04a Phase 19 D — adopt Phase 18 D primitives (UI agent round-2
+// adoption finding).
+import { EmptyStateCard } from './EmptyStateCard'
+import { ErrorCard } from './ErrorCard'
+import { SkeletonCard } from './SkeletonCard'
 import type { CohortOverviewEntry, CohortSortKey } from '../cohortOverviewClient.ts'
 import {
   fetchCohortOverview,
@@ -166,14 +171,32 @@ export function CohortDashboardPanel({
       </div>
 
       {loading && (
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-          loading cohort overview…
+        <div data-testid="cohort-dashboard-loading">
+          <SkeletonCard lines={4} label="Loading cohort overview" />
         </div>
       )}
 
-      {!loading && (!overview || overview.cohortCount === 0) && (
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-          {error ?? 'No Tier 1 candidate cases found under golden_samples/.'}
+      {!loading && error && (
+        <div data-testid="cohort-dashboard-error">
+          <ErrorCard
+            title="Could not load cohort overview"
+            message={error}
+            code="COHORT-LOAD"
+            remediation={[
+              'Check the backend /api/v1/cohort-overview route responds.',
+              'Verify at least one *-candidate dir exists in golden_samples/.',
+            ]}
+          />
+        </div>
+      )}
+
+      {!loading && !error && (!overview || overview.cohortCount === 0) && (
+        <div data-testid="cohort-dashboard-empty">
+          <EmptyStateCard
+            headline="No Tier 1 candidate cases yet"
+            body="The cohort is empty. Add a *-candidate directory under golden_samples/ to populate this view."
+            glyph="∅"
+          />
         </div>
       )}
 
