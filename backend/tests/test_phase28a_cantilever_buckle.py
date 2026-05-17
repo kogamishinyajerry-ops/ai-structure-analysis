@@ -128,8 +128,15 @@ def test_phase28a_validated_count_is_eight() -> None:
         f"Phase 28 A guard tripped — expected tier_2_validated cases "
         f"{expected} not contained in {validated}"
     )
-    assert len(validated) == 8, (
-        f"validated count = {len(validated)}, expected 8; cohort={validated}"
+    # FM-04a Phase 29 A — strict `== 8` loosened to `>= 8` using the
+    # additive-promotion pattern (Phase 22/23/25/26/27/28 precedent).
+    # Subset-of relationship preserves the original Phase 28 A intent
+    # (the 8 expected cases above are still asserted via .issubset);
+    # subsequent phases that add more validated cases (Phase 29 A:
+    # plate-ss-shell-candidate, etc.) loosen this further. No
+    # validated case is ever downgraded.
+    assert len(validated) >= 8, (
+        f"validated count = {len(validated)}, expected ≥8; cohort={validated}"
     )
 
 

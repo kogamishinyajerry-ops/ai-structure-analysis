@@ -148,6 +148,16 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # produced 256% residual due to shear locking; rejected and
     # documented in NOTES.md.
     "cantilever-buckle-candidate": "tier_1_candidate",
+    # Phase 29 A — simply-supported plate, S4 SHELL elements. The
+    # FIRST validated case to use shell elements; closes the FEA
+    # Dim 1 hard cap (≤75) that has been load-bearing since Phase 18.
+    # Reuses Phase 25 A's Timoshenko α·q·a⁴/D analytical (helper in
+    # `plate_simply_supported.py`) — the analytical is element-
+    # discretization-agnostic. Hand-rolled 20×20 structured quad
+    # mesh (441 nodes), simply-supported BC (u_z=0 on 4 edges + RBM
+    # pin at corners), uniform pressure via *DLOAD P2. Promoted to
+    # tier_2_validated by verdict YAML overlay.
+    "plate-ss-shell-candidate": "tier_1_candidate",
 }
 
 
