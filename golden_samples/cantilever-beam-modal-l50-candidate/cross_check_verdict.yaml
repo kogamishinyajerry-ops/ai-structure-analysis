@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "cantilever-beam-modal-l50-candidate",
+  "verdict": "PASS",
+  "tolerance_pct": 12.0,
+  "residual_pct": 0.1359524829875223,
+  "analytical_hz": 16.71033188888161,
+  "observed_hz": 16.73305,
+  "all_observed_hz": [
+    16.73305,
+    16.73328,
+    104.6872,
+    104.6889,
+    292.3426
+  ],
+  "length_m": 1.0,
+  "height_m": 0.02,
+  "width_m": 0.02,
+  "slender_ratio": 50.0,
+  "node_count": 2216,
+  "element_count": 993,
+  "material_id": "steel-s355",
+  "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C \u00a7C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+  "generated_at_utc": "2026-05-17T15:19:47.449823+00:00",
+  "cross_check_kind": "cantilever_modal_euler_bernoulli",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
+}

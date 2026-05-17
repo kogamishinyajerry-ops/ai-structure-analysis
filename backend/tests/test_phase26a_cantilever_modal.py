@@ -206,8 +206,13 @@ def test_phase26a_validated_count_is_six() -> None:
         f"Phase 26 A guard tripped — expected tier_2_validated cases "
         f"{expected} not contained in {validated}"
     )
-    assert len(validated) == 6, (
-        f"validated count = {len(validated)}, expected 6; cohort={validated}"
+    # FM-04a Phase 27 A loosened the strict-equality `len == 6`
+    # check to subset-of, preserving Phase 26 A's intent (6 cases
+    # REQUIRED present) while admitting Phase 27 A's 7th case
+    # (cantilever-beam-modal-l50-candidate). Same additive-
+    # promotion pattern used at Phase 22, 23, 25, 26, 27.
+    assert len(validated) >= 6, (
+        f"validated count = {len(validated)}, expected ≥ 6; cohort={validated}"
     )
 
 

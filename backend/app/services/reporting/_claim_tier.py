@@ -121,6 +121,20 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # solver kind to the validated cohort (the four prior tier_2_
     # validated cases all used linear-static + one linear-buckling).
     "cantilever-beam-modal-candidate": "tier_1_candidate",
+    # Phase 27 A — extreme-slender cantilever modal (L/h=50).
+    # Second modal case; reuses Phase 26 A's runner verbatim with a
+    # 1.000 m × 20 mm × 20 mm beam (DOUBLED length → 4× more slender
+    # than Phase 26 A's L/h=25; still well inside the L/h ≥ 10
+    # Euler-Bernoulli validity envelope). Analytical f_1 scales as
+    # 1/L² → ≈ 16.71 Hz (vs Phase 26 A's 66.84 Hz). Live ccx
+    # 2026-05-17 residual +0.136% — virtually identical to Phase 26
+    # A's +0.13%, confirming the Euler-Bernoulli envelope holds at
+    # the slenderness extreme. Honest scope: NO new element type
+    # (still C3D10), NO new solver kind (still *FREQUENCY); the
+    # value-add is an envelope-stress-test across 4× the
+    # slenderness range. Shell elements deferred to a future phase
+    # because CalculiX shell-output reader plumbing is non-trivial.
+    "cantilever-beam-modal-l50-candidate": "tier_1_candidate",
 }
 
 
