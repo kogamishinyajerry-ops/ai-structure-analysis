@@ -29,6 +29,13 @@ interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
   apiBase: string;
   enabled?: boolean;
+  /** FM-04a Phase 22 D — unit suffix appended to the legend's min/max
+   * field values. Defaults to "Pa" (stress fields are the canonical
+   * Phase 22 output). Honest scope: a per-component switcher
+   * (σ_xx / σ_yy / σ_zz / max-principal) was scoped in the blueprint
+   * but requires σ-tensor payload not currently in result_mesh.json.
+   * Documented gap in the Phase 22 D commit; deferred. */
+  fieldUnits?: string;
 }
 
 interface ProjectedPolygon {
@@ -46,6 +53,7 @@ export function ResultMeshPlaybackPanel({
   caseId,
   apiBase,
   enabled = true,
+  fieldUnits = 'Pa',
 }: ResultMeshPlaybackPanelProps) {
   const [result, setResult] = useState<{
     caseId: string;
@@ -370,8 +378,25 @@ export function ResultMeshPlaybackPanel({
                     }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>min {formatNumber(summary.valueMin)}</span>
-                    <span>max {formatNumber(summary.valueMax)}</span>
+                    <span data-testid="legend-min">
+                      min {formatNumber(summary.valueMin)} {fieldUnits}
+                    </span>
+                    <span data-testid="legend-max">
+                      max {formatNumber(summary.valueMax)} {fieldUnits}
+                    </span>
+                  </div>
+                  <div
+                    data-testid="legend-field-component"
+                    style={{
+                      color: 'var(--text-muted)',
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      marginTop: 2,
+                    }}
+                    title="Phase 22 D honest scope: result_mesh.json carries a single scalar (Von Mises by default). σ_xx / σ_yy / σ_zz / max-principal switcher requires tensor payload upgrade."
+                  >
+                    {summary.fieldLabel || 'Von Mises'}
                   </div>
                 </div>
               )}

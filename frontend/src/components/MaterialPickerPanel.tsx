@@ -79,6 +79,7 @@ export function MaterialPickerPanel(props: MaterialPickerPanelProps) {
 
   return (
     <section
+      id="material-picker-panel"
       style={panelStyle}
       aria-labelledby="material-picker-heading"
       data-testid="material-picker-panel"

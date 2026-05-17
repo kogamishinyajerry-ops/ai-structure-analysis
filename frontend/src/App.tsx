@@ -1247,6 +1247,16 @@ function App() {
       handler: () => setSelectedMaterial(FALLBACK_MATERIALS[2]),
     },
     {
+      id: 'cmd-material-picker-open',
+      label: 'Open material picker panel',
+      category: 'material' as CommandCategory,
+      handler: () => {
+        if (typeof document === 'undefined') return;
+        const target = document.getElementById('material-picker-panel');
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
+    },
+    {
       id: 'cmd-close-palette',
       label: 'Close command palette',
       hotkey: 'escape',
@@ -1325,6 +1335,15 @@ function App() {
               showChat={showChat}
               onToggleChat={() => setShowChat(!showChat)}
               materialReference={lastSolverMaterialReference}
+              materialOptions={FALLBACK_MATERIALS.map((m) => ({
+                id: m.id,
+                label: m.name,
+              }))}
+              selectedMaterialId={selectedMaterial.id}
+              onChangeMaterialId={(id) => {
+                const found = FALLBACK_MATERIALS.find((m) => m.id === id);
+                if (found) setSelectedMaterial(found);
+              }}
             />
 
             <div style={{ padding: '40px', flex: 1 }}>

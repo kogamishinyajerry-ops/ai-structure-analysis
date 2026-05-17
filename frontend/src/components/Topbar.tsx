@@ -14,6 +14,11 @@ import type { ReactNode } from 'react'
 
 export type AnalysisType = 'static' | 'modal' | 'buckling'
 
+export interface TopbarMaterialOption {
+  id: string
+  label: string
+}
+
 export interface TopbarProps {
   /** Display label shown after "Analysis › " — the active case id, or
    * a fallback like the uploaded FRD filename / "Session". */
@@ -37,6 +42,13 @@ export interface TopbarProps {
    * used. Truncated to its first ~60 chars in the inline chip; the
    * full citation sits in the OperatorStatusPanel "Runtime" section. */
   materialReference?: string | null
+  /** FM-04a Phase 22 D — compact material picker in the Topbar.
+   * Mirrors the analysis-type dropdown so the swap path is 1 click
+   * from the top rail. Renders only when at least one option is
+   * provided; null/empty list collapses the control. */
+  materialOptions?: TopbarMaterialOption[]
+  selectedMaterialId?: string
+  onChangeMaterialId?: (next: string) => void
 }
 
 export function Topbar(props: TopbarProps) {
@@ -52,7 +64,14 @@ export function Topbar(props: TopbarProps) {
     showChat,
     onToggleChat,
     materialReference,
+    materialOptions,
+    selectedMaterialId,
+    onChangeMaterialId,
   } = props
+  const showMaterialSelect =
+    showRunControls &&
+    materialOptions !== undefined &&
+    materialOptions.length > 0
   return (
     <header
       data-testid="workbench-topbar"
@@ -136,6 +155,30 @@ export function Topbar(props: TopbarProps) {
             data-testid="topbar-run-controls"
             style={{ display: 'flex', gap: '8px' }}
           >
+            {showMaterialSelect && (
+              <select
+                data-testid="topbar-material-select"
+                aria-label="Active material"
+                value={selectedMaterialId ?? ''}
+                onChange={(e) => onChangeMaterialId?.(e.target.value)}
+                style={{
+                  background: 'var(--bg-surface)',
+                  color: '#fff',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '0 12px',
+                  fontSize: '0.85rem',
+                  outline: 'none',
+                  maxWidth: 220,
+                }}
+              >
+                {materialOptions!.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               data-testid="topbar-analysis-type"
               value={analysisType}
