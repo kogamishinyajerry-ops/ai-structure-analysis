@@ -55,7 +55,7 @@ from app.api.routes import trust_score_timeline as trust_score_timeline_route
 from app.main import app
 from app.services.reporting.cohort_snapshot import write_cohort_snapshot
 
-from tests._test_utils import assert_tier1_trio
+from tests._test_utils import assert_no_forbidden_positive_claims, assert_tier1_trio
 from tests._test_utils.cohort_fixtures import (
     make_clean_leak_case_input,
     make_explicit_dynamics_healthy_input,
@@ -507,3 +507,38 @@ def test_stuck_arc_timeline_cumulative_surfaces_energy(
     assert cumulative is not None
     assert cumulative["dominant_axis"] == "energy_audit"
     assert cumulative["dominant_delta_pct"] == -100.0
+
+
+# ---------------------------------------------------------------------
+# C:-8 forbidden-positive-claim grep across BOTH arc envelopes
+# ---------------------------------------------------------------------
+
+
+def test_stuck_arc_envelopes_carry_no_forbidden_positive_claims(
+    client: _SyncASGIClient, stuck_patched: Path
+) -> None:
+    """The 8-token forbidden positive-claim tuple MUST NOT appear in
+    any 200 envelope rendered on the stuck arc, outside
+    ``not <claim>`` / ``no <claim>`` form. C:-8 anti-gaming guard
+    promised in the file docstring."""
+    bodies = [
+        client.get(f"/api/v1/trust-score-timeline/{LEAK_CASE_ID}").text,
+        client.get("/api/v1/cohort-anomalies").text,
+        client.get(f"/api/v1/signoff-history/{LEAK_CASE_ID}").text,
+    ]
+    assert_no_forbidden_positive_claims("\n".join(bodies))
+
+
+def test_recovery_arc_envelopes_carry_no_forbidden_positive_claims(
+    client: _SyncASGIClient, recovery_patched: Path
+) -> None:
+    """The 8-token forbidden positive-claim tuple MUST NOT appear in
+    any 200 envelope rendered on the recovery arc, outside
+    ``not <claim>`` / ``no <claim>`` form. C:-8 anti-gaming guard
+    promised in the file docstring."""
+    bodies = [
+        client.get(f"/api/v1/trust-score-timeline/{LEAK_CASE_ID}").text,
+        client.get("/api/v1/cohort-anomalies").text,
+        client.get(f"/api/v1/signoff-history/{LEAK_CASE_ID}").text,
+    ]
+    assert_no_forbidden_positive_claims("\n".join(bodies))
