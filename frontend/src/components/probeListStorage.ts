@@ -39,6 +39,18 @@ export function probeListStorageKey(caseId: string): string {
   return `${PROBE_LIST_LS_KEY_PREFIX}${caseId}`;
 }
 
+/** Diagnostic result returned by `loadProbeListWithDiagnostic`. The
+ * `corrupted` flag is true ONLY when a stored key existed but its
+ * payload failed JSON parse or shape validation. A simple
+ * missing-key (first-load) is NOT corruption — that's the normal
+ * empty-state path. */
+export interface LoadProbeListResult {
+  state: ProbeListState;
+  corrupted: boolean;
+  /** Short human-readable reason — used by the Phase 30 C toast. */
+  reason?: string;
+}
+
 /** Load the persisted probe list for `caseId`. Returns initial
  * state on ANY failure (missing key / malformed JSON / wrong shape /
  * storage unavailable). Never throws.
@@ -52,32 +64,60 @@ export function loadProbeList(
   caseId: string,
   globalRef: typeof globalThis = globalThis,
 ): ProbeListState {
+  return loadProbeListWithDiagnostic(caseId, globalRef).state;
+}
+
+/** FM-04a Phase 30 C — diagnostic loader that returns both the
+ * resolved state AND a `corrupted` flag indicating whether the
+ * stored value was discarded due to JSON parse / shape failure
+ * (NOT including missing-key first-load). Callers wanting to
+ * surface a user-visible "discarded corrupted probe list" toast use
+ * THIS function; everyone else continues to use `loadProbeList`. */
+export function loadProbeListWithDiagnostic(
+  caseId: string,
+  globalRef: typeof globalThis = globalThis,
+): LoadProbeListResult {
   const ls = (globalRef as { localStorage?: Storage }).localStorage;
-  if (!ls) return PROBE_LIST_INITIAL_STATE;
+  if (!ls) return { state: PROBE_LIST_INITIAL_STATE, corrupted: false };
   try {
     const raw = ls.getItem(probeListStorageKey(caseId));
-    if (!raw) return PROBE_LIST_INITIAL_STATE;
+    if (!raw) return { state: PROBE_LIST_INITIAL_STATE, corrupted: false };
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
+      const reason = `malformed JSON: ${(err as Error).message}`;
       console.warn(
         `[FM-04a probeListStorage] discarded malformed JSON for case '${caseId}': ${(err as Error).message}`,
       );
-      return PROBE_LIST_INITIAL_STATE;
+      return {
+        state: PROBE_LIST_INITIAL_STATE,
+        corrupted: true,
+        reason,
+      };
     }
     if (!isValidPersistedShape(parsed)) {
+      const reason = 'wrong-shape payload';
       console.warn(
         `[FM-04a probeListStorage] discarded wrong-shape payload for case '${caseId}'`,
       );
-      return PROBE_LIST_INITIAL_STATE;
+      return {
+        state: PROBE_LIST_INITIAL_STATE,
+        corrupted: true,
+        reason,
+      };
     }
-    return { entries: parsed.entries };
+    return { state: { entries: parsed.entries }, corrupted: false };
   } catch (err) {
+    const reason = `storage access failed: ${(err as Error).message}`;
     console.warn(
       `[FM-04a probeListStorage] storage access failed for case '${caseId}': ${(err as Error).message}`,
     );
-    return PROBE_LIST_INITIAL_STATE;
+    return {
+      state: PROBE_LIST_INITIAL_STATE,
+      corrupted: true,
+      reason,
+    };
   }
 }
 

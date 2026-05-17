@@ -30,6 +30,8 @@ import {
 // comparison. Independent section-cut state, shared field/component/
 // threshold/playback state.
 import { CompanionViewport } from './CompanionViewport';
+// FM-04a Phase 30 C — Hyperworks-style floating coord-readout overlay.
+import { CoordReadoutTooltip } from './CoordReadoutTooltip';
 import {
   loadCompanionEnabled,
   saveCompanionEnabled,
@@ -49,7 +51,13 @@ import type { StressComponent } from '../stressDerivatives';
 // panel can render the table next to the viewport.
 import { ProbeListPanel } from './ProbeListPanel';
 // FM-04a Phase 27 D — probe-list save/restore across sessions.
-import { loadProbeList, saveProbeList } from './probeListStorage';
+// FM-04a Phase 30 C — diagnostic loader returns `corrupted` flag so
+// the panel can surface a user-visible toast on parse/shape failure.
+import {
+  loadProbeList,
+  loadProbeListWithDiagnostic,
+  saveProbeList,
+} from './probeListStorage';
 import {
   PROBE_LIST_INITIAL_STATE,
   addProbeEntry,
@@ -151,14 +159,41 @@ export function ResultMeshPlaybackPanel({
   const [companionSectionCut, setCompanionSectionCut] = useState<SectionCutState>(
     () => loadCompanionSectionCut() ?? computeCompanionInitialCut(null),
   );
+  // FM-04a Phase 30 C — hover coord-readout state. Receives 30Hz
+  // throttled hit coords from the WebGL viewport's raycaster; null
+  // when the mouse leaves or no hit. Rendered as a floating tooltip
+  // anchored at the screen-space hit position inside the primary
+  // viewport slot (so it sits over the WebGL canvas, not the panel
+  // chrome).
+  const [hoverCoords, setHoverCoords] = useState<
+    | {
+        worldX: number;
+        worldY: number;
+        worldZ: number;
+        screenX: number;
+        screenY: number;
+      }
+    | null
+  >(null);
   // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
   // FM-04a Phase 27 D — initial probe-list state is restored from
   // localStorage scoped by case_id (corrupted/missing key → empty).
   // Subsequent saves happen in a useEffect below.
+  // FM-04a Phase 30 C — diagnostic loader on first mount; if a key
+  // existed but was corrupted, surface a toast (corruptedToast state
+  // below). Subsequent case changes handled by the case-mount effect.
   const [probeList, setProbeList] = useState(() =>
     caseId ? loadProbeList(caseId) : PROBE_LIST_INITIAL_STATE,
   );
+  // FM-04a Phase 30 C — corrupted-key toast state. Set when a load
+  // returns corrupted=true; cleared on dismiss or after 8s auto-fade
+  // (twice the restored-toast lifespan since corruption messages are
+  // higher-stakes and reviewers may need longer to read them).
+  const [corruptedToast, setCorruptedToast] = useState<{
+    caseId: string;
+    reason: string;
+  } | null>(null);
   // FM-04a Phase 28 C — node label currently fading OUT via the
   // unmount animation. Set BEFORE the actual removeProbeEntry; cleared
   // after the animation timeout. While non-null the <tr> still
@@ -205,16 +240,32 @@ export function ResultMeshPlaybackPanel({
   // FM-04a Phase 27 D — case_id change → swap to that case's
   // persisted probe list (empty if none). Phase 28 C also surfaces
   // the "Restored N probes" toast on a non-empty load.
+  // FM-04a Phase 30 C — also surfaces the "Discarded corrupted
+  // probe list" toast when the load detected JSON parse / shape
+  // failure on an EXISTING key (missing key = first-load, no toast).
   useEffect(() => {
     if (caseId) {
-      const loaded = loadProbeList(caseId);
+      const { state: loaded, corrupted, reason } =
+        loadProbeListWithDiagnostic(caseId);
       setProbeList(loaded);
       setRestoredCount(loaded.entries.length);
+      if (corrupted) {
+        setCorruptedToast({ caseId, reason: reason ?? 'corrupted payload' });
+      } else {
+        setCorruptedToast(null);
+      }
     } else {
       setProbeList(PROBE_LIST_INITIAL_STATE);
       setRestoredCount(0);
+      setCorruptedToast(null);
     }
   }, [caseId]);
+  // FM-04a Phase 30 C — auto-dismiss the corrupted toast after 8s.
+  useEffect(() => {
+    if (!corruptedToast) return;
+    const timer = setTimeout(() => setCorruptedToast(null), 8000);
+    return () => clearTimeout(timer);
+  }, [corruptedToast]);
   // FM-04a Phase 28 C — auto-dismiss the restored toast after 4s.
   useEffect(() => {
     if (restoredCount === 0) return;
@@ -368,6 +419,39 @@ export function ResultMeshPlaybackPanel({
             data-testid="probe-restored-toast-dismiss"
             onClick={() => setRestoredCount(0)}
             aria-label="Dismiss restored probes notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* FM-04a Phase 30 C — corrupted-key toast. Surfaces when the
+          probe-list load discarded a corrupted/malformed payload on
+          case mount (NOT on missing-key first-load). 8s auto-fade
+          + dismiss button. Role=alert so screen readers announce it
+          immediately — corruption is higher-stakes than a routine
+          restore. Reuses POLISH_CLASS_RESTORED_TOAST styling but
+          uses warning-tinted text via inline color override. */}
+      {corruptedToast && (
+        <div
+          data-testid="probe-corrupted-toast"
+          className={POLISH_CLASS_RESTORED_TOAST}
+          role="alert"
+          aria-live="assertive"
+          style={{
+            top: '50px',
+            color: '#fda4af',
+            borderColor: 'rgba(239, 68, 68, 0.55)',
+          }}
+        >
+          <span>
+            Discarded corrupted probe list for case '{corruptedToast.caseId}' —
+            starting fresh
+          </span>
+          <button
+            type="button"
+            data-testid="probe-corrupted-toast-dismiss"
+            onClick={() => setCorruptedToast(null)}
+            aria-label="Dismiss corrupted probe list notification"
           >
             ×
           </button>
@@ -596,6 +680,7 @@ export function ResultMeshPlaybackPanel({
                   fieldComponent={fieldComponent}
                   valueFilter={valueFilter}
                   onNodePicked={setActivePick}
+                  onHoverCoords={setHoverCoords}
                 />
               ) : (
               <>
@@ -740,6 +825,15 @@ export function ResultMeshPlaybackPanel({
                     );
                   })()}
                 </div>
+              )}
+              {/* FM-04a Phase 30 C — floating coord-readout tooltip.
+                  Anchored to the primary-viewport-slot (position:
+                  relative) so the screenX/screenY hover coords from
+                  the WebGL viewport map correctly. Only renders when
+                  the WebGL viewport is active AND the raycaster
+                  reports a hit; null hoverCoords renders nothing. */}
+              {viewportMode === 'webgl' && (
+                <CoordReadoutTooltip info={hoverCoords} />
               )}
             </div>{/* close primary-viewport-slot */}
             {/* FM-04a Phase 30 B — companion viewport (2-quadrant

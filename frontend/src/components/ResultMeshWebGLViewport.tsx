@@ -94,6 +94,22 @@ interface ResultMeshWebGLViewportProps {
    * anti-gaming guard — projectile parts etc. shouldn't silently
    * disappear). */
   valueFilter?: ValueFilterState | null;
+  /** FM-04a Phase 30 C — hover coord-readout callback. Fires
+   * throttled (~30Hz) with world-space hit coords and screen-space
+   * anchor while the cursor hovers over the mesh (no drag). Fires
+   * with `null` when the cursor leaves or no mesh hit. Used by the
+   * parent panel's CoordReadoutTooltip overlay (Hyperworks-style). */
+  onHoverCoords?: (
+    info:
+      | {
+          worldX: number;
+          worldY: number;
+          worldZ: number;
+          screenX: number;
+          screenY: number;
+        }
+      | null,
+  ) => void;
 }
 
 export function ResultMeshWebGLViewport({
@@ -107,6 +123,7 @@ export function ResultMeshWebGLViewport({
   fieldComponent = 'mises',
   onNodePicked,
   valueFilter = null,
+  onHoverCoords,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -419,9 +436,59 @@ export function ResultMeshWebGLViewport({
       }
     };
 
+    // FM-04a Phase 30 C — hover coord-readout. Throttled raycast on
+    // mousemove WHEN NOT DRAGGING (D:-1 guard — don't fight the orbit
+    // controls). 30Hz throttle: floor(1000/30) = 33ms. Emits world-
+    // space hit coords + screen-space anchor (relative to the dom
+    // bounding box) to the parent panel's CoordReadoutTooltip.
+    let hoverLastFiredAt = -Infinity;
+    const HOVER_THROTTLE_MS = 33;
+    const onHover = (e: MouseEvent) => {
+      if (!onHoverCoords) return;
+      if (dragging) return;
+      if (!frame || !state.mesh) return;
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - hoverLastFiredAt < HOVER_THROTTLE_MS) return;
+      hoverLastFiredAt = now;
+      const rect = dom.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
+      if (
+        localX < 0
+        || localX > rect.width
+        || localY < 0
+        || localY > rect.height
+      ) {
+        onHoverCoords(null);
+        return;
+      }
+      const ndcX = (localX / rect.width) * 2 - 1;
+      const ndcY = -(localY / rect.height) * 2 + 1;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), state.camera);
+      const hits = ray.intersectObject(state.mesh, false);
+      if (hits.length === 0) {
+        onHoverCoords(null);
+        return;
+      }
+      onHoverCoords({
+        worldX: hits[0].point.x,
+        worldY: hits[0].point.y,
+        worldZ: hits[0].point.z,
+        screenX: localX,
+        screenY: localY,
+      });
+    };
+    const onMouseLeave = () => {
+      if (onHoverCoords) onHoverCoords(null);
+    };
+
     dom.addEventListener('mousedown', onMouseDown);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    dom.addEventListener('mousemove', onHover);
+    dom.addEventListener('mouseleave', onMouseLeave);
     dom.addEventListener('wheel', onWheel, { passive: false });
     dom.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('keydown', onKeyDown);
@@ -429,11 +496,13 @@ export function ResultMeshWebGLViewport({
       dom.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      dom.removeEventListener('mousemove', onHover);
+      dom.removeEventListener('mouseleave', onMouseLeave);
       dom.removeEventListener('wheel', onWheel);
       dom.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [triangleCount, frame, nextFrame, animTInterp, deformationScale, fieldComponent, onNodePicked]);
+  }, [triangleCount, frame, nextFrame, animTInterp, deformationScale, fieldComponent, onNodePicked, onHoverCoords]);
 
   const message = useMemo(() => {
     if (!supported) return 'WebGL not available — falling back to SVG body';
