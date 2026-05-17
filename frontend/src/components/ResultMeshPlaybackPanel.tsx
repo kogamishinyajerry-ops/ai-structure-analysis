@@ -23,6 +23,7 @@ import { SkeletonCard } from './SkeletonCard';
 import {
   ResultMeshWebGLViewport,
   type SectionCutState,
+  type ValueFilterState,
 } from './ResultMeshWebGLViewport';
 import type { StressComponent } from '../stressDerivatives';
 
@@ -79,6 +80,8 @@ export function ResultMeshPlaybackPanel({
   // recolors by the selected derivative. Falls back gracefully to the
   // scalar `value` field when no tensor is present.
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
+  // FM-04a Phase 23 D — element-value threshold filter.
+  const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -289,6 +292,9 @@ export function ResultMeshPlaybackPanel({
                   onDeformationScaleChange={setDeformationScale}
                   sectionCut={sectionCut}
                   onSectionCutChange={setSectionCut}
+                  valueFilter={valueFilter}
+                  onValueFilterChange={setValueFilter}
+                  valueRange={[summary.valueMin, summary.valueMax]}
                 />
               )}
             </div>
@@ -312,6 +318,7 @@ export function ResultMeshPlaybackPanel({
                   deformationScale={deformationScale}
                   sectionCut={sectionCut}
                   fieldComponent={fieldComponent}
+                  valueFilter={valueFilter}
                 />
               ) : (
               <>
@@ -747,21 +754,33 @@ const panelTitleStyle = {
 // FM-04a Phase 22 B — depth controls for the WebGL viewport:
 // deformation magnification slider (1×..100×) + section-cut row
 // (axis radio + position slider + low/high half toggle).
+// Phase 23 D — extended with element-value threshold filter row.
 function ViewportDepthControls({
   deformationScale,
   onDeformationScaleChange,
   sectionCut,
   onSectionCutChange,
+  valueFilter,
+  onValueFilterChange,
+  valueRange,
 }: {
   deformationScale: number;
   onDeformationScaleChange: (value: number) => void;
   sectionCut: SectionCutState | null;
   onSectionCutChange: (next: SectionCutState | null) => void;
+  valueFilter: ValueFilterState | null;
+  onValueFilterChange: (next: ValueFilterState | null) => void;
+  valueRange: [number, number];
 }) {
   const cutEnabled = sectionCut !== null;
   const axis = sectionCut?.axis ?? 'x';
   const positionM = sectionCut?.positionM ?? 0;
   const showLow = sectionCut?.showLow ?? true;
+  const filterEnabled = valueFilter !== null;
+  const [vMin, vMax] = valueRange;
+  const filterMin = valueFilter?.minValue ?? vMin;
+  const filterMax = valueFilter?.maxValue ?? vMax;
+  const filterMode = valueFilter?.mode ?? 'inside';
 
   return (
     <div
@@ -891,6 +910,112 @@ function ViewportDepthControls({
               }}
             >
               {showLow ? '−' : '+'}
+            </button>
+          </div>
+        )}
+      </div>
+      {/* Phase 23 D — element-value threshold filter row. */}
+      <div
+        data-testid="value-filter-control"
+        style={{ display: 'grid', gap: 4, gridColumn: '1 / -1' }}
+      >
+        <label
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="value-filter-toggle"
+            checked={filterEnabled}
+            onChange={(event) =>
+              onValueFilterChange(
+                event.target.checked
+                  ? { minValue: vMin, maxValue: vMax, mode: 'inside' }
+                  : null,
+              )
+            }
+          />
+          Element threshold filter
+        </label>
+        {filterEnabled && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr auto',
+              gap: 8,
+              alignItems: 'center',
+            }}
+          >
+            <label style={{ display: 'grid', gap: 2 }}>
+              <span style={{ fontSize: '0.66rem' }}>
+                min ≥ {filterMin.toExponential(2)}
+              </span>
+              <input
+                aria-label="Value filter minimum"
+                type="range"
+                min={vMin}
+                max={vMax}
+                step={(vMax - vMin) / 200 || 1}
+                value={filterMin}
+                data-testid="value-filter-min"
+                onChange={(event) =>
+                  onValueFilterChange({
+                    minValue: Number(event.target.value),
+                    maxValue: filterMax,
+                    mode: filterMode,
+                  })
+                }
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 2 }}>
+              <span style={{ fontSize: '0.66rem' }}>
+                max ≤ {filterMax.toExponential(2)}
+              </span>
+              <input
+                aria-label="Value filter maximum"
+                type="range"
+                min={vMin}
+                max={vMax}
+                step={(vMax - vMin) / 200 || 1}
+                value={filterMax}
+                data-testid="value-filter-max"
+                onChange={(event) =>
+                  onValueFilterChange({
+                    minValue: filterMin,
+                    maxValue: Number(event.target.value),
+                    mode: filterMode,
+                  })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              data-testid="value-filter-mode"
+              onClick={() =>
+                onValueFilterChange({
+                  minValue: filterMin,
+                  maxValue: filterMax,
+                  mode: filterMode === 'inside' ? 'outside' : 'inside',
+                })
+              }
+              style={{
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 3,
+                padding: '2px 6px',
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                fontSize: '0.62rem',
+                cursor: 'pointer',
+              }}
+            >
+              {filterMode === 'inside' ? 'IN' : 'OUT'}
             </button>
           </div>
         )}

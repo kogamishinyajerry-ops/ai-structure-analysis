@@ -35,6 +35,22 @@ export interface SectionCutState {
   showLow: boolean;
 }
 
+/** FM-04a Phase 23 D — element-value threshold filter.
+ *
+ * When set, elements whose derived field value falls outside
+ * [minValue, maxValue] (inverted when `mode === 'outside'`) are
+ * excluded from the BufferGeometry build. Elements without a value
+ * are retained regardless of filter — see anti-gaming guard D:-1. */
+export interface ValueFilterState {
+  /** Lower bound; null means -∞. */
+  minValue: number | null;
+  /** Upper bound; null means +∞. */
+  maxValue: number | null;
+  /** 'inside' keeps elements inside [minValue, maxValue];
+   *  'outside' keeps elements OUTSIDE that range. */
+  mode: 'inside' | 'outside';
+}
+
 interface ResultMeshWebGLViewportProps {
   frame: ResultMeshFrame | null;
   valueMin: number;
@@ -62,6 +78,13 @@ interface ResultMeshWebGLViewportProps {
    * pane. Passing `null` indicates "no pick" (Escape pressed or
    * click missed all geometry). */
   onNodePicked?: (info: PickedNodeInfo | null) => void;
+  /** FM-04a Phase 23 D — element-value threshold filter. When set,
+   * elements outside (inside, with mode='outside') the [minValue,
+   * maxValue] range drop out of the rendered geometry. Elements
+   * without a `value` are RETAINED regardless of filter (D:-1
+   * anti-gaming guard — projectile parts etc. shouldn't silently
+   * disappear). */
+  valueFilter?: ValueFilterState | null;
 }
 
 /** FM-04a Phase 23 C — payload of a successful node pick. */
@@ -265,6 +288,7 @@ function buildBufferGeometry(
     tInterp?: number;
     deformationScale?: number;
     fieldComponent?: StressComponent;
+    valueFilter?: ValueFilterState | null;
   } = {},
 ): {
   geometry: THREE.BufferGeometry;
@@ -280,6 +304,10 @@ function buildBufferGeometry(
 
   const triangles: Triangle[] = [];
   for (const element of frame.elements) {
+    // Phase 23 D — apply value filter (returns true for retain).
+    if (!applyValueFilter(element, options.valueFilter ?? null, options.fieldComponent ?? 'mises')) {
+      continue;
+    }
     const color = colorForElement(
       element,
       valueMin,
@@ -364,6 +392,45 @@ export function fieldValueAtNode(
   return null;
 }
 
+/** FM-04a Phase 23 D — element value selector for the threshold
+ * filter. Uses the same component-switcher path as the coloring
+ * (`colorForElement`) so the filter compares against the SAME
+ * scalar the reviewer sees on the gradient. */
+function elementFilterValue(
+  element: ResultMeshElement,
+  fieldComponent: StressComponent,
+): number | undefined {
+  if (element.alive === false) return undefined;
+  if (element.partRole === 'projectile') return undefined;
+  if (element.stressTensor) {
+    return componentValue(
+      element.stressTensor,
+      fieldComponent,
+      element.value ?? 0,
+    );
+  }
+  return element.value;
+}
+
+/** FM-04a Phase 23 D — pure-function filter predicate. Returns true
+ * when the element should RENDER. Elements with no derivable value
+ * (alive=false, projectile, no value, no tensor) ALWAYS render
+ * regardless of filter — that's the D:-1 anti-gaming guard. */
+export function applyValueFilter(
+  element: ResultMeshElement,
+  filter: ValueFilterState | null | undefined,
+  fieldComponent: StressComponent = 'mises',
+): boolean {
+  if (!filter) return true;
+  const v = elementFilterValue(element, fieldComponent);
+  // D:-1: elements without a value are retained.
+  if (v === undefined || !Number.isFinite(v)) return true;
+  const lo = filter.minValue ?? Number.NEGATIVE_INFINITY;
+  const hi = filter.maxValue ?? Number.POSITIVE_INFINITY;
+  const inside = v >= lo && v <= hi;
+  return filter.mode === 'inside' ? inside : !inside;
+}
+
 function detectWebGLSupport(): boolean {
   if (typeof window === 'undefined' || typeof document === 'undefined') return false;
   try {
@@ -388,6 +455,7 @@ export function ResultMeshWebGLViewport({
   sectionCut = null,
   fieldComponent = 'mises',
   onNodePicked,
+  valueFilter = null,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -496,6 +564,7 @@ export function ResultMeshWebGLViewport({
         tInterp: animTInterp,
         deformationScale,
         fieldComponent,
+        valueFilter,
       },
     );
 
@@ -548,7 +617,7 @@ export function ResultMeshWebGLViewport({
     }
     setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent]);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter]);
 
   // Phase 22 B — animation loop. When `playing && nextFrame`, drive
   // `animTInterp` from 0 → 1 over a fixed duration so the parent's
