@@ -153,6 +153,63 @@ def material_reference_for_audit(
     return material.reference
 
 
+def compose_material_id_inp(
+    case_dir: Path,
+    *,
+    jobname: str,
+    material_id: str | None,
+    edge_length_m: float = 0.1,
+    top_face_load_n: float = -1000.0,
+) -> tuple[Path, Material | MinimalHexMaterial, str]:
+    """Phase 20 A — compose-only path (no ccx subprocess).
+
+    Used by :mod:`app.api.routes.solver` to materialise a Tier 2 INP
+    from a UI-supplied ``material_id`` before handing the file to the
+    async-streaming legacy :class:`SolverService`. Decoupling the
+    composition step from ccx invocation lets the FastAPI route stay
+    non-blocking — the (potentially) 30 s ccx subprocess remains in
+    the background task; only the deterministic file-write happens on
+    the request path.
+
+    Args:
+        case_dir: workspace directory (must already exist).
+        jobname: INP filename stem; the written file is
+            ``case_dir/<jobname>.inp``.
+        material_id: SSOT material library id, or ``None`` for the
+            Phase 18 A :data:`DEFAULT_STEEL` back-compat fallback.
+        edge_length_m: hex edge length in meters (default 100 mm).
+        top_face_load_n: total z-direction load (default -1000 N).
+
+    Returns:
+        ``(inp_path, material, reference_str)`` triple. The caller
+        uses ``inp_path`` to hand off to the solver service; the
+        material + reference power the response envelope's audit
+        citation.
+
+    Raises:
+        Tier2PipelineError: when ``material_id`` is unknown or the
+            INP write refuses (the ``stage`` attribute names the
+            failure point).
+    """
+    material = resolve_material(material_id)
+    hex_descriptor = material_to_hex_descriptor(material)
+    try:
+        inp_path = write_minimal_hex_inp(
+            case_dir,
+            jobname=jobname,
+            material=hex_descriptor,
+            edge_length_m=edge_length_m,
+            top_face_load_n=top_face_load_n,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise Tier2PipelineError(
+            f"INP composition refused: {exc}",
+            stage="write_inp",
+            cause=exc,
+        ) from exc
+    return inp_path, material, material_reference_for_audit(material)
+
+
 def run_tier2_minimal_hex(
     case_dir: Path,
     *,
@@ -231,5 +288,6 @@ __all__ = [
     "resolve_material",
     "material_to_hex_descriptor",
     "material_reference_for_audit",
+    "compose_material_id_inp",
     "run_tier2_minimal_hex",
 ]
