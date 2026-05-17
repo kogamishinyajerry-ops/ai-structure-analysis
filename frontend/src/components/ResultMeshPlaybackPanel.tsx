@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { AlertTriangle, Box, Layers, Loader2, Pause, Play, ShieldAlert } from 'lucide-react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { Box, Layers, Pause, Play, ShieldAlert } from 'lucide-react';
 
 import {
   summarizeResultMeshPlayback,
@@ -15,6 +15,10 @@ import {
 import { EmptyStateCard } from './EmptyStateCard';
 import { ErrorCard } from './ErrorCard';
 import { SkeletonCard } from './SkeletonCard';
+// FM-04a Phase 21 C — three.js WebGL viewport. Reads the same
+// `summary.selectedFrame` the SVG panel consumes; the SVG body stays
+// as a fallback when WebGL is unavailable or the user toggles to it.
+import { ResultMeshWebGLViewport } from './ResultMeshWebGLViewport';
 
 interface ResultMeshPlaybackPanelProps {
   caseId: string | null;
@@ -45,6 +49,11 @@ export function ResultMeshPlaybackPanel({
   } | null>(null);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // FM-04a Phase 21 C — viewport mode. 'webgl' mounts the three.js
+  // viewport above the SVG body; 'svg' is the Phase 19 D-and-earlier
+  // path (still the test fallback when WebGL is unavailable). Default
+  // is 'webgl' so reviewers see the 3D viewport on first open.
+  const [viewportMode, setViewportMode] = useState<'webgl' | 'svg'>('webgl');
 
   const currentResult = result?.caseId === caseId ? result : null;
   const payload = currentResult?.payload ?? null;
@@ -181,7 +190,54 @@ export function ResultMeshPlaybackPanel({
             minHeight: 0,
           }}
         >
-          <div style={{ minHeight: 0, display: 'grid', gridTemplateRows: '1fr auto', gap: '12px' }}>
+          <div style={{ minHeight: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', gap: '12px' }}>
+            <div
+              data-testid="viewport-mode-toggle"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 6,
+                fontSize: '0.7rem',
+              }}
+            >
+              <button
+                type="button"
+                data-testid="viewport-toggle-webgl"
+                onClick={() => setViewportMode('webgl')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: '1px solid var(--border)',
+                  background:
+                    viewportMode === 'webgl' ? 'var(--accent)' : 'transparent',
+                  color:
+                    viewportMode === 'webgl' ? '#000' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                3D
+              </button>
+              <button
+                type="button"
+                data-testid="viewport-toggle-svg"
+                onClick={() => setViewportMode('svg')}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 4,
+                  border: '1px solid var(--border)',
+                  background:
+                    viewportMode === 'svg' ? 'var(--accent)' : 'transparent',
+                  color:
+                    viewportMode === 'svg' ? '#000' : 'var(--text-secondary)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                SVG
+              </button>
+            </div>
             <div
               style={{
                 minHeight: '210px',
@@ -192,6 +248,14 @@ export function ResultMeshPlaybackPanel({
                 position: 'relative',
               }}
             >
+              {viewportMode === 'webgl' ? (
+                <ResultMeshWebGLViewport
+                  frame={summary.selectedFrame}
+                  valueMin={summary.valueMin}
+                  valueMax={summary.valueMax}
+                />
+              ) : (
+              <>
               <svg width="100%" height="100%" viewBox="0 0 1000 440" role="img" aria-label="Dynamic result mesh frame">
                 <rect x="0" y="0" width="1000" height="440" fill="#020617" />
                 {projection.map((polygon) => (
@@ -220,13 +284,15 @@ export function ResultMeshPlaybackPanel({
                   No renderable mesh frame
                 </div>
               )}
-              {/* FM-04a Phase 19 D — stress-contour color legend.
-                  Phase 18 UX agent finding T5: contour overlay existed
-                  internally (blue→green→orange) but no legend told the
-                  reviewer what colour means what stress. The legend
-                  below makes the color scale legible without requiring
-                  a WebGL rewrite (Phase 20+ scope). */}
-              {projection.length > 0 && summary && (
+              </>
+              )}
+              {/* FM-04a Phase 19 D — stress-contour color legend
+                  (Phase 21 C: now shared by WebGL + SVG viewports).
+                  The legend renders OUTSIDE the WebGL/SVG conditional
+                  so the gradient annotation stays visible in both
+                  modes. Phase 21 C's three.js viewport uses the same
+                  blue→green→orange gradient as the SVG projection. */}
+              {summary && (
                 <div
                   data-testid="stress-contour-legend"
                   style={{
@@ -408,26 +474,6 @@ function MetricGrid({ summary }: { summary: NonNullable<ReturnType<typeof summar
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function PanelState({ icon, title }: { icon: ReactNode; title: string }) {
-  return (
-    <div
-      style={{
-        height: '100%',
-        minHeight: '260px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '10px',
-        color: 'var(--text-muted)',
-        fontSize: '0.88rem',
-      }}
-    >
-      {icon}
-      {title}
     </div>
   );
 }
