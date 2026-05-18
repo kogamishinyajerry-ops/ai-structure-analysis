@@ -12,6 +12,7 @@ import {
 import './App.css';
 import { ComplianceBadge } from './components/ComplianceBadge';
 import { CaseOpenAdvisorCard } from './components/CaseOpenAdvisorCard';
+import { CaseBrowser } from './components/CaseBrowser';
 import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
@@ -1325,6 +1326,13 @@ function App() {
               sections={trustSections}
               goldenSamples={goldenSampleQueue}
             />
+
+            {/* FM-04a Phase 37 A — CaseBrowser canonical surface, browse mode. */}
+            {!activeCaseId && (
+                <div style={{ marginBottom: '24px' }}>
+                    <CaseBrowser cases={FALLBACK_CANDIDATE_CASES} focusedCaseId={selectedCandidateCaseId} onSelectCase={(caseId) => setSelectedCandidateCaseId(caseId)} />
+                </div>
+            )}
 
             <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />

@@ -36,6 +36,18 @@ export interface CandidateCaseRecord {
   // undefined / absent → unknown / live-route payload not yet
   //           emitting this field; UI should not surface a badge.
   runnerAvailable?: boolean
+  // FM-04a Phase 37 A — solver kind for CaseBrowser tree grouping.
+  // Mirrors the backend verdict YAML `solver_kind:` enum
+  // (Phase 35 B 6 values: linear_static / modal / buckling /
+  // dynamic / heat_transfer_steady_state / contact_pair_static).
+  // Optional so the live-route payload stays back-compat.
+  solverKind?:
+    | 'linear_static'
+    | 'modal'
+    | 'buckling'
+    | 'dynamic'
+    | 'heat_transfer_steady_state'
+    | 'contact_pair_static'
 }
 
 export interface CandidateCaseRegistryPayload {
@@ -55,6 +67,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'GS-102-candidate',
     runnerAvailable: false,
+    solverKind: 'dynamic',
     displayLabel: 'GS-102 · Single-hex demo (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-candidate/data/model_00_0000.rad',
@@ -70,6 +83,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'GS-102-refined-candidate',
     runnerAvailable: false,
+    solverKind: 'dynamic',
     displayLabel: 'GS-102 refined · 4×3×3 plate + 2×2×2 projectile (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
@@ -87,6 +101,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'GS-102-hifi-candidate',
     runnerAvailable: false,
+    solverKind: 'dynamic',
     displayLabel: 'GS-102 hi-fi · 7.62×51 AP vs Weldox 460E @ V0=600 m/s (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-hifi-candidate/data/model_00_0000.rad',
@@ -106,6 +121,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     // path until now.
     caseId: 'rod-wave-impact-energy-leak-candidate',
     runnerAvailable: false,
+    solverKind: 'dynamic',
     displayLabel: 'Rod-wave impact · ENERGY LEAK case (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: null,
@@ -129,6 +145,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     // a real defect; this commit closes it.
     caseId: 'cylinder-pv-candidate',
     runnerAvailable: true,
+    solverKind: 'linear_static',
     displayLabel: 'Cylinder pressure vessel · Tier 2 validated',
     claimTier: 'Tier 2 validated (analytical hoop-stress cross-check)',
     starterDeckRelpath: null,
@@ -146,6 +163,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'plate-with-hole-candidate',
     runnerAvailable: true,
+    solverKind: 'linear_static',
     displayLabel: 'Plate with hole · 100×50×5 mm, meshed pipeline',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
@@ -163,6 +181,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'cantilever-beam-candidate',
     runnerAvailable: true,
+    solverKind: 'linear_static',
     displayLabel: 'Cantilever beam · Euler-Bernoulli δ=PL³/(3EI)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: null,
