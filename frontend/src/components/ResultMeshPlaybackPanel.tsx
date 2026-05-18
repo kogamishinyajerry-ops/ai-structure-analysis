@@ -32,13 +32,12 @@ import {
 import { CompanionViewport } from './CompanionViewport';
 // FM-04a Phase 30 C — Hyperworks-style floating coord-readout overlay.
 import { CoordReadoutTooltip } from './CoordReadoutTooltip';
-import {
-  loadCompanionEnabled,
-  saveCompanionEnabled,
-  loadCompanionSectionCut,
-  saveCompanionSectionCut,
-  computeCompanionInitialCut,
-} from './companionViewportStorage';
+// FM-04a Phase 31 B — viewport-layout state + effect cascade
+// centralized in a single hook. Eliminates 6 local useState + 5
+// useEffect from this file (closes the 3-phase reducer-extraction
+// debt called out by Phase 27 punchlist #3 + Phase 29 rec #2 +
+// Phase 30 UX Dim 3 -1 debit).
+import { useViewportLayout } from '../state/useViewportLayout';
 import type { StressComponent } from '../stressDerivatives';
 // FM-04a Phase 24 B — onboarding tour mounted into the result-mesh
 // panel because that's where Phase 23 B/C/D added the new control
@@ -50,16 +49,11 @@ import type { StressComponent } from '../stressDerivatives';
 // single-pick to a comparison list (max 8). State owned here so the
 // panel can render the table next to the viewport.
 import { ProbeListPanel } from './ProbeListPanel';
-// FM-04a Phase 27 D — probe-list save/restore across sessions.
-// FM-04a Phase 30 C — diagnostic loader returns `corrupted` flag so
-// the panel can surface a user-visible toast on parse/shape failure.
+// FM-04a Phase 27 D — probe-list save/restore across sessions
+// (loadProbeList / loadProbeListWithDiagnostic / saveProbeList all
+// moved to useViewportLayout in Phase 31 B; the panel only needs
+// the immutable transforms below).
 import {
-  loadProbeList,
-  loadProbeListWithDiagnostic,
-  saveProbeList,
-} from './probeListStorage';
-import {
-  PROBE_LIST_INITIAL_STATE,
   addProbeEntry,
   clearAllProbes,
   removeProbeEntry,
@@ -128,11 +122,6 @@ export function ResultMeshPlaybackPanel({
   } | null>(null);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
-  // FM-04a Phase 21 C — viewport mode. 'webgl' mounts the three.js
-  // viewport above the SVG body; 'svg' is the Phase 19 D-and-earlier
-  // path (still the test fallback when WebGL is unavailable). Default
-  // is 'webgl' so reviewers see the 3D viewport on first open.
-  const [viewportMode, setViewportMode] = useState<'webgl' | 'svg'>('webgl');
   // FM-04a Phase 22 B — viewport depth controls. Deformation
   // magnification scales (deformed - undeformed) so small-strain
   // results are visible; default 1× (true coords). Section cut hides
@@ -141,75 +130,45 @@ export function ResultMeshPlaybackPanel({
   const [sectionCut, setSectionCut] = useState<SectionCutState | null>(null);
   // FM-04a Phase 23 B — stress-tensor component switcher. Defaults to
   // Mises; when the frame's elements carry a stressTensor the viewport
-  // recolors by the selected derivative. Falls back gracefully to the
-  // scalar `value` field when no tensor is present.
+  // recolors by the selected derivative.
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
   // FM-04a Phase 23 D — element-value threshold filter.
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
-  // FM-04a Phase 30 B — companion-viewport state. Two independent
-  // pieces of state, both persisted to localStorage:
-  //   1. showCompanionViewport — whether the 2-quadrant layout is on.
-  //   2. companionSectionCut    — companion's independent cut state.
-  // C:-1 anti-gaming guard: toggling Compare off does NOT clear
-  // companionSectionCut; reopening restores the same position.
-  // D:-1: default OFF (additive — existing reviewers see no change).
-  const [showCompanionViewport, setShowCompanionViewport] = useState<boolean>(
-    () => loadCompanionEnabled(),
-  );
-  const [companionSectionCut, setCompanionSectionCut] = useState<SectionCutState>(
-    () => loadCompanionSectionCut() ?? computeCompanionInitialCut(null),
-  );
-  // FM-04a Phase 30 C — hover coord-readout state. Receives 30Hz
-  // throttled hit coords from the WebGL viewport's raycaster; null
-  // when the mouse leaves or no hit. Rendered as a floating tooltip
-  // anchored at the screen-space hit position inside the primary
-  // viewport slot (so it sits over the WebGL canvas, not the panel
-  // chrome).
-  const [hoverCoords, setHoverCoords] = useState<
-    | {
-        worldX: number;
-        worldY: number;
-        worldZ: number;
-        screenX: number;
-        screenY: number;
-      }
-    | null
-  >(null);
-  // FM-04a Phase 24 D — active pick (single) + pinned probe list (multi).
+  // FM-04a Phase 24 D — active pick (single, live; pinned list owned
+  // by the layout hook below).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
-  // FM-04a Phase 27 D — initial probe-list state is restored from
-  // localStorage scoped by case_id (corrupted/missing key → empty).
-  // Subsequent saves happen in a useEffect below.
-  // FM-04a Phase 30 C — diagnostic loader on first mount; if a key
-  // existed but was corrupted, surface a toast (corruptedToast state
-  // below). Subsequent case changes handled by the case-mount effect.
-  const [probeList, setProbeList] = useState(() =>
-    caseId ? loadProbeList(caseId) : PROBE_LIST_INITIAL_STATE,
-  );
-  // FM-04a Phase 30 C — corrupted-key toast state. Set when a load
-  // returns corrupted=true; cleared on dismiss or after 8s auto-fade
-  // (twice the restored-toast lifespan since corruption messages are
-  // higher-stakes and reviewers may need longer to read them).
-  const [corruptedToast, setCorruptedToast] = useState<{
-    caseId: string;
-    reason: string;
-  } | null>(null);
-  // FM-04a Phase 28 C — node label currently fading OUT via the
-  // unmount animation. Set BEFORE the actual removeProbeEntry; cleared
-  // after the animation timeout. While non-null the <tr> still
-  // renders with the unmount CSS class.
-  const [exitingProbeLabel, setExitingProbeLabel] = useState<number | null>(null);
-  // FM-04a Phase 29 C — tour-dismissed signal is now owned by
-  // App-root since both OnboardingTour and AdvancedModePromo were
-  // lifted there. State removed from this panel.
-  // FM-04a Phase 28 C — "Restored N probes from your last session"
-  // toast. Set on initial case mount if loadProbeList returned >= 1
-  // entries; cleared after 4 seconds (or click).
-  const [restoredCount, setRestoredCount] = useState<number>(() => {
-    if (!caseId) return 0;
-    const loaded = loadProbeList(caseId);
-    return loaded.entries.length;
+
+  // FM-04a Phase 31 B — viewport-layout state + effect cascade
+  // extracted to a custom hook. Closes the 3-phase reducer-extraction
+  // debt (Phase 27 punchlist #3 + Phase 29 rec #2 + Phase 30 Dim 3
+  // -1 debit). Hook owns: viewportMode, showCompanionViewport,
+  // companionSectionCut, hoverCoords, probeList, exitingProbeLabel,
+  // restoredCount, corruptedToast — and the 5 effects coupling them
+  // (case-mount diagnostic load + 2 auto-dismiss timers + 2
+  // companion persistence).
+  const { state: layout, actions: layoutActions } = useViewportLayout({
+    caseId,
   });
+  const {
+    viewportMode,
+    showCompanionViewport,
+    companionSectionCut,
+    hoverCoords,
+    probeList,
+    exitingProbeLabel,
+    restoredCount,
+    corruptedToast,
+  } = layout;
+  const {
+    setViewportMode,
+    toggleCompanion,
+    setCompanionSectionCut,
+    setHoverCoords,
+    setProbeList,
+    setExitingProbeLabel,
+    setRestoredCount,
+    dismissCorruptedToast,
+  } = layoutActions;
   // FM-04a Phase 25 C — Basic/Advanced UI mode. State preservation
   // contract: toggling basic does NOT clear the threshold filter /
   // section cut / probe list / field component — only the UI is
@@ -237,55 +196,12 @@ export function ResultMeshPlaybackPanel({
   useEffect(() => {
     installPolishStyles();
   }, []);
-  // FM-04a Phase 27 D — case_id change → swap to that case's
-  // persisted probe list (empty if none). Phase 28 C also surfaces
-  // the "Restored N probes" toast on a non-empty load.
-  // FM-04a Phase 30 C — also surfaces the "Discarded corrupted
-  // probe list" toast when the load detected JSON parse / shape
-  // failure on an EXISTING key (missing key = first-load, no toast).
-  useEffect(() => {
-    if (caseId) {
-      const { state: loaded, corrupted, reason } =
-        loadProbeListWithDiagnostic(caseId);
-      setProbeList(loaded);
-      setRestoredCount(loaded.entries.length);
-      if (corrupted) {
-        setCorruptedToast({ caseId, reason: reason ?? 'corrupted payload' });
-      } else {
-        setCorruptedToast(null);
-      }
-    } else {
-      setProbeList(PROBE_LIST_INITIAL_STATE);
-      setRestoredCount(0);
-      setCorruptedToast(null);
-    }
-  }, [caseId]);
-  // FM-04a Phase 30 C — auto-dismiss the corrupted toast after 8s.
-  useEffect(() => {
-    if (!corruptedToast) return;
-    const timer = setTimeout(() => setCorruptedToast(null), 8000);
-    return () => clearTimeout(timer);
-  }, [corruptedToast]);
-  // FM-04a Phase 28 C — auto-dismiss the restored toast after 4s.
-  useEffect(() => {
-    if (restoredCount === 0) return;
-    const timer = setTimeout(() => setRestoredCount(0), 4000);
-    return () => clearTimeout(timer);
-  }, [restoredCount]);
-  // FM-04a Phase 27 D — persist probe-list state on every change
-  // (scoped by case_id; C:-1 anti-gaming guard at predicate level).
-  useEffect(() => {
-    if (caseId) saveProbeList(caseId, probeList);
-  }, [caseId, probeList]);
-  // FM-04a Phase 30 B — persist companion-viewport state. Two
-  // independent effects so the enabled flag and the cut position
-  // persist on their own cadences.
-  useEffect(() => {
-    saveCompanionEnabled(showCompanionViewport);
-  }, [showCompanionViewport]);
-  useEffect(() => {
-    saveCompanionSectionCut(companionSectionCut);
-  }, [companionSectionCut]);
+  // FM-04a Phase 31 B — case-mount cascade + auto-dismiss timers +
+  // probe-list & companion-state persistence ALL moved to
+  // `useViewportLayout` above. The 5 useEffect blocks deleted from
+  // this panel are now centralized in the hook with the same
+  // behavioral semantics (pinned by Phase 27 D / 28 C / 30 B /
+  // 30 C tests + new Phase 31 B tests).
   const handleUiModeChange = (next: UiMode) => {
     setUiMode(next);
     // Only the internal-state path needs to persist — the App-root
@@ -450,7 +366,7 @@ export function ResultMeshPlaybackPanel({
           <button
             type="button"
             data-testid="probe-corrupted-toast-dismiss"
-            onClick={() => setCorruptedToast(null)}
+            onClick={() => dismissCorruptedToast()}
             aria-label="Dismiss corrupted probe list notification"
           >
             ×
@@ -542,27 +458,7 @@ export function ResultMeshPlaybackPanel({
                   type="button"
                   data-testid="compare-cuts-toggle"
                   aria-pressed={companionViewportActive}
-                  onClick={() =>
-                    setShowCompanionViewport((current) => {
-                      const next = !current;
-                      // When turning ON for the first time AND the
-                      // persisted cut is the default, seed from the
-                      // primary's current cut so the companion starts
-                      // at a useful position (mirror axis, flipped
-                      // half). C:-1: never overwrite a user-edited
-                      // companion cut here — only reseed if the cut
-                      // is still at the storage default.
-                      if (next && sectionCut !== null) {
-                        const persisted = loadCompanionSectionCut();
-                        if (persisted === null) {
-                          setCompanionSectionCut(
-                            computeCompanionInitialCut(sectionCut),
-                          );
-                        }
-                      }
-                      return next;
-                    })
-                  }
+                  onClick={() => toggleCompanion(sectionCut)}
                   style={{
                     padding: '4px 10px',
                     borderRadius: 4,
