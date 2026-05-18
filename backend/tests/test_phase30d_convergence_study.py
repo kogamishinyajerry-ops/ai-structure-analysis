@@ -164,7 +164,8 @@ class TestWriteArtifact:
         out = write_convergence_artifact(tmp_path, artifact)
         assert out.is_file()
         payload = read_convergence_artifact(out)
-        assert payload["schema_version"] == "1.0.0"
+        # Phase 31 C bumps schema 1.0.0 → 1.1.0 (additive richardson field).
+        assert payload["schema_version"] == "1.1.0"
         assert payload["case_id"] == "round-trip-case"
         assert payload["refinement_param_name"] == "n_per_side"
         assert len(payload["points"]) == 3
@@ -226,7 +227,8 @@ class TestPlateSSShellArtifact:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def test_schema_version_pinned(self, payload: dict) -> None:
-        assert payload["schema_version"] == "1.0.0"
+        # Phase 31 C bumps schema 1.0.0 → 1.1.0 (additive richardson field).
+        assert payload["schema_version"] == "1.1.0"
 
     def test_case_id_pinned(self, payload: dict) -> None:
         assert payload["case_id"] == "plate-ss-shell-candidate"
@@ -288,7 +290,8 @@ class TestCantileverModalArtifact:
         return json.loads(path.read_text(encoding="utf-8"))
 
     def test_schema_version_pinned(self, payload: dict) -> None:
-        assert payload["schema_version"] == "1.0.0"
+        # Phase 31 C bumps schema 1.0.0 → 1.1.0 (additive richardson field).
+        assert payload["schema_version"] == "1.1.0"
 
     def test_case_id_pinned(self, payload: dict) -> None:
         assert payload["case_id"] == "cantilever-beam-modal-candidate"
