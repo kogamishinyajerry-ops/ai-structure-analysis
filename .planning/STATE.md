@@ -1,6 +1,6 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase33-rubric-v2-sub-agents-rebaseline-hertz-analytical-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@PHASE33E_HASH_PENDING`
+> **Stamp:** `fm04a-phase33-rubric-v2-sub-agents-rebaseline-hertz-analytical-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@eb3f27a`
 >
 > Phase 32 (CLOSED 2026-05-18 @ `bc3fa59`): retained below for context.
 > Phase 31 (CLOSED 2026-05-18 @ `4bd4ce1`): retained further below for context.
