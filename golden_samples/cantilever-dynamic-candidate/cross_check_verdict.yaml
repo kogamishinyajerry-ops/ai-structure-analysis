@@ -1,5 +1,6 @@
 {
   "schema_version": "1.2.0",
+  "solver_kind": "dynamic",
   "case_id": "cantilever-dynamic-candidate",
   "verdict": "PASS",
   "tolerance_pct": 8.0,
@@ -24,7 +25,6 @@
   "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C \u00a7C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
   "generated_at_utc": "2026-05-17T17:37:39.353384+00:00",
   "cross_check_kind": "cantilever_free_vibration_dynamic",
-  "solver_kind": "dynamic",
   "runner": "cantilever_dynamic_runner",
   "claim_tier": "tier_2_validated",
   "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical; first_dynamic_validated"

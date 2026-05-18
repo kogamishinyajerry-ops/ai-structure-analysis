@@ -1,5 +1,6 @@
 {
   "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
   "case_id": "cantilever-beam-candidate",
   "verdict": "PASS",
   "tolerance_pct": 15.0,

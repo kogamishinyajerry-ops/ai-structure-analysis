@@ -1,4 +1,6 @@
 {
+  "schema_version": "1.0.0",
+  "solver_kind": "buckling",
   "analytical_p_cr_n": 1727.1807701906378,
   "case_id": "euler-column-candidate",
   "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical",

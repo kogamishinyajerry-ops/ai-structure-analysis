@@ -555,6 +555,7 @@ def write_heat_transfer_verdict_yaml(
         )
     payload = {
         "schema_version": "1.3.0",
+        "solver_kind": "heat_transfer_steady_state",
         "case_id": result.case_id,
         "verdict": result.verdict,
         "tolerance_pct": result.tolerance_pct,
@@ -575,7 +576,6 @@ def write_heat_transfer_verdict_yaml(
         "material_id": result.material_id,
         "material_reference": result.material_reference,
         "generated_at_utc": result.generated_at_utc,
-        "solver_kind": "heat_transfer_steady_state",
         "cross_check_kind": "heat_transfer_1d_linear_conduction",
         "claim_tier": (
             "tier_2_validated" if result.verdict == "PASS"

@@ -530,6 +530,7 @@ def write_cantilever_dynamic_verdict_yaml(
         )
     payload = {
         "schema_version": "1.2.0",
+        "solver_kind": "dynamic",
         "case_id": result.case_id,
         "verdict": result.verdict,
         "tolerance_pct": result.tolerance_pct,
@@ -554,7 +555,6 @@ def write_cantilever_dynamic_verdict_yaml(
         "material_reference": result.material_reference,
         "generated_at_utc": result.generated_at_utc,
         "cross_check_kind": "cantilever_free_vibration_dynamic",
-        "solver_kind": "dynamic",
         "runner": "cantilever_dynamic_runner",
         "claim_tier": (
             "tier_2_validated" if result.verdict == "PASS"

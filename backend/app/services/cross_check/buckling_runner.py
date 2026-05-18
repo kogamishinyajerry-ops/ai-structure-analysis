@@ -500,6 +500,7 @@ def write_buckling_verdict_yaml(
         )
     payload = {
         "schema_version": "1.0.0",
+        "solver_kind": "buckling",
         "case_id": result.case_id,
         "verdict": result.verdict,
         "tolerance_pct": result.tolerance_pct,

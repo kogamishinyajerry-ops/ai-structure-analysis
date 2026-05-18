@@ -1,5 +1,6 @@
 {
   "schema_version": "1.3.0",
+  "solver_kind": "heat_transfer_steady_state",
   "case_id": "heat-transfer-1d-candidate",
   "verdict": "PASS",
   "tolerance_pct": 1.0,
@@ -18,9 +19,8 @@
   "element_count": 40,
   "element_type": "C3D8",
   "material_id": "steel-s355",
-  "material_reference": "EN 10025-2:2019 §7.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C §C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+  "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C \u00a7C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
   "generated_at_utc": "2026-05-18T03:10:44.162461+00:00",
-  "solver_kind": "heat_transfer_steady_state",
   "cross_check_kind": "heat_transfer_1d_linear_conduction",
   "claim_tier": "tier_2_validated",
   "claim_boundary": "tier2_real_solver_validated; not_signed_validation; first_heat_transfer_validated; cross_check_against_analytical",

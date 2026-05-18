@@ -427,6 +427,7 @@ def write_plate_ss_shell_verdict_yaml(
         )
     payload = {
         "schema_version": "1.1.0",
+        "solver_kind": "linear_static",
         "case_id": result.case_id,
         "verdict": result.verdict,
         "tolerance_pct": result.tolerance_pct,

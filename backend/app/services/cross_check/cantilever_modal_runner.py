@@ -351,6 +351,7 @@ def write_cantilever_modal_verdict_yaml(
         )
     payload = {
         "schema_version": "1.0.0",
+        "solver_kind": "modal",
         "case_id": result.case_id,
         "verdict": result.verdict,
         "tolerance_pct": result.tolerance_pct,

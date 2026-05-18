@@ -1,5 +1,6 @@
 {
   "schema_version": "1.0.0",
+  "solver_kind": "modal",
   "case_id": "cantilever-beam-modal-candidate",
   "verdict": "PASS",
   "tolerance_pct": 12.0,

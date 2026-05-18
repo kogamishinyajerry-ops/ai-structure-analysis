@@ -21,7 +21,7 @@ Projected lift: **Phase 35 composite 74-77 / v2.0** (+1.5-4.5).
 |---|---|---|
 | 35 blueprint | This document | — |
 | **35 A** | `CaseOpenAdvisorCard` jargon + static-gate fix. (1) Replace raw `notesExcerpt` rendering with a CURATED orientation derived from `displayLabel + analysis_type/case_kind detection from caseId + claim_boundary`. The 1-paragraph brief no longer leaks "Phase 21+ scope", "tier_2_validated", or "single-hex coupons" vocabulary. (2) Add `static · offline-first` styling hint to the 4-Q gate at this surface (muted color + "(client-side stub status)" subtitle) so reviewers can immediately distinguish from the AdvisorPanel's dynamic gate. Closes Phase 34 #27 + #28. | Dim 2 +3-5 / Dim 4 +1 |
-| **35 B** | Verdict YAML schema 1.0 → 1.4 backfill. Add additive `solver_kind:` field to 9 legacy verdict YAMLs (GS-100, GS-101, GS-102, GS-102-refined, GS-102-hifi, GS-103-jet, leak case, plus any others still at schema 1.0). NO behavior change — pure metadata enrichment. Schema_version bumped 1.0→1.4 on each (additive minor). Closes Phase 34 #29. | Dim 6 +1 |
+| **35 B** | Verdict YAML solver_kind backfill (HONEST REVISION 2026-05-18: strict additive). Add `solver_kind:` field to all 11 cohort verdict YAMLs that were missing it; KEEP each runner's existing schema_version (1.0.0/1.1.0/1.2.0/1.3.0) verbatim to avoid touching Phase 21/29/30 tests that pin exact schema_version labels. Cohort-wide grep gap closed (12/12 cases now report solver_kind ∈ 6-value enum). Closes Phase 34 #29. | Dim 6 +1 |
 | **35 C** | `useUploadErrorRecovery` custom hook in `frontend/src/state/` + `ErrorCard` wiring into `App.tsx` upload + selectCase paths. Hook approach keeps App.tsx LOC under Phase 29 B <1500 pin (the Phase 33 D rollback lesson — extract state into a hook first, then wire). 2 of 5 missing error-recovery paths from Phase 33 C novice_simulator finding #2 closed. | Dim 2 +2-3 / Dim 6 +0.5 |
 | **35 D** | 3 sub-agents R3 audit + FINAL composite + retro + STATE refresh + commit. | — |
 
@@ -93,19 +93,45 @@ cohort-wide grep under-counts solver kinds. Affects:
   `rod-wave-impact-energy-leak-candidate` (ballistic/dynamic class)
 - 2 more legacy entries (check the actual cohort directory listing)
 
-**Fix scope**:
-- For each legacy verdict YAML at schema 1.0:
-  - Determine the case's solver kind from its analysis context
-    (most legacy cases are `explicit_dynamics` ballistic per the
-    GS-100 series)
-  - Add `solver_kind: <kind>` line (additive)
-  - Bump `schema_version: "1.0.0"` → `"1.4.0"` (additive minor;
-    matches Phase 34 C schema)
-- NO behavior change. The reader's existing schema-1.0 path
-  continues to work; new field is optional read-only enrichment.
+**Fix scope** (HONEST REVISION 2026-05-18 — strict additive
+interpretation of L:-1):
+- For each runner missing `solver_kind` in its payload dict, ADD the
+  field; do NOT bump `schema_version`. The pre-Phase-35 mix
+  (1.0.0/1.1.0/1.2.0/1.3.0/1.4.0) is preserved verbatim because
+  Phase 21/29/30 tests pin exact schema_version labels per case.
+  Touching those would be a "test threshold edit" — disallowed by
+  the Phase 1-N additive guard.
+- For each on-disk verdict YAML, rewrite with the same
+  schema_version + new `solver_kind`.
+- Solver-kind mapping (11 cases backfilled, Phase 34 C hertz-contact
+  already at the new format):
+    cantilever-beam-candidate            → linear_static (schema 1.0.0)
+    cantilever-beam-modal-candidate      → modal (1.0.0)
+    cantilever-beam-modal-l50-candidate  → modal (1.0.0)
+    cantilever-buckle-candidate          → buckling (1.0.0)
+    cantilever-dynamic-candidate         → dynamic (1.2.0; already
+                                              had solver_kind, moved
+                                              to position 2 in dict)
+    cylinder-pv-candidate                → linear_static (1.0.0)
+    euler-column-candidate               → buckling (1.0.0; schema
+                                              field was missing too,
+                                              added)
+    heat-transfer-1d-candidate           → heat_transfer_steady_state
+                                              (1.3.0; already had
+                                              solver_kind, moved up)
+    plate-simply-supported-candidate     → linear_static (1.0.0)
+    plate-ss-shell-candidate             → linear_static (1.1.0)
+    plate-with-hole-candidate            → linear_static (1.0.0)
+- Cohort-wide solver_kind distribution (12 cases total):
+    linear_static: 5, modal: 2, buckling: 2, dynamic: 1,
+    heat_transfer_steady_state: 1, contact_pair_static: 1
+- NO behavior change. The reader's existing schema-1.0/1.1/1.2/1.3
+  paths continue to work; new field is optional read-only enrichment.
 - Backend test pin: `test_phase35b_verdict_yaml_solver_kind_backfill.py`
-  asserts every cohort verdict YAML now has `solver_kind:` field +
-  the field's value is one of the 6 known enum values.
+  asserts every cohort verdict YAML has `solver_kind:` field, the
+  value is in the 6-enum, the distribution matches the expected map,
+  AND the per-case schema_versions are preserved verbatim (strict
+  additive guard).
 
 **Anti-gaming guards within 35 B**:
 - L:-1: pure additive; no breaking changes; existing readers work
