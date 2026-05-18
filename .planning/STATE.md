@@ -1,6 +1,6 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase34-advisor-case-open-contact-pair-ccx-vocab-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@PHASE34E_HASH_PENDING`
+> **Stamp:** `fm04a-phase34-advisor-case-open-contact-pair-ccx-vocab-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@a1ef486`
 >
 > Phase 33 (CLOSED 2026-05-18 @ `37ad9f1`): retained below for context.
 > Phase 32 (CLOSED 2026-05-18 @ `bc3fa59`): retained further below for context.
