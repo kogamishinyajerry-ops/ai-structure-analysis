@@ -306,6 +306,42 @@ def richardson_extrapolate(
         )
 
     p = math.log(ratio) / math.log(r)
+
+    # Phase 32 A guard: an observed order p ≤ 0 is unphysical for
+    # a converging sequence (p = order of convergence; negative or
+    # zero means the differences (f_i - f_{i+1}) are GROWING as the
+    # mesh refines — the sequence is NOT in the asymptotic regime,
+    # so the closed-form formula f_∞ = f_3 + (f_3 - f_2)/(r^p - 1)
+    # produces unphysical extrapolations (denominator approaches
+    # zero from below as p → 0; the extrapolated value can land
+    # arbitrarily far from any observed value).
+    #
+    # Discovered by Phase 32 A plate-simply-supported sweep:
+    # observed differences GROW as the mesh refines (Δ_12 < Δ_23),
+    # giving ratio = 0.86 → p = -0.29 → f_∞ extrapolates +20% off
+    # analytical, despite all 3 observed residuals being ≤ 5.8%
+    # in magnitude. The honest interpretation is "this triple is
+    # not in the asymptotic regime; needs more refinement before
+    # Richardson is reliable" — NOT a fabricated f_∞.
+    if p <= 0.0:
+        fail_notes.insert(
+            0,
+            f"Richardson failed: observed order p = {p:.4f} ≤ 0 "
+            f"(non-physical for a converging sequence; the triple "
+            f"is not yet in the asymptotic regime — successive "
+            f"differences |f_i - f_{{i+1}}| are growing, not "
+            f"shrinking, as the mesh refines). Reported triple is "
+            f"the data; no extrapolation attempted.",
+        )
+        return RichardsonEstimate(
+            extrapolated_value=None,
+            observed_order_p=p,  # report p for diagnostic visibility
+            refinement_ratio_r=r,
+            refinement_ratio_constant=ratio_constant,
+            extrapolated_residual_pct=None,
+            notes=" ".join(fail_notes),
+        )
+
     f_inf = f3 + (f3 - f2) / (r ** p - 1.0)
 
     residual_pct: float | None = None
