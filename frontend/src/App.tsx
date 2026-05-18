@@ -106,6 +106,7 @@ import { useAppUiMode } from './state/useAppUiMode';
 import {
   caseLoadRecoveryOptions,
   pdfExportRecoveryOptions,
+  solverStartRecoveryOptions,
   stopRequestRecoveryOptions,
   uploadRecoveryOptions,
   useUploadErrorRecovery,
@@ -335,6 +336,7 @@ function App() {
 
   const runSolver = async () => {
     if (!activeCaseId) return;
+    const caseIdForRun = activeCaseId;
     setSolving(true);
     setLogs([]);
     setShowConsole(true);
@@ -342,60 +344,42 @@ function App() {
     setCurrentJobStatus('starting');
     setCurrentJobAnalysis(analysisType);
     setLastSolverMaterialReference(null);
-    
-    try {
+    // FM-04a Phase 37 C — withUploadRecovery surfaces solver-start
+    // failures via ErrorCard alongside the existing [ERROR] log
+    // line (closes 5th of 5 silent paths; Phase 36 D friction
+    // point c).
+    const data = await withUploadRecovery(async () => {
       const response = await fetch(`${API_BASE}/solver/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          case_id: activeCaseId,
+          case_id: caseIdForRun,
           analysis_type: analysisType,
           num_modes: 5,
-          // Phase 18 E (round 3 honesty fix) — propagate the reviewer's
-          // material pick into the solver request body. Backend
-          // `RunRequest` now declares this field (post round-3 FEA agent
-          // disclosure: pre-fix the backend silently dropped it). The
-          // field is RECEIVED but NOT yet plumbed into the solver
-          // pipeline — Phase 19 priority-0.5 item closes the back-half.
-          // Until then the picker is a UI affordance with a wire-level
-          // contract, not an end-to-end material-swap-and-re-solve flow.
           material_id: selectedMaterial.id,
         }),
       });
-      const data = await response.json().catch(() => ({}));
+      const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const detail = typeof data.detail === 'string' ? data.detail : `HTTP ${response.status}`;
-        setLogs(prev => [...prev, `[ERROR] Solver start failed: ${detail}`]);
-        setCurrentJobStatus('failed');
-        setSolving(false);
-        return;
+        const detail = typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`;
+        throw new Error(detail);
       }
-      if (data.job_id) {
-        setCurrentJobId(data.job_id);
-        setCurrentJobStatus('running');
-        // FM-04a Phase 21 D — capture the cited material reference
-        // returned by /solver/run (Phase 20 A end-to-end wiring). When
-        // present, render it in the topbar status surface and prepend
-        // it to the log stream so reviewers see WHICH material entry
-        // ccx is actually solving against.
-        if (typeof data.material_reference === 'string' && data.material_reference) {
-          setLastSolverMaterialReference(data.material_reference);
-          setLogs(prev => [
-            ...prev,
-            `[REF] material: ${data.material_reference}`,
-          ]);
-        }
-        connectToLogs(data.job_id);
-      } else {
-        setLogs(prev => [...prev, "[ERROR] Solver start failed: missing job id"]);
-        setCurrentJobStatus('failed');
-        setSolving(false);
-      }
-    } catch (err) {
-      console.error("Solver start failed", err);
+      if (!body.job_id) throw new Error('missing job id');
+      return body;
+    }, solverStartRecoveryOptions(caseIdForRun));
+    if (!data) {
+      setLogs(prev => [...prev, '[ERROR] Solver start failed (see workbench banner)']);
       setCurrentJobStatus('failed');
       setSolving(false);
+      return;
     }
+    setCurrentJobId(data.job_id);
+    setCurrentJobStatus('running');
+    if (typeof data.material_reference === 'string' && data.material_reference) {
+      setLastSolverMaterialReference(data.material_reference);
+      setLogs(prev => [...prev, `[REF] material: ${data.material_reference}`]);
+    }
+    connectToLogs(data.job_id);
   };
 
   const downloadPDFReport = async () => {

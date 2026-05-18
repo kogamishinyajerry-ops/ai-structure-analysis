@@ -20,6 +20,7 @@ import { act, renderHook } from '@testing-library/react'
 import {
   caseLoadRecoveryOptions,
   pdfExportRecoveryOptions,
+  solverStartRecoveryOptions,
   stopRequestRecoveryOptions,
   uploadRecoveryOptions,
   useUploadErrorRecovery,
@@ -327,13 +328,28 @@ describe('Phase 35 C + 36 A — recovery option templates', () => {
     expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
   })
 
-  it('all four option templates produce DISTINCT codes', () => {
+  it('Phase 37 C — solverStartRecoveryOptions(caseId) returns SOLVER-START code + case-id message', () => {
+    const opts = solverStartRecoveryOptions('cantilever-beam-candidate')
+    expect(opts.code).toBe('SOLVER-START')
+    expect(opts.title).toMatch(/start/i)
+    expect(opts.title).toMatch(/solver/i)
+    expect(opts.message).toContain('cantilever-beam-candidate')
+    expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
+  })
+
+  it('all five option templates produce DISTINCT codes', () => {
     const codes = new Set([
       uploadRecoveryOptions('a').code,
       caseLoadRecoveryOptions('b').code,
       pdfExportRecoveryOptions('c').code,
       stopRequestRecoveryOptions('d').code,
+      solverStartRecoveryOptions('e').code,
     ])
-    expect(codes.size).toBe(4)
+    expect(codes.size).toBe(5)
+  })
+
+  it('Phase 37 C — solverStart codeFriendly is humanized (not internal enum)', () => {
+    const opts = solverStartRecoveryOptions('case-id')
+    expect(opts.codeFriendly).toBe('Solver start')
   })
 })

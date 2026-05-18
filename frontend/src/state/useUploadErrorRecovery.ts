@@ -151,6 +151,23 @@ export function stopRequestRecoveryOptions(
   };
 }
 
+/** Phase 37 C — recovery option template for solver-start failures.
+ * Closes the 5th of 5 silent error-recovery paths flagged at Phase
+ * 33 C novice_simulator #2 + Phase 36 D friction point (c).
+ * Replaces the pre-Phase-37 text-only `[ERROR] Solver start failed`
+ * log line with a styled ErrorCard alongside the log trail. */
+export function solverStartRecoveryOptions(
+  caseId: string,
+): WithRecoveryOptions {
+  return {
+    title: 'Could not start the solver',
+    message: `The solver did not accept the run request for ${caseId}. The backend may be unreachable, the case may be missing required artifacts, or the upstream may have refused with a detail message visible in the console log.`,
+    remediation: SOLVER_START_REMEDIATION,
+    code: 'SOLVER-START',
+    codeFriendly: 'Solver start',
+  };
+}
+
 const UPLOAD_REMEDIATION = [
   'Confirm the backend at /api/v1/report/generate is reachable',
   'Try a smaller or alternative .frd / .inp file',
@@ -173,6 +190,12 @@ const STOP_REQUEST_REMEDIATION = [
   'Watch the solver console for an automatic status update',
   'Confirm the backend at /api/v1/solver/stop/<job_id> is reachable',
   'Use Retry to re-issue the stop request',
+] as const;
+
+const SOLVER_START_REMEDIATION = [
+  'Read the workbench console for the upstream detail message',
+  'Confirm the backend at /api/v1/solver/run is reachable',
+  'Re-select the case from the picker, then click Run Solver again',
 ] as const;
 
 /** Custom hook owning the upload + case-load error-recovery
