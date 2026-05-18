@@ -283,17 +283,14 @@ function App() {
 
   const generateReportFromFile = async (f: File, caseId?: string) => {
     setLoading(true);
-    const formData = new FormData();
-    formData.append('file', f);
-
-    if (caseId) {
-      formData.append('case_id', caseId);
-    } else {
-        const matchedCase = availableCases.find(c => f.name.toLowerCase().includes(c.id.toLowerCase().replace("-","")));
-        if (matchedCase) formData.append('case_id', matchedCase.id);
-    }
-
+    // FM-04a Phase 36 B — FormData rebuilds inside the closure so
+    // Retry sends a fresh request body (FormData stream is one-shot).
+    const matchedCaseId = caseId ??
+        availableCases.find(c => f.name.toLowerCase().includes(c.id.toLowerCase().replace("-","")))?.id;
     const data = await withUploadRecovery(async () => {
+      const formData = new FormData();
+      formData.append('file', f);
+      if (matchedCaseId) formData.append('case_id', matchedCaseId);
       const response = await fetch(`${API_BASE}/report/generate`, {
         method: 'POST',
         body: formData,
@@ -315,11 +312,14 @@ function App() {
       clearJobContext();
     }
 
-    const formData = new FormData();
-    formData.append('case_id', c.id);
-    formData.append('file', new File(["dummy"], "dummy.frd"));
-
+    // FM-04a Phase 36 B — FormData must rebuild inside the
+    // withUploadRecovery closure so the Retry callback sends a
+    // fresh request body (the FormData stream is consumed once
+    // per submit; reusing the same instance would break Retry).
     const data = await withUploadRecovery(async () => {
+      const formData = new FormData();
+      formData.append('case_id', c.id);
+      formData.append('file', new File(["dummy"], "dummy.frd"));
       const response = await fetch(`${API_BASE}/report/generate`, {
         method: 'POST',
         body: formData,
@@ -1310,17 +1310,21 @@ function App() {
             />
 
             <div style={{ padding: '40px', flex: 1 }}>
-            <OperatorStatusPanel
-              strip={trustStrip}
-              sections={trustSections}
-              goldenSamples={goldenSampleQueue}
-            />
-
+            {/* FM-04a Phase 36 B — ErrorCard mounts ABOVE
+                OperatorStatusPanel so a failed user sees the red
+                error band before the trust prose (Phase 35 R3
+                friction point b). */}
             {uploadError && (
                 <div data-testid="app-upload-error-mount" style={{ marginBottom: '24px' }}>
                     <ErrorCard {...uploadError} />
                 </div>
             )}
+
+            <OperatorStatusPanel
+              strip={trustStrip}
+              sections={trustSections}
+              goldenSamples={goldenSampleQueue}
+            />
 
             <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />

@@ -56,6 +56,10 @@ export interface WithRecoveryOptions {
   readonly remediation?: readonly string[];
   /** Optional support-ticket / log-correlation code. */
   readonly code?: string;
+  /** Phase 36 B — novice-friendly pill copy that takes priority over
+   * `code` for display; the raw `code` is preserved as
+   * data-error-code for support-ticket scraping. */
+  readonly codeFriendly?: string;
 }
 
 export interface UseUploadErrorRecoveryState {
@@ -99,6 +103,7 @@ export function uploadRecoveryOptions(
     message: `Uploading ${fileName} did not produce a report. The backend may be unreachable or the file may be malformed.`,
     remediation: UPLOAD_REMEDIATION,
     code: 'UPLOAD',
+    codeFriendly: 'Upload',
   };
 }
 
@@ -112,6 +117,7 @@ export function caseLoadRecoveryOptions(
       'The backend did not return a report for this case. It may be unreachable or the case manifest may be incomplete.',
     remediation: CASE_LOAD_REMEDIATION,
     code: 'CASE-LOAD',
+    codeFriendly: 'Case load',
   };
 }
 
@@ -126,6 +132,7 @@ export function pdfExportRecoveryOptions(
     message: `The PDF export for ${caseId} did not complete. The backend may be unreachable or the report may not yet be ready.`,
     remediation: PDF_EXPORT_REMEDIATION,
     code: 'PDF-EXPORT',
+    codeFriendly: 'PDF export',
   };
 }
 
@@ -140,6 +147,7 @@ export function stopRequestRecoveryOptions(
     message: `The stop request for job ${jobId} was not accepted. The job may still be running; the console will reflect the next backend status update.`,
     remediation: STOP_REQUEST_REMEDIATION,
     code: 'STOP-REQUEST',
+    codeFriendly: 'Stop request',
   };
 }
 
@@ -205,6 +213,9 @@ export function useUploadErrorRecovery(): UseUploadErrorRecoveryResult {
             ? { remediation: options.remediation }
             : {}),
           ...(options.code !== undefined ? { code: options.code } : {}),
+          ...(options.codeFriendly !== undefined
+            ? { codeFriendly: options.codeFriendly }
+            : {}),
           onRetry: () => {
             // Drop the visible error before retrying so the user
             // sees the operation re-starting.

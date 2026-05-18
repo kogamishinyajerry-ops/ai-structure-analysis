@@ -8,6 +8,7 @@
 // surfaces. Stable role="alert" so screen readers announce.
 
 import type { CSSProperties } from 'react'
+import { useId } from 'react'
 
 export interface ErrorCardProps {
   /** Headline (e.g., "Could not load cohort overview"). */
@@ -29,14 +30,34 @@ export interface ErrorCardProps {
    * for support tickets / log correlation).
    */
   readonly code?: string
+  /**
+   * FM-04a Phase 36 B — optional novice-friendly label that takes
+   * priority over `code` for the pill render. The `code` value
+   * remains available via the `data-error-code` attribute on the
+   * pill for support-ticket correlation.
+   *
+   * Use when the underlying `code` is an internal enum (e.g.
+   * "UPLOAD", "CASE-LOAD") that novices may mistake for a
+   * verbatim instruction. Falls back to `code` when not provided.
+   */
+  readonly codeFriendly?: string
 }
 
 export function ErrorCard(props: ErrorCardProps) {
-  const { title, message, remediation, onRetry, code } = props
+  const { title, message, remediation, onRetry, code, codeFriendly } = props
+  // Phase 36 B — friendly label takes priority for the visible
+  // pill copy; the raw code is preserved via data-error-code so
+  // support tickets / log correlation can still scrape the enum.
+  const pillCopy = codeFriendly ?? code
+  // Phase 36 B — give the alert region an accessible name via
+  // aria-labelledby → title id; without this, screen readers
+  // announce the entire card text as the alert name.
+  const titleId = useId()
   return (
     <div
       role="alert"
       aria-live="assertive"
+      aria-labelledby={titleId}
       data-testid="error-card"
       style={cardStyle}
     >
@@ -44,10 +65,14 @@ export function ErrorCard(props: ErrorCardProps) {
         <span aria-hidden="true" style={iconStyle}>
           ⚠
         </span>
-        <strong style={titleStyle}>{title}</strong>
-        {code !== undefined && (
-          <span data-testid="error-code" style={codeStyle}>
-            {code}
+        <strong id={titleId} style={titleStyle}>{title}</strong>
+        {pillCopy !== undefined && (
+          <span
+            data-testid="error-code"
+            data-error-code={code}
+            style={codeStyle}
+          >
+            {pillCopy}
           </span>
         )}
       </div>
