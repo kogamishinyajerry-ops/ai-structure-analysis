@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "hertz-contact-candidate",
+  "case_kind": "contact_pair_static",
+  "tier_2_status": "infrastructure_only_phase_33_d",
+  "analytical_reference": {
+    "source": "Johnson, K.L., \"Contact Mechanics\", Cambridge University Press, 1985, §4.2 (line contact)",
+    "formulas_module": "backend/app/services/cross_check/hertz_contact.py",
+    "test_module": "backend/tests/test_phase33d_hertz_contact_analytical.py"
+  },
+  "geometry": {
+    "kind": "cylinder_on_block_line_contact",
+    "cylinder_radius_m": 0.010,
+    "cylinder_length_m": 0.020,
+    "block_width_m": 0.080,
+    "block_depth_m": 0.080,
+    "block_height_m": 0.020
+  },
+  "loading": {
+    "type": "vertical_force_on_cylinder_top",
+    "total_load_n": 1000.0
+  },
+  "material": {
+    "material_id": "steel-s355",
+    "youngs_modulus_pa": 2.10e11,
+    "poisson_ratio": 0.30,
+    "yield_stress_pa": 3.55e08,
+    "note": "Both bodies same material; like-elastic Hertz applies."
+  },
+  "hertz_analytical": {
+    "effective_modulus_pa": 1.15385e11,
+    "contact_half_width_m": 7.4279e-05,
+    "peak_contact_pressure_pa": 4.2853e08,
+    "indentation_depth_m": 1.8728e-06,
+    "maximum_subsurface_shear_pa": 1.2856e08,
+    "elasticity_regime_check": {
+      "peak_pressure_vs_yield_ratio": 1.207,
+      "regime": "EXCEEDS_YIELD",
+      "note": "p_0 (428.5 MPa) exceeds S355 yield (355 MPa) by ~21%. Hertz LINEAR-ELASTIC assumption is marginal for this load + geometry. Pure-elastic comparison requires either reducing F or enlarging R."
+    }
+  },
+  "ccx_validation_status": {
+    "phase": "33_d",
+    "status": "deferred_to_phase_34",
+    "reason": [
+      "*CONTACT PAIR ccx convergence is iterative and budget-sensitive;",
+      "session budget did not accommodate live ccx mesh-tuning + convergence iteration;",
+      "geometry must be re-tuned (larger R OR lower F) to keep p_0 below S355 yield for pure-elastic Hertz validation;",
+      "CDIS/CSTR contact-output is not in canonical_field enum (ADR-002 lock); validation will measure DISP at top of cylinder vs analytical δ."
+    ],
+    "phase_34_target": {
+      "geometry_proposal": "R=0.050 m, L=0.050 m, F=5000 N → p_0 ≈ 271 MPa (within S355 elastic regime); δ ≈ 4 µm (small but measurable with mesh refinement near contact)",
+      "alternative": "use a softer material (E=70 GPa aluminum) to enlarge δ at lower p_0",
+      "expected_residual_envelope_pct": 15.0
+    }
+  },
+  "verdict": "INFRASTRUCTURE_ONLY",
+  "verdict_note": "Phase 33 D ships analytical SSOT + test pin + scaffolded directory. NOT a tier_2_validated case until Phase 34 lands ccx integration. Cohort validated count remains 11."
+}
