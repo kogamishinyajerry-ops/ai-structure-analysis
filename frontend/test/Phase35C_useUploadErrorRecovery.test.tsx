@@ -17,7 +17,13 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { useUploadErrorRecovery } from '../src/state/useUploadErrorRecovery'
+import {
+  caseLoadRecoveryOptions,
+  pdfExportRecoveryOptions,
+  stopRequestRecoveryOptions,
+  uploadRecoveryOptions,
+  useUploadErrorRecovery,
+} from '../src/state/useUploadErrorRecovery'
 
 describe('Phase 35 C — useUploadErrorRecovery base state', () => {
   it('starts with no error', () => {
@@ -286,5 +292,48 @@ describe('Phase 35 C — withRecovery retry callback', () => {
       await Promise.resolve()
     })
     consoleError.mockRestore()
+  })
+})
+
+describe('Phase 35 C + 36 A — recovery option templates', () => {
+  it('uploadRecoveryOptions(fileName) returns UPLOAD code + named-file message', () => {
+    const opts = uploadRecoveryOptions('input.frd')
+    expect(opts.code).toBe('UPLOAD')
+    expect(opts.title).toMatch(/upload/i)
+    expect(opts.message).toContain('input.frd')
+    expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
+  })
+
+  it('caseLoadRecoveryOptions(caseId) returns CASE-LOAD code + case-id title', () => {
+    const opts = caseLoadRecoveryOptions('cylinder-pv-candidate')
+    expect(opts.code).toBe('CASE-LOAD')
+    expect(opts.title).toContain('cylinder-pv-candidate')
+    expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
+  })
+
+  it('Phase 36 A — pdfExportRecoveryOptions(caseId) returns PDF-EXPORT code + case-id message', () => {
+    const opts = pdfExportRecoveryOptions('hertz-contact-candidate')
+    expect(opts.code).toBe('PDF-EXPORT')
+    expect(opts.title).toMatch(/PDF/i)
+    expect(opts.message).toContain('hertz-contact-candidate')
+    expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
+  })
+
+  it('Phase 36 A — stopRequestRecoveryOptions(jobId) returns STOP-REQUEST code + job-id message', () => {
+    const opts = stopRequestRecoveryOptions('job-abc-123')
+    expect(opts.code).toBe('STOP-REQUEST')
+    expect(opts.title).toMatch(/stop/i)
+    expect(opts.message).toContain('job-abc-123')
+    expect(opts.remediation && opts.remediation.length).toBeGreaterThan(0)
+  })
+
+  it('all four option templates produce DISTINCT codes', () => {
+    const codes = new Set([
+      uploadRecoveryOptions('a').code,
+      caseLoadRecoveryOptions('b').code,
+      pdfExportRecoveryOptions('c').code,
+      stopRequestRecoveryOptions('d').code,
+    ])
+    expect(codes.size).toBe(4)
   })
 })

@@ -116,7 +116,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     // round-1 UX finding: omission of these three new candidates was
     // a real defect; this commit closes it.
     caseId: 'cylinder-pv-candidate',
-    displayLabel: 'Cylinder pressure vessel · Tier 2 validated (Phase 19 B)',
+    displayLabel: 'Cylinder pressure vessel · Tier 2 validated',
     claimTier: 'Tier 2 validated (analytical hoop-stress cross-check)',
     starterDeckRelpath: null,
     engineDeckRelpath: null,
@@ -132,7 +132,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'plate-with-hole-candidate',
-    displayLabel: 'Plate with hole · 100×50×5 mm, meshed pipeline (Phase 20 C)',
+    displayLabel: 'Plate with hole · 100×50×5 mm, meshed pipeline',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
       'golden_samples/plate-with-hole-candidate/data/plate_with_hole.geo',
@@ -148,7 +148,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'cantilever-beam-candidate',
-    displayLabel: 'Cantilever beam · Euler-Bernoulli δ=PL³/(3EI) (Phase 20 B)',
+    displayLabel: 'Cantilever beam · Euler-Bernoulli δ=PL³/(3EI)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: null,
     engineDeckRelpath: null,

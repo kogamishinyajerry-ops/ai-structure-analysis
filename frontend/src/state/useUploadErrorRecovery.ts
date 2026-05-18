@@ -115,6 +115,34 @@ export function caseLoadRecoveryOptions(
   };
 }
 
+/** Phase 36 A — recovery option template for PDF export failures.
+ * Replaces the pre-Phase-36 crude `alert("Failed to export PDF: ")`
+ * surface with a styled ErrorCard + retry button. */
+export function pdfExportRecoveryOptions(
+  caseId: string,
+): WithRecoveryOptions {
+  return {
+    title: 'Could not export PDF report',
+    message: `The PDF export for ${caseId} did not complete. The backend may be unreachable or the report may not yet be ready.`,
+    remediation: PDF_EXPORT_REMEDIATION,
+    code: 'PDF-EXPORT',
+  };
+}
+
+/** Phase 36 A — recovery option template for stop-request failures.
+ * Replaces the pre-Phase-36 silent `console.error("Stop failed")`
+ * surface with a styled ErrorCard. */
+export function stopRequestRecoveryOptions(
+  jobId: string,
+): WithRecoveryOptions {
+  return {
+    title: 'Could not stop the running solver',
+    message: `The stop request for job ${jobId} was not accepted. The job may still be running; the console will reflect the next backend status update.`,
+    remediation: STOP_REQUEST_REMEDIATION,
+    code: 'STOP-REQUEST',
+  };
+}
+
 const UPLOAD_REMEDIATION = [
   'Confirm the backend at /api/v1/report/generate is reachable',
   'Try a smaller or alternative .frd / .inp file',
@@ -125,6 +153,18 @@ const CASE_LOAD_REMEDIATION = [
   'Confirm the backend at /api/v1/report/generate is reachable',
   'Pick a different case from the registry while the issue is investigated',
   'Use Retry to re-request the same case',
+] as const;
+
+const PDF_EXPORT_REMEDIATION = [
+  'Confirm the backend at /api/v1/report/export/pdf/<case_id> is reachable',
+  'Re-load the case first if the report state looks stale',
+  'Use Retry to re-request the same PDF export',
+] as const;
+
+const STOP_REQUEST_REMEDIATION = [
+  'Watch the solver console for an automatic status update',
+  'Confirm the backend at /api/v1/solver/stop/<job_id> is reachable',
+  'Use Retry to re-issue the stop request',
 ] as const;
 
 /** Custom hook owning the upload + case-load error-recovery

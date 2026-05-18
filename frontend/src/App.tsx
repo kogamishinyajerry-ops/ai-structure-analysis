@@ -103,6 +103,8 @@ import { useTrustSections } from './state/useTrustSections';
 import { useAppUiMode } from './state/useAppUiMode';
 import {
   caseLoadRecoveryOptions,
+  pdfExportRecoveryOptions,
+  stopRequestRecoveryOptions,
   uploadRecoveryOptions,
   useUploadErrorRecovery,
 } from './state/useUploadErrorRecovery';
@@ -396,11 +398,12 @@ function App() {
 
   const downloadPDFReport = async () => {
     if (!activeCaseId) return;
-    try {
-      setLoading(true);
+    setLoading(true);
+    // FM-04a Phase 36 A — replaces crude alert("Failed to export
+    // PDF: ") with the Phase 35 C ErrorCard surface + retry.
+    await withUploadRecovery(async () => {
       const response = await fetch(`${API_BASE}/report/export/pdf/${activeCaseId}`);
-      if (!response.ok) throw new Error("PDF generation failed");
-      
+      if (!response.ok) throw new Error(`PDF export HTTP ${response.status}`);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -409,35 +412,32 @@ function App() {
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error("Export failed", err);
-      alert("Failed to export PDF: " + err);
-    } finally {
-      setLoading(false);
-    }
+    }, pdfExportRecoveryOptions(activeCaseId));
+    setLoading(false);
   };
 
   const stopSolver = async () => {
     if (!currentJobId) return;
-    
+    const jobId = currentJobId;
     setLogs(prev => [...prev, "[SYSTEM] Requesting stop..."]);
     setCurrentJobStatus('stop_requested');
-    
-    try {
-      const response = await fetch(`${API_BASE}/solver/stop/${currentJobId}`, { method: 'POST' });
+    // FM-04a Phase 36 A — wrap the stop-request fetch in
+    // withUploadRecovery so a failure surfaces an ErrorCard
+    // alongside the existing console log (was silent pre-36 A).
+    const ok = await withUploadRecovery(async () => {
+      const response = await fetch(`${API_BASE}/solver/stop/${jobId}`, { method: 'POST' });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         const detail = typeof data.detail === 'string' ? `: ${data.detail}` : '';
-        setLogs(prev => [...prev, `[SYSTEM] Stop request failed${detail}`]);
-        setCurrentJobStatus('failed');
-        setSolving(false);
-        return;
+        throw new Error(`stop-request HTTP ${response.status}${detail}`);
       }
+      return true;
+    }, stopRequestRecoveryOptions(jobId));
+    if (ok) {
       setLogs(prev => [...prev, "[SYSTEM] Stop request accepted."]);
       setCurrentJobStatus('stopped');
       setSolving(false);
-    } catch (err) {
-      console.error("Stop failed", err);
+    } else {
       setLogs(prev => [...prev, "[SYSTEM] Stop request failed"]);
       setCurrentJobStatus('failed');
       setSolving(false);
