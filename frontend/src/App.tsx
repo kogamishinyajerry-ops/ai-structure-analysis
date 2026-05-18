@@ -101,6 +101,12 @@ import { useTrustSections } from './state/useTrustSections';
 // surfaces are deferred to Phase 33+ for safe per-cluster
 // extraction.
 import { useAppUiMode } from './state/useAppUiMode';
+import {
+  caseLoadRecoveryOptions,
+  uploadRecoveryOptions,
+  useUploadErrorRecovery,
+} from './state/useUploadErrorRecovery';
+import { ErrorCard } from './components/ErrorCard';
 const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -277,7 +283,7 @@ function App() {
     setLoading(true);
     const formData = new FormData();
     formData.append('file', f);
-    
+
     if (caseId) {
       formData.append('case_id', caseId);
     } else {
@@ -285,20 +291,16 @@ function App() {
         if (matchedCase) formData.append('case_id', matchedCase.id);
     }
 
-    try {
+    const data = await withUploadRecovery(async () => {
       const response = await fetch(`${API_BASE}/report/generate`, {
         method: 'POST',
         body: formData,
       });
-      const data = await response.json();
-      if (data.success) {
-        setReport(data);
-      }
-    } catch (err) {
-      console.error("Upload failed", err);
-    } finally {
-      setLoading(false);
-    }
+      if (!response.ok) throw new Error(`upload HTTP ${response.status}`);
+      return response.json();
+    }, uploadRecoveryOptions(f.name));
+    if (data && data.success) setReport(data);
+    setLoading(false);
   };
 
   const selectCase = async (c: CaseMetadata, options: { preserveJob?: boolean } = {}) => {
@@ -310,25 +312,21 @@ function App() {
     if (!options.preserveJob) {
       clearJobContext();
     }
-    
+
     const formData = new FormData();
     formData.append('case_id', c.id);
     formData.append('file', new File(["dummy"], "dummy.frd"));
 
-    try {
+    const data = await withUploadRecovery(async () => {
       const response = await fetch(`${API_BASE}/report/generate`, {
         method: 'POST',
         body: formData,
       });
-      const data = await response.json();
-      if (data.success) {
-        setReport(data);
-      }
-    } catch (err) {
-      console.error("Case selection failed", err);
-    } finally {
-      setLoading(false);
-    }
+      if (!response.ok) throw new Error(`case-load HTTP ${response.status}`);
+      return response.json();
+    }, caseLoadRecoveryOptions(c.id));
+    if (data && data.success) setReport(data);
+    setLoading(false);
   };
 
   const runSolver = async () => {
@@ -854,6 +852,13 @@ function App() {
     actions: { handleAppUiModeChange, markTourDismissedInSession },
   } = useAppUiMode();
 
+  // FM-04a Phase 35 C — upload/case-load ErrorCard surface; hook
+  // absorbs state + retry so App.tsx stays under the <1500 pin.
+  const {
+    state: { uploadError },
+    actions: { withRecovery: withUploadRecovery },
+  } = useUploadErrorRecovery();
+
   // FM-04a Phase 29 B — useTrustSections custom hook encapsulates
   // the 7-section build with granular per-section memoization
   // (Phase 28 D semantics preserved). Replaces ~240 LOC of inline
@@ -1310,6 +1315,12 @@ function App() {
               sections={trustSections}
               goldenSamples={goldenSampleQueue}
             />
+
+            {uploadError && (
+                <div data-testid="app-upload-error-mount" style={{ marginBottom: '24px' }}>
+                    <ErrorCard {...uploadError} />
+                </div>
+            )}
 
             <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />
