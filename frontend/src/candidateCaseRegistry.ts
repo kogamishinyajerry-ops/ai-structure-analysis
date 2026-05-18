@@ -28,6 +28,14 @@ export interface CandidateCaseRecord {
   // back-compat with payloads from the live route (which doesn't
   // emit this field yet).
   displayLabel?: string
+  // FM-04a Phase 36 C — closes Phase 35 R3 friction point (f).
+  // `true`  → the case has a live ccx runner + verdict YAML
+  //           (cohort-12 cases as of Phase 34 C)
+  // `false` → demo deck only (GS-* OpenRadioss decks + rod-wave
+  //           cases without a cross-check runner yet)
+  // undefined / absent → unknown / live-route payload not yet
+  //           emitting this field; UI should not surface a badge.
+  runnerAvailable?: boolean
 }
 
 export interface CandidateCaseRegistryPayload {
@@ -46,6 +54,7 @@ export interface CandidateCaseRegistryPayload {
 export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   {
     caseId: 'GS-102-candidate',
+    runnerAvailable: false,
     displayLabel: 'GS-102 · Single-hex demo (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-candidate/data/model_00_0000.rad',
@@ -60,6 +69,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'GS-102-refined-candidate',
+    runnerAvailable: false,
     displayLabel: 'GS-102 refined · 4×3×3 plate + 2×2×2 projectile (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
@@ -76,6 +86,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'GS-102-hifi-candidate',
+    runnerAvailable: false,
     displayLabel: 'GS-102 hi-fi · 7.62×51 AP vs Weldox 460E @ V0=600 m/s (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: 'golden_samples/GS-102-hifi-candidate/data/model_00_0000.rad',
@@ -94,6 +105,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     // UX agent round-2 finding: case was invisible in the fallback
     // path until now.
     caseId: 'rod-wave-impact-energy-leak-candidate',
+    runnerAvailable: false,
     displayLabel: 'Rod-wave impact · ENERGY LEAK case (Tier 1)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: null,
@@ -116,6 +128,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
     // round-1 UX finding: omission of these three new candidates was
     // a real defect; this commit closes it.
     caseId: 'cylinder-pv-candidate',
+    runnerAvailable: true,
     displayLabel: 'Cylinder pressure vessel · Tier 2 validated',
     claimTier: 'Tier 2 validated (analytical hoop-stress cross-check)',
     starterDeckRelpath: null,
@@ -132,6 +145,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'plate-with-hole-candidate',
+    runnerAvailable: true,
     displayLabel: 'Plate with hole · 100×50×5 mm, meshed pipeline',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath:
@@ -148,6 +162,7 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: 'cantilever-beam-candidate',
+    runnerAvailable: true,
     displayLabel: 'Cantilever beam · Euler-Bernoulli δ=PL³/(3EI)',
     claimTier: 'Tier 1 engineering candidate',
     starterDeckRelpath: null,

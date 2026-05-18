@@ -212,6 +212,41 @@ describe('Phase 35 A — static-vs-dynamic gate semantic distinction (#28 fix)',
   })
 })
 
+describe('Phase 36 C — runner_available badge (friction point f)', () => {
+  // Phase 35 R3 friction point (f): Phase 35 A's jargon-strip
+  // removed the latent "no live CCX runner" warning for cantilever.
+  // Phase 36 C reinstates this as a structured runnerAvailable
+  // badge keyed off CandidateCaseRecord.runnerAvailable.
+
+  it('renders the badge when runnerAvailable === false', () => {
+    const record: CandidateCaseRecord = {
+      ...CANTILEVER_RECORD,
+      runnerAvailable: false,
+    }
+    render(<CaseOpenAdvisorCard caseRecord={record} />)
+    const badge = screen.getByTestId('case-open-advisor-runner-badge')
+    expect(badge.textContent).toMatch(/demo/i)
+    expect(badge.textContent).toMatch(/no live runner/i)
+  })
+
+  it('does NOT render the badge when runnerAvailable === true', () => {
+    const record: CandidateCaseRecord = {
+      ...CANTILEVER_RECORD,
+      runnerAvailable: true,
+    }
+    render(<CaseOpenAdvisorCard caseRecord={record} />)
+    expect(screen.queryByTestId('case-open-advisor-runner-badge')).toBeNull()
+  })
+
+  it('does NOT render the badge when runnerAvailable is absent (unknown)', () => {
+    // Phase 36 C deliberately treats undefined as "unknown"; the
+    // live-route payload doesn't emit this field yet, so absent
+    // means "no opinion", not "false".
+    render(<CaseOpenAdvisorCard caseRecord={CANTILEVER_RECORD} />)
+    expect(screen.queryByTestId('case-open-advisor-runner-badge')).toBeNull()
+  })
+})
+
 describe('Phase 34 B — footer + Tier-1 banner', () => {
   it('includes the Tier-1 banner in the footer', () => {
     render(<CaseOpenAdvisorCard caseRecord={CANTILEVER_RECORD} />)

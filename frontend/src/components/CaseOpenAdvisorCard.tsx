@@ -65,6 +65,18 @@ export function CaseOpenAdvisorCard({ caseRecord }: CaseOpenAdvisorCardProps) {
     >
       <div style={headerStyle}>
         <strong style={titleStyle}>Case-open advisor</strong>
+        {/* FM-04a Phase 36 C — closes Phase 35 R3 friction point (f).
+            When the registry marks a case as not having a live ccx
+            runner, surface a small badge so the novice can't mistake
+            it for an actively-solvable case. */}
+        {caseRecord.runnerAvailable === false && (
+          <span
+            data-testid="case-open-advisor-runner-badge"
+            style={runnerBadgeStyle}
+          >
+            demo · no live runner
+          </span>
+        )}
         <span data-testid="case-open-advisor-status-badge" style={stubBadgeStyle}>
           stub · offline-first
         </span>
@@ -255,6 +267,19 @@ const stubBadgeStyle: CSSProperties = {
   borderRadius: 6,
   background: 'var(--bg-muted, rgba(255,255,255,0.05))',
   border: '1px solid var(--border)',
+  color: 'var(--text-secondary)',
+}
+// Phase 36 C — amber-toned badge for cases without a live ccx
+// runner. Distinct from the stubBadge (which is about advisor
+// offline-first status), but visually compatible.
+const runnerBadgeStyle: CSSProperties = {
+  fontSize: 11,
+  fontFamily:
+    'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+  padding: '2px 8px',
+  borderRadius: 6,
+  background: 'rgba(255, 180, 80, 0.10)',
+  border: '1px solid rgba(255, 180, 80, 0.45)',
   color: 'var(--text-secondary)',
 }
 const briefStyle: CSSProperties = {
