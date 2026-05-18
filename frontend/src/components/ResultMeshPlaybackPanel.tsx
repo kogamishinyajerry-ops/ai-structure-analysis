@@ -242,16 +242,18 @@ export function ResultMeshPlaybackPanel({
   const showSectionCut = shouldShowFeature(uiMode, 'section-cut');
   const showFieldComponentSwitcher = shouldShowFeature(uiMode, 'field-component-switcher');
   const showProbeListPanel = shouldShowFeature(uiMode, 'probe-list-panel');
-  // FM-04a Phase 30 B — Compare-cuts toggle visibility. Gated on
-  // advanced mode (the 2-quadrant layout is a power-user affordance).
-  // State (showCompanionViewport + companionSectionCut) is NEVER
-  // cleared by gating — only the toggle button is hidden. Pinned by
-  // Phase 30 B C:-1 invariant test.
-  const showCompanionViewportToggle = shouldShowFeature(uiMode, 'companion-viewport');
+  // FM-04a Phase 30 B introduced the Compare-cuts toggle. Phase 32 C
+  // UNGATES it from advanced-mode (Phase 30 FINAL gap #10 closure):
+  // since Phase 31 D wired companion node-pick with origin marker
+  // (no write-conflict risk), the 2-quadrant layout is safe to
+  // surface in basic mode. The toggle is OPT-IN (button click), so
+  // cognitive load on first paint is zero. State preservation
+  // contract preserved: toggling has no effect on underlying
+  // showCompanionViewport / companionSectionCut state.
+  const showCompanionViewportToggle = true;
   // Effective render flag: companion only renders when (a) the user
-  // has enabled it AND (b) advanced mode is current AND (c) the
-  // primary viewport is in WebGL mode (SVG fallback has no shared
-  // contract with the companion).
+  // has enabled it AND (b) the primary viewport is in WebGL mode
+  // (SVG fallback has no shared contract with the companion).
   const companionViewportActive =
     showCompanionViewport && showCompanionViewportToggle;
 
@@ -783,7 +785,15 @@ export function ResultMeshPlaybackPanel({
                   the WebGL viewport map correctly. Only renders when
                   the WebGL viewport is active AND the raycaster
                   reports a hit; null hoverCoords renders nothing. */}
-              {viewportMode === 'webgl' && (
+              {/* FM-04a Phase 32 C — gated on advanced-mode. Phase
+                  30 C introduced the 30Hz floating XYZ tooltip but
+                  it rendered unconditionally on every webgl-mode
+                  view, adding continuous cognitive load on novice
+                  reviewers. Phase 32 C closes Phase 30 FINAL gap #9
+                  by hiding the tooltip in basic mode. Power users
+                  in advanced mode keep the Hyperworks-style readout. */}
+              {viewportMode === 'webgl'
+                && shouldShowFeature(uiMode, 'coord-readout') && (
                 <CoordReadoutTooltip info={hoverCoords} />
               )}
             </div>{/* close primary-viewport-slot */}

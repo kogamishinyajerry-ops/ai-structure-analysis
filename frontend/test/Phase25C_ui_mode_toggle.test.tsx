@@ -33,9 +33,14 @@ describe('Phase 25 C — uiMode state machine', () => {
 
   it('lists all advanced features the gate covers', () => {
     // FM-04a Phase 30 B — registry extended with 'companion-viewport'.
-    // The list is additive; pre-Phase-30 features must remain.
+    // FM-04a Phase 32 C — swap: 'companion-viewport' OUT (compare-
+    // cuts unlocked to basic mode since Phase 31 D's origin-marker
+    // wiring removed the write-conflict risk); 'coord-readout' IN
+    // (the 30Hz floating XYZ tooltip is a continuous always-on
+    // visual that adds cognitive load on novice reviewers).
+    // Net membership count UNCHANGED at 5.
     expect([...ADVANCED_FEATURE_IDS].sort()).toEqual([
-      'companion-viewport',
+      'coord-readout',
       'field-component-switcher',
       'probe-list-panel',
       'section-cut',

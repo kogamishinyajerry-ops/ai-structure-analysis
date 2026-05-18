@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "cantilever-beam-modal-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-18T05:10:33.556874+00:00",
+  "notes": "Phase 32 C C4 — Richardson p-anomaly clean r=2 spike. Phase 30 D's original sweep at cl=12/8/5 mm had non-constant refinement ratio (1.50 / 1.60) which Phase 31 C Richardson flagged with empirical p=0.69 vs C3D10 theoretical p=2. This sibling artifact re-runs at cl=12/6/3 mm (CLEAN r=2 exactly) to verify whether p stabilizes near 2 with a clean ratio. SIBLING to convergence_study.json — does NOT replace the original Phase 30 D record.",
+  "points": [
+    {
+      "label": "cl=12mm",
+      "refinement_param": 0.012,
+      "node_count": 1895,
+      "element_count": 814,
+      "observed_value": 66.92993,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.13255638048176335,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=6mm",
+      "refinement_param": 0.006,
+      "node_count": 10248,
+      "element_count": 5465,
+      "observed_value": 66.89897,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.08623773132825258,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=3mm",
+      "refinement_param": 0.003,
+      "node_count": 59569,
+      "element_count": 36331,
+      "observed_value": 66.88669,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.06786586402833573,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": 66.87861728051391,
+    "observed_order_p": 1.3340949107734372,
+    "refinement_ratio_r": 2.0,
+    "refinement_ratio_constant": true,
+    "extrapolated_residual_pct": 0.05578842663843957,
+    "notes": ""
+  }
+}

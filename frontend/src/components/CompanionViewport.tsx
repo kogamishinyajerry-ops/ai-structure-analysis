@@ -47,6 +47,7 @@ import type { PickedNodeInfo } from './viewportRaycaster';
 import {
   POLISH_CLASS_GRADIENT_SLIDER,
   POLISH_CLASS_SECTION_CUT_READOUT,
+  POLISH_CLASS_COMPANION_MOUNT,
 } from './polishStyles';
 
 interface CompanionViewportProps {
@@ -109,6 +110,7 @@ export function CompanionViewport({
   return (
     <div
       data-testid="companion-viewport"
+      className={POLISH_CLASS_COMPANION_MOUNT}
       style={{
         flex: 1,
         minWidth: 0,

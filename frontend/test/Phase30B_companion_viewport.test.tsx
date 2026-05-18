@@ -456,19 +456,25 @@ describe('Phase 30 B — ResultMeshPlaybackPanel Compare-cuts toggle gating', ()
     vi.unstubAllGlobals()
   })
 
-  it('toggle button HIDDEN in basic mode (D:-1 additive)', async () => {
+  it('toggle button VISIBLE in basic mode (Phase 32 C un-gating)', async () => {
+    // FM-04a Phase 32 C — Compare-cuts un-gated from advanced-mode-
+    // only. Closes Phase 30 FINAL gap #10. Originally Phase 30 B
+    // gated this to advanced because companion picks could
+    // double-write to the shared probe list; Phase 31 D's origin-
+    // stamping wrapper eliminates that risk, so basic-mode
+    // reviewers now see the 2-quadrant lift.
     window.localStorage.setItem('fm04a.ui.mode.v1', 'basic')
-    stubFetchWithPayload('phase30b-basic-hidden')
+    stubFetchWithPayload('phase30b-basic-visible')
     render(
       <ResultMeshPlaybackPanel
-        caseId="phase30b-basic-hidden"
+        caseId="phase30b-basic-visible"
         apiBase="http://localhost:8000/api/v1"
       />,
     )
     await waitFor(() =>
       expect(screen.getByTestId('viewport-mode-toggle')).toBeInTheDocument(),
     )
-    expect(screen.queryByTestId('compare-cuts-toggle')).toBeNull()
+    expect(screen.getByTestId('compare-cuts-toggle')).toBeInTheDocument()
   })
 
   it('toggle button VISIBLE in advanced mode', async () => {
@@ -676,16 +682,25 @@ describe('Phase 30 B — companion state independence (C:-1 anti-gaming)', () =>
 // 4. uiMode registry guard
 // ────────────────────────────────────────────────────────────────────
 
-describe('Phase 30 B — uiMode registry pin', () => {
-  it("'companion-viewport' is registered in ADVANCED_FEATURE_IDS", () => {
-    expect(ADVANCED_FEATURE_IDS).toContain('companion-viewport')
+describe('Phase 30 B → Phase 32 C — uiMode registry transition', () => {
+  // FM-04a Phase 32 C — companion-viewport REMOVED from
+  // ADVANCED_FEATURE_IDS. The 2-quadrant Compare-cuts feature is now
+  // available in basic mode (Phase 30 FINAL gap #10 closure). The
+  // safety rationale: Phase 31 D wired companion node-pick with
+  // origin: 'companion' marker, eliminating the write-conflict risk
+  // that originally motivated the advanced-only gate.
+  it("'companion-viewport' is NO LONGER in ADVANCED_FEATURE_IDS", () => {
+    expect(ADVANCED_FEATURE_IDS as readonly string[]).not.toContain(
+      'companion-viewport',
+    )
   })
 
-  it("shouldShowFeature returns true for 'companion-viewport' in advanced", () => {
-    expect(shouldShowFeature('advanced', 'companion-viewport')).toBe(true)
-  })
-
-  it("shouldShowFeature returns false for 'companion-viewport' in basic", () => {
-    expect(shouldShowFeature('basic', 'companion-viewport')).toBe(false)
-  })
+  // The shouldShowFeature contract is preserved: any non-registered
+  // id returns false (Phase 25 C strict-typing contract). But
+  // because 'companion-viewport' is no longer in the AdvancedFeatureId
+  // union, calling shouldShowFeature with it is now a TS type error
+  // — caught at compile time, not runtime. The legacy runtime
+  // checks below are intentionally REMOVED rather than kept as
+  // negative pins (they'd require a string cast that defeats the
+  // type system).
 })

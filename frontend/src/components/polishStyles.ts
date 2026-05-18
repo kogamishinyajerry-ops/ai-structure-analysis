@@ -67,6 +67,12 @@ export const POLISH_CLASS_WARNING_TOAST = 'fm04a-warning-toast';
  * to the row container so toggling the companion ON/OFF animates
  * the primary's flex re-sizing over 200ms instead of snapping. */
 export const POLISH_CLASS_VIEWPORT_FLEX_ROW = 'fm04a-viewport-flex-row';
+/** FM-04a Phase 32 C — companion-viewport entrance opacity fade.
+ * Closes Phase 31 D's "companion entrance fade NOT shipped" honest
+ * gap. Applied to the outermost div of CompanionViewport so the
+ * 2-quadrant lift transitions in cohesively with the other Phase
+ * 31 D layout-swap motion. Respects prefers-reduced-motion. */
+export const POLISH_CLASS_COMPANION_MOUNT = 'fm04a-companion-mount';
 
 const POLISH_CSS = `
 @keyframes fm04a-probe-row-fade-in {
@@ -84,6 +90,10 @@ const POLISH_CSS = `
 @keyframes fm04a-advanced-mode-promo-fade-slide-in {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fm04a-companion-mount-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .${POLISH_CLASS_PROBE_ROW_MOUNT} {
@@ -148,6 +158,15 @@ const POLISH_CSS = `
   transition: flex-basis 200ms ease-out, width 200ms ease-out;
 }
 
+/* FM-04a Phase 32 C — companion-viewport entrance opacity fade.
+   200ms ease-out matching the rest of the FM-04a motion vocabulary
+   (probe-row mount, restored-toast, advanced-mode promo, chevron).
+   Applied to the outermost CompanionViewport div so the entry is
+   cohesive with the parent's flex-basis transition. */
+.${POLISH_CLASS_COMPANION_MOUNT} {
+  animation: fm04a-companion-mount-fade-in 200ms ease-out;
+}
+
 /* Threshold-filter slider gradient track. Matches the legend
    gradient at the bottom-right of the viewport (#2563eb → #10b981
    → #f97316). */
@@ -195,7 +214,8 @@ const POLISH_CSS = `
   .${POLISH_CLASS_PROBE_ROW_MOUNT},
   .${POLISH_CLASS_PROBE_ROW_UNMOUNT},
   .${POLISH_CLASS_RESTORED_TOAST},
-  .${POLISH_CLASS_ADVANCED_MODE_PROMO} {
+  .${POLISH_CLASS_ADVANCED_MODE_PROMO},
+  .${POLISH_CLASS_COMPANION_MOUNT} {
     animation: none;
   }
   /* Phase 29 B — chevron transition disabled in reduce mode. The

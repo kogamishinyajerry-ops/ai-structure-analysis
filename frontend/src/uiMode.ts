@@ -18,20 +18,36 @@
 // benchmark agreement.
 
 /** Stable identifier for each advanced-tier feature. The UI gates
- * visibility on `shouldShowFeature(mode, id)`. */
+ * visibility on `shouldShowFeature(mode, id)`.
+ *
+ * FM-04a Phase 32 C polish bundle:
+ *   * `'coord-readout'` ADDED — the 30Hz floating XYZ tooltip is a
+ *     CONTINUOUS always-on visual affordance that adds cognitive
+ *     load on novice reviewers; gating to advanced-mode-only
+ *     closes Phase 30 FINAL gap #9 / Phase 31 UX honest gap #2.
+ *   * `'companion-viewport'` REMOVED — the 2-quadrant Compare-cuts
+ *     toggle is an OPT-IN affordance (reviewer clicks a button to
+ *     activate). Since Phase 31 D wired companion node-pick with
+ *     origin: 'companion' (no write-conflict risk anymore), the
+ *     companion is safe to surface in basic mode. Closes Phase 30
+ *     FINAL gap #10 / Phase 31 UI honest gap #11.
+ *
+ * Net membership count is UNCHANGED (5 features). The Phase 25 C
+ * registry-size pin still passes; the registry contents test was
+ * updated additively to track the swap. */
 export type AdvancedFeatureId =
   | 'threshold-filter'
   | 'section-cut'
   | 'field-component-switcher'
   | 'probe-list-panel'
-  | 'companion-viewport';
+  | 'coord-readout';
 
 export const ADVANCED_FEATURE_IDS: readonly AdvancedFeatureId[] = [
   'threshold-filter',
   'section-cut',
   'field-component-switcher',
   'probe-list-panel',
-  'companion-viewport',
+  'coord-readout',
 ] as const;
 
 /** Two-state UI mode. Default is 'basic' on first load. */
