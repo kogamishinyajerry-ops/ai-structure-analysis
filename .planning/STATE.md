@@ -1,6 +1,6 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase35-novice-ux-overhaul-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@(this commit)`
+> **Stamp:** `fm04a-phase35-novice-ux-overhaul-CLOSED-LOCAL-2026-05-18 · branch=claude/FM-04a-tier1-ballistic-candidate@5576e1a`
 >
 > Phase 34 (CLOSED 2026-05-18 @ `a1ef486`): retained below for context.
 > Phase 33 (CLOSED 2026-05-18 @ `37ad9f1`): retained further below for context.
