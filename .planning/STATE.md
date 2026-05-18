@@ -1,6 +1,6 @@
 # AI-Structure-FEA · STATE
 
-> **Stamp:** `fm04a-phase37-industrial-ui-parity-bc-setup-advisor-CLOSED-LOCAL-2026-05-19 · branch=claude/FM-04a-tier1-ballistic-candidate@<PHASE37D_COMMIT>`
+> **Stamp:** `fm04a-phase37-industrial-ui-parity-bc-setup-advisor-CLOSED-LOCAL-2026-05-19 · branch=claude/FM-04a-tier1-ballistic-candidate@8e3fffc`
 >
 > Phase 36 (CLOSED 2026-05-19 @ `169134c`): retained below for context.
 > Phase 35 (CLOSED 2026-05-18 @ `5d8f368`): retained further below for context.
