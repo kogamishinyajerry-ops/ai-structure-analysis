@@ -18,10 +18,6 @@ import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
 // FM-04a Phase 29 C — App-root onboarding mounts.
 import { OnboardingTour } from './components/OnboardingTour';
 import { AdvancedModePromo } from './components/AdvancedModePromo';
-import {
-  createUiModeStorage as createAppUiModeStorage,
-  type UiMode as AppUiMode,
-} from './uiMode';
 import { buildBulletPlateBlueprintSummary } from './bulletPlateBlueprint';
 // FM-04a Phase 21 D — most Visual-tab panel imports moved to
 // VisualTabPanel.tsx (extraction); App.tsx keeps only the ones
@@ -97,6 +93,13 @@ import {
 // hook so App.tsx doesn't carry ~240 LOC of orchestration. The hook
 // preserves granular per-section memoization (Phase 28 D).
 import { useTrustSections } from './state/useTrustSections';
+// FM-04a Phase 32 B — App-root uiMode + tour-dismissed cluster
+// extracted into a custom hook mirroring Phase 31 B's
+// useViewportLayout pattern. Partial closure of Phase 31 honest
+// gap #7 (App.tsx reducer debt). The remaining ~36 state
+// surfaces are deferred to Phase 33+ for safe per-cluster
+// extraction.
+import { useAppUiMode } from './state/useAppUiMode';
 const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
@@ -839,19 +842,16 @@ function App() {
             ? 'Run a solver smoke or export the report with Tier 0 wording'
             : 'Review the uploaded report; select a gallery case before solver run';
   // FM-04a Phase 29 C — App-root uiMode + tour-dismissed state.
+  // FM-04a Phase 32 B — extracted into useAppUiMode hook to close
+  // part of the App.tsx reducer debt (Phase 31 honest gap #7).
   // The OnboardingTour + AdvancedModePromo mount at App-root so
-  // tabs other than Visual receive onboarding. uiMode is forwarded
-  // to ResultMeshPlaybackPanel via the optional `uiMode` prop so
-  // the panel honors the same state.
-  const appUiModeStorage = useMemo(() => createAppUiModeStorage(), []);
-  const [appUiMode, setAppUiMode] = useState<AppUiMode>(() =>
-    appUiModeStorage.load(),
-  );
-  const [appTourDismissedInSession, setAppTourDismissedInSession] = useState(false);
-  const handleAppUiModeChange = (next: AppUiMode) => {
-    setAppUiMode(next);
-    appUiModeStorage.save(next);
-  };
+  // tabs other than Visual receive onboarding; uiMode is
+  // forwarded to ResultMeshPlaybackPanel via the optional
+  // `uiMode` prop so the panel honors the same state.
+  const {
+    state: { appUiMode, appTourDismissedInSession },
+    actions: { handleAppUiModeChange, markTourDismissedInSession },
+  } = useAppUiMode();
 
   // FM-04a Phase 29 B — useTrustSections custom hook encapsulates
   // the 7-section build with granular per-section memoization
@@ -1231,7 +1231,7 @@ function App() {
           audit. The promo's visibility is fully self-gated by its
           storage predicate; uiMode lives in App-root via
           appUiModeStorage / appUiMode below. */}
-      <OnboardingTour onDismissed={() => setAppTourDismissedInSession(true)} />
+      <OnboardingTour onDismissed={markTourDismissedInSession} />
       <AdvancedModePromo
         uiMode={appUiMode}
         tourDismissedInSession={appTourDismissedInSession}
