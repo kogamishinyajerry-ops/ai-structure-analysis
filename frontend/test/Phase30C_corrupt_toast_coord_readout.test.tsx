@@ -240,14 +240,15 @@ describe('Phase 30 C — corrupted-key toast', () => {
       />,
     )
     const toast = await screen.findByTestId('probe-corrupted-toast')
-    // Pinned via inline style override on top of the shared
-    // POLISH_CLASS_RESTORED_TOAST styling. Color is warning-rose
-    // (Tailwind rose-300 == #fda4af) to visually separate it from
-    // the blue informational restored toast.
-    expect(toast.style.color).toMatch(/^(rgb|#)/)
-    // Just verify color is set on the element directly, not the
-    // default text-secondary inherited from chrome.
-    expect(toast.style.color).not.toBe('')
+    // FM-04a Phase 31 D — inline rose-color override replaced with
+    // the shared POLISH_CLASS_WARNING_TOAST class (token-tinted
+    // warning toast). The visual semantics are preserved: the
+    // corrupted-toast is still rose-tinted vs the restored-toast's
+    // blue, but the color tokens live in CSS instead of inline
+    // style. Pinning now asserts the class is composed alongside
+    // POLISH_CLASS_RESTORED_TOAST.
+    expect(toast.className).toMatch(/fm04a-restored-toast/)
+    expect(toast.className).toMatch(/fm04a-warning-toast/)
   })
 })
 

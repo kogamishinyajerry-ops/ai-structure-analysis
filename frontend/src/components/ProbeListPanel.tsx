@@ -205,6 +205,15 @@ export function ProbeListPanel({
                         data-testid={`probe-row-${index}-label`}
                         style={STYLES.td}
                       >
+                        {entry.origin === 'companion' && (
+                          <span
+                            data-testid={`probe-row-${index}-companion-prefix`}
+                            style={STYLES.companionPrefix}
+                            aria-label="probe picked from companion viewport"
+                          >
+                            companion:
+                          </span>
+                        )}
                         {entry.label}
                         {isBaseline && showDiff && (
                           <span
@@ -410,5 +419,22 @@ const STYLES: Record<string, CSSProperties> = {
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     verticalAlign: 'middle',
+  },
+  // FM-04a Phase 31 D — "companion:" prefix marker shown in front of
+  // the label cell when entry.origin === 'companion'. Visually
+  // distinct from the baseline tag (no uppercase, muted teal/slate
+  // accent, smaller leading) so reviewers do not confuse it with
+  // the baseline-probe indicator.
+  companionPrefix: {
+    display: 'inline-block',
+    marginRight: 4,
+    padding: '0 4px',
+    color: 'rgba(148, 163, 184, 0.92)',
+    fontSize: '0.62rem',
+    fontWeight: 600,
+    letterSpacing: 0.2,
+    verticalAlign: 'middle',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   },
 };

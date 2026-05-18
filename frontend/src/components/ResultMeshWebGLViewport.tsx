@@ -110,6 +110,16 @@ interface ResultMeshWebGLViewportProps {
         }
       | null,
   ) => void;
+  /** FM-04a Phase 31 D — WebGL context-loss callback. Fires when the
+   * underlying canvas emits a `webglcontextlost` event (GPU reset,
+   * browser memory pressure, tab backgrounded long enough to reclaim
+   * GPU resources). The parent panel reacts by falling back to the
+   * SVG renderer path and surfacing a warning toast — preserving
+   * the reviewer's ability to keep working without a hard reload.
+   * `reason` is the empty string when the browser doesn't supply
+   * one (most do not on the event); the panel synthesizes a generic
+   * message in that case. */
+  onContextLost?: (reason: string) => void;
 }
 
 export function ResultMeshWebGLViewport({
@@ -124,6 +134,7 @@ export function ResultMeshWebGLViewport({
   onNodePicked,
   valueFilter = null,
   onHoverCoords,
+  onContextLost,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -187,6 +198,30 @@ export function ResultMeshWebGLViewport({
     renderer.domElement.style.display = 'block';
     renderer.domElement.setAttribute('data-testid', 'webgl-canvas');
 
+    // FM-04a Phase 31 D — WebGL context-loss handler. The browser
+    // can drop the GL context under memory pressure, GPU reset, or
+    // when a backgrounded tab outlives its idle threshold. The
+    // default behavior is a silent black canvas; here we
+    // preventDefault() to suppress the browser's restoration retry
+    // (which can re-loop on persistent failures) and surface the
+    // event up so the parent can fall back to the SVG render path.
+    // E:-1 unmount safety: we capture the handler reference for the
+    // useEffect cleanup so the listener is removed when the
+    // component unmounts.
+    const onContextLostHandler = (event: Event) => {
+      event.preventDefault();
+      const reason =
+        event instanceof Event && 'statusMessage' in event
+          ? String((event as unknown as { statusMessage: string }).statusMessage ?? '')
+          : '';
+      onContextLost?.(reason);
+    };
+    renderer.domElement.addEventListener(
+      'webglcontextlost',
+      onContextLostHandler as EventListener,
+      false,
+    );
+
     stateRef.current = {
       renderer,
       scene,
@@ -207,13 +242,18 @@ export function ResultMeshWebGLViewport({
     observer?.observe(container);
     return () => {
       observer?.disconnect();
+      renderer.domElement.removeEventListener(
+        'webglcontextlost',
+        onContextLostHandler as EventListener,
+        false,
+      );
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement);
       }
       stateRef.current = null;
     };
-  }, [supported]);
+  }, [supported, onContextLost]);
 
   // Build / rebuild geometry when the selected frame, animation
   // interpolation, magnification, or nextFrame changes.

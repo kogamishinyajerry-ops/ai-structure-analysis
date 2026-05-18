@@ -12,13 +12,19 @@
 // * Two WebGL contexts on screen at once. Browsers cap at ~16 live
 //   contexts; two is well under, but flagged for performance
 //   monitoring in the Phase 30 B retro.
-// * No node-pick callback wired through; pinning probes from the
-//   companion would conflict with the primary's probe list. The
-//   shared probe-list state is read-only in the companion (probes
-//   appear as labeled nodes via Phase 23 C raycaster, but clicking
-//   does not add).
-// * onNodePicked intentionally omitted on the inner viewport to
-//   avoid double-pinning across the two views.
+// * FM-04a Phase 31 D — node-pick callback IS now wired through.
+//   Picks from the companion viewport flow into the SAME parent
+//   activePick state as the primary; the wrapper here injects
+//   `origin: 'companion'` into the PickedNodeInfo so the probe-list
+//   renderer can prefix the label cell with "companion:" without
+//   re-routing the pick stream. CSV serialization (`serializeProbe
+//   ListAsCsv`) IGNORES the origin field to keep the export schema
+//   stable (C:-1 — existing CSV tests do not change).
+// * De-dup by label (Phase 24 D addProbeEntry) means the same node
+//   pinned from primary then companion does NOT create two rows;
+//   the FIRST pin wins. This is intentional — the prefix exists to
+//   help the reviewer see WHICH viewport surfaced the node first,
+//   not to allow double-pinning the same id.
 //
 // Anti-gaming guards:
 // * C:-1: companion section-cut state passed down via props; the
@@ -29,7 +35,7 @@
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ResultMeshFrame } from '../resultMeshPlayback';
 import type { StressComponent } from '../stressDerivatives';
 import { ResultMeshWebGLViewport } from './ResultMeshWebGLViewport';
@@ -37,6 +43,7 @@ import type {
   SectionCutState,
   ValueFilterState,
 } from './viewportGeometry';
+import type { PickedNodeInfo } from './viewportRaycaster';
 import {
   POLISH_CLASS_GRADIENT_SLIDER,
   POLISH_CLASS_SECTION_CUT_READOUT,
@@ -61,6 +68,11 @@ interface CompanionViewportProps {
   /** INDEPENDENT — the whole point of the companion. */
   sectionCut: SectionCutState;
   onSectionCutChange: (next: SectionCutState) => void;
+  /** FM-04a Phase 31 D — node-pick forwarder. When supplied, picks
+   * made inside the companion canvas flow to this callback with
+   * `origin: 'companion'` injected; absent → companion picks are
+   * dropped (Phase 30 B behavior). */
+  onNodePicked?: (info: PickedNodeInfo | null) => void;
 }
 
 export function CompanionViewport({
@@ -74,8 +86,25 @@ export function CompanionViewport({
   valueFilter,
   sectionCut,
   onSectionCutChange,
+  onNodePicked,
 }: CompanionViewportProps) {
   const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  // FM-04a Phase 31 D — origin-stamping wrapper. Tags every pick
+  // with `origin: 'companion'` before forwarding so the probe-list
+  // renderer can prefix the label cell with "companion:". Pure-
+  // function injection, no state of its own.
+  const handlePicked = useCallback(
+    (info: PickedNodeInfo | null) => {
+      if (!onNodePicked) return;
+      if (info === null) {
+        onNodePicked(null);
+        return;
+      }
+      onNodePicked({ ...info, origin: 'companion' });
+    },
+    [onNodePicked],
+  );
 
   return (
     <div
@@ -226,6 +255,7 @@ export function CompanionViewport({
           sectionCut={sectionCut}
           fieldComponent={fieldComponent}
           valueFilter={valueFilter}
+          onNodePicked={onNodePicked ? handlePicked : undefined}
         />
       </div>
     </div>

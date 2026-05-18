@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Box, Layers, Pause, Play, ShieldAlert } from 'lucide-react';
 
 import {
@@ -75,6 +75,8 @@ import {
   POLISH_CLASS_GRADIENT_SLIDER,
   POLISH_CLASS_SECTION_CUT_READOUT,
   POLISH_CLASS_RESTORED_TOAST,
+  POLISH_CLASS_WARNING_TOAST,
+  POLISH_CLASS_VIEWPORT_FLEX_ROW,
 } from './polishStyles';
 
 interface ResultMeshPlaybackPanelProps {
@@ -137,6 +139,14 @@ export function ResultMeshPlaybackPanel({
   // FM-04a Phase 24 D — active pick (single, live; pinned list owned
   // by the layout hook below).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
+  // FM-04a Phase 31 D — WebGL context-loss toast state. Surfaces a
+  // user-visible warning when the GPU context drops (memory pressure
+  // / GPU reset / tab background reclaim). `reason` is the browser's
+  // statusMessage if supplied (most browsers do not). Auto-dismisses
+  // after 10s; manually dismissable via the toast's × button.
+  const [contextLostToast, setContextLostToast] = useState<
+    { reason: string } | null
+  >(null);
 
   // FM-04a Phase 31 B — viewport-layout state + effect cascade
   // extracted to a custom hook. Closes the 3-phase reducer-extraction
@@ -196,6 +206,26 @@ export function ResultMeshPlaybackPanel({
   useEffect(() => {
     installPolishStyles();
   }, []);
+  // FM-04a Phase 31 D — context-lost toast auto-dismiss after 10s.
+  // Longer than the 4s restored-toast (Phase 28 C) and 8s corrupted-
+  // toast (Phase 30 C) because GL context loss is rarer and the
+  // reviewer needs more time to register the change to SVG mode.
+  // E:-1 unmount safety: timer cleared on rerender and on unmount.
+  useEffect(() => {
+    if (!contextLostToast) return;
+    const timer = setTimeout(() => setContextLostToast(null), 10000);
+    return () => clearTimeout(timer);
+  }, [contextLostToast]);
+  // FM-04a Phase 31 D — context-loss handler. Falls back to SVG so
+  // the reviewer keeps working, and surfaces the toast above the
+  // viewport. Wired into the primary ResultMeshWebGLViewport below
+  // via `onContextLost`. (Companion does NOT wire this; if the
+  // companion's context drops the parent layout already fell back
+  // for the primary.)
+  const handleContextLost = useCallback((reason: string) => {
+    setViewportMode('svg');
+    setContextLostToast({ reason });
+  }, [setViewportMode]);
   // FM-04a Phase 31 B — case-mount cascade + auto-dismiss timers +
   // probe-list & companion-state persistence ALL moved to
   // `useViewportLayout` above. The 5 useEffect blocks deleted from
@@ -350,14 +380,10 @@ export function ResultMeshPlaybackPanel({
       {corruptedToast && (
         <div
           data-testid="probe-corrupted-toast"
-          className={POLISH_CLASS_RESTORED_TOAST}
+          className={`${POLISH_CLASS_RESTORED_TOAST} ${POLISH_CLASS_WARNING_TOAST}`}
           role="alert"
           aria-live="assertive"
-          style={{
-            top: '50px',
-            color: '#fda4af',
-            borderColor: 'rgba(239, 68, 68, 0.55)',
-          }}
+          style={{ top: '50px' }}
         >
           <span>
             Discarded corrupted probe list for case '{corruptedToast.caseId}' —
@@ -368,6 +394,33 @@ export function ResultMeshPlaybackPanel({
             data-testid="probe-corrupted-toast-dismiss"
             onClick={() => dismissCorruptedToast()}
             aria-label="Dismiss corrupted probe list notification"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {/* FM-04a Phase 31 D — WebGL context-loss toast. Surfaces when
+          the ResultMeshWebGLViewport's `webglcontextlost` listener
+          fires (parent setViewportMode to 'svg' so the reviewer
+          keeps working). Same rose tint as corrupted-toast via the
+          shared warning-toast class. 10s auto-fade. */}
+      {contextLostToast && (
+        <div
+          data-testid="webgl-context-lost-toast"
+          className={`${POLISH_CLASS_RESTORED_TOAST} ${POLISH_CLASS_WARNING_TOAST}`}
+          role="alert"
+          aria-live="assertive"
+          style={{ top: '90px' }}
+        >
+          <span>
+            WebGL context lost — fell back to SVG rendering
+            {contextLostToast.reason ? ` (${contextLostToast.reason})` : ''}
+          </span>
+          <button
+            type="button"
+            data-testid="webgl-context-lost-toast-dismiss"
+            onClick={() => setContextLostToast(null)}
+            aria-label="Dismiss WebGL context-lost notification"
           >
             ×
           </button>
@@ -545,6 +598,7 @@ export function ResultMeshPlaybackPanel({
             >
             <div
               data-testid="viewport-flex-row"
+              className={POLISH_CLASS_VIEWPORT_FLEX_ROW}
               style={{
                 display: 'flex',
                 gap: 12,
@@ -577,6 +631,7 @@ export function ResultMeshPlaybackPanel({
                   valueFilter={valueFilter}
                   onNodePicked={setActivePick}
                   onHoverCoords={setHoverCoords}
+                  onContextLost={handleContextLost}
                 />
               ) : (
               <>
@@ -752,6 +807,7 @@ export function ResultMeshPlaybackPanel({
                 valueFilter={valueFilter}
                 sectionCut={companionSectionCut}
                 onSectionCutChange={setCompanionSectionCut}
+                onNodePicked={setActivePick}
               />
             )}
             </div>{/* close viewport-flex-row */}

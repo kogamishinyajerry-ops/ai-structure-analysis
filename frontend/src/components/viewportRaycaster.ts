@@ -31,6 +31,14 @@ export interface PickedNodeInfo {
    * to `value` when no tensor is present. May be `null` when no
    * element near the picked node carries a value. */
   fieldValue: number | null;
+  /** FM-04a Phase 31 D — viewport that produced the pick. Optional;
+   * absent → primary viewport (default), preserving Phase 23 C/24 D
+   * backward compatibility. The companion-viewport wrapper sets this
+   * to 'companion' so the probe-list renderer can prefix the label
+   * cell with "companion:" without re-routing the pick stream.
+   * CSV serialization (`serializeProbeListAsCsv`) IGNORES this field
+   * to keep the CSV schema stable. */
+  origin?: 'primary' | 'companion';
 }
 
 /** FM-04a Phase 23 C — find the closest node in the frame to a

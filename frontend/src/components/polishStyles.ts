@@ -57,6 +57,16 @@ export const POLISH_CLASS_GRADIENT_SLIDER = 'fm04a-gradient-slider';
 export const POLISH_CLASS_SECTION_CUT_READOUT = 'fm04a-section-cut-readout';
 export const POLISH_CLASS_RESTORED_TOAST = 'fm04a-restored-toast';
 export const POLISH_CLASS_ADVANCED_MODE_PROMO = 'fm04a-advanced-mode-promo';
+/** FM-04a Phase 31 D — warning-tinted toast variant. Reuses the
+ * restored-toast positioning + animation but swaps the color tokens
+ * to rose for higher-stakes alerts (corrupted-key, context-lost).
+ * Replaces the inline rgba color overrides Phase 30 C used for the
+ * corrupted-key toast. */
+export const POLISH_CLASS_WARNING_TOAST = 'fm04a-warning-toast';
+/** FM-04a Phase 31 D — viewport-flex-row width transition. Applied
+ * to the row container so toggling the companion ON/OFF animates
+ * the primary's flex re-sizing over 200ms instead of snapping. */
+export const POLISH_CLASS_VIEWPORT_FLEX_ROW = 'fm04a-viewport-flex-row';
 
 const POLISH_CSS = `
 @keyframes fm04a-probe-row-fade-in {
@@ -115,6 +125,29 @@ const POLISH_CSS = `
   cursor: pointer;
 }
 
+/* FM-04a Phase 31 D — warning-toast variant. Inherits the restored-
+   toast geometry by composition (consumer applies BOTH classes) and
+   overrides only color tokens. Border is rose-500 @ 55% alpha, text
+   is rose-300 to keep AA contrast on the slate-950 bg. */
+.${POLISH_CLASS_WARNING_TOAST} {
+  color: #fda4af;
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+/* FM-04a Phase 31 D — viewport-flex-row layout-swap motion.
+   When the companion viewport is toggled on/off, the primary's
+   flex causes a width re-layout. Without a transition the
+   re-layout is an instant snap (jarring on large viewports).
+   The transition targets gap and uses a 200ms ease-out to match
+   the rest of the FM-04a motion palette. prefers-reduced-motion
+   reduce disables the transition. */
+.${POLISH_CLASS_VIEWPORT_FLEX_ROW} {
+  transition: gap 200ms ease-out;
+}
+.${POLISH_CLASS_VIEWPORT_FLEX_ROW} > * {
+  transition: flex-basis 200ms ease-out, width 200ms ease-out;
+}
+
 /* Threshold-filter slider gradient track. Matches the legend
    gradient at the bottom-right of the viewport (#2563eb → #10b981
    → #f97316). */
@@ -169,6 +202,13 @@ const POLISH_CSS = `
      rotation itself still applies (so the visual state is correct);
      only the transition timing is suppressed. */
   .fm04a-section-frame-chevron {
+    transition: none;
+  }
+  /* Phase 31 D — viewport layout-swap transition disabled in
+     reduce mode. The state itself (companion shown/hidden) still
+     applies; only the 200ms easing is suppressed. */
+  .${POLISH_CLASS_VIEWPORT_FLEX_ROW},
+  .${POLISH_CLASS_VIEWPORT_FLEX_ROW} > * {
     transition: none;
   }
 }
