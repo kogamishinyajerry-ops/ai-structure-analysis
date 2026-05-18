@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 import { ComplianceBadge } from './components/ComplianceBadge';
+import { CaseOpenAdvisorCard } from './components/CaseOpenAdvisorCard';
 import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
@@ -1315,6 +1316,15 @@ function App() {
                 <TabButton active={activeTab === 'report'} onClick={() => setActiveTab('report')} label="Narrative" icon={<Activity size={16} />} />
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
             </div>
+
+            {activeCaseId && (() => {
+                const caseOpenRecord = findCandidateCase(FALLBACK_CANDIDATE_CASES, activeCaseId);
+                return caseOpenRecord ? (
+                    <div style={{ marginBottom: '24px' }}>
+                        <CaseOpenAdvisorCard caseRecord={caseOpenRecord} />
+                    </div>
+                ) : null;
+            })()}
 
             {activeTab === 'visual' && (
                 <VisualTabPanel
