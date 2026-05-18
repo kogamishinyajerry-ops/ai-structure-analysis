@@ -37,6 +37,42 @@ const SECTION_TITLE_STYLE = {
   color: 'var(--text-secondary)',
 }
 
+/**
+ * Phase 34 A — analysis-type-aware axis-label visibility.
+ *
+ * The CaseComparison schema (Phase 3 C) was designed for ballistic
+ * impact analyses and includes hard-coded ballistic axes (residual
+ * velocity / perforation marker / energy balance). For non-ballistic
+ * cases (cantilever-static, plate-with-hole, modal, heat-transfer,
+ * etc.), the backend returns null/empty for these axes. Phase 33 C
+ * novice_simulator triple-flagged the resulting dash-filled
+ * ballistic-labelled rows as a high-friction event across P1+P2+P5
+ * personas ("residual velocity? perforation? this is a cantilever
+ * beam").
+ *
+ * The fix: when ALL ballistic-specific axes report no data, hide the
+ * ballistic rows and show a clear "not applicable for this analysis"
+ * notice. Convergence verdict + artifact diffs are analysis-type-
+ * neutral and remain rendered.
+ *
+ * NOT changed: CSV export schema, backend response schema, the
+ * ballistic comparison rendering itself (preserved when ballistic
+ * cases ARE compared — Phase 25 D + Phase 3 C invariants honored).
+ */
+function hasAnyBallisticAxisData(comparison: CaseComparison): boolean {
+  const rv = comparison.residualVelocityDiff
+  const pm = comparison.perforationMarkerDiff
+  const eb = comparison.energyBalanceErrorDiff
+  return (
+    rv.a !== null ||
+    rv.b !== null ||
+    pm.a !== null ||
+    pm.b !== null ||
+    eb.a !== null ||
+    eb.b !== null
+  )
+}
+
 function toneColor(tone: DeltaTone): string {
   if (tone === 'accent') return 'var(--accent, #0a8a4a)'
   if (tone === 'warning') return 'var(--text-warning, #b8860b)'
@@ -224,61 +260,84 @@ export function CaseComparisonPanel({
             <span>delta</span>
           </div>
 
-          <DiffRow
-            axis="residual velocity"
-            a={
-              comparison.residualVelocityDiff.a !== null
-                ? `${comparison.residualVelocityDiff.a} m/s`
-                : '—'
-            }
-            b={
-              comparison.residualVelocityDiff.b !== null
-                ? `${comparison.residualVelocityDiff.b} m/s`
-                : '—'
-            }
-            delta={
-              comparison.residualVelocityDiff.deltaPct !== null
-                ? `${comparison.residualVelocityDiff.deltaPct.toFixed(2)}%`
-                : '—'
-            }
-            tone={numericDeltaTone(comparison.residualVelocityDiff)}
-          />
+          {hasAnyBallisticAxisData(comparison) ? (
+            <>
+              <DiffRow
+                axis="residual velocity"
+                a={
+                  comparison.residualVelocityDiff.a !== null
+                    ? `${comparison.residualVelocityDiff.a} m/s`
+                    : '—'
+                }
+                b={
+                  comparison.residualVelocityDiff.b !== null
+                    ? `${comparison.residualVelocityDiff.b} m/s`
+                    : '—'
+                }
+                delta={
+                  comparison.residualVelocityDiff.deltaPct !== null
+                    ? `${comparison.residualVelocityDiff.deltaPct.toFixed(2)}%`
+                    : '—'
+                }
+                tone={numericDeltaTone(comparison.residualVelocityDiff)}
+              />
 
-          <DiffRow
-            axis="perforation marker"
-            a={comparison.perforationMarkerDiff.a ?? '—'}
-            b={comparison.perforationMarkerDiff.b ?? '—'}
-            delta={comparison.perforationMarkerDiff.sameMarker ? 'same' : 'differ'}
-            tone={comparison.perforationMarkerDiff.sameMarker ? 'accent' : 'danger'}
-          />
+              <DiffRow
+                axis="perforation marker"
+                a={comparison.perforationMarkerDiff.a ?? '—'}
+                b={comparison.perforationMarkerDiff.b ?? '—'}
+                delta={comparison.perforationMarkerDiff.sameMarker ? 'same' : 'differ'}
+                tone={comparison.perforationMarkerDiff.sameMarker ? 'accent' : 'danger'}
+              />
 
-          <DiffRow
-            axis="energy balance error"
-            a={
-              comparison.energyBalanceErrorDiff.a !== null
-                ? `${comparison.energyBalanceErrorDiff.a}%`
-                : '—'
-            }
-            b={
-              comparison.energyBalanceErrorDiff.b !== null
-                ? `${comparison.energyBalanceErrorDiff.b}%`
-                : '—'
-            }
-            delta={
-              comparison.energyBalanceErrorDiff.deltaAbsPct !== null
-                ? `${comparison.energyBalanceErrorDiff.deltaAbsPct.toFixed(2)}%`
-                : '—'
-            }
-            tone={absoluteDeltaTone(comparison.energyBalanceErrorDiff)}
-          />
+              <DiffRow
+                axis="energy balance error"
+                a={
+                  comparison.energyBalanceErrorDiff.a !== null
+                    ? `${comparison.energyBalanceErrorDiff.a}%`
+                    : '—'
+                }
+                b={
+                  comparison.energyBalanceErrorDiff.b !== null
+                    ? `${comparison.energyBalanceErrorDiff.b}%`
+                    : '—'
+                }
+                delta={
+                  comparison.energyBalanceErrorDiff.deltaAbsPct !== null
+                    ? `${comparison.energyBalanceErrorDiff.deltaAbsPct.toFixed(2)}%`
+                    : '—'
+                }
+                tone={absoluteDeltaTone(comparison.energyBalanceErrorDiff)}
+              />
 
-          <DiffRow
-            axis="energy audit status"
-            a={comparison.energyAuditStatusDiff.a}
-            b={comparison.energyAuditStatusDiff.b}
-            delta={comparison.energyAuditStatusDiff.bothClosed ? 'both closed' : 'differ'}
+              <DiffRow
+                axis="energy audit status"
+                a={comparison.energyAuditStatusDiff.a}
+                b={comparison.energyAuditStatusDiff.b}
+                delta={comparison.energyAuditStatusDiff.bothClosed ? 'both closed' : 'differ'}
             tone={comparison.energyAuditStatusDiff.bothClosed ? 'accent' : 'warning'}
           />
+
+            </>
+          ) : (
+            <div
+              data-testid="case-comparison-non-ballistic-notice"
+              style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-secondary)',
+                padding: '8px 10px',
+                borderRadius: '6px',
+                background: 'var(--bg-muted, rgba(255,255,255,0.03))',
+                border: '1px dashed var(--border)',
+                lineHeight: 1.5,
+              }}
+            >
+              Residual-velocity / perforation-marker / energy-balance axes apply to
+              ballistic-impact analyses. Neither selected case reports these signals,
+              so they are hidden. Convergence verdict and artifact diffs below remain
+              applicable to all analysis types.
+            </div>
+          )}
 
           <DiffRow
             axis="convergence verdict"
