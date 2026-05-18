@@ -167,6 +167,16 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # Promoted to tier_2_validated by verdict YAML overlay on a
     # PASS live ccx run.
     "cantilever-dynamic-candidate": "tier_1_candidate",
+    # Phase 31 A — first *HEAT TRANSFER (steady-state 1D linear
+    # conduction) validated case. Documented pivot from the Phase 31
+    # blueprint's *CONTACT PAIR scope; contact deferred to Phase 32
+    # for risk reduction. Closes FEA Dim 2 anchor 85 (Phase 30 A
+    # *DYNAMIC implicit) → ~88 (interpolation between *DYNAMIC and
+    # the 99-anchor "+ *HEAT TRANSFER + *VISCO + *COUPLED
+    # TEMPERATURE-DISPLACEMENT" triple).
+    # Promoted to tier_2_validated by verdict YAML overlay on a
+    # PASS live ccx run.
+    "heat-transfer-1d-candidate": "tier_1_candidate",
 }
 
 
