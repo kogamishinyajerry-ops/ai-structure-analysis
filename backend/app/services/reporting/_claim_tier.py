@@ -177,6 +177,15 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # Promoted to tier_2_validated by verdict YAML overlay on a
     # PASS live ccx run.
     "heat-transfer-1d-candidate": "tier_1_candidate",
+    # Phase 38 B — single-C3D6 wedge uniaxial Hooke's-law cross-check.
+    # Adds the 6th element class (C3D6) to the cohort (prior 5: C3D4 /
+    # C3D8 / C3D10 / S4 / B31). The runner at
+    # `app.services.cross_check.wedge_c3d6_runner` writes one pentahedral
+    # wedge in pure uniaxial stress and verifies ccx recovers
+    # sigma_zz = E*epsilon exactly (constant-strain element → 0.00%
+    # residual on the live run). Promoted to tier_2_validated by the
+    # verdict YAML overlay on the PASS verdict.
+    "wedge-c3d6-candidate": "tier_1_candidate",
 }
 
 

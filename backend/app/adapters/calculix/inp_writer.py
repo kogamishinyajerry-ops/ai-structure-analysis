@@ -275,3 +275,140 @@ def write_modal_hex_inp(
     inp_path = case_dir / f"{jobname}.inp"
     inp_path.write_text("\n".join(lines), encoding="utf-8")
     return inp_path
+
+
+def write_single_c3d6_wedge_uniaxial_inp(
+    case_dir: Path,
+    *,
+    jobname: str,
+    material: MinimalHexMaterial = DEFAULT_STEEL,
+    base_length_m: float = 0.1,
+    height_m: float = 0.1,
+    applied_strain: float = 1.0e-3,
+) -> Path:
+    """Write a single-C3D6 (6-node wedge) uniaxial Hooke's-law INP — Phase 38 B.
+
+    Adds the **6th element class** to the cohort (C3D4 / C3D8 / C3D10 /
+    S4 / B31 → + C3D6). The model is the minimal complete C3D6 case:
+    one linear pentahedral wedge held in a PURE uniaxial-stress state,
+    so the constant-strain element develops ``sigma_zz = E *
+    applied_strain`` exactly (Hooke's law) — cross-checkable against
+    ccx to machine precision.
+
+    Geometry: a right triangular prism. Bottom triangle (z=0) at nodes
+    1-3; top triangle (z=height) at nodes 4-6 (node 4 above 1, 5 above
+    2, 6 above 3). Node order gives an outward normal from the bottom
+    face toward the top face (positive ccx volume).
+
+    Boundary conditions — statically-determinate uniaxial STRESS, with
+    the lateral faces traction-free so the Poisson contraction is
+    unconstrained and ``sigma_xx = sigma_yy = 0``:
+
+      * bottom triangle z-clamped (``uz=0`` on nodes 1-3)
+      * node 1 also fixed in x and y (origin pin — removes rigid-body
+        translation/rotation in-plane)
+      * node 2 fixed in y (leaves x free for Poisson)
+      * node 3 fixed in x (leaves y free for Poisson)
+      * top triangle prescribed ``uz = -applied_strain * height``
+        (compression) inside the step
+
+    Analytical: ``sigma_zz = -E * applied_strain`` (compressive); the
+    magnitude is ``E * applied_strain``. A *positive* ``applied_strain``
+    therefore produces a compressive (negative) axial stress.
+
+    Args:
+        case_dir: workspace directory; must exist.
+        jobname: INP filename stem; written to ``case_dir/<jobname>.inp``.
+        material: linear elastic material descriptor (E + ν used).
+        base_length_m: leg length of the right-triangle base (meters).
+        height_m: prism height along z (meters); the gauge length for
+            the imposed axial strain.
+        applied_strain: dimensionless axial strain imposed via the
+            prescribed top-face displacement. Kept small (default 1e-3)
+            so the linear-elastic σ = E·ε relation holds and the result
+            stays well inside any yield envelope.
+
+    Returns:
+        Absolute path to the written INP file.
+    """
+    if not case_dir.is_dir():
+        raise FileNotFoundError(
+            f"case_dir {case_dir!s} must exist before writing INP"
+        )
+    if base_length_m <= 0:
+        raise ValueError(f"base_length_m must be positive; got {base_length_m}")
+    if height_m <= 0:
+        raise ValueError(f"height_m must be positive; got {height_m}")
+    if material.youngs_modulus_pa <= 0:
+        raise ValueError(
+            f"material.youngs_modulus_pa must be positive; got "
+            f"{material.youngs_modulus_pa}"
+        )
+    if not (0.0 < material.poisson_ratio < 0.5):
+        raise ValueError(
+            f"material.poisson_ratio must be in (0, 0.5); got "
+            f"{material.poisson_ratio}"
+        )
+    if not (0.0 < abs(applied_strain) < 0.05):
+        raise ValueError(
+            f"applied_strain must be nonzero and |strain| < 0.05 to stay "
+            f"in the linear-elastic regime; got {applied_strain}"
+        )
+
+    e_pa = material.youngs_modulus_pa
+    nu = material.poisson_ratio
+    base = float(base_length_m)
+    height = float(height_m)
+    delta = float(applied_strain) * height  # prescribed axial shortening
+
+    # 6-node linear wedge (triangular prism). Bottom triangle 1-2-3 at
+    # z=0; top triangle 4-5-6 at z=height (4 above 1, 5 above 2, 6 above
+    # 3). 1→2→3 is counter-clockwise viewed from +z, so the right-hand
+    # normal points toward the top face (positive ccx volume).
+    nodes = (
+        (1, 0.0, 0.0, 0.0),
+        (2, base, 0.0, 0.0),
+        (3, 0.0, base, 0.0),
+        (4, 0.0, 0.0, height),
+        (5, base, 0.0, height),
+        (6, 0.0, base, height),
+    )
+
+    lines: list[str] = []
+    lines.append("*HEADING")
+    lines.append(f"Phase 38 B single-C3D6 wedge uniaxial Hooke's law ({jobname})")
+    lines.append("*NODE")
+    for nid, x, y, z in nodes:
+        lines.append(f"{nid}, {x:.6f}, {y:.6f}, {z:.6f}")
+    lines.append("*ELEMENT, TYPE=C3D6, ELSET=EALL")
+    lines.append("1, 1, 2, 3, 4, 5, 6")
+    lines.append(f"*MATERIAL, NAME={material.name}")
+    lines.append("*ELASTIC")
+    lines.append(f"{e_pa:.6e}, {nu:.6f}")
+    lines.append(f"*SOLID SECTION, ELSET=EALL, MATERIAL={material.name}")
+    # Homogeneous BCs (before the step): bottom z-clamp + statically-
+    # determinate in-plane pins that leave Poisson contraction free.
+    lines.append("*BOUNDARY")
+    lines.append("1, 3, 3, 0.0")  # node 1 uz=0
+    lines.append("2, 3, 3, 0.0")  # node 2 uz=0
+    lines.append("3, 3, 3, 0.0")  # node 3 uz=0
+    lines.append("1, 1, 2, 0.0")  # node 1 ux=uy=0 (origin pin)
+    lines.append("2, 2, 2, 0.0")  # node 2 uy=0 (x free for Poisson)
+    lines.append("3, 1, 1, 0.0")  # node 3 ux=0 (y free for Poisson)
+    lines.append("*STEP")
+    lines.append("*STATIC")
+    # Prescribed nonzero axial displacement on the top triangle (inside
+    # the step). Negative = compression → compressive sigma_zz.
+    lines.append("*BOUNDARY")
+    for nid in (4, 5, 6):
+        lines.append(f"{nid}, 3, 3, {-delta:.9e}")
+    lines.append("*NODE FILE")
+    lines.append("U")
+    lines.append("*EL FILE")
+    lines.append("S")
+    lines.append("*END STEP")
+    lines.append("")
+
+    inp_path = case_dir / f"{jobname}.inp"
+    inp_path.write_text("\n".join(lines), encoding="utf-8")
+    return inp_path

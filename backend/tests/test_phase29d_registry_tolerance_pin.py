@@ -44,6 +44,7 @@ CANONICAL_TOLERANCES: dict[str, float] = {
     "plate-ss-shell-candidate": 15.0,
     "cantilever-dynamic-candidate": 8.0,  # Phase 30 A — first *DYNAMIC
     "heat-transfer-1d-candidate": 1.0,    # Phase 31 A — first *HEAT TRANSFER
+    "wedge-c3d6-candidate": 1.0,          # Phase 38 B — 6th element class C3D6
 }
 
 
