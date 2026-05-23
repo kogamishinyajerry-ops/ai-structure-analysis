@@ -241,7 +241,7 @@ const STYLES: Record<string, CSSProperties> = {
   skipButton: {
     background: 'transparent',
     border: 'none',
-    color: '#64748b',
+    color: 'var(--text-muted)', /* Phase 38 C: was #64748b (3.74:1 FAIL); token now 4.5:1+ */
     cursor: 'pointer',
     fontSize: 13,
     textDecoration: 'underline',

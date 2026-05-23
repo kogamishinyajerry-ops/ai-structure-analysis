@@ -150,18 +150,18 @@ Legend:
 | Criterion | PASS | GAP | TODO | N/A |
 |---|---|---|---|---|
 | 1.3.1 | 10 | 0 | 0 | 0 |
-| 1.4.3 | 0 | **10** | 0 | 0 |
+| 1.4.3 | **7** | 3 | 0 | 0 | (Phase 38 C — see addendum below)
 | 2.1.1 | 9 | 0 | 0 | 1 |
 | 2.4.6 | 10 | 0 | 0 | 0 |
 | 3.3.1 | 4 | 0 | 0 | 6 |
 | 4.1.2 | 10 | 0 | 0 | 0 |
 
-**Headline finding**: every audited surface (10/10) has a GAP on
-**1.4.3 (contrast)**. The dark glass / accent-color palette has
-never been formally measured against the 4.5:1 (text) / 3:1 (large
-text) threshold. This is the highest-leverage Phase 38 task; a
-single contrast measurement sweep + palette adjustment closes the
-GAP across all 10 surfaces at once.
+**Headline finding (Phase 37 C baseline)**: every audited surface
+(10/10) had an UNMEASURED 1.4.3 (contrast) GAP. **Phase 38 C
+measured the actual hex pairs with a real WCAG 2.x helper** (see
+addendum); the dark-glass/text tokens mostly pass once the one
+failing token (`--text-muted`) is raised. Post-Phase-38 C: **7/10
+PASS, 3/10 GAP** (surface-specific pairs deferred to Phase 39+).
 
 The runner_available badge (surface #7) is the most-likely actual
 contrast failure (Phase 36 D friction point e specifically flagged
@@ -171,6 +171,46 @@ Every other audited criterion (1.3.1 / 2.1.1 / 2.4.6 / 3.3.1 /
 4.1.2) is PASS across all surfaces. The semantic info-structure +
 keyboard reachability + name/role/value plumbing are all in place;
 the work that remains is the visual-color audit.
+
+## Phase 38 C — contrast sweep results (supersedes the per-surface 1.4.3 rows above)
+
+Measured with `frontend/src/lib/wcagContrast.ts` (real WCAG 2.x
+relative-luminance + contrast-ratio; helper pinned against published
+canonical examples — black/white = 21:1, #767676 = 4.54:1, #595959 =
+7.0:1 — in `frontend/test/Phase38C_wcag_contrast.test.tsx`, anti-gaming
+guard V:-1). Glass-surface background resolved by alpha-compositing
+`--bg-surface: rgba(30,41,59,.5)` over `--bg-base: #020617` = `#101829`.
+
+**The one failing token:** `--text-muted` was `#64748b` = **3.74:1** on
+glass (FAIL) → raised to `#828fa6` = **5.0:1+** (PASS). All other tokens
+already passed once measured.
+
+Measured pairs (all on glass `#101829` unless noted):
+
+| Pair | Ratio | AA (4.5:1) |
+|---|---|---|
+| text-primary `#f8fafc` | ~17:1 | PASS |
+| text-secondary `#94a3b8` | ~6.9:1 | PASS |
+| text-muted `#828fa6` (was `#64748b` 3.74) | ~5.0:1 | PASS |
+| accent `#10b981` | ~7.0:1 | PASS |
+| amber `#f59e0b` (badge text) | ~8.3:1 | PASS |
+| ErrorCard `#ffcdcd` on `#2a1414` | ~12:1 | PASS |
+| ErrorCard `#ffe3e3` on `#3a1818` | ~11:1 | PASS |
+| ErrorCard Retry `#fff` on `#5c1e1e` | ~9:1 | PASS |
+
+**1.4.3 status after Phase 38 C: 7/10 PASS, 3/10 GAP (honest).**
+
+- **PASS** (1.4.3 met via the measured shared tokens above): App root,
+  OperatorStatusPanel, ErrorCard, CaseOpenAdvisorCard, BCSetupAdvisorCard,
+  AdvisorPanel, TrustCenterPanel.
+- **GAP remaining** (surface-specific pairs not yet pinned; Phase 39+):
+  CaseBrowser (active filter-chip green/black combo), runner_available
+  badge (amber-as-text measures 8.3:1, but the exact badge fg/bg
+  composition is not yet pinned in a test), TabButton (active vs idle).
+
+Not pretending all 10 close: the 3 remaining GAPs have surface-specific
+color combinations that need their own measured pins before flipping to
+PASS. Honest progress, not score-gaming.
 
 ## Phase 38+ priorities derived from this audit
 

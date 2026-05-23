@@ -10,7 +10,7 @@
   
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-muted: #828fa6; /* Phase 38 C: raised from #64748b (3.74:1 on glass, FAIL) to 4.5:1+ per WCAG 1.4.3 */
   
   --border: rgba(255, 255, 255, 0.08);
   --border-focus: rgba(16, 185, 129, 0.4);
