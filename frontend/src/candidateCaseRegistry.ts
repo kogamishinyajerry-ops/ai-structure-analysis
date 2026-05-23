@@ -48,6 +48,12 @@ export interface CandidateCaseRecord {
     | 'dynamic'
     | 'heat_transfer_steady_state'
     | 'contact_pair_static'
+  // FM-04a Phase 38 D — whether this case has boundary conditions assigned
+  // yet. Absent / false → not assigned (every cohort case as of Phase 38 D;
+  // BC authoring is future scope) → BCSetupAdvisorCard shows + BCSetupPillList
+  // labels pills "Expected". true → advisor hides + pills "Assigned".
+  // Optional so the live-route payload stays back-compat.
+  bcAssigned?: boolean
 }
 
 export interface CandidateCaseRegistryPayload {

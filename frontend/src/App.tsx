@@ -13,6 +13,7 @@ import './App.css';
 import { ComplianceBadge } from './components/ComplianceBadge';
 import { CaseOpenAdvisorCard } from './components/CaseOpenAdvisorCard';
 import { BCSetupAdvisorCard } from './components/BCSetupAdvisorCard';
+import { BCSetupPillList, shouldShowBCSetupAdvisor } from './components/BCSetupPillList';
 import { CaseBrowser } from './components/CaseBrowser';
 import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
@@ -1329,9 +1330,10 @@ function App() {
                 // FM-04a Phase 37 B — pair BCSetupAdvisorCard with CaseOpenAdvisorCard (3rd advisor surface; closes Dim 4 80-anchor 3-stage sub-bullet).
                 const caseOpenRecord = findCandidateCase(FALLBACK_CANDIDATE_CASES, activeCaseId);
                 return caseOpenRecord ? (
-                    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '12px' }}>
                         <CaseOpenAdvisorCard caseRecord={caseOpenRecord} />
-                        <BCSetupAdvisorCard caseRecord={caseOpenRecord} />
+                        {shouldShowBCSetupAdvisor(caseOpenRecord) && <BCSetupAdvisorCard caseRecord={caseOpenRecord} />}
+                        <BCSetupPillList caseRecord={caseOpenRecord} />
                     </div>
                 ) : null;
             })()}
