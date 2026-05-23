@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "nafems-le10-thick-plate-candidate",
+  "record_kind": "published_benchmark_reference",
+  "_record_kind_note": "This file is NOT a cross_check_verdict.yaml. It records a PUBLISHED NAFEMS benchmark target for a DEFERRED real solve — there is no observed value, no residual, no cross-check. Naming it published_reference.yaml (not cross_check_verdict.yaml) keeps it out of the verdict cohort (e.g. the Phase 35 B solver_kind distribution pin) and is honest: a reference is not a verdict. The real meshed ccx solve + signed residual comparison is the Phase 41-43 NAFEMS suite.",
+
+  "solver_kind": "linear_static",
+  "cross_check_kind": "nafems_le10_thick_plate_pressure_point_d",
+
+  "analytical_only": true,
+  "verdict": "REFERENCE_ONLY",
+  "_verdict_note": "NOT 'PASS'. No ccx solve is performed at Phase 38 A (analytical-only, per the Phase 33 D Hertz precedent). Writing verdict=PASS with observed=analytical=published would be a tautological self-reference — exactly the cylinder-pv-candidate defect fixed 2026-05-24 (Codex review R0 finding 1).",
+
+  "tier": "tier_1_candidate",
+  "_tier_note": "Deliberately NOT added to _claim_tier.py CLAIM_TIER_REGISTRY. Analytical-only reference cases stay at the default tier_1_candidate; the overlay only promotes registry members on a JSON verdict=='PASS'. Three independent guards keep this Tier 1: (1) not in registry, (2) the overlay only visits registry members, (3) verdict != PASS.",
+
+  "published_reference": {
+    "benchmark": "NAFEMS LE10 — Thick Plate Pressure",
+    "source": "NAFEMS Publication TNSB Rev.3, 'The Standard NAFEMS Benchmarks', October 1990, ISBN 1-874376-04-0",
+    "target_stress_component": "sigma_yy (direct stress)",
+    "target_value_pa": -5380000.0,
+    "target_sign_convention": "sigma_yy is COMPRESSIVE (negative) at point D under the LE10 top-surface pressure loading, per the Phase 38 blueprint-derived value (-5.38e6 Pa). The MAGNITUDE 5.38 MPa is confirmed across 4 secondary CAE sources; the SIGN follows the blueprint convention and MUST be re-confirmed against the primary NAFEMS TNSB Rev.3 publication before the Phase 41-43 signed residual check. Recorded signed (not as magnitude) so that future signed residual check compares against the correct sign (Codex R0 finding 2).",
+    "target_location": "point D — lower surface, inner-edge point on the minor axis"
+  },
+
+  "benchmark_context": {
+    "_provenance": "Material / loading / BC / target stress confirmed 2026-05-24 via secondary CAE benchmark docs (Abaqus uclouvain LE10, Altair OptiStruct OS-V 0060, Colorado CEAE 4.2.10). See NOTES.md Bibliography. Geometry parametrization NOT verified against the primary TNSB Rev.3 source.",
+    "material": {"youngs_modulus_pa": 210000000000.0, "poisson_ratio": 0.30, "density_kg_m3": 7800},
+    "loading": {"type": "uniform_normal_pressure_upper_surface", "pressure_pa": 1000000.0},
+    "geometry_standard_parametrization": "outer ellipse semi-axes 3.25 x 2.75 m; inner ellipse (hole) semi-axes 2.0 x 1.0 m; thickness 0.6 m — widely-cited NAFEMS LE10 parametrization; primary source TNSB Rev.3 NOT directly verified this phase",
+    "boundary_conditions": [
+      "uy=0 on face DCD'C'",
+      "ux=0 on face ABA'B'",
+      "ux=uy=0 on face BCB'C'",
+      "uz=0 on line EE' (midpoints of edges CC' and BB')"
+    ]
+  },
+
+  "deferred_to": "Phase 41-43 NAFEMS suite — real meshed ccx solve + signed residual vs the -5.38 MPa target; geometry AND stress sign must be verified against primary NAFEMS TNSB Rev.3 before any benchmark-agreement claim",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement; analytical_reference_only"
+}
