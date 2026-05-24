@@ -107,7 +107,7 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
       <InContextHint
         hintId="advisor-panel"
         label="AI advisor"
-        text="This critique is advisory only — it never drives the solver and runs offline. Open the Visual tab for the backend-validated trust gate."
+        text="This critique is advisory only — it never drives the solver, and falls back to an offline stub if the live LLM is unavailable. Open the Visual tab for the backend-validated trust gate."
       />
       <header style={{ marginBottom: '8px' }}>
         <h3 style={{ margin: 0, fontSize: '0.95rem' }}>AI advisor critique</h3>

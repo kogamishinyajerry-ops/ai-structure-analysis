@@ -13,6 +13,7 @@
 
 import { describe, expect, it, beforeEach } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { InContextHint } from '../src/components/InContextHint'
 import {
@@ -93,9 +94,13 @@ describe('Phase 39 B — in-context hints attached to ≥5 distinct surfaces', (
 
   for (const { file, hintId } of SURFACES) {
     it(`${file} imports + mounts InContextHint hintId="${hintId}"`, () => {
-      // vitest runs from the frontend/ project root (vitest.config lives
-      // there), so resolve the surface source relative to process.cwd().
-      const src = readFileSync(`${process.cwd()}/src/components/${file}`, 'utf8')
+      // Resolve relative to THIS test file (__dirname), matching the repo's
+      // existing structural tests (Phase 28 D / 29 C) — robust to the vitest
+      // launch directory regardless of monorepo tooling (Codex R0 P2).
+      const src = readFileSync(
+        resolve(__dirname, '../src/components', file),
+        'utf8',
+      )
       expect(src).toContain("InContextHint")
       expect(src).toContain(`hintId="${hintId}"`)
     })
