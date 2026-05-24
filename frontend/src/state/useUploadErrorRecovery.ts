@@ -168,6 +168,22 @@ export function solverStartRecoveryOptions(
   };
 }
 
+/** FM-04a Phase 38 I — recovery option template for sensitivity-study
+ * failures. Closes eval-fleet finding #6 (Phase 38 E): the study run +
+ * poll path previously swallowed errors in a bare `console.error` catch
+ * (App.tsx handleRunStudy), and a failed or unreachable backend left the
+ * UI stuck in `loading` with no surface. The same ErrorCard is reused for
+ * both the start failure and a mid-study poll/run failure. */
+export function studyRunRecoveryOptions(caseId: string): WithRecoveryOptions {
+  return {
+    title: 'Sensitivity study did not complete',
+    message: `The parameter study for ${caseId} could not be started or stopped before completing. The backend may be unreachable, a solver run in the sweep may have failed, or the study endpoint may have refused the request.`,
+    remediation: STUDY_RUN_REMEDIATION,
+    code: 'STUDY-RUN',
+    codeFriendly: 'Sensitivity study',
+  };
+}
+
 const UPLOAD_REMEDIATION = [
   'Confirm the backend at /api/v1/report/generate is reachable',
   'Try a smaller or alternative .frd / .inp file',
@@ -196,6 +212,12 @@ const SOLVER_START_REMEDIATION = [
   'Read the workbench console for the upstream detail message',
   'Confirm the backend at /api/v1/solver/run is reachable',
   'Re-select the case from the picker, then click Run Solver again',
+] as const;
+
+const STUDY_RUN_REMEDIATION = [
+  'Read the workbench console for the upstream detail message',
+  'Confirm the backend at /api/v1/sensitivity/run + /status is reachable',
+  'Use Retry to re-launch the parameter study for the same case',
 ] as const;
 
 /** Custom hook owning the upload + case-load error-recovery

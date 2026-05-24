@@ -112,6 +112,7 @@ import {
   uploadRecoveryOptions,
   useUploadErrorRecovery,
 } from './state/useUploadErrorRecovery';
+import { useSensitivityStudy } from './state/useSensitivityStudy';
 import { ErrorCard } from './components/ErrorCard';
 const humanizeStatus = trustCenterHumanizeStatus;
 
@@ -466,37 +467,10 @@ function App() {
     };
   };
 
-  const handleRunStudy = async (param: string, values: number[]) => {
-    if (!activeCaseId) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/sensitivity/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ case_id: activeCaseId, parameter: param, values: values })
-      });
-      const data = await res.json();
-      if (data.experiment_id) {
-        pollExperiment(data.experiment_id);
-      }
-    } catch (err) {
-      console.error("Study failed", err);
-      setLoading(false);
-    }
-  };
-
-  const pollExperiment = async (id: string) => {
-    const interval = setInterval(async () => {
-        const res = await fetch(`${API_BASE}/sensitivity/status/${id}`);
-        const data = await res.json();
-        setActiveExperiment(data);
-        if (data.status === 'COMPLETED') {
-            clearInterval(interval);
-            setLoading(false);
-            setActiveTab('visual'); 
-        }
-    }, 2000);
-  };
+  // FM-04a Phase 38 I — sensitivity-study run + poll flow lives in the
+  // useSensitivityStudy hook (closes eval finding #6: silent study errors
+  // + stuck `loading`). `handleRunStudy` is sourced from that hook call
+  // alongside the other recovery wiring (see below).
 
   const handleExecuteCopilotAction = async (action: CopilotAction): Promise<CopilotActionResult> => {
     try {
@@ -843,8 +817,28 @@ function App() {
   // absorbs state + retry so App.tsx stays under the <1500 pin.
   const {
     state: { uploadError },
-    actions: { withRecovery: withUploadRecovery },
+    actions: {
+      withRecovery: withUploadRecovery,
+      setUploadError,
+      clearUploadError,
+    },
   } = useUploadErrorRecovery();
+
+  // FM-04a Phase 38 I — sensitivity-study run/poll flow (eval finding #6).
+  // Routes both start and poll/run failures through the shared ErrorCard
+  // recovery surface above, and stops polling on a failed run so `loading`
+  // never hangs.
+  const { handleRunStudy, pollExperiment } = useSensitivityStudy({
+    apiBase: API_BASE,
+    activeCaseId,
+    setLoading,
+    setActiveExperiment,
+    onComplete: () => setActiveTab('visual'),
+    appendLog: (line) => setLogs((prev) => [...prev, line]),
+    withRecovery: withUploadRecovery,
+    setUploadError,
+    clearUploadError,
+  });
 
   // FM-04a Phase 29 B — useTrustSections custom hook encapsulates
   // the 7-section build with granular per-section memoization
