@@ -221,4 +221,65 @@ describe('useSensitivityStudy — poll terminal states stop the interval (Phase 
       callsAfterErr,
     )
   })
+
+  it('a FAILED run normalises stored status to FAILED (no stale RUNNING) — Codex R0 P2-b', async () => {
+    const opts = makeOpts()
+    routeFetch({
+      run: () => okJson({ experiment_id: 'e1' }),
+      status: () => okJson({ status: 'RUNNING', runs: [{ status: 'FAILED' }] }),
+    })
+    const { result } = renderHook(() => useSensitivityStudy(opts))
+
+    await act(async () => {
+      await result.current.handleRunStudy('thickness', [1])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS)
+    })
+
+    // The backend reports experiment-level RUNNING with a failed run; the
+    // stored status must be normalised to FAILED so the UI stops showing
+    // an active study.
+    const lastExp = opts.setActiveExperiment.mock.calls.at(-1)?.[0] as {
+      status: string
+    }
+    expect(lastExp.status).toBe('FAILED')
+  })
+
+  it('poll-failure Retry resumes polling rather than abandoning the study — Codex R0 P2-c', async () => {
+    const opts = makeOpts()
+    // Stateful status: first poll 503 (transient), resumed poll COMPLETED.
+    // (Don't reassign global.fetch mid-test — that would reset the counter.)
+    let statusCalls = 0
+    routeFetch({
+      run: () => okJson({ experiment_id: 'e1' }),
+      status: () => {
+        statusCalls += 1
+        return statusCalls === 1
+          ? errJson(503)
+          : okJson({ status: 'COMPLETED', runs: [] })
+      },
+    })
+    const { result } = renderHook(() => useSensitivityStudy(opts))
+
+    await act(async () => {
+      await result.current.handleRunStudy('thickness', [1])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS) // 1st poll → 503 → fail
+    })
+    expect(opts.setUploadError).toHaveBeenCalledTimes(1)
+
+    // Clicking Retry must resume polling, not just dismiss the banner.
+    const onRetry = opts.setUploadError.mock.calls[0][0].onRetry as () => void
+    await act(async () => {
+      onRetry()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS) // resumed poll → COMPLETED
+    })
+
+    expect(statusCalls).toBeGreaterThanOrEqual(2) // resumed → polled again
+    expect(opts.onComplete).toHaveBeenCalledTimes(1) // resumed poll completed
+  })
 })

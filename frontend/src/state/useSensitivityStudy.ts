@@ -17,8 +17,6 @@
 // gains only an import + a single hook call + the `{ handleRunStudy }`
 // destructure.
 
-import { useCallback } from 'react';
-
 import type { ExperimentStatus } from '../types/AppTypes';
 import {
   studyRunRecoveryOptions,
@@ -69,100 +67,99 @@ export function useSensitivityStudy(
     pollIntervalMs = 2000,
   } = opts;
 
-  const pollExperiment = useCallback(
-    (id: string): void => {
-      // Label the recovery ErrorCard with the active case when known,
-      // else the experiment id (Copilot path may have no selected case).
-      const caseId = activeCaseId ?? id;
-      const failStudy = (line: string): void => {
-        setLoading(false);
-        appendLog(`[ERROR] ${line} (see workbench banner)`);
-        setUploadError({
-          ...studyRunRecoveryOptions(caseId),
-          onRetry: () => clearUploadError(),
-        });
-      };
-      const interval = setInterval(async () => {
-        try {
-          const res = await fetch(`${apiBase}/sensitivity/status/${id}`);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = (await res.json()) as ExperimentStatus;
-          setActiveExperiment(data);
-          // The backend only ever rolls up to COMPLETED (sensitivity.py
-          // get_experiment_status), so detect a failed sweep run directly
-          // off the per-run status — otherwise a failed run polls forever.
-          const failed =
-            data.status === 'FAILED' ||
-            (data.runs ?? []).some((r) => r.status === 'FAILED');
-          if (failed) {
-            clearInterval(interval);
-            failStudy('Sensitivity study run failed');
-          } else if (data.status === 'COMPLETED') {
-            clearInterval(interval);
-            setLoading(false);
-            onComplete();
-          }
-        } catch (err) {
-          clearInterval(interval);
-          console.error('Study status poll failed', err);
-          failStudy('Sensitivity study status poll failed');
-        }
-      }, pollIntervalMs);
-    },
-    [
-      activeCaseId,
-      apiBase,
-      appendLog,
-      clearUploadError,
-      onComplete,
-      pollIntervalMs,
-      setActiveExperiment,
-      setLoading,
-      setUploadError,
-    ],
-  );
+  // Plain closures (not useCallback): they are mutually recursive — a
+  // poll-failure Retry resumes pollExperiment (Codex R0 P2-c) — and are
+  // recreated per render exactly as the original inline App.tsx handlers
+  // were, so there is no referential-stability regression.
 
-  const handleRunStudy = useCallback(
-    async (param: string, values: number[]): Promise<void> => {
-      if (!activeCaseId) return;
-      setLoading(true);
-      // withRecovery surfaces a start failure (fetch / HTTP / missing
-      // experiment_id) via the ErrorCard banner and returns undefined, so
-      // loading is reset instead of hanging (the pre-38I silent catch).
-      const data = await withRecovery(async () => {
-        const res = await fetch(`${apiBase}/sensitivity/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            case_id: activeCaseId,
-            parameter: param,
-            values,
-          }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            typeof body.detail === 'string'
-              ? body.detail
-              : `HTTP ${res.status}`,
-          );
+  /** Surface a study failure via the shared ErrorCard. The Retry resumes
+   * polling the (possibly still-running) study rather than abandoning it
+   * (Codex R0 P2-c) — `pollExperiment` is referenced before its declaration
+   * but only inside the click-time onRetry closure, so it is assigned by
+   * the time Retry fires. */
+  const failStudy = (line: string, id: string): void => {
+    setLoading(false);
+    appendLog(`[ERROR] ${line} (see workbench banner)`);
+    setUploadError({
+      ...studyRunRecoveryOptions(activeCaseId ?? id),
+      onRetry: () => {
+        clearUploadError();
+        setLoading(true);
+        pollExperiment(id);
+      },
+    });
+  };
+
+  const pollExperiment = (id: string): void => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiBase}/sensitivity/status/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as ExperimentStatus;
+        // The backend only ever rolls up to COMPLETED (sensitivity.py
+        // get_experiment_status), so detect a failed sweep run directly off
+        // the per-run status — otherwise a failed run polls forever.
+        const failed =
+          data.status === 'FAILED' ||
+          (data.runs ?? []).some((r) => r.status === 'FAILED');
+        // Normalise the stored status to FAILED on a failed run so the rest
+        // of the UI (App / Sidebar status pill) stops advertising RUNNING
+        // once polling has terminally stopped (Codex R0 P2-b).
+        setActiveExperiment(failed ? { ...data, status: 'FAILED' } : data);
+        if (failed) {
+          clearInterval(interval);
+          failStudy('Sensitivity study run failed', id);
+        } else if (data.status === 'COMPLETED') {
+          clearInterval(interval);
+          setLoading(false);
+          onComplete();
         }
-        if (!body.experiment_id) {
-          throw new Error('backend returned no experiment_id');
-        }
-        return body as { experiment_id: string };
-      }, studyRunRecoveryOptions(activeCaseId));
-      if (!data) {
-        appendLog(
-          '[ERROR] Sensitivity study failed to start (see workbench banner)',
-        );
-        setLoading(false);
-        return;
+      } catch (err) {
+        clearInterval(interval);
+        console.error('Study status poll failed', err);
+        failStudy('Sensitivity study status poll failed', id);
       }
-      pollExperiment(data.experiment_id);
-    },
-    [activeCaseId, apiBase, appendLog, pollExperiment, setLoading, withRecovery],
-  );
+    }, pollIntervalMs);
+  };
+
+  const handleRunStudy = async (
+    param: string,
+    values: number[],
+  ): Promise<void> => {
+    if (!activeCaseId) return;
+    setLoading(true);
+    // The whole start → poll handoff runs INSIDE withRecovery, so its Retry
+    // re-runs the full flow: a successful retry actually starts polling the
+    // experiment instead of discarding the id (Codex R0 P2-a).
+    const started = await withRecovery(async () => {
+      const res = await fetch(`${apiBase}/sensitivity/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          case_id: activeCaseId,
+          parameter: param,
+          values,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`,
+        );
+      }
+      if (!body.experiment_id) {
+        throw new Error('backend returned no experiment_id');
+      }
+      pollExperiment(body.experiment_id);
+      return body as { experiment_id: string };
+    }, studyRunRecoveryOptions(activeCaseId));
+    if (!started) {
+      appendLog(
+        '[ERROR] Sensitivity study failed to start (see workbench banner)',
+      );
+      setLoading(false);
+    }
+  };
 
   return { handleRunStudy, pollExperiment };
 }
