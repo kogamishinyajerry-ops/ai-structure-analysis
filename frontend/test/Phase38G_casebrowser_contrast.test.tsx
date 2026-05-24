@@ -58,3 +58,18 @@ describe('CaseBrowser WCAG 1.4.3 contrast (Phase 38 G — eval #5 disposition)',
     expect(meetsWCAG_AA(ratio, false)).toBe(true)
   })
 })
+
+describe('TabButton WCAG 1.4.3 contrast (Phase 38 G — last 1.4.3 GAP → 10/10)', () => {
+  // TabButton.tsx: active = #000 on --accent; idle = #fff on transparent (panel).
+  it('active tab (#000 on --accent) passes AA', () => {
+    const ratio = computeContrastRatio('#000000', ACCENT)
+    expect(ratio).toBeGreaterThanOrEqual(AA_SMALL)
+    expect(meetsWCAG_AA(ratio, false)).toBe(true)
+  })
+
+  it('idle tab (#fff on panel) passes AA', () => {
+    const ratio = computeContrastRatio('#ffffff', PANEL)
+    expect(ratio).toBeGreaterThanOrEqual(AA_SMALL)
+    expect(meetsWCAG_AA(ratio, false)).toBe(true)
+  })
+})
