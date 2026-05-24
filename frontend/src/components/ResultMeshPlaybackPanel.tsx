@@ -62,7 +62,6 @@ import {
 // control surfaces in basic mode without destroying their state
 // (C:-1 anti-gaming guard: state preservation across toggle).
 import {
-  UI_MODE_INITIAL,
   createUiModeStorage,
   shouldShowFeature,
   type UiMode,

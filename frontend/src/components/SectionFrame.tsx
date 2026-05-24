@@ -22,7 +22,7 @@
 // Tier 1 / Tier 2 engineering candidate; not signed validation;
 // not benchmark agreement.
 
-import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { ChevronDown } from 'lucide-react';
 
 import type { OperatorStatusItem, OperatorStatusSection } from '../types/AppTypes';

@@ -24,7 +24,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import {
-  ONBOARDING_LS_KEY,
   createAdvancedPromptStorage,
   createLocalStorageBackedStore,
   shouldShowAdvancedPrompt,

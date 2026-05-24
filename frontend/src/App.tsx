@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import {
   Activity,
   Box,
@@ -45,10 +45,7 @@ import { OperatorStatusPanel } from './components/OperatorStatusPanel';
 import { TabButton } from './components/TabButton';
 import { RightRail } from './components/RightRail';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import {
-  type Command,
-  type CommandCategory,
-} from './commands/registry';
+import { type Command } from './commands/registry';
 import { FALLBACK_MATERIALS, type MaterialRecord } from './materialsClient';
 // FM-04a Phase 25 B — palette + topbar config extracted for LOC discipline.
 import {
