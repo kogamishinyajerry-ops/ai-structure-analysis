@@ -246,6 +246,34 @@ describe('useSensitivityStudy — poll terminal states stop the interval (Phase 
     expect(lastExp.status).toBe('FAILED')
   })
 
+  it('a terminal FAILED sweep Retry relaunches the study, not re-polls — Codex R1 P2-b', async () => {
+    const opts = makeOpts()
+    let runCalls = 0
+    routeFetch({
+      run: () => {
+        runCalls += 1
+        return okJson({ experiment_id: `e${runCalls}` })
+      },
+      // backend keeps the experiment terminal: re-polling would loop FAILED.
+      status: () => okJson({ status: 'RUNNING', runs: [{ status: 'FAILED' }] }),
+    })
+    const { result } = renderHook(() => useSensitivityStudy(opts))
+
+    await act(async () => {
+      await result.current.handleRunStudy('thickness', [1]) // runCalls → 1
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS) // poll → FAILED → surface(relaunch)
+    })
+    expect(opts.setUploadError).toHaveBeenCalledTimes(1)
+
+    const onRetry = opts.setUploadError.mock.calls[0][0].onRetry as () => void
+    await act(async () => {
+      onRetry() // must RELAUNCH (new /run POST), not re-poll the dead experiment
+    })
+    expect(runCalls).toBe(2)
+  })
+
   it('poll-failure Retry resumes polling rather than abandoning the study — Codex R0 P2-c', async () => {
     const opts = makeOpts()
     // Stateful status: first poll 503 (transient), resumed poll COMPLETED.

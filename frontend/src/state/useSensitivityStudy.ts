@@ -67,30 +67,34 @@ export function useSensitivityStudy(
     pollIntervalMs = 2000,
   } = opts;
 
-  // Plain closures (not useCallback): they are mutually recursive — a
-  // poll-failure Retry resumes pollExperiment (Codex R0 P2-c) — and are
-  // recreated per render exactly as the original inline App.tsx handlers
-  // were, so there is no referential-stability regression.
+  // Plain closures (not useCallback): they are mutually recursive (a study
+  // failure's Retry either resumes polling or relaunches the study) and are
+  // recreated per render exactly as the original inline App.tsx handlers were,
+  // so there is no referential-stability regression.
 
-  /** Surface a study failure via the shared ErrorCard. The Retry resumes
-   * polling the (possibly still-running) study rather than abandoning it
-   * (Codex R0 P2-c) — `pollExperiment` is referenced before its declaration
-   * but only inside the click-time onRetry closure, so it is assigned by
-   * the time Retry fires. */
-  const failStudy = (line: string, id: string): void => {
-    setLoading(false);
-    appendLog(`[ERROR] ${line} (see workbench banner)`);
-    setUploadError({
-      ...studyRunRecoveryOptions(activeCaseId ?? id),
-      onRetry: () => {
-        clearUploadError();
-        setLoading(true);
-        pollExperiment(id);
-      },
-    });
-  };
-
-  const pollExperiment = (id: string): void => {
+  const pollExperiment = (id: string, relaunch?: () => void): void => {
+    // ErrorCard label: the active case when known, else the experiment id
+    // (the Copilot path may have no selected case).
+    const caseId = activeCaseId ?? id;
+    // Surface a study failure. `retryAction` is the MEANINGFUL recovery for
+    // this failure mode; when omitted the Retry only dismisses, so we never
+    // make a false "Retry will recover" promise nor strand loading=true. It
+    // re-enters setLoading(true) itself because withRecovery's own Retry
+    // reruns only its inner closure, not the outer loading set (Codex R1 P2-a).
+    const surface = (line: string, retryAction?: () => void): void => {
+      setLoading(false);
+      appendLog(`[ERROR] ${line} (see workbench banner)`);
+      setUploadError({
+        ...studyRunRecoveryOptions(caseId),
+        onRetry: retryAction
+          ? () => {
+              clearUploadError();
+              setLoading(true);
+              retryAction();
+            }
+          : () => clearUploadError(),
+      });
+    };
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${apiBase}/sensitivity/status/${id}`);
@@ -102,13 +106,17 @@ export function useSensitivityStudy(
         const failed =
           data.status === 'FAILED' ||
           (data.runs ?? []).some((r) => r.status === 'FAILED');
-        // Normalise the stored status to FAILED on a failed run so the rest
-        // of the UI (App / Sidebar status pill) stops advertising RUNNING
-        // once polling has terminally stopped (Codex R0 P2-b).
+        // Normalise the stored status to FAILED on a failed run so the rest of
+        // the UI stops advertising RUNNING once polling has terminally stopped
+        // (Codex R0 P2-b; the run-state tone consumer is fixed in App.tsx per
+        // Codex R1 P3).
         setActiveExperiment(failed ? { ...data, status: 'FAILED' } : data);
         if (failed) {
           clearInterval(interval);
-          failStudy('Sensitivity study run failed', id);
+          // Terminal: re-polling returns the same FAILED, so the only real
+          // recovery is to RELAUNCH the study (Codex R1 P2-b). The Copilot
+          // path has no relaunch thunk → Retry dismisses rather than loop.
+          surface('Sensitivity study run failed', relaunch);
         } else if (data.status === 'COMPLETED') {
           clearInterval(interval);
           setLoading(false);
@@ -117,7 +125,10 @@ export function useSensitivityStudy(
       } catch (err) {
         clearInterval(interval);
         console.error('Study status poll failed', err);
-        failStudy('Sensitivity study status poll failed', id);
+        // Transient /status error: resume polling the SAME experiment.
+        surface('Sensitivity study status poll failed', () =>
+          pollExperiment(id, relaunch),
+        );
       }
     }, pollIntervalMs);
   };
@@ -127,11 +138,16 @@ export function useSensitivityStudy(
     values: number[],
   ): Promise<void> => {
     if (!activeCaseId) return;
-    setLoading(true);
-    // The whole start → poll handoff runs INSIDE withRecovery, so its Retry
-    // re-runs the full flow: a successful retry actually starts polling the
-    // experiment instead of discarding the id (Codex R0 P2-a).
+    // Relaunch thunk for a terminal failed sweep's Retry (Codex R1 P2-b).
+    const relaunch = (): void => {
+      void handleRunStudy(param, values);
+    };
+    // The whole start → poll handoff — including setLoading(true) — runs INSIDE
+    // withRecovery, so its Retry re-runs the full flow with loading restored
+    // (Codex R0 P2-a + R1 P2-a): a successful retry starts polling instead of
+    // discarding the id, and the Exploration form is not re-enabled mid-run.
     const started = await withRecovery(async () => {
+      setLoading(true);
       const res = await fetch(`${apiBase}/sensitivity/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,7 +166,7 @@ export function useSensitivityStudy(
       if (!body.experiment_id) {
         throw new Error('backend returned no experiment_id');
       }
-      pollExperiment(body.experiment_id);
+      pollExperiment(body.experiment_id, relaunch);
       return body as { experiment_id: string };
     }, studyRunRecoveryOptions(activeCaseId));
     if (!started) {

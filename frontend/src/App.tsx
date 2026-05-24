@@ -785,11 +785,17 @@ function App() {
   const goldenSampleSummary = goldenSampleQueue.length > 0
     ? `${goldenSampleReviewCount}/${goldenSampleQueue.length} need review or evidence`
     : 'No golden samples loaded';
-  const runStateTone = solving || activeExperiment
-    ? 'accent'
-    : currentJobStatus === 'failed' || currentJobStatus === 'connection_lost'
+  // FM-04a Phase 38 I (Codex R1 P3) — a terminally FAILED sweep must read as
+  // a warning, not the healthy accent, even though activeExperiment is set.
+  const studyFailed = activeExperiment?.status === 'FAILED';
+  const runStateTone =
+    studyFailed ||
+    currentJobStatus === 'failed' ||
+    currentJobStatus === 'connection_lost'
       ? 'warning'
-      : 'muted';
+      : solving || activeExperiment
+        ? 'accent'
+        : 'muted';
   const nextAction = solving
     ? 'Watch the solver console or stop the job; do not promote evidence'
     : loading
