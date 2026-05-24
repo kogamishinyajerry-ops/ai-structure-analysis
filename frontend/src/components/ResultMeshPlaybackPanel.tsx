@@ -829,6 +829,10 @@ export function ResultMeshPlaybackPanel({
                 deformationScale={deformationScale}
                 fieldComponent={fieldComponent}
                 valueFilter={valueFilter}
+                isoSurfaceEnabled={isoSurfaceEnabled}
+                isoThreshold={
+                  isoThreshold ?? (summary.valueMin + summary.valueMax) / 2
+                }
                 sectionCut={companionSectionCut}
                 onSectionCutChange={setCompanionSectionCut}
                 onNodePicked={setActivePick}

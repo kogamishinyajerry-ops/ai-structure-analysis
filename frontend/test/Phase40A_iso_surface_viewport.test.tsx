@@ -23,6 +23,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ResultMeshWebGLViewport } from '../src/components/ResultMeshWebGLViewport'
 import { ResultMeshPlaybackPanel } from '../src/components/ResultMeshPlaybackPanel'
+import { CompanionViewport } from '../src/components/CompanionViewport'
+import { extractIsoSurface } from '../src/components/isoSurface'
 
 // Two adjacent C3D4 tets sharing face (2,3,4). After cell→point
 // averaging the shared nodes get (1+3)/2 = 2.0, node 1 = 1.0, node 5 =
@@ -287,5 +289,77 @@ describe('ResultMeshPlaybackPanel — iso-surface control wiring', () => {
     expect(
       screen.queryByTestId('iso-surface-control'),
     ).not.toBeInTheDocument()
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────
+// Codex R0 fix regression guards (Phase 40 A step 2)
+// ────────────────────────────────────────────────────────────────────
+
+describe('Codex R0 P1 — iso-surface marches over deformed coordinates', () => {
+  it('places iso vertices at the supplied (deformed) coords, not the raw frame coords', () => {
+    const scalarFor = (el: { value?: number }) => el.value
+    // Baseline: extract from the frame's own (undeformed) coordinates.
+    const base = extractIsoSurface(crossingTetFrame, 1.5, scalarFor)
+    expect(base.triangles.length).toBeGreaterThan(0)
+
+    // Override: every node shifted +100 in x (simulating a deformed /
+    // magnified coordinate map from buildNodeCoords). The iso-surface
+    // must follow — every vertex x shifts by exactly +100.
+    const shifted = new Map<number, [number, number, number]>()
+    for (const n of crossingTetFrame.nodes) {
+      const [x, y, z] = n.coordinates
+      shifted.set(n.label, [x + 100, y, z])
+    }
+    const deformed = extractIsoSurface(crossingTetFrame, 1.5, scalarFor, shifted)
+    expect(deformed.triangles.length).toBe(base.triangles.length)
+
+    const sumX = (r: typeof base) =>
+      r.triangles.reduce((acc, t) => acc + t.a[0] + t.b[0] + t.c[0], 0)
+    const vertexCount = base.triangles.length * 3
+    // Mean vertex x must differ by exactly the +100 offset.
+    expect(sumX(deformed) / vertexCount - sumX(base) / vertexCount).toBeCloseTo(
+      100,
+      6,
+    )
+  })
+})
+
+describe('Codex R0 P2 — iso-surface honors the active value filter', () => {
+  it('reports "no crossing" when the value filter excludes every element', () => {
+    render(
+      <ResultMeshWebGLViewport
+        frame={crossingTetFrame}
+        valueMin={0}
+        valueMax={4}
+        isoSurfaceEnabled
+        isoThreshold={1.5}
+        // Both element values (1.0, 3.0) fall OUTSIDE [100, 200], so the
+        // filter excludes them — the overlay must not fabricate crossings
+        // from filtered-out elements (matching the truth mesh).
+        valueFilter={{ minValue: 100, maxValue: 200, mode: 'inside' }}
+      />,
+    )
+    const detail = screen.getByTestId('webgl-iso-surface-badge-detail')
+    expect(detail).toHaveTextContent(/no crossing at this threshold/i)
+  })
+})
+
+describe('Codex R0 P2 — iso-surface props reach the companion viewport', () => {
+  it('renders the iso honesty badge inside the companion pane', () => {
+    render(
+      <CompanionViewport
+        frame={crossingTetFrame}
+        valueMin={0}
+        valueMax={4}
+        sectionCut={{ axis: 'x', positionM: 0, showLow: true }}
+        onSectionCutChange={() => {}}
+        isoSurfaceEnabled
+        isoThreshold={1.5}
+      />,
+    )
+    // The companion forwards iso props to its inner viewport, so the
+    // smoothed-Tier-0 badge appears in the compare-cuts pane too.
+    expect(screen.getByTestId('webgl-iso-surface-badge')).toBeInTheDocument()
   })
 })

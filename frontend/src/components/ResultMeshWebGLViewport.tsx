@@ -188,16 +188,47 @@ export function ResultMeshWebGLViewport({
     // (componentValue over the active fieldComponent); elements with
     // neither a tensor nor a `value` are EXCLUDED (undefined) rather
     // than fabricated to valueMin — honest omission.
-    const isoScalarFor: ElementScalarAccessor = (element) =>
-      element.stressTensor
+    const isoScalarFor: ElementScalarAccessor = (element) => {
+      // Codex R0 P2: honor the active value filter so the overlay never
+      // renders geometry from elements the truth mesh has filtered out
+      // (and the badge can't claim crossings the filtered mesh lacks).
+      if (valueFilter && !applyValueFilter(element, valueFilter, fieldComponent)) {
+        return undefined;
+      }
+      return element.stressTensor
         ? componentValue(element.stressTensor, fieldComponent, element.value ?? Number.NaN)
         : element.value;
+    };
     const threshold =
       typeof isoThreshold === 'number' && Number.isFinite(isoThreshold)
         ? isoThreshold
         : (valueMin + valueMax) / 2;
-    return { result: extractIsoSurface(frame, threshold, isoScalarFor), threshold };
-  }, [isoSurfaceEnabled, frame, isoThreshold, fieldComponent, valueMin, valueMax]);
+    // Codex R0 P1: march over the SAME deformed / playback-interpolated
+    // coordinates the base mesh is rebuilt from (deformationScale,
+    // nextFrame, animTInterp), so the overlay stays welded to the mesh
+    // instead of peeling away in undeformed space.
+    const deformedCoords = buildNodeCoords(
+      frame,
+      nextFrame ?? null,
+      animTInterp,
+      deformationScale,
+    );
+    return {
+      result: extractIsoSurface(frame, threshold, isoScalarFor, deformedCoords),
+      threshold,
+    };
+  }, [
+    isoSurfaceEnabled,
+    frame,
+    isoThreshold,
+    fieldComponent,
+    valueMin,
+    valueMax,
+    valueFilter,
+    nextFrame,
+    animTInterp,
+    deformationScale,
+  ]);
 
   // Initialise + dispose the three.js context once.
   useEffect(() => {

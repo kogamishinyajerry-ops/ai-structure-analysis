@@ -172,13 +172,28 @@ export function extractIsoSurface(
   frame: ResultMeshFrame,
   threshold: number,
   scalarFor: ElementScalarAccessor,
+  /** Optional node-coordinate override (Phase 40 A step 2, Codex R0 P1).
+   * The viewport supplies DEFORMED / playback-interpolated coordinates
+   * (deformationScale, frame blend) so the iso-surface marches over the
+   * same positions as the rendered base mesh and stays welded to it
+   * instead of peeling away in undeformed space. The scalar field is
+   * deformation-independent (only the geometry moves), so the averaging
+   * is unaffected. Falls back to the frame's raw coordinates when
+   * omitted (preserves the pure-extraction unit tests). */
+  nodeCoordsOverride?: ReadonlyMap<number, readonly [number, number, number]>,
 ): IsoSurfaceResult {
   const nodalValues = averageElementValuesToNodes(frame, scalarFor);
 
-  const nodeCoords = new Map<number, Vec3>();
-  for (const node of frame.nodes) {
-    const c = node.coordinates;
-    if (c && c.length >= 3) nodeCoords.set(node.label, [c[0], c[1], c[2]]);
+  let nodeCoords: ReadonlyMap<number, readonly [number, number, number]>;
+  if (nodeCoordsOverride) {
+    nodeCoords = nodeCoordsOverride;
+  } else {
+    const built = new Map<number, Vec3>();
+    for (const node of frame.nodes) {
+      const c = node.coordinates;
+      if (c && c.length >= 3) built.set(node.label, [c[0], c[1], c[2]]);
+    }
+    nodeCoords = built;
   }
 
   const included = new Set<string>();
@@ -208,7 +223,8 @@ export function extractIsoSurface(
         usable = false;
         break;
       }
-      pos.push(p);
+      // Copy → mutable Vec3 regardless of the override's readonly-ness.
+      pos.push([p[0], p[1], p[2]]);
       val.push(v);
     }
     if (!usable) {

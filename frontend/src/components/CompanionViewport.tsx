@@ -66,6 +66,12 @@ interface CompanionViewportProps {
   fieldComponent?: StressComponent;
   /** Shared threshold filter. */
   valueFilter?: ValueFilterState | null;
+  /** FM-04a Phase 40 A (step 2, Codex R0 P2) — shared iso-surface
+   * overlay. Forwarded so the two compare-cuts panes differ ONLY by
+   * section cut (the reviewer can compare the same iso-surface across
+   * two cuts). */
+  isoSurfaceEnabled?: boolean;
+  isoThreshold?: number;
   /** INDEPENDENT — the whole point of the companion. */
   sectionCut: SectionCutState;
   onSectionCutChange: (next: SectionCutState) => void;
@@ -85,6 +91,8 @@ export function CompanionViewport({
   deformationScale,
   fieldComponent,
   valueFilter,
+  isoSurfaceEnabled,
+  isoThreshold,
   sectionCut,
   onSectionCutChange,
   onNodePicked,
@@ -257,6 +265,8 @@ export function CompanionViewport({
           sectionCut={sectionCut}
           fieldComponent={fieldComponent}
           valueFilter={valueFilter}
+          isoSurfaceEnabled={isoSurfaceEnabled}
+          isoThreshold={isoThreshold}
           onNodePicked={onNodePicked ? handlePicked : undefined}
         />
       </div>
