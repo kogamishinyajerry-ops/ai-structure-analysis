@@ -16,6 +16,7 @@
  */
 
 import type { CandidateCaseRecord } from '../candidateCaseRegistry'
+import { InContextHint } from './InContextHint'
 
 /**
  * Infer the boundary conditions a case KIND expects, from its caseId.
@@ -85,6 +86,11 @@ export function BCSetupPillList({ caseRecord }: BCSetupPillListProps) {
           ? 'Boundary conditions assigned for this case.'
           : 'Boundary conditions defined by this case setup (read-only — fixed by the case definition, no setup step required).'}
       </p>
+      <InContextHint
+        hintId="bc-setup"
+        label="Boundary conditions"
+        text="New to FEA? Boundary conditions are the loads and restraints the analysis applies. This case's are preset — review them, then run the solver."
+      />
       <ul
         style={{
           listStyle: 'none',

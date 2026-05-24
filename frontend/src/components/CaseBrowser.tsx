@@ -38,6 +38,7 @@
 import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
 import type { CandidateCaseRecord } from '../candidateCaseRegistry'
+import { InContextHint } from './InContextHint'
 
 export interface CaseBrowserProps {
   /** The cohort of candidate cases to browse. Pass the same array
@@ -104,6 +105,11 @@ export function CaseBrowser({
       aria-label="Case browser — grouped by solver kind"
       style={rootStyle}
     >
+      <InContextHint
+        hintId="case-browser"
+        label="Case browser"
+        text="Pick a case to open. Filter by solver kind or search by name; the preview pane summarises what each case validates before you commit."
+      />
       <header style={headerStyle}>
         <strong style={titleStyle}>Case browser</strong>
         <span

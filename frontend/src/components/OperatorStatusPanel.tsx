@@ -20,6 +20,7 @@ import type {
 } from '../types/AppTypes';
 import { installPolishStyles } from './polishStyles';
 import { SectionFrame } from './SectionFrame';
+import { InContextHint } from './InContextHint';
 import { useEffect } from 'react';
 
 /** Derive a stable per-section storage key from the section title.
@@ -68,6 +69,11 @@ export function OperatorStatusPanel({
 
   return (
     <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Validation and trust center">
+      <InContextHint
+        hintId="operator-status"
+        label="Workbench state"
+        text="This panel tracks the live solve and trust state. If the log connection drops mid-run, you'll get a recovery card with a Retry."
+      />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>

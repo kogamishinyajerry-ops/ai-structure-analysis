@@ -11,6 +11,7 @@
 // benchmark agreement.
 
 import { useEffect, type CSSProperties } from 'react';
+import { InContextHint } from './InContextHint';
 
 import type { PickedNodeInfo } from './viewportRaycaster';
 import {
@@ -99,6 +100,11 @@ export function ProbeListPanel({
 
   return (
     <div data-testid="probe-list-panel" style={STYLES.panel}>
+      <InContextHint
+        hintId="probe-list"
+        label="Probe list"
+        text="Click a node in the 3D view to pin its value here. Pinned probes persist across reloads and export to CSV."
+      />
       <div style={STYLES.header}>
         <div>
           <div style={STYLES.label}>Probe list</div>

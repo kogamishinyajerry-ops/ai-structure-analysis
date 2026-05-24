@@ -26,6 +26,7 @@ import { useEffect, useState } from 'react'
 // primitives in place of bespoke divs (UI agent round-2 finding).
 import { ErrorCard } from './ErrorCard'
 import { SkeletonCard } from './SkeletonCard'
+import { InContextHint } from './InContextHint'
 import {
   FOUR_QUESTION_GATE_KEYS,
   REFUSED_CLAIMS_MAX_ITEMS,
@@ -103,6 +104,11 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
         background: 'var(--surface)',
       }}
     >
+      <InContextHint
+        hintId="advisor-panel"
+        label="AI advisor"
+        text="This critique is advisory only — it never drives the solver and runs offline. Open the Visual tab for the backend-validated trust gate."
+      />
       <header style={{ marginBottom: '8px' }}>
         <h3 style={{ margin: 0, fontSize: '0.95rem' }}>AI advisor critique</h3>
         <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
