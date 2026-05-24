@@ -386,10 +386,39 @@ export function ResultMeshWebGLViewport({
     state.scene.add(mesh);
     state.mesh = mesh;
 
-    // FM-04a Phase 40 A — opt-in iso-surface overlay. Dispose any prior
-    // iso mesh first (rebuild on every geometry change, same lifecycle
-    // as the per-element mesh above). Default OFF → this block is a
-    // no-op and the per-element render is byte-unchanged.
+    // FM-04a Phase 40 A — the opt-in iso-surface overlay is built in its
+    // OWN effect below (Codex R1 P2): keeping it out of this geometry
+    // effect means dragging the iso-threshold slider does NOT rerun the
+    // bounds-fit logic that overwrites the camera target/radius, so
+    // close-up threshold tuning no longer snaps the camera back.
+
+    const center = new THREE.Vector3();
+    bounds.getCenter(center);
+    const size = new THREE.Vector3();
+    bounds.getSize(size);
+    const span = Math.max(size.x, size.y, size.z) || 1;
+    state.target.copy(center);
+    state.radius = span * 2.2;
+    if (!state.initialized) {
+      state.azimuth = Math.PI / 4;
+      state.elevation = Math.PI / 6;
+      state.initialized = true;
+    }
+    setTriangleCount(count);
+    renderScene(state);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter]);
+
+  // FM-04a Phase 40 A (Codex R1 P2) — iso-surface overlay built in a
+  // SEPARATE effect from the base mesh. It rebuilds on isoData (toggle /
+  // threshold / deformation / filter via the memo) and sectionCut (clip
+  // planes), but NEVER touches the camera target/radius — so threshold
+  // tuning leaves the reviewer's pan/zoom intact. Runs AFTER the geometry
+  // effect above, so `state.clipPlane` is already configured for the
+  // current section cut. Default OFF → isoData is null → pure cleanup,
+  // and the per-element render stays byte-unchanged.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
     if (state.isoMesh) {
       state.scene.remove(state.isoMesh);
       state.isoMesh.geometry.dispose();
@@ -408,6 +437,9 @@ export function ResultMeshWebGLViewport({
       const isoGeom = new THREE.BufferGeometry();
       isoGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       isoGeom.computeVertexNormals();
+      // Share the base mesh's section-cut clip plane (already configured
+      // by the geometry effect) so the overlay is cut identically.
+      const clippingPlanes: THREE.Plane[] = sectionCut ? [state.clipPlane] : [];
       // Magenta — deliberately OUTSIDE the blue→green→orange truth
       // gradient hue range so the smoothed overlay is never mistaken
       // for the per-element field. Translucent so the truth mesh stays
@@ -426,22 +458,8 @@ export function ResultMeshWebGLViewport({
       state.scene.add(isoMesh);
       state.isoMesh = isoMesh;
     }
-
-    const center = new THREE.Vector3();
-    bounds.getCenter(center);
-    const size = new THREE.Vector3();
-    bounds.getSize(size);
-    const span = Math.max(size.x, size.y, size.z) || 1;
-    state.target.copy(center);
-    state.radius = span * 2.2;
-    if (!state.initialized) {
-      state.azimuth = Math.PI / 4;
-      state.elevation = Math.PI / 6;
-      state.initialized = true;
-    }
-    setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter, isoData]);
+  }, [isoData, sectionCut]);
 
   // Phase 22 B — animation loop. When `playing && nextFrame`, drive
   // `animTInterp` from 0 → 1 over a fixed duration so the parent's
@@ -765,7 +783,15 @@ export function ResultMeshWebGLViewport({
               data-testid="webgl-iso-surface-badge-skipped"
               style={{ opacity: 0.85 }}
             >
-              skipped (non-tet): {isoData.result.metadata.skippedElementTypes.join(', ')}
+              skipped (non-tet, v1 scope): {isoData.result.metadata.skippedElementTypes.join(', ')}
+            </div>
+          )}
+          {isoData.result.metadata.incompleteTetTypes.length > 0 && (
+            <div
+              data-testid="webgl-iso-surface-badge-incomplete"
+              style={{ opacity: 0.85 }}
+            >
+              incomplete (missing data): {isoData.result.metadata.incompleteTetTypes.join(', ')}
             </div>
           )}
         </div>

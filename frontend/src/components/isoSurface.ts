@@ -36,7 +36,17 @@ export interface IsoSurfaceMetadata {
   readonly smoothed: true;
   readonly threshold: number;
   readonly includedElementTypes: string[];
+  /** Element TYPES skipped because they are not tetrahedra (hex / wedge /
+   * shell / beam) — the v1 scope limitation. Does NOT include tets that
+   * were filtered out or had incomplete data (those are intentional /
+   * data-quality, reported separately so the caller never mislabels a
+   * real C3D4 as "non-tet"). */
   readonly skippedElementTypes: string[];
+  /** Tet types that had ≥1 element skipped for a DATA defect (broken
+   * connectivity or missing node coordinates) — distinct from the
+   * non-tet scope limit and from intentional value-filter exclusion
+   * (which is silent). Empty in the common case. */
+  readonly incompleteTetTypes: string[];
   /** Nodes that received at least one averaged element value. */
   readonly nodalCount: number;
   /** Tetrahedra actually marched (had 4 corner nodes with value + coords). */
@@ -197,19 +207,36 @@ export function extractIsoSurface(
   }
 
   const included = new Set<string>();
-  const skipped = new Set<string>();
+  const skippedNonTet = new Set<string>(); // non-tet TYPES (v1 scope limit)
+  const incompleteTet = new Set<string>(); // tet types skipped for a DATA defect
   const triangles: IsoTriangle[] = [];
   let tetCount = 0;
 
   for (const element of frame.elements) {
     const typeLabel = (element.type ?? 'UNKNOWN').toUpperCase();
+    // (1) Non-tet element kinds are out of v1 scope.
     if (!isTetType(element.type)) {
-      skipped.add(typeLabel);
+      skippedNonTet.add(typeLabel);
       continue;
     }
+    // (2) Codex R1 P1: a tet contributes geometry ONLY if it has a
+    // usable scalar of its OWN. This incorporates the caller's value-
+    // filter / field exclusion — without it, a filtered-out tet whose
+    // corners were averaged by KEPT neighbors would still march and
+    // emit overlay geometry in the filtered region. Such exclusion is
+    // INTENTIONAL (communicated by the filter UI) — so it is silent,
+    // NOT reported as a skipped type (Codex R1 P3: don't give a wrong
+    // reason). A tet with no field scalar at all is likewise silent.
+    const elementScalar = scalarFor(element);
+    if (elementScalar == null || !Number.isFinite(elementScalar)) {
+      continue;
+    }
+    // (3) A tet with broken connectivity or missing node coordinates is
+    // a DATA defect, reported separately from the non-tet scope limit
+    // so the badge never mislabels a real C3D4 as "non-tet" (R1 P3).
     const conn = element.connectivity;
     if (!conn || conn.length < 4) {
-      skipped.add(typeLabel);
+      incompleteTet.add(typeLabel);
       continue;
     }
     const pos: Vec3[] = [];
@@ -228,7 +255,7 @@ export function extractIsoSurface(
       val.push(v);
     }
     if (!usable) {
-      skipped.add(typeLabel);
+      incompleteTet.add(typeLabel);
       continue;
     }
     included.add(typeLabel);
@@ -242,7 +269,8 @@ export function extractIsoSurface(
       smoothed: true,
       threshold,
       includedElementTypes: [...included].sort(),
-      skippedElementTypes: [...skipped].sort(),
+      skippedElementTypes: [...skippedNonTet].sort(),
+      incompleteTetTypes: [...incompleteTet].sort(),
       nodalCount: nodalValues.size,
       tetCount,
       triangleCount: triangles.length,

@@ -209,7 +209,12 @@ test('extractIsoSurface: a tet referencing a node with no coordinates is skipped
   const iso = extractIsoSurface(frame, 5, (el) => el.value);
   assert.equal(iso.triangles.length, 0);
   assert.equal(iso.metadata.tetCount, 0);
-  assert.deepEqual(iso.metadata.skippedElementTypes, ['C3D4']);
+  // Codex R1 P3: a real C3D4 skipped for a DATA defect (missing coords)
+  // is reported as an INCOMPLETE tet, NOT mislabeled as a "non-tet"
+  // skipped type. skippedElementTypes is reserved for the genuine
+  // non-tet scope limitation.
+  assert.deepEqual(iso.metadata.skippedElementTypes, []);
+  assert.deepEqual(iso.metadata.incompleteTetTypes, ['C3D4']);
 });
 
 test('extractIsoSurface: C3D10 uses the first 4 connectivity entries as corners', () => {

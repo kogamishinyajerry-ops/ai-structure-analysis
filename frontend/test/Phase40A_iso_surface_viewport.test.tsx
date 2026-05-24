@@ -363,3 +363,81 @@ describe('Codex R0 P2 — iso-surface props reach the companion viewport', () =>
     expect(screen.getByTestId('webgl-iso-surface-badge')).toBeInTheDocument()
   })
 })
+
+describe('Codex R1 P1 — a filtered-out tet does not march via shared nodes', () => {
+  it('excludes the filtered tet even when its corners are averaged by kept neighbors', () => {
+    // F = {1,2,3,4} is filtered out (value 100 ∉ [0,50]). Its four
+    // corner nodes are ALL shared with kept tets A/B/C/D, so they
+    // receive averaged values regardless. Without the marching-loop
+    // scalar gate, F would still emit overlay geometry in the filtered
+    // region. With the gate, exactly the 4 kept tets march.
+    const frame = {
+      frame: 0,
+      timeMs: 0,
+      fieldLabel: 'stress',
+      nodes: [
+        { label: 1, coordinates: [0, 0, 0] },
+        { label: 2, coordinates: [1, 0, 0] },
+        { label: 3, coordinates: [0, 1, 0] },
+        { label: 4, coordinates: [0, 0, 1] },
+        { label: 5, coordinates: [1, 1, 1] },
+        { label: 6, coordinates: [-1, 0, 0] },
+        { label: 7, coordinates: [0, -1, 0] },
+        { label: 8, coordinates: [0, 0, -1] },
+      ],
+      elements: [
+        { label: 99, type: 'C3D4', connectivity: [1, 2, 3, 4], value: 100 }, // filtered
+        { label: 1, type: 'C3D4', connectivity: [1, 2, 3, 5], value: 10 },
+        { label: 2, type: 'C3D4', connectivity: [1, 2, 4, 6], value: 10 },
+        { label: 3, type: 'C3D4', connectivity: [1, 3, 4, 7], value: 0 },
+        { label: 4, type: 'C3D4', connectivity: [2, 3, 4, 8], value: 0 },
+      ],
+    }
+    const scalarFor = (el: { value?: number }) =>
+      el.value !== undefined && el.value >= 0 && el.value <= 50
+        ? el.value
+        : undefined
+    const iso = extractIsoSurface(frame, 5, scalarFor)
+    // Only the 4 kept tets marched; the filtered tet is NOT counted and
+    // contributes no triangles (4 kept tets × 1 triangle each).
+    expect(iso.metadata.tetCount).toBe(4)
+    expect(iso.triangles.length).toBe(4)
+    // Filter exclusion is intentional → silent, not mislabeled.
+    expect(iso.metadata.skippedElementTypes).toEqual([])
+    expect(iso.metadata.incompleteTetTypes).toEqual([])
+  })
+})
+
+describe('Codex R1 P3 — the badge does not mislabel a data-incomplete tet as non-tet', () => {
+  it('reports a missing-coord C3D4 under "incomplete", not "non-tet"', () => {
+    const incompleteFrame = {
+      frame: 0,
+      timeMs: 0,
+      fieldLabel: 'stress',
+      nodes: [
+        { label: 1, coordinates: [0, 0, 0] },
+        { label: 2, coordinates: [1, 0, 0] },
+        { label: 3, coordinates: [0, 1, 0] },
+        { label: 4 }, // no coordinates → DATA defect, not a non-tet kind
+      ],
+      elements: [
+        { label: 1, type: 'C3D4', connectivity: [1, 2, 3, 4], value: 2.0 },
+      ],
+    }
+    render(
+      <ResultMeshWebGLViewport
+        frame={incompleteFrame}
+        valueMin={0}
+        valueMax={4}
+        isoSurfaceEnabled
+        isoThreshold={1.5}
+      />,
+    )
+    const incomplete = screen.getByTestId('webgl-iso-surface-badge-incomplete')
+    expect(incomplete).toHaveTextContent(/incomplete \(missing data\): C3D4/i)
+    // The misleading "non-tet" line must NOT claim this real C3D4.
+    expect(
+      screen.queryByTestId('webgl-iso-surface-badge-skipped'),
+    ).not.toBeInTheDocument()
+  })
+})
