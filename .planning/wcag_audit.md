@@ -95,7 +95,7 @@ Legend:
 | Criterion | Status | Note |
 |---|---|---|
 | 1.3.1 | PASS | role="region" + `<ol>` group list + `<ul>` case list + `<aside>` preview pane |
-| 1.4.3 | GAP | Filter chip active vs idle contrast not formally measured (especially the active green/black combo); Phase 38 audit |
+| 1.4.3 | **PASS** (Phase 38 G measured, spec-verified helper) | active chip `#000` on `--accent #10b981` = **8.28:1**; idle chip `--text-secondary #94a3b8` on the panel (`--bg-surface` 0.5 over `--bg-base`) = **6.94:1**. Both ≥ 4.5:1 small-text AA. Pinned by `frontend/test/Phase38G_casebrowser_contrast.test.tsx`. |
 | 2.1.1 | PASS | Native buttons for chips + rows; search is `<input type="search">`; all keyboard-reachable |
 | 2.4.6 | PASS | aria-label "Case browser — grouped by solver kind"; search input has aria-label |
 | 3.3.1 | PASS | Empty-state copy ("No cases match the current filters") identifies the situation |
@@ -106,7 +106,7 @@ Legend:
 | Criterion | Status | Note |
 |---|---|---|
 | 1.3.1 | PASS | Span with explicit text content |
-| 1.4.3 | **GAP** — flagged by Phase 36 D friction (e): `text-secondary` on amber may fail 4.5:1 contrast (theme-dependent). Phase 38 task: measure the actual hex pair + adjust to amber-darker text |
+| 1.4.3 | **PASS** (Phase 38 G measured) | The Phase 36 D friction (e) suspicion ("`text-secondary` on amber may fail; theme-dependent") is DISPROVEN by measurement: `--text-secondary #94a3b8` on the badge fill (amber `rgb(255,180,80)` at 0.10 over the panel) = **5.77:1** ≥ 4.5:1. The Phase 38 E eval's "~3.3:1" finding #5 was imprecise (harsh-framed proxy; likely measured against the amber border, not the text background). No color change needed; pinned by `Phase38G_casebrowser_contrast.test.tsx`. |
 | 2.1.1 | N/A | Non-interactive |
 | 2.4.6 | PASS | Text describes the case state ("demo · no live runner") |
 | 3.3.1 | N/A | Not an error surface |
@@ -150,7 +150,7 @@ Legend:
 | Criterion | PASS | GAP | TODO | N/A |
 |---|---|---|---|---|
 | 1.3.1 | 10 | 0 | 0 | 0 |
-| 1.4.3 | **7** | 3 | 0 | 0 | (Phase 38 C — see addendum below)
+| 1.4.3 | **9** | 1 | 0 | 0 | (Phase 38 C sweep + Phase 38 G CaseBrowser/badge pins — see addenda)
 | 2.1.1 | 9 | 0 | 0 | 1 |
 | 2.4.6 | 10 | 0 | 0 | 0 |
 | 3.3.1 | 4 | 0 | 0 | 6 |
@@ -199,18 +199,39 @@ Measured pairs (all on glass `#101829` unless noted):
 | ErrorCard Retry `#fff` on `#5c1e1e` | ~9:1 | PASS |
 
 **1.4.3 status after Phase 38 C: 7/10 PASS, 3/10 GAP (honest).**
+**Updated after Phase 38 G: 9/10 PASS, 1/10 GAP** (CaseBrowser + runner
+badge measured and pinned — see the Phase 38 G addendum below).
 
 - **PASS** (1.4.3 met via the measured shared tokens above): App root,
   OperatorStatusPanel, ErrorCard, CaseOpenAdvisorCard, BCSetupAdvisorCard,
   AdvisorPanel, TrustCenterPanel.
 - **GAP remaining** (surface-specific pairs not yet pinned; Phase 39+):
-  CaseBrowser (active filter-chip green/black combo), runner_available
-  badge (amber-as-text measures 8.3:1, but the exact badge fg/bg
-  composition is not yet pinned in a test), TabButton (active vs idle).
+  TabButton (active vs idle).
 
-Not pretending all 10 close: the 3 remaining GAPs have surface-specific
+Not pretending all 10 close: the 1 remaining GAP has surface-specific
 color combinations that need their own measured pins before flipping to
 PASS. Honest progress, not score-gaming.
+
+## Phase 38 G — CaseBrowser + runner-badge measured (act-on eval #5)
+
+The Phase 38 E eval-fleet finding #5 claimed the CaseBrowser amber
+runner badge was ~3.3:1 (a 1.4.3 fail). Measured precisely against its
+real background with the same spec-verified helper (pinned in
+`frontend/test/Phase38G_casebrowser_contrast.test.tsx`):
+
+| Pair | Effective bg | Ratio | AA (4.5:1) |
+|---|---|---|---|
+| runner badge `--text-secondary #94a3b8` | amber `rgb(255,180,80)`@0.10 over panel | **5.77:1** | PASS |
+| active filter chip `#000` | `--accent #10b981` | **8.28:1** | PASS |
+| idle filter chip `--text-secondary #94a3b8` | panel (`#1e293b`@0.5 over `#020617`) | **6.94:1** | PASS |
+
+**Disposition: finding #5 was a false alarm.** The Phase 38 E eval ran
+via a harsh-framed general-purpose proxy (not the calibrated fleet) and
+its ~3.3:1 estimate is wrong — likely measured against the amber border
+`rgba(255,180,80,0.45)` rather than the text's actual fill background.
+**No colors changed** (nothing failed); the two Phase 38 C GAPs for
+these surfaces are flipped to PASS with measured pins. Only TabButton
+(active vs idle) remains unmeasured — the last 1.4.3 GAP.
 
 ## Phase 38+ priorities derived from this audit
 
