@@ -86,9 +86,9 @@ describe('shouldShowBCSetupAdvisor (Phase 38 D friction #2)', () => {
 })
 
 describe('BCSetupPillList render (Phase 38 D friction #3)', () => {
-  it('renders Expected-BC pills + label when not assigned', () => {
+  it('renders Case-defined-BC pills + label when not assigned', () => {
     render(<BCSetupPillList caseRecord={mockRecord()} />)
-    expect(screen.getByText('Expected BCs')).toBeTruthy()
+    expect(screen.getByText('Case-defined BCs')).toBeTruthy()
     expect(screen.getByText('Internal pressure')).toBeTruthy()
     expect(screen.getAllByTestId('bc-pill').length).toBeGreaterThanOrEqual(1)
     expect(

@@ -78,12 +78,12 @@ export function BCSetupPillList({ caseRecord }: BCSetupPillListProps) {
       data-bc-assigned={assigned ? 'true' : 'false'}
     >
       <h3 style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-        {assigned ? 'Assigned BCs' : 'Expected BCs'}
+        {assigned ? 'Assigned BCs' : 'Case-defined BCs'}
       </h3>
       <p style={{ margin: '0 0 12px', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
         {assigned
           ? 'Boundary conditions assigned for this case.'
-          : 'Boundary conditions this case kind expects — not yet assigned.'}
+          : 'Boundary conditions defined by this case setup (read-only — fixed by the case definition, no setup step required).'}
       </p>
       <ul
         style={{
