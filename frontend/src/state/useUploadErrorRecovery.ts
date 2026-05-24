@@ -184,6 +184,30 @@ export function studyRunRecoveryOptions(caseId: string): WithRecoveryOptions {
   };
 }
 
+const CONNECTION_LOST_REMEDIATION = [
+  'The solver may still be running on the backend — losing the log stream does not stop the job',
+  "Use Retry to reconnect to this job's live log stream",
+  'If Retry keeps failing, reopen the case from the browser, or confirm the backend / runner is still up',
+] as const;
+
+/** FM-04a Phase 39 A — recovery option template for a dropped live-job log
+ * WebSocket: the 6th and last of the silent error-recovery paths flagged at
+ * Phase 33 C novice_simulator #2 + Phase 36 D friction point (a). Before this,
+ * App.tsx `connectToLogs` ws.onerror appended a single `[ERROR] WebSocket
+ * connection died` console line and went silent — the novice saw the solver
+ * stall with no recovery surface. The Retry re-runs `connectToLogs` for the
+ * same job. Live-job (event-handler) context, so the call-site uses
+ * `setUploadError` directly rather than the async `withRecovery` wrapper. */
+export function connectionLostRecoveryOptions(jobId: string): WithRecoveryOptions {
+  return {
+    title: 'Live-job connection lost',
+    message: `The live log stream for job ${jobId} disconnected. The solver may still be running on the backend; reconnect to resume following its progress.`,
+    remediation: CONNECTION_LOST_REMEDIATION,
+    code: `WS-DISCONNECT:${jobId}`,
+    codeFriendly: 'Connection lost',
+  };
+}
+
 const UPLOAD_REMEDIATION = [
   'Confirm the backend at /api/v1/report/generate is reachable',
   'Try a smaller or alternative .frd / .inp file',

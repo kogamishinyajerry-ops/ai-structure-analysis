@@ -103,6 +103,7 @@ import { useTrustSections } from './state/useTrustSections';
 import { useAppUiMode } from './state/useAppUiMode';
 import {
   caseLoadRecoveryOptions,
+  connectionLostRecoveryOptions,
   pdfExportRecoveryOptions,
   solverStartRecoveryOptions,
   stopRequestRecoveryOptions,
@@ -461,6 +462,15 @@ function App() {
       setLogs(prev => [...prev, "[ERROR] WebSocket connection died"]);
       setCurrentJobStatus('connection_lost');
       setSolving(false);
+      // FM-04a Phase 39 A — surface a recovery ErrorCard (was silent: only the
+      // console log above). Live-job context, so call setUploadError directly
+      // (not the async withRecovery wrapper); Retry reconnects to the same
+      // job's log stream. Closes the novice WS-death finding — the 6th/last
+      // silent error-recovery path.
+      setUploadError({
+        ...connectionLostRecoveryOptions(jobId),
+        onRetry: () => { clearUploadError(); connectToLogs(jobId); },
+      });
     };
   };
 

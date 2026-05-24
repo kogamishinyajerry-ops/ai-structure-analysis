@@ -192,7 +192,12 @@ describe('Phase 37 B — pure helpers', () => {
     const brief = composeBCBrief(CANTILEVER_RECORD)
     expect(brief).toContain('Cantilever Beam')
     expect(brief).toMatch(/Visual tab/i)
-    expect(brief).toMatch(/Set the BCs/i)
+    // FM-04a Phase 39 A — the dead-end imperative "Set the BCs before running"
+    // is reframed to honest read-only copy: the BCs are fixed by the case
+    // definition (no BC editor exists, so telling a novice to "set" them was a
+    // dead-end). Pin the new framing + guard the imperative from returning.
+    expect(brief).toMatch(/fixed by the case definition/i)
+    expect(brief).not.toMatch(/set the bcs before running/i)
   })
 
   it('bcOrientationForCaseKind returns generic copy for unknown prefix', () => {

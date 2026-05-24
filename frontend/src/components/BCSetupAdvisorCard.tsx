@@ -97,7 +97,7 @@ export function BCSetupAdvisorCard({ caseRecord }: BCSetupAdvisorCardProps) {
 
       <p style={footerStyle} data-testid="bc-setup-advisor-footer">
         {TIER1_BANNER} · advisor-only; the next stage (Visual tab)
-        renders a deeper LLM-backed critique after BCs are wired.
+        renders a deeper LLM-backed critique once the solve completes.
       </p>
     </div>
   )
@@ -110,7 +110,7 @@ export function BCSetupAdvisorCard({ caseRecord }: BCSetupAdvisorCardProps) {
 export function composeBCBrief(caseRecord: CandidateCaseRecord): string {
   const label = caseRecord.displayLabel ?? caseRecord.caseId
   const orientation = bcOrientationForCaseKind(caseRecord.caseId)
-  return `${label}. ${orientation} Set the BCs before running the solver — the Visual tab renders the resulting field once the job completes.`
+  return `${label}. ${orientation} These BCs are fixed by the case definition (read-only — no setup step here); run the solver and the Visual tab renders the resulting field once the job completes.`
 }
 
 /** Phase 37 B — infer expected-BC orientation from caseId prefix.
