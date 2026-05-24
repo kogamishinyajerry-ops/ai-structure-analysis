@@ -98,6 +98,18 @@ export function useSensitivityStudy(
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${apiBase}/sensitivity/status/${id}`);
+        if (res.status === 404) {
+          // The backend lost the experiment record (e.g. a restart drops
+          // SensitivityService.experiments, which is in-memory) — re-polling
+          // would 404 forever, so relaunch is the only recovery (Codex R2 P2).
+          // Copilot path with no relaunch thunk → dismiss-only.
+          clearInterval(interval);
+          surface(
+            'Sensitivity study is no longer tracked by the backend',
+            relaunch,
+          );
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ExperimentStatus;
         // The backend only ever rolls up to COMPLETED (sensitivity.py
@@ -142,39 +154,46 @@ export function useSensitivityStudy(
     const relaunch = (): void => {
       void handleRunStudy(param, values);
     };
-    // The whole start → poll handoff — including setLoading(true) — runs INSIDE
-    // withRecovery, so its Retry re-runs the full flow with loading restored
-    // (Codex R0 P2-a + R1 P2-a): a successful retry starts polling instead of
-    // discarding the id, and the Exploration form is not re-enabled mid-run.
-    const started = await withRecovery(async () => {
+    // The full start → poll handoff AND its failure cleanup run INSIDE
+    // withRecovery. withRecovery's Retry reruns only this closure (not any
+    // outer block), so keeping setLoading(true)/setLoading(false) here means
+    // loading is restored on EVERY attempt — including a retried failed start
+    // (Codex R0 P2-a + R1 P2-a + R2 P1). On success the closure starts polling
+    // and leaves loading true; on failure it resets loading and rethrows so
+    // withRecovery still surfaces the ErrorCard + wires Retry.
+    await withRecovery(async () => {
       setLoading(true);
-      const res = await fetch(`${apiBase}/sensitivity/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          case_id: activeCaseId,
-          parameter: param,
-          values,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          typeof body.detail === 'string' ? body.detail : `HTTP ${res.status}`,
+      try {
+        const res = await fetch(`${apiBase}/sensitivity/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            case_id: activeCaseId,
+            parameter: param,
+            values,
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof body.detail === 'string'
+              ? body.detail
+              : `HTTP ${res.status}`,
+          );
+        }
+        if (!body.experiment_id) {
+          throw new Error('backend returned no experiment_id');
+        }
+        pollExperiment(body.experiment_id, relaunch);
+        return body as { experiment_id: string };
+      } catch (err) {
+        appendLog(
+          '[ERROR] Sensitivity study failed to start (see workbench banner)',
         );
+        setLoading(false);
+        throw err;
       }
-      if (!body.experiment_id) {
-        throw new Error('backend returned no experiment_id');
-      }
-      pollExperiment(body.experiment_id, relaunch);
-      return body as { experiment_id: string };
     }, studyRunRecoveryOptions(activeCaseId));
-    if (!started) {
-      appendLog(
-        '[ERROR] Sensitivity study failed to start (see workbench banner)',
-      );
-      setLoading(false);
-    }
   };
 
   return { handleRunStudy, pollExperiment };

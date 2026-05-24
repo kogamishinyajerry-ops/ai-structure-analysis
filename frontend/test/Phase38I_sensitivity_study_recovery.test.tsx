@@ -42,13 +42,17 @@ function makeOpts(
   const setUploadError = vi.fn()
   const clearUploadError = vi.fn()
   // Mirror the real withRecovery contract: run fn; on success return its
-  // value; on throw surface the ErrorCard and return undefined.
+  // value; on throw surface the ErrorCard (with an onRetry that reruns ONLY
+  // the closure, as useUploadErrorRecovery does) and return undefined.
   const withRecovery = vi.fn(
     async <T,>(fn: () => Promise<T>, options: unknown): Promise<T | undefined> => {
       try {
         return await fn()
       } catch {
-        setUploadError({ ...(options as object) } as ErrorCardProps)
+        setUploadError({
+          ...(options as object),
+          onRetry: () => withRecovery(fn, options),
+        } as ErrorCardProps)
         return undefined
       }
     },
@@ -123,6 +127,30 @@ describe('useSensitivityStudy — start failures surface, never hang (Phase 38 I
 
     expect(opts.setUploadError).toHaveBeenCalledTimes(1)
     expect(opts.setLoading).toHaveBeenLastCalledWith(false)
+  })
+
+  it('a retried failed start restores loading — Codex R2 P1', async () => {
+    const opts = makeOpts()
+    routeFetch({ run: () => errJson(500, { detail: 'boom' }) }) // always fails
+    const { result } = renderHook(() => useSensitivityStudy(opts))
+
+    await act(async () => {
+      await result.current.handleRunStudy('thickness', [1])
+    })
+    // First failure resets loading.
+    expect(opts.setLoading).toHaveBeenLastCalledWith(false)
+
+    // Click Retry: withRecovery reruns ONLY the closure. The cleanup must run
+    // again so loading is not left stuck true after a second failure.
+    const onRetry = opts.setUploadError.mock.calls.at(-1)?.[0].onRetry as () => void
+    await act(async () => {
+      await onRetry()
+    })
+    expect(opts.setLoading).toHaveBeenLastCalledWith(false)
+    // sanity: it did try again (true was set on the retry) before resetting.
+    expect(opts.setLoading.mock.calls.filter((c) => c[0] === true).length).toBe(
+      2,
+    )
   })
 
   it('no-op when no case is selected', async () => {
@@ -270,6 +298,33 @@ describe('useSensitivityStudy — poll terminal states stop the interval (Phase 
     const onRetry = opts.setUploadError.mock.calls[0][0].onRetry as () => void
     await act(async () => {
       onRetry() // must RELAUNCH (new /run POST), not re-poll the dead experiment
+    })
+    expect(runCalls).toBe(2)
+  })
+
+  it('a 404 status (experiment lost) relaunches instead of re-polling forever — Codex R2 P2', async () => {
+    const opts = makeOpts()
+    let runCalls = 0
+    routeFetch({
+      run: () => {
+        runCalls += 1
+        return okJson({ experiment_id: `e${runCalls}` })
+      },
+      status: () => errJson(404), // backend lost the in-memory experiment
+    })
+    const { result } = renderHook(() => useSensitivityStudy(opts))
+
+    await act(async () => {
+      await result.current.handleRunStudy('thickness', [1]) // runCalls → 1
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(POLL_MS) // poll → 404 → surface(relaunch)
+    })
+    expect(opts.setUploadError).toHaveBeenCalledTimes(1)
+
+    const onRetry = opts.setUploadError.mock.calls[0][0].onRetry as () => void
+    await act(async () => {
+      onRetry() // relaunch (new /run), not re-poll the 404
     })
     expect(runCalls).toBe(2)
   })
