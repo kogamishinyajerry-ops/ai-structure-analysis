@@ -1223,6 +1223,15 @@ export function ViewportDepthControls({
   const filterMode = valueFilter?.mode ?? 'inside';
   // FM-04a Phase 40 A — iso-surface threshold default = midpoint of the
   // field range (matches the viewport's own fallback).
+  // KNOWN LIMITATION (Codex R2 P2, deferred to retro queue per round-cap-3):
+  // [vMin, vMax] is the `value` / payload fieldRanges domain. When the
+  // reviewer switches to a tensor-derived component (σ_xx / σ_3 / …) the
+  // slider is still clamped to this domain and the midpoint default can
+  // fall outside the component's true range, so the badge may read
+  // "no crossing" when one exists. The existing value-filter slider
+  // shares the identical limitation (same valueRange source), so iso is
+  // consistent with the established pattern; a per-component range
+  // derivation is a separate follow-up (see codex_round3_overflow_phase40A).
   const isoThresholdEffective = isoThreshold ?? (vMin + vMax) / 2;
   // FM-04a Phase 27 C — section-cut hover preview state. true
   // while the user is actively dragging the position slider; the
