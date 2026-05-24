@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { ResultMeshFrame } from '../resultMeshPlayback';
-import { type StressComponent } from '../stressDerivatives';
+import { componentValue, type StressComponent } from '../stressDerivatives';
 
 // FM-04a Phase 21 C — minimal three.js WebGL viewport for the
 // dynamic result-mesh playback. Reads the SAME `selectedFrame` shape
@@ -45,6 +45,11 @@ import {
   type ValueFilterState,
 } from './viewportRaycaster';
 import { detectWebGLSupport } from './viewportAnimation';
+// FM-04a Phase 40 A — iso-surface overlay. The extraction is a SMOOTHED
+// Tier-0 viz approximation (cell→point averaging of the genuinely
+// discontinuous per-element field, tet-only); the per-element coloring
+// above remains the default TRUTH view. See isoSurface.ts header.
+import { extractIsoSurface, type ElementScalarAccessor } from './isoSurface';
 
 // Phase 24 C — re-export the extracted pure-function helpers and
 // types so existing imports (Phase 21-23 tests, sibling components)
@@ -120,6 +125,18 @@ interface ResultMeshWebGLViewportProps {
    * one (most do not on the event); the panel synthesizes a generic
    * message in that case. */
   onContextLost?: (reason: string) => void;
+  /** FM-04a Phase 40 A — iso-surface overlay toggle. Default false
+   * (the per-element coloring is the truth view; the iso-surface is an
+   * OPT-IN smoothed Tier-0 viz approximation). When true, an additional
+   * translucent magenta surface is drawn where the cell→point-averaged
+   * field crosses `isoThreshold`, over tetrahedral elements only. The
+   * caller MUST surface the honesty framing (this component renders a
+   * badge naming the approximation). */
+  isoSurfaceEnabled?: boolean;
+  /** FM-04a Phase 40 A — iso-surface threshold (same units as the
+   * field component). When omitted, defaults to the midpoint of
+   * [valueMin, valueMax]. */
+  isoThreshold?: number;
 }
 
 export function ResultMeshWebGLViewport({
@@ -135,6 +152,8 @@ export function ResultMeshWebGLViewport({
   valueFilter = null,
   onHoverCoords,
   onContextLost,
+  isoSurfaceEnabled = false,
+  isoThreshold,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stateRef = useRef<{
@@ -142,6 +161,8 @@ export function ResultMeshWebGLViewport({
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     mesh: THREE.Mesh | null;
+    // Phase 40 A — opt-in iso-surface overlay mesh (null when disabled).
+    isoMesh: THREE.Mesh | null;
     clipPlane: THREE.Plane;
     target: THREE.Vector3;
     radius: number;
@@ -155,6 +176,28 @@ export function ResultMeshWebGLViewport({
   const [animTInterp, setAnimTInterp] = useState<number>(0);
   // Phase 23 C — picked node state for the HUD overlay.
   const [pickedNode, setPickedNode] = useState<PickedNodeInfo | null>(null);
+  // Phase 40 A — PURE iso-surface extraction, computed independently of
+  // the three.js render state so the honesty badge (a DOM affordance)
+  // reflects the real extraction even where WebGL can't initialise
+  // (jsdom tests). Null when the overlay is disabled (default). The
+  // geometry effect below consumes the SAME result to build the actual
+  // THREE.Mesh, so the badge can never disagree with what's drawn.
+  const isoData = useMemo(() => {
+    if (!isoSurfaceEnabled || !frame) return null;
+    // Scalar accessor mirrors the per-element coloring's derivation
+    // (componentValue over the active fieldComponent); elements with
+    // neither a tensor nor a `value` are EXCLUDED (undefined) rather
+    // than fabricated to valueMin — honest omission.
+    const isoScalarFor: ElementScalarAccessor = (element) =>
+      element.stressTensor
+        ? componentValue(element.stressTensor, fieldComponent, element.value ?? Number.NaN)
+        : element.value;
+    const threshold =
+      typeof isoThreshold === 'number' && Number.isFinite(isoThreshold)
+        ? isoThreshold
+        : (valueMin + valueMax) / 2;
+    return { result: extractIsoSurface(frame, threshold, isoScalarFor), threshold };
+  }, [isoSurfaceEnabled, frame, isoThreshold, fieldComponent, valueMin, valueMax]);
 
   // Initialise + dispose the three.js context once.
   useEffect(() => {
@@ -227,6 +270,7 @@ export function ResultMeshWebGLViewport({
       scene,
       camera,
       mesh: null,
+      isoMesh: null,
       // Inactive clip plane until a sectionCut prop tells us otherwise.
       clipPlane: new THREE.Plane(new THREE.Vector3(1, 0, 0), Infinity),
       target: new THREE.Vector3(0, 0, 0),
@@ -311,6 +355,47 @@ export function ResultMeshWebGLViewport({
     state.scene.add(mesh);
     state.mesh = mesh;
 
+    // FM-04a Phase 40 A — opt-in iso-surface overlay. Dispose any prior
+    // iso mesh first (rebuild on every geometry change, same lifecycle
+    // as the per-element mesh above). Default OFF → this block is a
+    // no-op and the per-element render is byte-unchanged.
+    if (state.isoMesh) {
+      state.scene.remove(state.isoMesh);
+      state.isoMesh.geometry.dispose();
+      (state.isoMesh.material as THREE.Material).dispose();
+      state.isoMesh = null;
+    }
+    if (isoData && isoData.result.triangles.length > 0) {
+      const isoTris = isoData.result.triangles;
+      const positions = new Float32Array(isoTris.length * 9);
+      let p = 0;
+      for (const tri of isoTris) {
+        positions[p++] = tri.a[0]; positions[p++] = tri.a[1]; positions[p++] = tri.a[2];
+        positions[p++] = tri.b[0]; positions[p++] = tri.b[1]; positions[p++] = tri.b[2];
+        positions[p++] = tri.c[0]; positions[p++] = tri.c[1]; positions[p++] = tri.c[2];
+      }
+      const isoGeom = new THREE.BufferGeometry();
+      isoGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      isoGeom.computeVertexNormals();
+      // Magenta — deliberately OUTSIDE the blue→green→orange truth
+      // gradient hue range so the smoothed overlay is never mistaken
+      // for the per-element field. Translucent so the truth mesh stays
+      // visible behind it.
+      const isoMaterial = new THREE.MeshPhongMaterial({
+        color: 0xe879f9,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide,
+        flatShading: false,
+        clippingPlanes,
+        clipShadows: true,
+      });
+      const isoMesh = new THREE.Mesh(isoGeom, isoMaterial);
+      isoMesh.renderOrder = 1; // draw after the opaque per-element mesh
+      state.scene.add(isoMesh);
+      state.isoMesh = isoMesh;
+    }
+
     const center = new THREE.Vector3();
     bounds.getCenter(center);
     const size = new THREE.Vector3();
@@ -325,7 +410,7 @@ export function ResultMeshWebGLViewport({
     }
     setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter]);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter, isoData]);
 
   // Phase 22 B — animation loop. When `playing && nextFrame`, drive
   // `animTInterp` from 0 → 1 over a fixed duration so the parent's
@@ -608,6 +693,52 @@ export function ResultMeshWebGLViewport({
       >
         DRAG · ORBIT  ·  R-DRAG · PAN  ·  WHEEL · ZOOM  ·  CLICK · PROBE  ·  ESC · CLEAR
       </div>
+      {/* FM-04a Phase 40 A — iso-surface honesty badge (T:-1 guard).
+          Renders only while the opt-in overlay is enabled. Names the
+          approximation in plain terms so the smoothed surface is never
+          read as the solved field. */}
+      {isoData && (
+        <div
+          data-testid="webgl-iso-surface-badge"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: 12,
+            transform: 'translateX(-50%)',
+            color: '#fdf4ff',
+            fontSize: '0.66rem',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+            background: 'rgba(112, 26, 117, 0.82)',
+            border: '1px solid rgba(232, 121, 249, 0.6)',
+            borderRadius: 4,
+            padding: '5px 10px',
+            lineHeight: 1.45,
+            maxWidth: '90%',
+            textAlign: 'center',
+            pointerEvents: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          <div style={{ fontWeight: 800, letterSpacing: '0.06em' }}>
+            ISO-SURFACE · SMOOTHED TIER-0 VIZ APPROXIMATION
+          </div>
+          <div data-testid="webgl-iso-surface-badge-detail">
+            {isoData.result.metadata.triangleCount > 0
+              ? `${isoData.result.metadata.triangleCount} tris @ threshold ${isoData.threshold.toExponential(2)}`
+              : 'no crossing at this threshold (tet-only)'}
+            {' '}· per-element coloring is the truth view
+          </div>
+          {isoData.result.metadata.skippedElementTypes.length > 0 && (
+            <div
+              data-testid="webgl-iso-surface-badge-skipped"
+              style={{ opacity: 0.85 }}
+            >
+              skipped (non-tet): {isoData.result.metadata.skippedElementTypes.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
       {pickedNode && (
         <div
           data-testid="webgl-picked-node-hud"
@@ -680,6 +811,7 @@ declare const stateRefShape:
       scene: THREE.Scene;
       camera: THREE.PerspectiveCamera;
       mesh: THREE.Mesh | null;
+      isoMesh: THREE.Mesh | null;
       clipPlane: THREE.Plane;
       target: THREE.Vector3;
       radius: number;

@@ -135,6 +135,12 @@ export function ResultMeshPlaybackPanel({
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
   // FM-04a Phase 23 D — element-value threshold filter.
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
+  // FM-04a Phase 40 A — iso-surface overlay (opt-in, default OFF). The
+  // per-element coloring stays the truth view; the iso-surface is a
+  // smoothed Tier-0 viz approximation. `isoThreshold` null = use the
+  // midpoint of [valueMin, valueMax] (computed at the call site).
+  const [isoSurfaceEnabled, setIsoSurfaceEnabled] = useState<boolean>(false);
+  const [isoThreshold, setIsoThreshold] = useState<number | null>(null);
   // FM-04a Phase 24 D — active pick (single, live; pinned list owned
   // by the layout hook below).
   const [activePick, setActivePick] = useState<PickedNodeInfo | null>(null);
@@ -579,6 +585,11 @@ export function ResultMeshPlaybackPanel({
                   valueRange={[summary.valueMin, summary.valueMax]}
                   showSectionCut={showSectionCut}
                   showThresholdFilter={showThresholdFilter}
+                  isoSurfaceEnabled={isoSurfaceEnabled}
+                  onIsoSurfaceToggle={setIsoSurfaceEnabled}
+                  isoThreshold={isoThreshold}
+                  onIsoThresholdChange={setIsoThreshold}
+                  showIsoSurface={showThresholdFilter}
                 />
               )}
             </div>
@@ -633,6 +644,10 @@ export function ResultMeshPlaybackPanel({
                   onNodePicked={setActivePick}
                   onHoverCoords={setHoverCoords}
                   onContextLost={handleContextLost}
+                  isoSurfaceEnabled={isoSurfaceEnabled}
+                  isoThreshold={
+                    isoThreshold ?? (summary.valueMin + summary.valueMax) / 2
+                  }
                 />
               ) : (
               <>
@@ -1171,6 +1186,11 @@ export function ViewportDepthControls({
   valueRange,
   showSectionCut = true,
   showThresholdFilter = true,
+  isoSurfaceEnabled = false,
+  onIsoSurfaceToggle,
+  isoThreshold = null,
+  onIsoThresholdChange,
+  showIsoSurface = true,
 }: {
   deformationScale: number;
   onDeformationScaleChange: (value: number) => void;
@@ -1181,6 +1201,12 @@ export function ViewportDepthControls({
   valueRange: [number, number];
   showSectionCut?: boolean;
   showThresholdFilter?: boolean;
+  // FM-04a Phase 40 A — iso-surface overlay controls (opt-in).
+  isoSurfaceEnabled?: boolean;
+  onIsoSurfaceToggle?: (enabled: boolean) => void;
+  isoThreshold?: number | null;
+  onIsoThresholdChange?: (value: number) => void;
+  showIsoSurface?: boolean;
 }) {
   const cutEnabled = sectionCut !== null;
   const axis = sectionCut?.axis ?? 'x';
@@ -1191,6 +1217,9 @@ export function ViewportDepthControls({
   const filterMin = valueFilter?.minValue ?? vMin;
   const filterMax = valueFilter?.maxValue ?? vMax;
   const filterMode = valueFilter?.mode ?? 'inside';
+  // FM-04a Phase 40 A — iso-surface threshold default = midpoint of the
+  // field range (matches the viewport's own fallback).
+  const isoThresholdEffective = isoThreshold ?? (vMin + vMax) / 2;
   // FM-04a Phase 27 C — section-cut hover preview state. true
   // while the user is actively dragging the position slider; the
   // floating readout above the slider shows the cut position in
@@ -1468,6 +1497,66 @@ export function ViewportDepthControls({
               {filterMode === 'inside' ? 'IN' : 'OUT'}
             </button>
           </div>
+        )}
+      </div>
+      )}
+      {/* FM-04a Phase 40 A — iso-surface overlay row. Opt-in; gated by
+          showIsoSurface (advanced). The honesty caption (T:-1 guard) is
+          always visible when the toggle row renders, naming the surface
+          a smoothed Tier-0 viz approximation so it is never read as the
+          solved per-element field. State preserved on hide (C:-1). */}
+      {showIsoSurface && (
+      <div
+        data-testid="iso-surface-control"
+        style={{ display: 'grid', gap: 4, gridColumn: '1 / -1' }}
+      >
+        <label
+          style={{
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="iso-surface-toggle"
+            checked={isoSurfaceEnabled}
+            onChange={(event) => onIsoSurfaceToggle?.(event.target.checked)}
+          />
+          Iso-surface (smoothed viz)
+        </label>
+        <div
+          data-testid="iso-surface-honesty-caption"
+          style={{
+            fontSize: '0.62rem',
+            color: 'var(--text-muted)',
+            lineHeight: 1.4,
+          }}
+        >
+          Tier-0 smoothed approximation (cell→point averaged, tet-only) —
+          per-element coloring is the truth view.
+        </div>
+        {isoSurfaceEnabled && (
+          <label style={{ display: 'grid', gap: 2 }}>
+            <span style={{ fontSize: '0.66rem' }}>
+              threshold = {isoThresholdEffective.toExponential(2)}
+            </span>
+            <input
+              aria-label="Iso-surface threshold"
+              type="range"
+              min={vMin}
+              max={vMax}
+              step={(vMax - vMin) / 200 || 1}
+              value={isoThresholdEffective}
+              data-testid="iso-surface-threshold"
+              className={POLISH_CLASS_GRADIENT_SLIDER}
+              onChange={(event) =>
+                onIsoThresholdChange?.(Number(event.target.value))
+              }
+            />
+          </label>
         )}
       </div>
       )}
