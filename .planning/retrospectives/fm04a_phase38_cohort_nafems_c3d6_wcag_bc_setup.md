@@ -198,3 +198,48 @@ follow-up, not forced.
 2. **Dedicated `tsc -b` + eslint debt-cleanup phase** (21 + 55 pre-existing),
    with CI wired to the REAL gate so it can't silently rot again.
 3. Optional: the deferred #4 viz-failure overlay if Dim 5 needs the lift.
+
+## Phase 38 D addendum — composite FINALIZED at 78.33 (2026-05-24, next session)
+
+The one blocker is cleared. Composite = **78.33** (Phase 37 → +0.83). Full audit at
+`.planning/audits/phase38_FINAL.md`; per-dim fleet reports at `phase38d_*.md`.
+
+### The registration "restart" recommendation was incomplete — and the fix matters
+Recommendation #1 above said "restart → invoke the fleet via `subagent_type=`". That
+is necessary but **not sufficient**: the session was launched from `/Users/Zhuanz`
+(home), so the project's `.claude/agents/` are never discovered, AND those agent
+files reference their protocol via **relative** `.planning/...` paths — so even
+copying them to `~/.claude/agents/` (user-level) wouldn't resolve from a non-project
+cwd. **The real fix is to launch from the project directory**
+(`cd "/Users/Zhuanz/20260408 AI StructureAnalysis" && claude`). Until then, R6 runs
+via `general-purpose` proxies briefed with **absolute** paths to the protocol +
+RUBRIC_v2.md. Methodology patch: carry this in the next-session checklist.
+
+### Calibration cuts both ways — the Dim 5 generous-drift catch
+The prior (harsh) R6 proxy crashed Dim 2/3 by scoring "from zero vs commercial CAE."
+The fix (anchor to RUBRIC_v2.md's feature-checklist anchors) worked — Dim 1/2/3 came
+back calibrated. **But the same fresh-absolute method drifted GENEROUS on Dim 5**:
+the proxy read it 84 (+12 over Phase 37's 72) on **byte-identical viz code**, and
+over-credited the 90-anchor "comparison cuts (overlay two results)" sub-bullet —
+`CompanionViewport.tsx:1-6` is side-by-side compare-CUTS of one result, not an
+overlay of two. Per the no-retroactive-rescore guard + the prior anti-drift caveat,
+the composite **HOLDS** Phase 37's calibrated values for the dims Phase 38 didn't
+touch in code (Dim 4 = 76, Dim 5 = 72). The proxy's higher reads are logged as
+**Phase 39 re-baseline candidates** for the REGISTERED agent — prospective, never
+retroactive. Lesson: a proxy is uncalibrated in *both* directions; on byte-unchanged
+code, trust the last calibrated value over a proxy re-read.
+
+### Honest delta: most of a re-score's "movement" can be measurement-basis, not work
++0.83 composite, **entirely Dim 1 (+4, real C3D6 6th element class) + Dim 6 (+1, real
+38 F/H trust work)**. Dim 2/3/4/5 flat. The project's carry-forward practice (hold
+"untouched" dims) means a fresh-absolute re-score can *look* like a big jump when it's
+really a basis shift — so the FINAL decomposes the delta into real-work vs held, and
+refuses to bank calibration drift as progress. This is the same discipline as the
+v1.0→v2.0 "never compare across bases" guard (C:-1), applied within v2.0.
+
+### Carry-forward findings (independent of calibration)
+GS-001 legacy unit-mismatch test runs+fails in the default sweep (no `@pytest.mark.legacy`);
+38 D BC dead-end (no BC editor); WS-death mid-solve has no ErrorCard. All → Phase 39 /
+debt-cleanup. The `tsc -b` 16 + eslint 50 pre-existing red remains the dedicated
+debt-cleanup phase (CI must be wired to the REAL `tsc -b` gate).
+
