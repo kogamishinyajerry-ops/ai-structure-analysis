@@ -102,7 +102,99 @@ not risk-tier) + `9439841` (#1, tier-2 surfacing at the API boundary, risk-tier)
   the stale doc + keeping the honest scope caveat (stacked-cube proxy, not Hertz
   curvature), NOT by reflexively backing out or reflexively promoting.
 
-### Remaining act-on queue (deferred)
+### Remaining act-on queue (deferred at 38 F)
 #3 18/24 cohort absent from frontend fallback (HIGH) · #4 render_all
 HTTP-unreachable · #5 CaseBrowser amber badge ≈3.3:1 (the 38 C GAP) · #6 silent
 sensitivity-study error. Composite still pending the calibrated eval-fleet re-run.
+
+---
+
+## Phase 38 G/H/I addendum — act-on queue cleared (2026-05-24)
+
+The remaining four findings were closed (or honestly assessed) autonomously:
+`c428e43` (38 G, #5) · `a7ec424` (38 H, #3) · `9703f4e`+`302339e`+`a747e10`+`98d5979`
+(38 I, #6) · #4 assessed + deferred.
+
+### The biggest learning: the type-check was hollow (verification integrity)
+
+While fixing 38 I I introduced a clear `Cannot find name 'pollExperiment'`
+error — and `npx tsc --noEmit` reported **0 errors**. That contradiction
+exposed that **the root `tsconfig.json` is a project-references stub
+(`"files": []`)**, so `tsc --noEmit` against it type-checks *nothing*. The real
+check is **`tsc -b`**, which shows **21 pre-existing errors** (App.tsx 9; +12
+across 7 files) — and `eslint .` shows **55** (set-state-in-effect 26 /
+react-refresh 21 / no-unused-vars 8).
+
+Implications, recorded honestly:
+- This session's earlier "tsc 0 errors in touched files" claims (Phase 38 F and
+  likely prior phases) were **vacuously true** — they ran the no-op invocation.
+  This does NOT retroactively change any composite score (those are eval-fleet
+  driven, not tsc-driven), but it means the "tsc clean" line in past preambles
+  carried no signal.
+- Every 38 G/H/I change was re-verified against the REAL baselines via
+  stash-on-HEAD: **0 net new `tsc -b` errors, 0 net new eslint errors.**
+- The 21+55 pre-existing red is a **standing-debt finding for a dedicated
+  cleanup phase**, not a drive-by mid-feature fix.
+- **Methodology patch (carry forward):** the canonical frontend gates are
+  `npx tsc -b` and `npx eslint .` (NOT `tsc --noEmit`). Compare touched-file
+  deltas against a stash-on-HEAD baseline, not against zero.
+
+This is the same class of trap as the earlier "read `tail`'s exit code, not
+`tsc`'s" lesson — a verification command that *looks* green while checking the
+wrong thing. The dual-engine caught the downstream symptom (Codex would have
+flagged the dangling reference), but the discipline fix is to run the real gate.
+
+### Codex round-cap arc on 38 I (3 rounds, converging, user-ratified)
+
+The sensitivity-study fix drew the deepest Codex arc of the milestone — and a
+*healthy* one (converging on real issues, unlike the N1.1 22-round runaway):
+
+| Round | Findings | Theme |
+|---|---|---|
+| R0 | 3×P2 | the new Retry affordances weren't actually recoverable (start-retry discarded the experiment_id; poll-retry only dismissed; FAILED state not normalized) |
+| R1 | 2×P2 + 1×P3 | loading lost on start-retry; re-poll-vs-relaunch confusion; FAILED experiment still painted healthy `accent` |
+| R2 | 1×P1 + 1×P2 | a *retried* failed start stranded loading; a 404 (backend lost the experiment) re-polled forever |
+
+Each round's findings were second-order effects of the *previous* fix — the
+"every fix exposes an adjacent surface" pattern. At the **round cap (R2) with a
+P1 remaining**, per the `~/CLAUDE.md` governance I **stopped and asked the user**
+rather than looping to R3 autonomously. User ratified **"fix both, skip further
+review"**; both fixed (cleanup moved inside the `withRecovery` closure so Retry
+restores loading on every attempt; 404 → relaunch not re-poll; `runStateTone`
+reads FAILED as warning), pinned by 11 hook tests. **The round cap + the
+user-ratification gate worked exactly as designed** — it surfaced a genuine
+"the fixes keep spawning fixes" signal for human judgment instead of an
+unbounded loop.
+
+### Honest non-fix pattern reinforced (38 G #5)
+
+2 of the 3 WCAG surfaces the eval flagged as contrast fails **passed once
+measured** against the real composited background (runner badge 5.77:1, not the
+eval's ~3.3:1 — the harsh general-purpose proxy likely measured the amber
+border). Recorded as **measured PASS, not a fabricated color edit** — "measure
+before you fix; a suspected fail is worth verifying." Same spirit as not
+fabricating a fix for finding #5 originally.
+
+### Drift-guard-test pattern (38 H #3)
+
+Rather than only hand-adding the 17 missing fallback entries, shipped a
+**coverage test** that reads `golden_samples/` and fails when the static
+fallback diverges from disk — fixing the *class* of bug (silent drift) not just
+the instance. Data sourced from the `_claim_tier` SSOT (no over-claim:
+nafems-le10 stays Tier 1) via a committed provenance script.
+
+### #4 honest deferral
+
+`render_all` viz "HTTP-unreachable" is largely mitigated already — the backend
+`/visualize/plot` returns friendly HTML for viz-unavailable + render-failed. The
+residual (raw 404 for a report without an on-disk FRD; the fundamental
+iframe-to-down-backend limitation) is narrow and the robust fix is
+disproportionate to a MED finding from the harsh proxy. Deferred as a bounded
+follow-up, not forced.
+
+### Recommendations (next session)
+1. **Restart → invoke the calibrated eval fleet via `subagent_type=` → R6
+   re-score → finalize the Phase 38 composite** (the one blocker to a score).
+2. **Dedicated `tsc -b` + eslint debt-cleanup phase** (21 + 55 pre-existing),
+   with CI wired to the REAL gate so it can't silently rot again.
+3. Optional: the deferred #4 viz-failure overlay if Dim 5 needs the lift.
