@@ -63,3 +63,46 @@ Dim 1 ≈82-86 (≈baseline 87), Dim 2 **58** (baseline 77), Dim 3 **45**
 Restart session → invoke the real calibrated eval fleet via `subagent_type=` →
 R6 re-score → THEN finalize the composite. In parallel, act on findings #1 + #2
 (highest value) as a Phase 38 follow-up or Phase 39 opener.
+
+---
+
+## Phase 38 F addendum — findings #1 + #2 shipped (2026-05-24)
+
+Acted on the two highest-value act-on-queue items. `611cc0f` (#2, BC pill copy,
+not risk-tier) + `9439841` (#1, tier-2 surfacing at the API boundary, risk-tier).
+
+### Codex round economics (ADR-026 dual-engine, first multi-round arc)
+
+| Round | Verdict | Findings | Disposition |
+|---|---|---|---|
+| R0 | CHANGES_REQUIRED | P1 frontend type decl (claimTier on wrong interface); P2 schema 1.0.0→1.1.0 | both fixed |
+| R1 | CHANGES_REQUIRED | P2-a root-scoping (accessors ignore repo_root); P2-b hidden hertz promotion | both fixed |
+| R2 | CHANGES_REQUIRED | P2 registry-SSOT bypass in root path (stray verdict self-promotes) | fixed (membership gate) |
+| R3 | CHANGES_REQUIRED | **P1 false positive** (cited `test_schema_versions_stamping.py` — does not exist); P2 picker boundary suffix; P2 stale hertz NOTES | 2 fixed, 1 dismissed w/ evidence |
+
+**Methodology learnings:**
+- **Dual-engine earned its keep, decisively.** R0-P1 caught a real frontend type
+  break my own `tsc` self-check missed — I had read `tail`'s exit code after a
+  pipe (not `tsc`'s) and `tail -8` hid the error. Single-agent self-review would
+  have shipped it. Lesson: capture the real tool exit code; don't trust a piped
+  `$?`.
+- **Each fix exposed an adjacent surface** (API → root-scoping → SSOT gate →
+  picker UI / stale doc). Findings *converged* (2→2→1→[1 false +2 mechanical]),
+  which is the healthy signal the round cap is meant to protect — not the N1.1
+  22-round runaway. Stopped at R3 per cap; no real finding remained.
+- **Codex is not infallible.** R3-P1 referenced a non-existent test. Verified
+  before acting (the file does not exist; the full suite shows no such failure)
+  and dismissed with evidence rather than fabricating a fix. Trust-but-verify
+  applies to the reviewer too.
+- **A "promote it" finding (R1-P2-b) and a "that's an overclaim" tension
+  (R3-P2) resolved by reading the artifacts, not the labels.** hertz's verdict
+  (Phase 34 C) said tier_2; its NOTES (Phase 33 D) said INFRASTRUCTURE_ONLY. The
+  timeline (NOTES predates validation, "Phase 34 *will* land") proved the NOTES
+  stale, not the promotion wrong. The honesty contract was served by updating
+  the stale doc + keeping the honest scope caveat (stacked-cube proxy, not Hertz
+  curvature), NOT by reflexively backing out or reflexively promoting.
+
+### Remaining act-on queue (deferred)
+#3 18/24 cohort absent from frontend fallback (HIGH) · #4 render_all
+HTTP-unreachable · #5 CaseBrowser amber badge ≈3.3:1 (the 38 C GAP) · #6 silent
+sensitivity-study error. Composite still pending the calibrated eval-fleet re-run.
