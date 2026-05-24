@@ -26,6 +26,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 # Pinned per-case tolerance values (in PERCENT). These are the
@@ -45,6 +46,9 @@ CANONICAL_TOLERANCES: dict[str, float] = {
     "cantilever-dynamic-candidate": 8.0,  # Phase 30 A — first *DYNAMIC
     "heat-transfer-1d-candidate": 1.0,    # Phase 31 A — first *HEAT TRANSFER
     "wedge-c3d6-candidate": 1.0,          # Phase 38 B — 6th element class C3D6
+    "hertz-contact-candidate": 20.0,      # Phase 34 C *CONTACT PAIR; registry-
+    #                                       registered + surfaced in Phase 38 F
+    #                                       (Codex R1 found it was omitted)
 }
 
 
@@ -65,12 +69,23 @@ def test_each_case_verdict_carries_canonical_tolerance(
     tolerance constant without updating this test."""
     path = _verdict_path(case_id)
     assert path.is_file(), f"missing verdict YAML for {case_id} at {path}"
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    assert "tolerance_pct" in payload, (
+    # Phase 18-34 verdicts are JSON with a top-level `tolerance_pct`; Phase 34 C
+    # hertz-contact is YAML with `tolerance_pct` nested under `verdict_outcome`
+    # (Phase 38 F — mirror the _claim_tier overlay + Phase 35 B census loaders:
+    # json first, yaml fallback; top-level field or nested verdict_outcome).
+    text = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = yaml.safe_load(text)
+    actual = payload.get("tolerance_pct")
+    if actual is None and isinstance(payload.get("verdict_outcome"), dict):
+        actual = payload["verdict_outcome"].get("tolerance_pct")
+    assert actual is not None, (
         f"verdict YAML for {case_id} missing required field "
-        f"`tolerance_pct`; Phase 29 D registry pin failed"
+        f"`tolerance_pct` (top-level or nested under verdict_outcome); "
+        f"Phase 29 D registry pin failed"
     )
-    actual = payload["tolerance_pct"]
     assert actual == pytest.approx(expected_tolerance), (
         f"tolerance loosening detected for {case_id}: "
         f"expected {expected_tolerance}%, got {actual}%. "

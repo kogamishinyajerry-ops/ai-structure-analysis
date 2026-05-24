@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from ._claim_tier import claim_tier_label_for
 from ._schema_versions import COHORT_OVERVIEW_SCHEMA_VERSION
 from .acceptance_packet import (
     CLAIM_BOUNDARY,
@@ -53,6 +54,13 @@ class CohortOverviewEntry:
     """One scored row in the cohort overview."""
 
     case_id: str
+    # Per-case tier from the _claim_tier SSOT (ADR-025). The cohort-level
+    # `CohortOverview.claim_tier` stays the conservative Tier-1 floor; this
+    # per-entry field surfaces a real-solver promotion (tier_2_validated) so
+    # the leaderboard no longer hides it (FM-04a Phase 38 F). The frontend
+    # cohortOverviewClient already maps `raw.claim_tier` — it was reading an
+    # empty string because the backend never emitted this field.
+    claim_tier: str
     completeness_score: int
     completeness_score_max: int
     perforation_marker: str | None
@@ -186,6 +194,10 @@ def _build_entry(case_id: str, repo_root: Path) -> CohortOverviewEntry:
 
     return CohortOverviewEntry(
         case_id=case_id,
+        # repo_root-scoped (Codex R1): resolve tier against this build's tree's
+        # verdict files, not the module-load registry, so a cohort built for an
+        # alternate/synthetic root (e.g. cohort_snapshot tmp dirs) is correct.
+        claim_tier=claim_tier_label_for(case_id, repo_root),
         completeness_score=score.score,
         completeness_score_max=score.score_max,
         perforation_marker=(metrics_payload or {}).get("perforation_marker"),
@@ -248,6 +260,7 @@ def _latest_mtime_utc(paths: list[Path]) -> str | None:
 def _entry_to_dict(entry: CohortOverviewEntry) -> dict[str, Any]:
     return {
         "case_id": entry.case_id,
+        "claim_tier": entry.claim_tier,
         "completeness_score": entry.completeness_score,
         "completeness_score_max": entry.completeness_score_max,
         "perforation_marker": entry.perforation_marker,

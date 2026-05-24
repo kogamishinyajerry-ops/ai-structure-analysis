@@ -67,7 +67,27 @@ function CohortRow({
       }}
       data-testid={`cohort-row-${entry.caseId}`}
     >
-      <code style={{ overflowWrap: 'anywhere' }}>{entry.caseId}</code>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'hidden' }}>
+        <code style={{ overflowWrap: 'anywhere' }}>{entry.caseId}</code>
+        {entry.claimTier?.includes('Tier 2') ? (
+          <span
+            data-testid={`cohort-tier2-${entry.caseId}`}
+            title={entry.claimTier}
+            style={{
+              alignSelf: 'flex-start',
+              fontSize: '0.6rem',
+              fontWeight: 600,
+              padding: '1px 6px',
+              borderRadius: '999px',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--accent)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ✓ Tier 2 real-solver validated
+          </span>
+        ) : null}
+      </div>
       <strong style={{ color: toneColor(tone) }}>
         {entry.completenessScore}/{entry.completenessScoreMax}
       </strong>

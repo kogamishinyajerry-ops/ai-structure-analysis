@@ -1,14 +1,22 @@
-# `hertz-contact-candidate` · Phase 33 D scope notes
+# `hertz-contact-candidate` · scope notes (Phase 33 D infra → Phase 34 C validated)
 
-> Tier 1 / Tier 2 engineering candidate; not signed validation; not
-> benchmark agreement. Phase 33 D delivers analytical-SSOT
-> infrastructure; ccx validation pivots to Phase 34.
+> Tier 2 real-solver validated (Phase 34 C); not signed validation; not
+> benchmark agreement. The *CONTACT PAIR solver machinery is ccx-validated via
+> a stacked-cube uniaxial proxy — NOT Hertz curvature contact (future work).
 
 ## Status
 
-**Phase 33 D outcome: INFRASTRUCTURE_ONLY** — NOT a tier_2_validated
-case. Cohort validated count remains 11 (Phase 32 baseline). Phase
-34 will land the live ccx integration → cohort 12.
+**Phase 34 C outcome: tier_2_validated** (supersedes the Phase 33 D
+INFRASTRUCTURE_ONLY status below). Live ccx 2.23 *CONTACT PAIR cross-check
+PASS — 1D-exact δ=F·H/(E·A), residual −6.82% within the 20% envelope; cohort
+11 → 12. Honest scope: validates the contact-pair SOLVER mechanism, NOT Hertz
+curvature contact. Evidence: `cross_check_verdict.yaml`.
+
+### Historical — Phase 33 D (superseded by Phase 34 C above)
+
+**Phase 33 D outcome: INFRASTRUCTURE_ONLY** — analytical SSOT only; not yet a
+tier_2_validated case at that time. The live ccx validation landed in Phase
+34 C, which is the current status above.
 
 ## What Phase 33 D shipped
 

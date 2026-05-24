@@ -12,6 +12,9 @@ import type { TrustCenterTone } from './trustCenterSummary.ts'
 
 export interface CohortOverviewEntry {
   caseId: string
+  // Per-case tier from the backend (FM-04a Phase 38 F). Populated by parseEntry
+  // from `raw.claim_tier`; '' when the backend omits it (pre-1.1.0 payloads).
+  claimTier: string
   completenessScore: number
   completenessScoreMax: number
   perforationMarker: string | null
@@ -39,6 +42,7 @@ export interface CohortOverview {
 
 interface RawEntry {
   case_id?: string
+  claim_tier?: string
   completeness_score?: number
   completeness_score_max?: number
   perforation_marker?: string | null
@@ -69,6 +73,11 @@ function parseEntry(raw: RawEntry | null | undefined): CohortOverviewEntry | nul
   if (typeof raw.case_id !== 'string') return null
   return {
     caseId: raw.case_id,
+    // Per-case tier from the backend (FM-04a Phase 38 F). The interface has
+    // declared `claimTier` since Phase 18 D, but parseEntry never populated it
+    // and the backend never emitted it — so it silently read undefined. Both
+    // ends are now wired; '' fallback keeps pre-fix payloads safe.
+    claimTier: raw.claim_tier ?? '',
     completenessScore: raw.completeness_score ?? 0,
     completenessScoreMax: raw.completeness_score_max ?? 100,
     perforationMarker: raw.perforation_marker ?? null,

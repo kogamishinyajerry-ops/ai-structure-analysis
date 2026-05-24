@@ -108,10 +108,17 @@ Bump history:
   #06 modal-placeholder gap at the rubric layer.
 """
 
-COHORT_OVERVIEW_SCHEMA_VERSION = "1.0.0"
+COHORT_OVERVIEW_SCHEMA_VERSION = "1.1.0"
 """``cohort_overview`` HTTP response + on-disk serialization.
 
 Builder: ``backend.app.services.reporting.cohort_overview``.
+
+1.1.0 (FM-04a Phase 38 F): each ``entries[*]`` row gains an additive
+``claim_tier`` field (the per-case tier resolved from the ``_claim_tier``
+SSOT, ADR-025) so a real-solver promotion surfaces at the API boundary.
+Backward-compatible — consumers that ignore the field still parse 1.1.0
+payloads, and the minor bump lets snapshot diff/audit consumers
+distinguish a 1.0.0 row (no per-case tier) from a 1.1.0 row.
 """
 
 CASE_COMPARISON_SCHEMA_VERSION = "1.0.0"

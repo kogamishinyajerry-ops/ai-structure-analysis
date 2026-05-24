@@ -21,6 +21,28 @@ export interface CandidateCasePickerProps {
   onSelect: (caseId: string) => void
 }
 
+/**
+ * Humanize the per-case claim boundary into the banner disclaimer suffix,
+ * dropping the leading tier token (redundant with the claimTier label shown
+ * alongside) and rendering the remaining segments.
+ *
+ * FM-04a Phase 38 F (Codex R3): the banner previously hard-coded
+ * "not signed validation · not benchmark agreement", so a tier_2 case showed
+ * the Tier-2 label but the WRONG (Tier-1) boundary — never its real
+ * `cross_check_against_analytical`. Deriving the suffix from the per-case
+ * boundary keeps the label and the disclaimer consistent.
+ *   tier1 → "not signed validation · not benchmark agreement"
+ *   tier2 → "not signed validation · cross check against analytical"
+ */
+export function boundaryDisclaimer(claimBoundary: string | undefined): string {
+  if (!claimBoundary) return 'not signed validation · not benchmark agreement'
+  const parts = claimBoundary.split(';').map((s) => s.trim())
+  // Drop the leading tierN_* token; humanize the remaining disclaimer segments.
+  const tail = parts.slice(1).filter(Boolean)
+  if (tail.length === 0) return 'not signed validation · not benchmark agreement'
+  return tail.map((s) => s.replace(/_/g, ' ')).join(' · ')
+}
+
 export function CandidateCasePicker({
   apiBase,
   selectedCaseId,
@@ -122,7 +144,7 @@ export function CandidateCasePicker({
           }}
           data-testid="candidate-case-tier-banner"
         >
-          {selected?.claimTier ?? 'Tier 1 engineering candidate'} · not signed validation · not benchmark agreement
+          {selected?.claimTier ?? 'Tier 1 engineering candidate'} · {boundaryDisclaimer(selected?.claimBoundary)}
         </div>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>
           {selected?.notesExcerpt ?? 'Select a candidate case to see its NOTES excerpt.'}

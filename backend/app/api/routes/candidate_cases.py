@@ -12,7 +12,8 @@ a dropdown + NOTES excerpt + claim-tier banner with no extra parsing:
 
     {
       "case_id": "GS-102-refined-candidate",
-      "claim_tier": "Tier 1 engineering candidate",
+      "claim_tier": "Tier 1 engineering candidate"  # or "Tier 2 real-solver
+                  # validated" when a PASS cross_check_verdict.yaml promoted it,
       "starter_deck_relpath": "golden_samples/GS-102-refined-candidate/data/model_00_0000.rad",
       "engine_deck_relpath":  "golden_samples/GS-102-refined-candidate/data/model_00_0001.rad",
       "generator_script_relpath": "scripts/gen_gs102_refined_deck.py" | null,
@@ -28,6 +29,11 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter
+
+from app.services.reporting._claim_tier import (
+    claim_boundary_for,
+    claim_tier_label_for,
+)
 
 router = APIRouter(prefix="/candidate-cases", tags=["candidate-cases"])
 
@@ -73,12 +79,21 @@ def _describe_case(case_dir: Path, repo_root: Path) -> dict[str, object]:
 
     return {
         "case_id": case_dir.name,
-        "claim_tier": CLAIM_TIER,
+        # Per-case tier resolved from the _claim_tier SSOT (ADR-025): a case
+        # promoted to tier_2_validated by a PASS cross_check_verdict.yaml
+        # surfaces "Tier 2 real-solver validated" here instead of the cohort
+        # floor. Previously hard-coded CLAIM_TIER for every case, which hid
+        # every real-solver promotion from the picker (FM-04a Phase 38 F fix).
+        # `*-candidate` names never match the ^GS-\d{3}$ shape, so the accessor
+        # cannot raise the HF1.7a ValueError here. Pass repo_root so the tier is
+        # resolved against THIS scan's tree's verdict files, not the module-load
+        # registry (Codex R1 — keeps tmp/alternate worktrees correct).
+        "claim_tier": claim_tier_label_for(case_dir.name, repo_root),
         "starter_deck_relpath": _relpath_if_file(starter, repo_root),
         "engine_deck_relpath": _relpath_if_file(engine, repo_root),
         "generator_script_relpath": _guess_generator_relpath(case_dir.name, repo_root),
         "notes_excerpt": _notes_excerpt(notes),
-        "claim_boundary": CLAIM_BOUNDARY,
+        "claim_boundary": claim_boundary_for(case_dir.name, repo_root),
     }
 
 

@@ -32,7 +32,9 @@ catches earlier any attempt to invoke ccx on a signed case at all.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Final, Literal
 
 ClaimTier = Literal["tier_1_candidate", "tier_2_validated"]
@@ -186,39 +188,79 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # residual on the live run). Promoted to tier_2_validated by the
     # verdict YAML overlay on the PASS verdict.
     "wedge-c3d6-candidate": "tier_1_candidate",
+    # Phase 34 C — *CONTACT PAIR validated case (stacked-cube uniaxial
+    # contact; 1D-exact δ = F·H/(E·A) analytical, residual −6.82% within
+    # the 20% envelope on live ccx 2.23). Solver kind #6 contact_pair_static.
+    # REGISTRY OMISSION FIX (Phase 38 F, found by Codex R1): Phase 34 C
+    # shipped the verdict + cohort-count bump but never registered the case
+    # here, so a genuine real-solver promotion stayed invisible. Its verdict
+    # artifact is YAML (not JSON) with a nested `verdict_outcome.verdict` —
+    # the overlay below now parses both formats + shapes, promoting it.
+    "hertz-contact-candidate": "tier_1_candidate",
 }
 
 
-def _apply_verdict_overlay() -> None:
-    """Read each case's `golden_samples/<case_id>/cross_check_verdict.yaml`
-    (if present) and promote tier when the verdict is "PASS".
+def _verdict_path_for(repo_root: Path, case_id: str) -> Path:
+    """Path to a case's cross-check verdict artifact under ``repo_root``."""
+    return Path(repo_root) / "golden_samples" / case_id / "cross_check_verdict.yaml"
 
-    Phase 19 B promotion seam — the cross-check service writes the
-    verdict; this loader reads it at module-load. Failure modes
-    (missing file / malformed json / wrong verdict value) all
-    gracefully leave the registry at the baseline tier_1_candidate
-    — the loader never raises so a stale or absent verdict cannot
-    break import.
+
+def _parse_verdict_payload(verdict_path: Path) -> dict | None:
+    """Parse a ``cross_check_verdict.yaml`` artifact into a mapping, or None.
+
+    Phase 18-34 verdicts are JSON-style; Phase 34 C hertz-contact is YAML.
+    Mirror the Phase 35 B census loader: try ``json`` first (the fast path for
+    the 12 JSON verdicts), fall back to ``yaml`` (the hertz YAML). Never raises
+    — any failure (missing / malformed / non-mapping) returns None so a stale
+    or absent verdict cannot break import or a request.
     """
-    import json
-    from pathlib import Path
+    try:
+        text = verdict_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            import yaml
 
+            payload = yaml.safe_load(text)
+        except Exception:
+            return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _verdict_is_pass(verdict_path: Path) -> bool:
+    """True iff the verdict artifact records a PASS, across both verdict
+    shapes: a top-level ``verdict`` (the 12 JSON verdicts) OR a nested
+    ``verdict_outcome.verdict`` (the Phase 34 C hertz-contact YAML)."""
+    payload = _parse_verdict_payload(verdict_path)
+    if not payload:
+        return False
+    if payload.get("verdict") == "PASS":
+        return True
+    outcome = payload.get("verdict_outcome")
+    return isinstance(outcome, dict) and outcome.get("verdict") == "PASS"
+
+
+def _apply_verdict_overlay() -> None:
+    """Promote registered cases to ``tier_2_validated`` when their
+    `golden_samples/<case_id>/cross_check_verdict.yaml` records a PASS.
+
+    Phase 19 B promotion seam — read at module-load against the real repo
+    root. Never raises; a missing / malformed / non-PASS verdict leaves the
+    baseline ``tier_1_candidate``. Phase 38 F: parses both JSON and YAML
+    verdicts and both the top-level and nested ``verdict_outcome`` shapes (the
+    hertz-contact YAML), so a Phase-34-C-style validated case is no longer
+    silently skipped.
+    """
     here = Path(__file__).resolve()
     # backend/app/services/reporting/_claim_tier.py → repo root is 4 up
     repo_root = here.parents[4]
-    golden = repo_root / "golden_samples"
-    if not golden.is_dir():
+    if not (repo_root / "golden_samples").is_dir():
         return
     for case_id in list(CLAIM_TIER_REGISTRY):
-        verdict_path = golden / case_id / "cross_check_verdict.yaml"
-        if not verdict_path.is_file():
-            continue
-        try:
-            payload = json.loads(verdict_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        verdict = payload.get("verdict")
-        if verdict == "PASS":
+        if _verdict_is_pass(_verdict_path_for(repo_root, case_id)):
             CLAIM_TIER_REGISTRY[case_id] = "tier_2_validated"
 
 
@@ -229,12 +271,27 @@ _SIGNED_REGISTRY_PATTERN = re.compile(r"^GS-\d{3}$")
 for ``GS-NNN`` raises ``KeyError`` (caller treats this as a bug)."""
 
 
-def get_claim_tier(case_id: str) -> ClaimTier:
-    """Return the tier registered for ``case_id``.
+def get_claim_tier(case_id: str, repo_root: Path | None = None) -> ClaimTier:
+    """Return the tier for ``case_id``.
 
     Defaults to ``tier_1_candidate`` for any case NOT in the registry —
     the conservative choice per ADR-025 §2.3 (unknown provenance is
     treated as candidate, not validated).
+
+    ``repo_root`` (Phase 38 F, Codex R1): when supplied, the tier is resolved
+    against THAT tree's ``golden_samples/<case_id>/cross_check_verdict.yaml``
+    rather than the module-load-time registry (which reflects the real repo).
+    Root-parameterized callers (``candidate_cases``, ``cohort_overview``,
+    ``cohort_snapshot``) pass their ``repo_root`` so a cohort built against an
+    alternate / synthetic worktree reports that worktree's promotions instead
+    of the host checkout's. Without a root, the module registry is used
+    (back-compat for the reporting modules that resolve by case_id alone).
+
+    Root-scoped resolution still gates on registry membership: only a case
+    present in :data:`CLAIM_TIER_REGISTRY` can be promoted, and only when the
+    supplied root records a PASS. A PASS verdict for an unregistered case does
+    NOT promote it — the registry remains the SSOT of cohort admission, so a
+    stray experimental verdict file cannot fabricate a Tier-2 claim.
 
     Raises:
         ValueError: if ``case_id`` matches the signed-registry shape
@@ -247,24 +304,40 @@ def get_claim_tier(case_id: str) -> ClaimTier:
             f"{case_id!r} (HF1.7a defense); signed cases carry their own "
             f"validation provenance, not the candidate tier discriminator"
         )
+    if repo_root is not None:
+        # Root-scoped: honor the supplied tree's verdict file for WHICH root's
+        # promotion to read — but still gate on registry membership (Codex R2).
+        # The registry is the SSOT of which cases are admitted to the validated
+        # cohort; a stray PASS verdict for an UNREGISTERED experimental
+        # `*-candidate` dir must NOT auto-surface as Tier 2. So tier_2 iff the
+        # case is registered AND this root records a PASS; everything else
+        # (unregistered, or registered-but-no-verdict-under-this-root) is the
+        # conservative Tier-1 floor.
+        if case_id in CLAIM_TIER_REGISTRY and _verdict_is_pass(
+            _verdict_path_for(repo_root, case_id)
+        ):
+            return "tier_2_validated"
+        return "tier_1_candidate"
     return CLAIM_TIER_REGISTRY.get(case_id, "tier_1_candidate")
 
 
-def claim_tier_label_for(case_id: str) -> str:
+def claim_tier_label_for(case_id: str, repo_root: Path | None = None) -> str:
     """Human-readable tier label for ``case_id``. Convenience accessor
     that composes :func:`get_claim_tier` and :data:`CLAIM_TIER_LABELS`.
 
     Back-compat: returns ``"Tier 1 engineering candidate"`` exactly
     for every case in the Phase 18 B baseline registry, matching the
-    inline string used by Phases 1-17 reporting modules.
+    inline string used by Phases 1-17 reporting modules. See
+    :func:`get_claim_tier` for the ``repo_root`` scoping semantics.
     """
-    return CLAIM_TIER_LABELS[get_claim_tier(case_id)]
+    return CLAIM_TIER_LABELS[get_claim_tier(case_id, repo_root)]
 
 
-def claim_boundary_for(case_id: str) -> str:
+def claim_boundary_for(case_id: str, repo_root: Path | None = None) -> str:
     """Claim-boundary copy for ``case_id``. Convenience accessor that
-    composes :func:`get_claim_tier` and :data:`CLAIM_BOUNDARIES`."""
-    return CLAIM_BOUNDARIES[get_claim_tier(case_id)]
+    composes :func:`get_claim_tier` and :data:`CLAIM_BOUNDARIES`. See
+    :func:`get_claim_tier` for the ``repo_root`` scoping semantics."""
+    return CLAIM_BOUNDARIES[get_claim_tier(case_id, repo_root)]
 
 
 def register_tier_2_validated(case_id: str) -> None:
