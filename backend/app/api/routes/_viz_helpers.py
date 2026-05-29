@@ -29,6 +29,23 @@ def _validate_case_id(case_id: str) -> None:
         raise ValueError("case_id has invalid shape")
 
 
+def _repo_root() -> Path:
+    """Repo root, anchored to THIS file (cwd-independent).
+
+    FM-04a Phase 41.4: ``_resolve_result_mesh_artifact_path`` previously
+    anchored ``project_state`` to ``Path.cwd()``, so the result-mesh route
+    404'd whenever the backend was launched from anywhere but the repo root
+    (e.g. ``uvicorn app.main:app`` run from ``backend/``) even though the
+    payload was on disk. The sibling spine routes (acceptance_packet /
+    trust_score / reviewer_bundle / case_completeness / tier1_report) all
+    already anchor via ``Path(__file__).resolve().parents[4]``; mirror that
+    so artifact resolution is robust to launch cwd.
+
+    ``backend/app/api/routes/_viz_helpers.py`` → parents[4] == repo root.
+    """
+    return Path(__file__).resolve().parents[4]
+
+
 def _allowed_fs_roots() -> list[Path]:
     """Allowed roots for FRD candidate resolution. Cwd-relative."""
     cwd = Path.cwd().resolve()
@@ -105,7 +122,7 @@ def _resolve_result_mesh_artifact_path(case_id: str, artifact_path: str) -> Path
     else:
         raise ValueError("unsupported result-mesh artifact")
 
-    project_state_root = (Path.cwd() / "project_state").resolve()
+    project_state_root = (_repo_root() / "project_state").resolve()
     artifact_root = (project_state_root / "visualizations" / case_id).resolve()
     resolved = (artifact_root / relative).resolve()
     try:
