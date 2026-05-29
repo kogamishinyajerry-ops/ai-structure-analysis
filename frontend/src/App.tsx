@@ -111,6 +111,7 @@ import {
   useUploadErrorRecovery,
 } from './state/useUploadErrorRecovery';
 import { useSensitivityStudy } from './state/useSensitivityStudy';
+import { useBootCaseSelect } from './state/useBootCaseSelect';
 import { ErrorCard } from './components/ErrorCard';
 const humanizeStatus = trustCenterHumanizeStatus;
 
@@ -333,6 +334,8 @@ function App() {
     if (data && data.success) setReport(data);
     setLoading(false);
   };
+
+  useBootCaseSelect(availableCases, activeCaseId, Boolean(file || report), selectedCandidateCaseId ?? FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null, selectCase);
 
   const runSolver = async () => {
     if (!activeCaseId) return;
@@ -1330,38 +1333,6 @@ function App() {
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
             </div>
 
-            {activeCaseId && (() => {
-                // FM-04a Phase 37 B — pair BCSetupAdvisorCard with CaseOpenAdvisorCard (3rd advisor surface; closes Dim 4 80-anchor 3-stage sub-bullet).
-                const caseOpenRecord = findCandidateCase(FALLBACK_CANDIDATE_CASES, activeCaseId);
-                return caseOpenRecord ? (
-                    <div className="rise-in" style={{ marginBottom: '24px', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '12px' }}>
-                        <CaseOpenAdvisorCard caseRecord={caseOpenRecord} />
-                        {shouldShowBCSetupAdvisor(caseOpenRecord) && <BCSetupAdvisorCard caseRecord={caseOpenRecord} />}
-                        <BCSetupPillList caseRecord={caseOpenRecord} />
-                    </div>
-                ) : null;
-            })()}
-
-            {activeTab === 'visual' && (
-                <VisualTabPanel
-                    apiBase={API_BASE}
-                    selectedCandidateCaseId={selectedCandidateCaseId}
-                    onSelectCandidateCaseId={setSelectedCandidateCaseId}
-                    comparisonCaseA={comparisonCaseA}
-                    comparisonCaseB={comparisonCaseB}
-                    onSelectComparisonA={setComparisonCaseA}
-                    onSelectComparisonB={setComparisonCaseB}
-                    snapshotLabelA={snapshotLabelA}
-                    snapshotLabelB={snapshotLabelB}
-                    onSelectSnapshotLabelA={setSnapshotLabelA}
-                    onSelectSnapshotLabelB={setSnapshotLabelB}
-                    selectedMaterial={selectedMaterial}
-                    onMaterialChange={setSelectedMaterial}
-                    latestSignoff={latestSignoff}
-                    onLatestSignoff={setLatestSignoff}
-                />
-            )}
-
             <div style={{ padding: '0', flex: 1 }}>
                 {activeTab === 'explore' ? (
                     <ExplorationTabPanel
@@ -1455,6 +1426,39 @@ function App() {
                     </>
                 )}
             </div>
+
+            {/* FM-04a Phase 41.4 — 3D-first: advisor guidance + the VisualTabPanel governance/evidence wall are demoted BELOW the 3D viewport (were above it) so the result visualization leads the visual tab. */}
+            {activeCaseId && (() => {
+                // FM-04a Phase 37 B — pair BCSetupAdvisorCard with CaseOpenAdvisorCard (3rd advisor surface; closes Dim 4 80-anchor 3-stage sub-bullet).
+                const caseOpenRecord = findCandidateCase(FALLBACK_CANDIDATE_CASES, activeCaseId);
+                return caseOpenRecord ? (
+                    <div className="rise-in" style={{ marginTop: '32px', marginBottom: '24px', display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '12px' }}>
+                        <CaseOpenAdvisorCard caseRecord={caseOpenRecord} />
+                        {shouldShowBCSetupAdvisor(caseOpenRecord) && <BCSetupAdvisorCard caseRecord={caseOpenRecord} />}
+                        <BCSetupPillList caseRecord={caseOpenRecord} />
+                    </div>
+                ) : null;
+            })()}
+
+            {activeTab === 'visual' && (
+                <VisualTabPanel
+                    apiBase={API_BASE}
+                    selectedCandidateCaseId={selectedCandidateCaseId}
+                    onSelectCandidateCaseId={setSelectedCandidateCaseId}
+                    comparisonCaseA={comparisonCaseA}
+                    comparisonCaseB={comparisonCaseB}
+                    onSelectComparisonA={setComparisonCaseA}
+                    onSelectComparisonB={setComparisonCaseB}
+                    snapshotLabelA={snapshotLabelA}
+                    snapshotLabelB={snapshotLabelB}
+                    onSelectSnapshotLabelA={setSnapshotLabelA}
+                    onSelectSnapshotLabelB={setSnapshotLabelB}
+                    selectedMaterial={selectedMaterial}
+                    onMaterialChange={setSelectedMaterial}
+                    latestSignoff={latestSignoff}
+                    onLatestSignoff={setLatestSignoff}
+                />
+            )}
 
             {/* Evidence & trust center — DOM-last (see top-of-container note). */}
             <div style={{ marginTop: '32px' }}>

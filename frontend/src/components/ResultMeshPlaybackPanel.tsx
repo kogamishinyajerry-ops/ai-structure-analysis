@@ -477,10 +477,21 @@ export function ResultMeshPlaybackPanel({
             title="Could not load dynamic payload"
             message={error}
             code="RESULT-MESH-LOAD"
-            remediation={[
-              'Run the solver for this case via Topbar → Run Solver to produce a result_mesh.json.',
-              'Confirm the backend /visualize/result-mesh route responds for this case_id.',
-            ]}
+            remediation={
+              // FM-04a Phase 41.4: a signed-registry case (^GS-\d{3}$) is
+              // refused (422) by design — running the solver can NEVER make it
+              // serve a result_mesh.json. Steer the user to a candidate instead
+              // of the misleading "Run the solver" copy.
+              /^GS-\d{3}$/.test(caseId ?? '')
+                ? [
+                    'This is a sealed signed-registry case — its 3D result is not served here.',
+                    'Switch to a candidate case (e.g. GS-102-candidate) to view a 3D result.',
+                  ]
+                : [
+                    'Run the solver for this case via Topbar → Run Solver to produce a result_mesh.json.',
+                    'Confirm the backend /visualize/result-mesh route responds for this case_id.',
+                  ]
+            }
           />
         </div>
       ) : summary ? (
