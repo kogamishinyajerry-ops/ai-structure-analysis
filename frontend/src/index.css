@@ -374,6 +374,49 @@ button.surface-card:hover {
   animation: shimmer 2s infinite;
 }
 
+/* ====================================================================
+   FM-04a Phase 41.3 — golden-path motion + solve affordance.
+   Single source for: spinner BUG-fix, the one solid-accent primary
+   (Run Solver), calm skeleton, Copilot-active tint. Token-based; new
+   motion honored in the reduced-motion block below.
+   ==================================================================== */
+
+/* (A) BUG FIX: the solving spinner used Tailwind's `animate-spin`, which is
+   INERT in this raw-CSS repo (no keyframe existed) — the spinner never turned. */
+@keyframes fm04a-spin { to { transform: rotate(360deg); } }
+.animate-spin { animation: fm04a-spin 0.8s linear infinite; }
+
+/* (B) The ONE place a solid restrained-accent fill is spent: the primary
+   Run Solver CTA. Additive — the button keeps its inline accent background;
+   this class adds the confident glow/lift + an in-progress pulse. */
+.run-solver-btn {
+  box-shadow: var(--glow-accent);
+  transition: transform var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-base) var(--ease-out),
+              filter var(--dur-fast) var(--ease-out);
+}
+.run-solver-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+.run-solver-btn:active:not(:disabled) { transform: translateY(0); }
+.run-solver-btn:disabled { box-shadow: none; }
+@keyframes fm04a-solve-pulse {
+  0%, 100% { box-shadow: var(--glow-accent); }
+  50%      { box-shadow: 0 0 0 4px var(--accent-glow); }
+}
+.run-solver-btn[data-solving="true"] { animation: fm04a-solve-pulse 1.6s var(--ease-in-out) infinite; }
+
+/* (C) Calm token skeleton (replaces a raw inline shimmer div). */
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+/* (D) Copilot-active demote to tint (single-accent) is applied inline in
+   Topbar.tsx (accent-glow bg + accent-300 text + border-focus) — kept inline
+   to avoid an inline-vs-class specificity fight on that button. */
+
 /* ---- Markdown (PRESERVED) -------------------------------------------- */
 .report-markdown h1, .report-markdown h2, .report-markdown h3 {
   color: var(--text-primary);
@@ -394,4 +437,9 @@ button.surface-card:hover {
   .cb-case-card, .cb-chip, .cb-search { transition: none; }
   .cb-case-card:hover { transform: none; }
   .tab-pill, .vp-toggle { transition: none; }
+  /* 41.3 — solve affordance + spinner. */
+  .animate-spin { animation: none; }
+  .run-solver-btn { transition: none; }
+  .run-solver-btn:hover:not(:disabled) { transform: none; }
+  .run-solver-btn[data-solving="true"] { animation: none; }
 }

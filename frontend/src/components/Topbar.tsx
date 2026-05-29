@@ -138,9 +138,9 @@ export function Topbar(props: TopbarProps) {
           style={{
             padding: '8px 16px',
             borderRadius: '8px',
-            background: showChat ? 'var(--accent)' : 'var(--bg-surface)',
-            color: showChat ? '#000' : '#fff',
-            border: '1px solid var(--border)',
+            background: showChat ? 'var(--accent-glow)' : 'var(--bg-surface)',
+            color: showChat ? 'var(--accent-300)' : '#fff',
+            border: showChat ? '1px solid var(--border-focus)' : '1px solid var(--border)',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
@@ -202,6 +202,8 @@ export function Topbar(props: TopbarProps) {
             <button
               type="button"
               data-testid="topbar-run-solver"
+              className="run-solver-btn"
+              data-solving={solving ? 'true' : 'false'}
               disabled={solving}
               onClick={onRunSolver}
               style={{

@@ -447,10 +447,8 @@ export function ResultMeshPlaybackPanel({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Box size={18} color="var(--accent)" />
           <div>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase' }}>
-              OpenRadioss dynamic
-            </div>
-            <h3 style={{ margin: 0, fontSize: '1rem' }}>Result mesh playback</h3>
+            <div className="eyebrow">OpenRadioss dynamic</div>
+            <h3 className="heading-tight" style={{ margin: 0, fontSize: 'var(--fs-lg)' }}>Result mesh playback</h3>
           </div>
           <UiModeToggle mode={uiMode} onChange={handleUiModeChange} />
         </div>
@@ -519,19 +517,7 @@ export function ResultMeshPlaybackPanel({
                   data-testid="compare-cuts-toggle"
                   aria-pressed={companionViewportActive}
                   onClick={() => toggleCompanion(sectionCut)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    background: companionViewportActive
-                      ? 'var(--accent)'
-                      : 'transparent',
-                    color: companionViewportActive
-                      ? '#000'
-                      : 'var(--text-secondary)',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
+                  className="vp-toggle"
                 >
                   Compare cuts
                 </button>
@@ -540,17 +526,8 @@ export function ResultMeshPlaybackPanel({
                 type="button"
                 data-testid="viewport-toggle-webgl"
                 onClick={() => setViewportMode('webgl')}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 4,
-                  border: '1px solid var(--border)',
-                  background:
-                    viewportMode === 'webgl' ? 'var(--accent)' : 'transparent',
-                  color:
-                    viewportMode === 'webgl' ? '#000' : 'var(--text-secondary)',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
+                className="vp-toggle"
+                aria-pressed={viewportMode === 'webgl'}
               >
                 3D
               </button>
@@ -558,17 +535,8 @@ export function ResultMeshPlaybackPanel({
                 type="button"
                 data-testid="viewport-toggle-svg"
                 onClick={() => setViewportMode('svg')}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 4,
-                  border: '1px solid var(--border)',
-                  background:
-                    viewportMode === 'svg' ? 'var(--accent)' : 'transparent',
-                  color:
-                    viewportMode === 'svg' ? '#000' : 'var(--text-secondary)',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
+                className="vp-toggle"
+                aria-pressed={viewportMode === 'svg'}
               >
                 SVG
               </button>
@@ -623,9 +591,10 @@ export function ResultMeshPlaybackPanel({
               style={{
                 flex: 1,
                 minWidth: 0,
-                border: '1px solid var(--border)',
-                borderRadius: '8px',
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--r-lg)',
                 background: '#020617',
+                boxShadow: 'var(--elev-2)',
                 overflow: 'hidden',
                 position: 'relative',
               }}
@@ -695,10 +664,10 @@ export function ResultMeshPlaybackPanel({
                     right: 16,
                     bottom: 16,
                     background: 'rgba(2, 6, 23, 0.78)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    borderRadius: 6,
+                    border: '1px solid var(--border-strong)',
+                    borderRadius: 'var(--r-md)',
                     padding: '8px 12px',
-                    color: '#e2e8f0',
+                    color: 'var(--text-secondary)',
                     fontSize: '0.7rem',
                     fontFamily:
                       'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
@@ -709,9 +678,7 @@ export function ResultMeshPlaybackPanel({
                   }}
                   aria-label="Field-value color legend"
                 >
-                  <div style={{ opacity: 0.75, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    Field value
-                  </div>
+                  <div className="eyebrow">Field value</div>
                   <div
                     style={{
                       height: 8,

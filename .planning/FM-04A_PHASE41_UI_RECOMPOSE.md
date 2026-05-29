@@ -70,10 +70,61 @@ product led with governance, not the wow.
 - All new motion wired into the single `prefers-reduced-motion: reduce` block
   (anti-gaming guard B:-1).
 
-## Deferred to 41.3 (golden-path polish)
+## What landed (41.3 — golden-path polish)
 
-- viewport-hero step (premium 3D viewport chrome + `.vp-toggle` adoption) — needs
-  an active-case render to verify + a vp-toggle test-coupling check.
-- Run/solve affordance + result-reveal motion; refined loading/success states.
-- (Optional) ADR-026 eval-fleet pass (industrial-ui-comparator is industrial-CAE
-  anchored; a Claude/Codex-aesthetic rubric would fit this demo direction better).
+Workflow-designed (xhigh) → main-session serial implementation. UI-only diff
+(`App.tsx` +6 / `ResultMeshPlaybackPanel.tsx` net −53 inline-style→class /
+`Topbar.tsx` +8 / `index.css` +48). All 4 files = cross-≥3-file risk-tier → Codex.
+
+1. **`animate-spin` BUG FIX** — the solving spinner used Tailwind's `animate-spin`,
+   which is INERT in this repo (no Tailwind pipeline) → the Run-Solver spinner
+   never rotated. Added a real `@keyframes fm04a-spin` + `.animate-spin` rule.
+2. **`.run-solver-btn`** — glow + hover-lift + `[data-solving="true"]` pulse
+   (`fm04a-solve-pulse`); wired into `Topbar` Run Solver button + `data-solving`.
+3. **`.rise-in` entrance motion** — CaseBrowser wrapper / advisor row / report
+   container (`App.tsx:1322` / `:1337` / `:1390`); reduced-motion-guarded.
+4. **`.vp-toggle`** adoption — the 3 viewport toggles (compare-cuts / WebGL / SVG)
+   in `ResultMeshPlaybackPanel` swapped inline styles → class + `aria-pressed`.
+5. **`.viewport-hero` frame** + tab-pill kicker/heading restyle (verified present
+   in DOM for an active case; `heading-tight` / `eyebrow` adopted).
+6. **`.shimmer-active`** skeleton on the in-flight report placeholder.
+7. TabButton `.tab-pill` swap SKIPPED (Phase22C/Phase38G assert its inline styles).
+
+## ⚠️ Critical finding — the demo's 3D centerpiece does NOT render (NOT a 41.3 bug)
+
+Live-app verification (GS-003 active, "3D Scene" tab) surfaced the dominant demo
+blocker, which is **upstream of all UI polish**:
+
+- **Backend gap:** the 3D viewport renders `result-mesh-error` (`canvasPresent:false`)
+  — `result_mesh.json request failed (422)`. No `result_mesh.json` exists for a case
+  until a solve produces one, and the earlier live solve leaked artifacts into the
+  signed GS-001 dir + the `/visualize/result-mesh` + `/plot` routes 404/422.
+- **Architecture gap:** the visual ("3D Scene") tab is a wall of **~19 governance/
+  evidence panels** (cohort dashboard → substantiation → completeness → acceptance
+  packet → convergence → reviewer bundle → trust score → drift narrative → …). The
+  3D viewport sits at **scroll-y ≈ 11,880px — dead last.** 41.2 demoted the
+  *OperatorStatusPanel*, but the entire visual tab still leads with governance, not
+  the 3D result the user named the golden-path centerpiece.
+
+41.1–41.3 correctly polished the **shell** (sidebar, topbar, case-browser hero,
+tab pills, run-solver affordance, tokens) — all verified landed. But "案例→求解→
+**结果可视化**" cannot pay off until: (a) the backend serves `result_mesh.json` for a
+demo case, and (b) the visual tab is recomposed **3D-first** (governance panels →
+a separate Evidence/Trust tab or scroll-behind). **Surfaced to user as the 41.4
+decision.**
+
+## Codex review arc (41.3 — ADR-026 risk-tier: cross-≥3-file)
+
+- **R0** (`reports/codex_tool_reports/fm04a_phase41_3_ui_polish_r0.md`): **CLEAN /
+  APPROVE — 0 P1 / 0 P2 / 0 P3.** "limited to UI styling … did not identify a
+  discrete regression or correctness issue clearly introduced by this patch."
+- **Relay:** primary 86gs gpt-5.4 xhigh **502'd mid-review** (Upstream unavailable,
+  5 reconnects exhausted) → per CLAUDE.md relay-degrade rule, fell back to **CRS
+  effort=high** (exit 0). Commit trailer: `codex_review_relay: crs (effort=high, fallback)`.
+
+## Deferred / next (41.4 candidate)
+
+- **Backend `result_mesh.json` for ≥1 demo case** (the real centerpiece unblocker).
+- **Visual-tab 3D-first recomposition** (governance wall → Evidence/Trust tab).
+- Cohort-dashboard column-overlap bug (CONVERGENCE bleeds into AUDIT) — pre-existing.
+- (Optional) ADR-026 eval-fleet pass with a Claude/Codex-aesthetic rubric.
