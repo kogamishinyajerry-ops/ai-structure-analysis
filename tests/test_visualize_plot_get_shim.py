@@ -199,6 +199,7 @@ _spec.loader.exec_module(_viz_helpers)
 
 _allowed_fs_roots = _viz_helpers._allowed_fs_roots
 _apply_increment = _viz_helpers._apply_increment
+_fallback_html_no_frd = _viz_helpers._fallback_html_no_frd
 _fallback_html_render_failed = _viz_helpers._fallback_html_render_failed
 _fallback_html_unavailable_pyvista = _viz_helpers._fallback_html_unavailable_pyvista
 _is_under_allowed_root = _viz_helpers._is_under_allowed_root
@@ -401,3 +402,19 @@ class TestR2XssEscaping:
     def test_render_failed_handles_none_case_name(self):
         out = _fallback_html_render_failed(None, None, "?", "?", 0)
         assert "(unnamed case)" in out
+
+    def test_no_frd_escapes_case_name(self):
+        # FM-04a Phase 41.4 — no-FRD friendly fallback must escape the case name.
+        attack = "<img src=x onerror=alert(1)>"
+        out = _fallback_html_no_frd(attack)
+        assert attack not in out, "raw HTML must not appear"
+        assert "&lt;img" in out, "must be html-escaped"
+
+    def test_no_frd_handles_none_case_name(self):
+        out = _fallback_html_no_frd(None)
+        assert "(unnamed case)" in out
+
+    def test_no_frd_does_not_leak_paths(self):
+        out = _fallback_html_no_frd("safe")
+        assert "/Users/" not in out
+        assert ".frd" not in out

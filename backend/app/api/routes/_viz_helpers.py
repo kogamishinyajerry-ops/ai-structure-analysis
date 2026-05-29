@@ -198,3 +198,23 @@ def _fallback_html_render_failed(
         "server logs for details.</p>"
         "</body></html>"
     )
+
+
+def _fallback_html_no_frd(case_name: str | None) -> str:
+    """FM-04a Phase 41.4: a case with no FRD result on disk (e.g. an
+    explicit-dynamics candidate whose result IS the interactive WebGL playback,
+    not a static field plot) previously raised a raw 404 — the iframe then
+    rendered the browser's JSON error viewer right under the hero viewport.
+    Return a friendly HTML panel instead (mirrors the unavailable/render-failed
+    fallbacks). R2 XSS guard: case_name is html.escape'd; no internal paths leak."""
+    safe_name = html.escape(case_name or "(unnamed case)")
+    return (
+        "<html><body style='background:#0d1117;color:#fff;padding:2rem;"
+        "font-family:system-ui,sans-serif;line-height:1.6'>"
+        f"<h2 style='color:#39d353'>{safe_name}</h2>"
+        "<p style='color:#9aa4af'>No server-rendered field plot for this case.</p>"
+        "<p style='color:#7d8590;font-size:0.875rem'>This case has no static FRD "
+        "result on disk — use the interactive 3D&nbsp;Scene viewport above for its "
+        "result.</p>"
+        "</body></html>"
+    )

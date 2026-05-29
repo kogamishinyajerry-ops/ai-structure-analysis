@@ -16,6 +16,7 @@ from ._signed_registry_refusal import assert_not_signed_registry
 from ._viz_helpers import (
     _allowed_fs_roots,
     _apply_increment,
+    _fallback_html_no_frd,
     _fallback_html_render_failed,
     _fallback_html_unavailable_pyvista,
     _is_under_allowed_root,
@@ -33,6 +34,7 @@ router = APIRouter(prefix="/visualize", tags=["可视化"])
 __all__ = [
     "_allowed_fs_roots",
     "_apply_increment",
+    "_fallback_html_no_frd",
     "_fallback_html_render_failed",
     "_fallback_html_unavailable_pyvista",
     "_is_under_allowed_root",
@@ -161,9 +163,13 @@ async def visualize_by_case_id(
 
     frd_path = _resolve_frd_path(case_id, case.frd_path)
     if not frd_path:
-        # Don't echo server-internal paths in the response.
+        # FM-04a Phase 41.4: friendly HTML instead of a raw 404 JSON body, which
+        # the frontend iframe rendered as the browser's JSON error viewer right
+        # under the hero 3D viewport (e.g. explicit-dynamics candidates have no
+        # FRD — their result is the WebGL playback). Server-internal paths are
+        # still NOT echoed; logged server-side only. (Mirrors the other fallbacks.)
         logger.warning("no FRD result on disk for case_id=%s", case_id)
-        raise HTTPException(status_code=404, detail="no FRD result on disk for this case")
+        return HTMLResponse(content=_fallback_html_no_frd(case.name))
 
     parser = FRDParser()
     parsed = parser.parse(str(frd_path))
