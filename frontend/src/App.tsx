@@ -1462,14 +1462,13 @@ function App() {
                 />
             )}
 
-            {/* Evidence & trust center — DOM-last (see top-of-container note). */}
-            <div style={{ marginTop: '32px' }}>
-            <OperatorStatusPanel
-              strip={trustStrip}
-              sections={trustSections}
-              goldenSamples={goldenSampleQueue}
-            />
-            </div>
+            {/* FM-04a Phase 41.4 — trust center moved OFF the 3D-Scene tab so the
+                hero leads; it now lives on the Narrative/Exploration tabs (DOM-last). */}
+            {activeTab !== 'visual' && (
+              <div style={{ marginTop: '32px' }}>
+                <OperatorStatusPanel strip={trustStrip} sections={trustSections} goldenSamples={goldenSampleQueue} />
+              </div>
+            )}
             </div>
 
             {showConsole && (
