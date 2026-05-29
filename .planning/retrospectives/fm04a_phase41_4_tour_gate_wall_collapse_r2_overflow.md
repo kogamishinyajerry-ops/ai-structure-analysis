@@ -1,11 +1,18 @@
-# FM-04a Phase 41.4 — retro queue: 2 P2 past the round cap
+# FM-04a Phase 41.4 — retro queue: 2 P2 past the round cap → **BOTH CLOSED @`8790b91`**
 
 > Source: Codex R2 (CRS effort=high) on the tour/promo boot-gate + evidence-wall
 > collapse change. Round cap = 3 reached (R0 + R1 + R2). Both residual findings are
 > P2 (no P1 outstanding), so per `~/CLAUDE.md` they defer here rather than forcing an
 > R3 iteration. Full arc: `reports/codex_tool_reports/fm04a_phase41_4_tour_gate_wall_collapse_r0_r2.md`.
+>
+> **UPDATE — both RESOLVED in the retro-P2-closeout commit `8790b91`** (its own
+> R0→R2 review arc, de-risked by 2 multi-agent workflows). P2-A → promo gated on the
+> painted-result edge `promoAutoShow = tourAutoShow || (casesLoaded && bootResultReady)`;
+> P2-B → `hasOpened` lazy-mount latch. See
+> `reports/codex_tool_reports/fm04a_phase41_4_retro_p2_closeout_r0_r2.md`. Sections below
+> are the original deferral rationale (kept for the decision trail).
 
-## Carried forward
+## Carried forward (now resolved — see header)
 
 ### P2-A — Promo can cover the loading shimmer (timing refinement)
 `useBootCaseSelect` returns `promoAutoShow = casesLoaded && !sessionActive && !bootPending`
