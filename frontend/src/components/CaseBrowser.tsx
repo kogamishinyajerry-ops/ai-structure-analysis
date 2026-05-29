@@ -126,6 +126,7 @@ export function CaseBrowser({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           data-testid="case-browser-search-input"
+          className="cb-search"
           style={searchInputStyle}
         />
         <button
@@ -133,6 +134,7 @@ export function CaseBrowser({
           data-testid="case-browser-tier2-chip"
           aria-pressed={tier2Only}
           onClick={() => setTier2Only((v) => !v)}
+          className="cb-chip"
           style={tier2Only ? chipActiveStyle : chipIdleStyle}
         >
           Tier 2 validated
@@ -171,6 +173,7 @@ export function CaseBrowser({
                       onClick={() => onSelectCase(c.caseId)}
                       data-testid={`case-browser-row-${c.caseId}`}
                       data-active={focusedCaseId === c.caseId ? 'true' : undefined}
+                      className="cb-case-card"
                       style={
                         focusedCaseId === c.caseId
                           ? caseRowActiveStyle
@@ -317,14 +320,15 @@ export function previewBlurbFor(caseId: string): string {
 }
 
 const rootStyle: CSSProperties = {
-  borderRadius: 10,
+  borderRadius: 'var(--r-lg)',
   border: '1px solid var(--border)',
   background: 'var(--bg-surface)',
-  padding: 14,
+  padding: 'var(--sp-6)',
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
+  gap: 'var(--sp-4)',
   color: 'var(--text-primary)',
+  boxShadow: 'var(--elev-2)',
 }
 const headerStyle: CSSProperties = {
   display: 'flex',
@@ -333,9 +337,9 @@ const headerStyle: CSSProperties = {
   justifyContent: 'space-between',
 }
 const titleStyle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-  letterSpacing: '0.02em',
+  fontSize: 'var(--fs-lg)',
+  fontWeight: 700,
+  letterSpacing: 'var(--tracking-tight)',
 }
 const countStyle: CSSProperties = {
   fontSize: 11,
@@ -355,9 +359,9 @@ const searchInputStyle: CSSProperties = {
   background: 'var(--bg-muted, rgba(255,255,255,0.04))',
   border: '1px solid var(--border)',
   color: 'var(--text-primary)',
-  padding: '6px 10px',
-  borderRadius: 6,
-  fontSize: 12,
+  padding: '8px 12px',
+  borderRadius: 'var(--r-sm)',
+  fontSize: 'var(--fs-sm)',
 }
 const chipBase: CSSProperties = {
   fontSize: 11,
@@ -417,15 +421,18 @@ const caseListStyle: CSSProperties = {
   listStyle: 'none',
   display: 'flex',
   flexDirection: 'column',
-  gap: 2,
+  gap: 'var(--sp-1)',
 }
 const caseRowBase: CSSProperties = {
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 'var(--sp-3)',
   width: '100%',
   textAlign: 'left',
-  fontSize: 13,
-  padding: '6px 10px',
-  borderRadius: 6,
+  fontSize: 'var(--fs-sm)',
+  padding: 'var(--sp-3) var(--sp-4)',
+  borderRadius: 'var(--r-md)',
   border: '1px solid transparent',
   cursor: 'pointer',
   fontFamily: 'inherit',
@@ -437,18 +444,21 @@ const caseRowIdleStyle: CSSProperties = {
 }
 const caseRowActiveStyle: CSSProperties = {
   ...caseRowBase,
-  background: 'var(--bg-muted, rgba(255,255,255,0.06))',
-  border: '1px solid var(--border)',
+  background: 'var(--accent-glow)',
+  border: '1px solid var(--border-focus)',
 }
 const previewPaneStyle: CSSProperties = {
-  borderRadius: 8,
+  borderRadius: 'var(--r-lg)',
   border: '1px solid var(--border)',
   background: 'var(--bg-muted, rgba(255,255,255,0.03))',
-  padding: 12,
+  padding: 'var(--sp-5)',
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: 'var(--sp-2)',
   minHeight: 100,
+  boxShadow: 'var(--elev-1)',
+  position: 'sticky',
+  top: 'var(--sp-4)',
 }
 const previewHeaderStyle: CSSProperties = {
   display: 'flex',

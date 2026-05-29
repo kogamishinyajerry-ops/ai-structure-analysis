@@ -1222,7 +1222,7 @@ function App() {
   ])
 
   return (
-    <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '240px 300px 1fr', height: '100vh' }}>
+    <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '210px 300px 1fr', height: '100vh' }}>
       {/* FM-04a Phase 29 C — onboarding tour + advanced-mode auto-
           promote mounted at App-root so reviewers landing on the
           Narrative tab (or any future tab) still see onboarding.
@@ -1303,22 +1303,19 @@ function App() {
               }}
             />
 
+            {/* FM-04a Phase 41.2 — demo-first: case + 3D viewport lead; the
+                trust panel is authored DOM-last (below) so visual + focus order
+                agree (Codex R0 P2). ErrorCard stays first for failure visibility. */}
             <div style={{ padding: '40px', flex: 1 }}>
             {/* FM-04a Phase 36 B — ErrorCard mounts ABOVE
                 OperatorStatusPanel so a failed user sees the red
                 error band before the trust prose (Phase 35 R3
                 friction point b). */}
             {uploadError && (
-                <div data-testid="app-upload-error-mount" style={{ marginBottom: '24px' }}>
+                <div data-testid="app-upload-error-mount" style={{ marginBottom: '24px', order: 0 }}>
                     <ErrorCard {...uploadError} />
                 </div>
             )}
-
-            <OperatorStatusPanel
-              strip={trustStrip}
-              sections={trustSections}
-              goldenSamples={goldenSampleQueue}
-            />
 
             {/* FM-04a Phase 37 A — CaseBrowser canonical surface, browse mode. */}
             {!activeCaseId && (
@@ -1327,7 +1324,7 @@ function App() {
                 </div>
             )}
 
-            <div className="glass-panel" style={{ padding: '8px', display: 'flex', gap: '8px', width: 'fit-content', marginBottom: '32px' }}>
+            <div className="tab-pill-bar" style={{ marginBottom: '32px' }}>
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />
                 <TabButton active={activeTab === 'report'} onClick={() => setActiveTab('report')} label="Narrative" icon={<Activity size={16} />} />
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
@@ -1391,7 +1388,7 @@ function App() {
                         <div className="shimmer-active" style={{ height: '400px', width: '100%', borderRadius: '12px', background: 'var(--bg-surface)' }}></div>
                     ) : report ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-                            <div className="glass-panel" style={{ minHeight: activeTab === 'visual' && activeCaseId ? '820px' : '600px', padding: '0', overflow: 'hidden' }}>
+                            <div className={activeTab === 'visual' && activeCaseId ? 'viewport-hero' : 'glass-panel'} style={{ minHeight: activeTab === 'visual' && activeCaseId ? '820px' : '600px', padding: '0', overflow: 'hidden' }}>
                                 {activeTab === 'visual' ? (
                                     <div
                                       style={{
@@ -1457,6 +1454,15 @@ function App() {
                     )}
                     </>
                 )}
+            </div>
+
+            {/* Evidence & trust center — DOM-last (see top-of-container note). */}
+            <div style={{ marginTop: '32px' }}>
+            <OperatorStatusPanel
+              strip={trustStrip}
+              sections={trustSections}
+              goldenSamples={goldenSampleQueue}
+            />
             </div>
             </div>
 

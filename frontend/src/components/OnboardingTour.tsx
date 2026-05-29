@@ -103,7 +103,11 @@ export function OnboardingTour({
       <style>{ONBOARDING_TOUR_KEYFRAMES}</style>
       <div style={STYLES.card} className="onboarding-tour-card">
         <div style={STYLES.header}>
-          <span style={STYLES.shipped}>{step.shippedInPhase}</span>
+          {/* FM-04a Phase 41.2 — dev-phase provenance badge
+              (step.shippedInPhase, e.g. "Phase 23 B") removed from the
+              user-facing tour: it leaked the internal build cadence into
+              the demo. The 1/N progress label carries the only
+              user-meaningful position info. Closes Phase 39 audit #2. */}
           <span data-testid="onboarding-progress" style={STYLES.progress}>
             {progressLabel(state)}
           </span>

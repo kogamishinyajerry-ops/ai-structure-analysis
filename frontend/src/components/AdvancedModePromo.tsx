@@ -129,7 +129,10 @@ export function AdvancedModePromo({
     >
       <div className={POLISH_CLASS_ADVANCED_MODE_PROMO} style={STYLES.card}>
         <div style={STYLES.header}>
-          <span style={STYLES.eyebrow}>Phase 25 C · Phase 28 D</span>
+          {/* FM-04a Phase 41.2 — was "Phase 25 C · Phase 28 D" (internal
+              build cadence leaked to the user). Replaced with a
+              user-meaningful eyebrow. */}
+          <span style={STYLES.eyebrow}>Workbench tip</span>
         </div>
         <h2 style={STYLES.title}>Want to see the advanced controls?</h2>
         <p style={STYLES.body}>
