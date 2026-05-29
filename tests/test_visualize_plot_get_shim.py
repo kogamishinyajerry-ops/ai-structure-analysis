@@ -279,10 +279,26 @@ class TestR2ResolveFrdPath:
         assert result is not None
         assert result.is_absolute()
 
+    def test_resolves_None_path_independent_of_cwd(self, tmp_path, monkeypatch):
+        # FM-04a Phase 41.4 (Codex R0 P2 guard): the db_frd_path=None fallback is
+        # repo-anchored, so GS-001 resolves even when the backend is launched from
+        # OUTSIDE the repo root (the cwd-relative ./golden_samples fallback used to
+        # return None here once _allowed_fs_roots moved to the repo anchor).
+        monkeypatch.chdir(tmp_path)  # deliberately NOT the repo root
+        result = _resolve_frd_path("GS-001", None)
+        assert result is not None, "None-path fallback must resolve from any cwd"
+        assert result.name == "gs001_result.frd"
+        assert result.is_file()
+
 
 class TestR2AllowedRootHelper:
+    # FM-04a Phase 41.4: _allowed_fs_roots is now anchored to _repo_root() (was
+    # Path.cwd()), so pin _repo_root to a controlled tmp root instead of chdir —
+    # the cwd-dependence these exercised was the same launch-fragility removed
+    # from the result-mesh route. Security property (confine to the 3 roots)
+    # is unchanged; only the anchor source moved from cwd to the repo file.
     def test_under_root_accepts_subpath(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(_viz_helpers, "_repo_root", lambda: tmp_path)
         gs = tmp_path / "golden_samples" / "x"
         gs.mkdir(parents=True)
         f = gs / "a.frd"
@@ -291,7 +307,7 @@ class TestR2AllowedRootHelper:
         assert _is_under_allowed_root(f, roots)
 
     def test_under_root_rejects_sibling(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(_viz_helpers, "_repo_root", lambda: tmp_path)
         outside = tmp_path / "outside.frd"
         outside.write_text("x")
         roots = _allowed_fs_roots()

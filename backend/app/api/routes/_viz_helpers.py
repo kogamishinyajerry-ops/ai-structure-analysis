@@ -47,12 +47,19 @@ def _repo_root() -> Path:
 
 
 def _allowed_fs_roots() -> list[Path]:
-    """Allowed roots for FRD candidate resolution. Cwd-relative."""
-    cwd = Path.cwd().resolve()
+    """Allowed roots for FRD candidate resolution.
+
+    FM-04a Phase 41.4: file-anchored to the repo root via `_repo_root()` (was
+    `Path.cwd()`). Same launch-cwd robustness fix as
+    `_resolve_result_mesh_artifact_path` — the path-traversal allowlist no longer
+    shifts when the backend is started from a subdirectory (the security property
+    is unchanged: still confined to golden_samples/ project_state/ calculix_cases/).
+    """
+    root = _repo_root()
     return [
-        (cwd / "golden_samples").resolve(),
-        (cwd / "project_state").resolve(),
-        (cwd / "calculix_cases").resolve(),
+        (root / "golden_samples").resolve(),
+        (root / "project_state").resolve(),
+        (root / "calculix_cases").resolve(),
     ]
 
 
@@ -78,7 +85,15 @@ def _resolve_frd_path(case_id: str, db_frd_path: str | None) -> Path | None:
     allowed root.
     """
     cid_lower = case_id.lower().replace("-", "")
-    case_dir = Path(db_frd_path).parent if db_frd_path else Path(f"./golden_samples/{case_id}")
+    # FM-04a Phase 41.4 (Codex R0 P2): the db_frd_path=None fallback must be
+    # repo-anchored too — `_allowed_fs_roots()` now points at <repo>/golden_samples,
+    # so a cwd-relative `./golden_samples/...` candidate (launch from backend/)
+    # would be rejected as out-of-root and a valid FRD reported as missing.
+    case_dir = (
+        Path(db_frd_path).parent
+        if db_frd_path
+        else _repo_root() / "golden_samples" / case_id
+    )
     raw_candidates: list[Path | None] = [
         case_dir / f"{cid_lower}_result.frd",
         case_dir / f"{cid_lower}.frd",
