@@ -41,6 +41,7 @@ export function useBootCaseSelect(
   preferredCaseId: string | null,
   onSelect: (c: CaseMetadata) => void,
   casesLoaded = false,
+  bootResultReady = false,
 ): BootAutoShow {
   const done = useRef(false);
 
@@ -59,23 +60,31 @@ export function useBootCaseSelect(
     onSelect(match);
   }, [availableCases, activeCaseId, sessionActive, preferredCaseId, onSelect]);
 
-  // FM-04a Phase 41.4 — onboarding/promo auto-show decisions.
-  //   - !casesLoaded → /cases not yet resolved (or reloading): stay hidden, no
-  //     pre-load flash (Codex R1 P2 #2: App resets casesLoaded per request);
-  //   - sessionActive → an upload/report flow clears activeCaseId but is a live
-  //     session — never re-arm onboarding over it (Codex R0 P2 #1);
-  //   - bootPending → a boot auto-select WILL fire this mount: suppress from the
-  //     first paint, before the effect runs (Codex R0 P2 #2: no flash over the
-  //     boot 3D hero).
+  // FM-04a Phase 41.4 — onboarding/promo auto-show decisions (Codex R0→R2 + this round).
+  //   TOUR (first-visit onboarding): genuine no-case landing ONLY. `ready`
+  //   (casesLoaded && !sessionActive) suppresses it during any upload/report
+  //   session; !activeCaseId && !preferredAvailable keeps it off a boot/opened case
+  //   and off the first-paint flash before the auto-select effect runs.
+  //   PROMO (one-time advanced-controls nudge): gate on `bootResultReady` ALONE
+  //   (App passes Boolean(report) && !loading) — i.e. a result has actually PAINTED
+  //   and nothing is loading. It must NOT reuse `ready`: sessionActive is
+  //   Boolean(file || report), so the instant a result exists `ready` is false —
+  //   reusing it made the promo permanently UNREACHABLE in the real app (this-round
+  //   Codex P2). The painted-result edge keeps the promo off the boot shimmer / the
+  //   upload-in-flight window (loading true / report null) yet reachable once the
+  //   result is up — which is also exactly when the advanced viewport controls it
+  //   nudges toward are relevant.
   const preferredAvailable =
     !!preferredCaseId && availableCases.some((c) => c.id === preferredCaseId);
-  const bootPending = preferredAvailable && !activeCaseId;
   const ready = casesLoaded && !sessionActive;
+  const tourAutoShow = ready && !activeCaseId && !preferredAvailable;
   return {
-    // Tour: genuine no-case landing only (never over a boot/opened case).
-    tourAutoShow: ready && !activeCaseId && !preferredAvailable,
-    // Promo: only the boot first-paint flash is suppressed; once the case has
-    // settled the one-time advanced nudge stays reachable.
-    promoAutoShow: ready && !bootPending,
+    tourAutoShow,
+    // Disjunction of two non-overlapping arming paths: (1) the no-case landing
+    // where the tour ends — the promo must surface there per shouldShowAdvancedPrompt
+    // even before any report exists (Codex R1 this-round F6); (2) once a result has
+    // PAINTED. Every suppression window (pre-cases / boot-pending / shimmer /
+    // upload-in-flight) leaves BOTH disjuncts false.
+    promoAutoShow: tourAutoShow || (casesLoaded && bootResultReady),
   };
 }

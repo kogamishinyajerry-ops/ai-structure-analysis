@@ -50,7 +50,10 @@ export function MaterialPickerPanel(props: MaterialPickerPanelProps) {
 
   if (loading) {
     return (
-      <section style={panelStyle} aria-labelledby="material-picker-heading">
+      // FM-04a 41.4: keep the #material-picker-panel scroll anchor present during
+      // load too — the palette 'open material picker' command (App.tsx) scrolls here
+      // right after the lazy Evidence & Trust wall mounts, before the fetch resolves.
+      <section id="material-picker-panel" style={panelStyle} aria-labelledby="material-picker-heading">
         <h3 id="material-picker-heading" style={headingStyle}>
           Materials library
         </h3>

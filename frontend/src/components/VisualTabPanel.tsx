@@ -14,7 +14,7 @@
 // same render order. Tests pinning the Visual tab in test/Phase21D_*
 // assert presence of each panel via testid.
 
-import { useCallback, type CSSProperties } from 'react'
+import { useCallback, useState, type CSSProperties } from 'react'
 import {
   FALLBACK_CANDIDATE_CASES,
 } from '../candidateCaseRegistry'
@@ -80,6 +80,17 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
     onLatestSignoff,
   } = props
 
+  // FM-04a Phase 41.4 (retro P2-B) — lazy-mount the 22-panel evidence stack: the
+  // <details> only HIDES children (jsdom + browsers keep them mounted), so their
+  // mount-time fetch effects fired on the boot first paint even while collapsed.
+  // Render the body only AFTER the disclosure is first opened so zero panel fetches
+  // hit the boot path. `hasOpened` LATCHES (never resets), so once opened the subtree
+  // stays mounted — collapsing/reopening preserves panel state and fires no re-fetch
+  // (this-round Codex P2: don't unmount on collapse). `open` keeps React owning the
+  // native disclosure state so the open/collapse animation stays in sync.
+  const [open, setOpen] = useState(false)
+  const [hasOpened, setHasOpened] = useState(false)
+
   // Memoise the persistence-aware case-picker callbacks so the inner
   // components don't see new function identities every render.
   const onCohortDashboardSelectCase = useCallback(
@@ -122,15 +133,26 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
       data-testid="visual-tab-panel"
       style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
     >
-      {/* FM-04a Phase 41.4 (B.2) — the 22 evidence/governance panels were a
-          dense "wall" directly under the 3D hero. Collapse them into one
-          default-closed "Evidence & Trust" disclosure so the demo's first
-          paint stays the clean centerpiece; reviewers expand for the full
-          provenance/convergence/sign-off stack. jsdom keeps <details>
-          children in the DOM regardless of open state, so the Phase21D
-          visual-tab-panel testid + Provenance/Advisor null-gating pins hold. */}
+      {/* FM-04a Phase 41.4 (B.2 + retro P2-B) — the 22 evidence/governance panels
+          were a dense "wall" directly under the 3D hero. Collapse them into one
+          default-closed "Evidence & Trust" disclosure so the demo's first paint
+          stays the clean centerpiece; reviewers expand for the full
+          provenance/convergence/sign-off stack. The body is lazily rendered
+          (only after the first open, then kept mounted) so the panels' mount-time
+          fetches never hit the boot path yet survive collapse/reopen. The outer
+          visual-tab-panel div + <summary> stay unconditional, and Provenance/Advisor
+          remain null-gated, so the Phase21D pins hold. */}
       <style>{EVIDENCE_WALL_STYLES}</style>
-      <details className="fm04a-evidence-wall" data-testid="evidence-trust-section">
+      <details
+        className="fm04a-evidence-wall"
+        data-testid="evidence-trust-section"
+        open={open}
+        onToggle={(e) => {
+          const isOpen = (e.currentTarget as HTMLDetailsElement).open
+          setOpen(isOpen)
+          if (isOpen) setHasOpened(true)
+        }}
+      >
         <summary className="fm04a-evidence-summary" style={EVIDENCE_SUMMARY_STYLE}>
           <span className="fm04a-evidence-chevron" style={EVIDENCE_CHEVRON_STYLE} aria-hidden="true">
             ▸
@@ -144,7 +166,8 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
             </span>
           </span>
         </summary>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
+        {hasOpened && (
+        <div data-testid="evidence-trust-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
       <CohortDashboardPanel
         apiBase={apiBase}
         selectedCaseId={selectedCandidateCaseId}
@@ -227,6 +250,7 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
       />
       <BulletPlateBlueprintPanel />
         </div>
+        )}
       </details>
     </div>
   )

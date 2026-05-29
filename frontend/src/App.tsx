@@ -336,7 +336,7 @@ function App() {
     setLoading(false);
   };
 
-  const { tourAutoShow, promoAutoShow } = useBootCaseSelect(availableCases, activeCaseId, Boolean(file || report), selectedCandidateCaseId ?? FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null, selectCase, casesLoaded);
+  const { tourAutoShow, promoAutoShow } = useBootCaseSelect(availableCases, activeCaseId, Boolean(file || report), selectedCandidateCaseId ?? FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null, selectCase, casesLoaded, Boolean(report) && !loading);
 
   const runSolver = async () => {
     if (!activeCaseId) return;
@@ -1207,8 +1207,9 @@ function App() {
     pickMaterialByIndex: (i) => setSelectedMaterial(FALLBACK_MATERIALS[i]),
     openMaterialPickerPanel: () => {
       if (typeof document === 'undefined') return;
-      const target = document.getElementById('material-picker-panel');
-      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // FM-04a 41.4: material picker is lazily mounted inside the collapsed Evidence & Trust wall — open it (native toggle → onToggle latch) then scroll after React mounts the node.
+      (document.querySelector('[data-testid="evidence-trust-section"]:not([open]) > summary') as HTMLElement | null)?.click();
+      requestAnimationFrame(() => document.getElementById('material-picker-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
     },
     closePalette: () => setPaletteOpen(false),
     activeCaseId,

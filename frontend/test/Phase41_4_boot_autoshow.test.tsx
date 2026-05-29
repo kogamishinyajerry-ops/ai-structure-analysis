@@ -20,6 +20,7 @@ function gates(args: {
   sessionActive: boolean
   preferred: string | null
   casesLoaded: boolean
+  bootResultReady?: boolean
 }): { tourAutoShow: boolean; promoAutoShow: boolean } {
   const onSelect = vi.fn()
   const { result } = renderHook(() =>
@@ -30,6 +31,7 @@ function gates(args: {
       args.preferred,
       onSelect,
       args.casesLoaded,
+      args.bootResultReady ?? false,
     ),
   )
   return result.current
@@ -81,11 +83,19 @@ describe('useBootCaseSelect — tour auto-show policy', () => {
   })
 })
 
-describe('useBootCaseSelect — promo auto-show policy (Codex R1 P2 #1: stays reachable)', () => {
+describe('useBootCaseSelect — promo auto-show policy (R1 P2 #1 reachable · R2 no shimmer)', () => {
   it('is HIDDEN during the boot first-paint flash window', () => {
     // boot pending (preferred available, no active case) → no flash over the hero
     expect(
       gates({ available: cases, activeCaseId: null, sessionActive: false, preferred: BOOT, casesLoaded: true }).promoAutoShow,
+    ).toBe(false)
+  })
+
+  it('is HIDDEN during the load shimmer — activeCaseId set but result not yet painted (Codex R2)', () => {
+    // selectCase() sets activeCaseId synchronously before the /report POST resolves;
+    // gating on bootResultReady (Boolean(report)) keeps the promo off the shimmer.
+    expect(
+      gates({ available: cases, activeCaseId: BOOT, sessionActive: false, preferred: BOOT, casesLoaded: true, bootResultReady: false }).promoAutoShow,
     ).toBe(false)
   })
 
@@ -98,15 +108,22 @@ describe('useBootCaseSelect — promo auto-show policy (Codex R1 P2 #1: stays re
     ).toBe(false)
   })
 
-  it('is REACHABLE once the boot case has settled (does not stay permanently suppressed)', () => {
+  it('is REACHABLE once the boot result has painted — EVEN with sessionActive true (this-round Codex P2)', () => {
+    // Real-app coupling: report being truthy makes sessionActive=Boolean(file||report)
+    // true at the SAME instant bootResultReady becomes true. The promo must NOT reuse
+    // `ready` (which would be false here) — it gates on bootResultReady alone, so it is
+    // reachable despite sessionActive. (App passes bootResultReady = Boolean(report) && !loading.)
     expect(
-      gates({ available: cases, activeCaseId: BOOT, sessionActive: false, preferred: BOOT, casesLoaded: true }).promoAutoShow,
+      gates({ available: cases, activeCaseId: BOOT, sessionActive: true, preferred: BOOT, casesLoaded: true, bootResultReady: true }).promoAutoShow,
     ).toBe(true)
   })
 
-  it('is REACHABLE on the genuine no-case landing', () => {
+  it('is REACHABLE on the no-case landing where the tour ends, even with no report (Codex R1 F6)', () => {
+    // The promo must surface right after the tour is dismissed on the genuine no-case
+    // landing (per shouldShowAdvancedPrompt), where no report exists — the tourAutoShow
+    // disjunct rescues it. (`available: []` → no preferred candidate → tourAutoShow true.)
     expect(
-      gates({ available: [], activeCaseId: null, sessionActive: false, preferred: BOOT, casesLoaded: true }).promoAutoShow,
+      gates({ available: [], activeCaseId: null, sessionActive: false, preferred: BOOT, casesLoaded: true, bootResultReady: false }).promoAutoShow,
     ).toBe(true)
   })
 
