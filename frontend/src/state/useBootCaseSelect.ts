@@ -19,14 +19,29 @@ import type { CaseMetadata } from '../types/AppTypes';
  *
  * Extracted from `App.tsx` to honor the App.tsx <1500 LOC pin (the Phase 35 C /
  * 38 I hook-extraction precedent).
+ *
+ * RETURNS the tour/promo `autoShow` decisions (Codex R0+R1 P2s): the boot
+ * landing policy already lives here, so the gates that keep onboarding off the
+ * boot 3D hero are co-located rather than re-derived in App.
  */
+export interface BootAutoShow {
+  /** First-visit tour: surfaces ONLY on the genuine no-case landing. */
+  tourAutoShow: boolean;
+  /** Advanced-mode promo: suppressed only during the boot first-paint flash
+   * window; stays reachable once the boot case settles (or on the no-case
+   * landing) for returning basic-mode users (Codex R1 P2 #1 — never permanently
+   * unreachable). */
+  promoAutoShow: boolean;
+}
+
 export function useBootCaseSelect(
   availableCases: CaseMetadata[],
   activeCaseId: string | null,
   sessionActive: boolean,
   preferredCaseId: string | null,
   onSelect: (c: CaseMetadata) => void,
-): void {
+  casesLoaded = false,
+): BootAutoShow {
   const done = useRef(false);
 
   useEffect(() => {
@@ -43,4 +58,24 @@ export function useBootCaseSelect(
     done.current = true;
     onSelect(match);
   }, [availableCases, activeCaseId, sessionActive, preferredCaseId, onSelect]);
+
+  // FM-04a Phase 41.4 — onboarding/promo auto-show decisions.
+  //   - !casesLoaded → /cases not yet resolved (or reloading): stay hidden, no
+  //     pre-load flash (Codex R1 P2 #2: App resets casesLoaded per request);
+  //   - sessionActive → an upload/report flow clears activeCaseId but is a live
+  //     session — never re-arm onboarding over it (Codex R0 P2 #1);
+  //   - bootPending → a boot auto-select WILL fire this mount: suppress from the
+  //     first paint, before the effect runs (Codex R0 P2 #2: no flash over the
+  //     boot 3D hero).
+  const preferredAvailable =
+    !!preferredCaseId && availableCases.some((c) => c.id === preferredCaseId);
+  const bootPending = preferredAvailable && !activeCaseId;
+  const ready = casesLoaded && !sessionActive;
+  return {
+    // Tour: genuine no-case landing only (never over a boot/opened case).
+    tourAutoShow: ready && !activeCaseId && !preferredAvailable,
+    // Promo: only the boot first-paint flash is suppressed; once the case has
+    // settled the one-time advanced nudge stays reachable.
+    promoAutoShow: ready && !bootPending,
+  };
 }

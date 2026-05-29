@@ -195,6 +195,7 @@ function App() {
     FALLBACK_MATERIALS[0],
   );
   const [availableCases, setAvailableCases] = useState<CaseMetadata[]>([]);
+  const [casesLoaded, setCasesLoaded] = useState(false); // FM-04a 41.4: gates tour/promo off boot hero (see OnboardingTour.autoShow)
   const [caseDetailsById, setCaseDetailsById] = useState<Record<string, CaseReferenceDetails>>({});
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [analysisType, setAnalysisType] = useState<'static' | 'modal' | 'buckling'>('static');
@@ -220,14 +221,14 @@ function App() {
 
   // Fetch available cases when project changes
   useEffect(() => {
-    const url = selectedProjectId 
-      ? `${API_BASE}/cases?project_id=${selectedProjectId}` 
+    const url = selectedProjectId
+      ? `${API_BASE}/cases?project_id=${selectedProjectId}`
       : `${API_BASE}/cases`;
-      
+    setCasesLoaded(false); // reset per request so a pending reload can't flash onboarding (Codex R1 P2)
     fetch(url)
       .then(res => res.json())
-      .then(data => setAvailableCases(data))
-      .catch(err => console.error("Failed to fetch cases", err));
+      .then(data => { setAvailableCases(data); setCasesLoaded(true); })
+      .catch(err => { console.error("Failed to fetch cases", err); setCasesLoaded(true); });
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -335,7 +336,7 @@ function App() {
     setLoading(false);
   };
 
-  useBootCaseSelect(availableCases, activeCaseId, Boolean(file || report), selectedCandidateCaseId ?? FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null, selectCase);
+  const { tourAutoShow, promoAutoShow } = useBootCaseSelect(availableCases, activeCaseId, Boolean(file || report), selectedCandidateCaseId ?? FALLBACK_CANDIDATE_CASES[0]?.caseId ?? null, selectCase, casesLoaded);
 
   const runSolver = async () => {
     if (!activeCaseId) return;
@@ -1234,9 +1235,10 @@ function App() {
           audit. The promo's visibility is fully self-gated by its
           storage predicate; uiMode lives in App-root via
           appUiModeStorage / appUiMode below. */}
-      <OnboardingTour onDismissed={markTourDismissedInSession} />
+      <OnboardingTour autoShow={tourAutoShow} onDismissed={markTourDismissedInSession} />
       <AdvancedModePromo
         uiMode={appUiMode}
+        autoShow={promoAutoShow}
         tourDismissedInSession={appTourDismissedInSession}
         onSwitchToAdvanced={() => handleAppUiModeChange('advanced')}
       />

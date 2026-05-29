@@ -53,6 +53,11 @@ export interface AdvancedModePromoProps {
   /** When true, surface the promo regardless of the persisted flag.
    * Useful for replaying via a settings affordance (not wired yet). */
   forceShow?: boolean;
+  /** FM-04a Phase 41.4 — gates the auto-show, mirroring OnboardingTour.
+   * App passes `autoShow={casesLoaded && !activeCaseId}` so this modal
+   * never auto-pops over the boot 3D hero. `forceShow` still overrides.
+   * Defaults to true so the component's own tests keep prior behavior. */
+  autoShow?: boolean;
   /** When provided, in-session signal that the tour just dismissed.
    * Triggers a re-read of the tour-dismissed flag so the promo
    * surfaces without a page reload. */
@@ -65,6 +70,7 @@ export function AdvancedModePromo({
   promptStorage,
   tourStorage,
   forceShow = false,
+  autoShow = true,
   tourDismissedInSession = false,
 }: AdvancedModePromoProps) {
   const resolvedPromptStorage = useMemo<AdvancedPromptStorage>(
@@ -93,7 +99,10 @@ export function AdvancedModePromo({
     setPromptShown(resolvedPromptStorage.load());
   }, [tourDismissedInSession, resolvedTourStorage, resolvedPromptStorage]);
 
-  const visible = shouldShowAdvancedPrompt(uiMode, tourDismissed, promptShown);
+  // FM-04a Phase 41.4 — `autoShow` gate keeps the promo off the boot hero;
+  // `forceShow` (replay) still overrides via the storage-seeded flags above.
+  const visible =
+    (autoShow || forceShow) && shouldShowAdvancedPrompt(uiMode, tourDismissed, promptShown);
   const containerRef = useRef<HTMLDivElement>(null);
   // FM-04a Phase 29 C — install polish styles for the entrance
   // animation class + focus-trap (WCAG 2.4.3).

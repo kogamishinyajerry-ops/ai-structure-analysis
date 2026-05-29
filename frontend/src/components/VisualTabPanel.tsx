@@ -14,7 +14,7 @@
 // same render order. Tests pinning the Visual tab in test/Phase21D_*
 // assert presence of each panel via testid.
 
-import { useCallback } from 'react'
+import { useCallback, type CSSProperties } from 'react'
 import {
   FALLBACK_CANDIDATE_CASES,
 } from '../candidateCaseRegistry'
@@ -122,6 +122,29 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
       data-testid="visual-tab-panel"
       style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
     >
+      {/* FM-04a Phase 41.4 (B.2) — the 22 evidence/governance panels were a
+          dense "wall" directly under the 3D hero. Collapse them into one
+          default-closed "Evidence & Trust" disclosure so the demo's first
+          paint stays the clean centerpiece; reviewers expand for the full
+          provenance/convergence/sign-off stack. jsdom keeps <details>
+          children in the DOM regardless of open state, so the Phase21D
+          visual-tab-panel testid + Provenance/Advisor null-gating pins hold. */}
+      <style>{EVIDENCE_WALL_STYLES}</style>
+      <details className="fm04a-evidence-wall" data-testid="evidence-trust-section">
+        <summary className="fm04a-evidence-summary" style={EVIDENCE_SUMMARY_STYLE}>
+          <span className="fm04a-evidence-chevron" style={EVIDENCE_CHEVRON_STYLE} aria-hidden="true">
+            ▸
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '14px' }}>
+              Evidence &amp; Trust
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+              Governance, provenance, convergence &amp; sign-off — expand to review
+            </span>
+          </span>
+        </summary>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
       <CohortDashboardPanel
         apiBase={apiBase}
         selectedCaseId={selectedCandidateCaseId}
@@ -203,6 +226,41 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
         onMaterialChange={onMaterialChange}
       />
       <BulletPlateBlueprintPanel />
+        </div>
+      </details>
     </div>
   )
+}
+
+// FM-04a Phase 41.4 (B.2) — disclosure styling for the "Evidence & Trust"
+// wall. Injected <style> (mirrors the OnboardingTour keyframe pattern) so the
+// native marker is removed cross-browser and the chevron rotates on open;
+// hover/focus tint uses the shared design tokens.
+const EVIDENCE_WALL_STYLES = `
+.fm04a-evidence-summary { list-style: none; }
+.fm04a-evidence-summary::-webkit-details-marker { display: none; }
+.fm04a-evidence-summary::marker { content: ''; }
+.fm04a-evidence-summary:hover { border-color: var(--border-strong); background: var(--accent-glow); }
+.fm04a-evidence-wall[open] .fm04a-evidence-chevron { transform: rotate(90deg); }
+`
+
+const EVIDENCE_SUMMARY_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '12px',
+  padding: '14px 16px',
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border)',
+  borderRadius: '10px',
+  cursor: 'pointer',
+  userSelect: 'none',
+  transition: 'border-color 140ms ease, background 140ms ease',
+}
+
+const EVIDENCE_CHEVRON_STYLE: CSSProperties = {
+  display: 'inline-block',
+  color: 'var(--text-muted)',
+  fontSize: '12px',
+  transition: 'transform 160ms ease',
+  transform: 'rotate(0deg)',
 }

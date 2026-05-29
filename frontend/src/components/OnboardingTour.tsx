@@ -28,6 +28,14 @@ export interface OnboardingTourProps {
   /** Forces the overlay open regardless of localStorage; useful for
    * a future "Replay tour" affordance in settings. */
   forceShow?: boolean;
+  /** FM-04a Phase 41.4 — gates the *auto*-show. The demo boots straight
+   * into the GS-102-candidate 3D hero; auto-popping the first-visit tour
+   * over that centerpiece muddied the first paint. App passes
+   * `autoShow={casesLoaded && !activeCaseId}` so the tour only auto-surfaces
+   * on the genuine no-case landing, never over a boot/opened case.
+   * `forceShow` (replay) still overrides this. Defaults to true so the
+   * component's own tests + any unparented mount keep prior behavior. */
+  autoShow?: boolean;
   /** Called every time the user advances or dismisses; useful for
    * higher-level telemetry. */
   onStateChange?: (next: OnboardingState) => void;
@@ -41,6 +49,7 @@ export interface OnboardingTourProps {
 export function OnboardingTour({
   storage,
   forceShow = false,
+  autoShow = true,
   onStateChange,
   onDismissed,
 }: OnboardingTourProps) {
@@ -84,7 +93,9 @@ export function OnboardingTour({
   }, [resolvedStorage, onDismissed]);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const visible = shouldShowTour(state, persistedDismissed);
+  // FM-04a Phase 41.4 — `autoShow` gates the first-visit auto-pop so it
+  // never covers the boot 3D hero; `forceShow` (replay) still overrides.
+  const visible = (autoShow || forceShow) && shouldShowTour(state, persistedDismissed);
   // FM-04a Phase 29 C — focus-trap (WCAG 2.4.3). Active only while
   // the overlay is visible.
   useFocusTrap({ containerRef, active: visible });
