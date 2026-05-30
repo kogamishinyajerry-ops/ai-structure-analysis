@@ -67,10 +67,21 @@ export function selectActiveFieldPeak(
   if (fieldComponent === 'mises') {
     return { label: input.fieldLabel, value: input.valueMax };
   }
+  // No tensor anywhere → the field IS the scalar `value` path (the switcher is
+  // gated on tensor presence); naming it a σ-component would mislabel scalar
+  // data, so keep the scalar summary. (Codex R0 P2 — defensive fallback.)
+  if (!input.elements.some((el) => Boolean(el.stressTensor))) {
+    return { label: input.fieldLabel, value: input.valueMax };
+  }
+  // Mixed / all-tensor frame: recompute the peak over EVERY element via the
+  // SAME path the viewport colors by (viewportGeometry.colorForElement +
+  // ResultMeshWebGLViewport) — tensor elements through the component,
+  // scalar-only elements through their `value` fallback (componentValue
+  // returns the fallback when the tensor is absent). Skipping the scalar-only
+  // elements (Codex R1 P2) would under-report the maximum actually displayed.
   let peak = -Infinity;
   for (const el of input.elements) {
-    if (!el.stressTensor) continue;
-    const v = componentValue(el.stressTensor, fieldComponent, el.value ?? 0);
+    const v = componentValue(el.stressTensor, fieldComponent, el.value ?? Number.NaN);
     if (Number.isFinite(v) && v > peak) peak = v;
   }
   if (!Number.isFinite(peak)) {

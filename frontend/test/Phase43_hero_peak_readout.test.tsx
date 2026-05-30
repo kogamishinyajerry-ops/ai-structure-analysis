@@ -135,4 +135,23 @@ describe('selectActiveFieldPeak — Phase 43 Codex R0 P2 (hero tracks active com
       value: 42,
     })
   })
+
+  it('includes scalar-only elements on MIXED frames (Codex R1 P2)', () => {
+    // A frame where some elements carry a stressTensor and others rely on the
+    // scalar `value` fallback. The viewport colors the scalar-only elements via
+    // that same fallback, so the hero peak MUST consider them — here the
+    // scalar-only element (900) is the true maximum, NOT the tensor σxx (300).
+    const mixed = {
+      fieldLabel: 'Von Mises stress',
+      valueMax: 9_000,
+      elements: [
+        { value: 300, stressTensor: { sxx: 300, syy: 10, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+        { value: 900 }, // scalar-only — displayed via its value for ANY component
+      ] as ResultMeshElement[],
+    }
+    expect(selectActiveFieldPeak(mixed, 'sxx')).toEqual({
+      label: FIELD_COMPONENT_LABELS.sxx,
+      value: 900,
+    })
+  })
 })
