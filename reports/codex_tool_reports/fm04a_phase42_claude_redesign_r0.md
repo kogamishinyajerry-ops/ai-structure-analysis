@@ -49,6 +49,30 @@ Pivoted the whole workbench to the Claude-app aesthetic.
   problem-flags across all 43 migrated files; 2 diffs spot-read (CommandPalette
   nesting hierarchy + scrim-kept-dark; SectionFrame card→white) confirm fidelity.
 
+## Review arc (R1 — functional-bug lens, CLEAN → round closed)
+
+A second, independent CRS pass (`CODEX_HOME=$HOME/.codex-crs codex review`,
+effort=high) was run over the same Phase 42 staged diff, this time through the
+**functional-bug lens** (codepath wiring / regression risk), complementary to
+R0's AA-contrast lens. It gathered full context (STATE.md, `.gitignore`,
+TabButton class wiring, `main.tsx`) and ran its own WCAG sanity arithmetic on the
+*removed* dark tokens before concluding.
+
+- **R1 verdict — APPROVE, 0 findings (verbatim):** *"I did not find any discrete
+  functional bugs in the current changes. The staged frontend updates appear
+  internally consistent, and the added tests cover the new styling/motion behavior
+  without indicating a regression in existing runtime behavior."*
+- Round cap status: **R0 (1×P2, fixed) + R1 (clean) → round CLOSED**, 0 P1 / 0
+  remaining P2/P3. No R2 needed.
+- Transcript: `/tmp/codex_p42_crs.txt` (3,359 lines, ephemeral — verdict captured
+  verbatim above). The reviewed diff is what shipped in commit `5e563b0`.
+
+### Independent gate re-run against the committed `5e563b0` (functional-tester discipline — E2E proof, not COMPLETED)
+
+- `tsc --noEmit` clean · `vitest run` **977 passed (68 files)** · `eslint .`
+  **70 problems = byte-identical to HEAD baseline (0 introduced)** · App.tsx
+  **1498** (<1500 pin green). Working tree clean; the redesign is fully landed.
+
 ## Residual
 
 - The boot view's dark "no-FRD" plot card is the **stale running backend** serving
