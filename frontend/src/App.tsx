@@ -49,7 +49,9 @@ import { OperatorStatusPanel } from './components/OperatorStatusPanel';
 import { TabButton } from './components/TabButton';
 import { RightRail } from './components/RightRail';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { ColumnSplitter } from './components/ColumnSplitter';
 import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
+import { useColumnLayout } from './state/useColumnLayout';
 import { type Command } from './commands/registry';
 import { FALLBACK_MATERIALS, type MaterialRecord } from './materialsClient';
 // FM-04a Phase 25 B — palette + topbar config extracted for LOC discipline.
@@ -1220,10 +1222,11 @@ function App() {
     materials: FALLBACK_MATERIALS,
   });
   useGlobalShortcuts({ togglePalette: () => setPaletteOpen((prev) => !prev) })
+  const { shellRef, railVars, splitterProps } = useColumnLayout();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-    <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '210px 300px 1fr', flex: '1 1 auto', minHeight: 0 }}>
+    <div className="app-container" ref={shellRef} style={{ display: 'grid', ...railVars, flex: '1 1 auto', minHeight: 0 }}>
       {/* FM-04a Phase 29 C — onboarding tour + advanced-mode auto-
           promote mounted at App-root so reviewers landing on the
           Narrative tab (or any future tab) still see onboarding.
@@ -1250,6 +1253,7 @@ function App() {
         selectedProjectId={selectedProjectId}
         onSelectProject={(id) => setSelectedProjectId(id)}
       />
+      <ColumnSplitter {...splitterProps.left} />
 
       {/* Case Sidebar — extracted to Sidebar.tsx in Phase 19 D */}
       <Sidebar
@@ -1281,6 +1285,7 @@ function App() {
         onFileUpload={handleFileUpload}
         onOpenPalette={() => setPaletteOpen(true)}
       />
+      <ColumnSplitter {...splitterProps.case} />
 
       {/* Main Content Area */}
       <div style={{ display: 'grid', gridTemplateColumns: showChat ? '1fr 340px' : '1fr', height: '100%', overflow: 'hidden' }}>

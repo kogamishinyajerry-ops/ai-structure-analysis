@@ -100,6 +100,13 @@
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
   --dur-fast: 130ms; --dur-base: 200ms; --dur-slow: 320ms;
 
+  /* ---- Shell layout (Phase 44 A — resizable rails) -------------------- */
+  /* useColumnLayout overrides --rail-w / --caserail-w at runtime; these are
+     the SSR / first-paint fallbacks. --grip = splitter hit-track width. */
+  --rail-w: 210px;
+  --caserail-w: 300px;
+  --grip: 8px;
+
   font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
   line-height: 1.55;
   font-weight: 400;
@@ -341,9 +348,73 @@ button.surface-card:hover {
   border-color: var(--border-focus);
 }
 
+/* ---- Shell layout — resizable rails (Phase 44 A) --------------------- */
+/* The grid template moves here from App.tsx's inline style so the rail widths
+   can be driven by the --rail-w / --caserail-w custom properties. Track order:
+   project-rail | grip | case-rail | grip | stage(1fr). */
+.app-container {
+  grid-template-columns: var(--rail-w) var(--grip) var(--caserail-w) var(--grip) 1fr;
+}
+/* Grid items default to min-width:auto and refuse to shrink below their content
+   width; let the two rails shrink to the splitter clamp and clip cleanly. */
+.app-container > .glass-sidebar {
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.col-splitter {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.col-splitter::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: var(--border);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.col-splitter::after {
+  content: '';
+  width: 2px;
+  height: var(--sp-6);
+  border-radius: var(--r-xs);
+  background: var(--c-300);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.col-splitter:hover {
+  background: var(--c-200);
+}
+.col-splitter:hover::before,
+.col-splitter:focus-visible::before,
+.col-splitter[data-dragging]::before {
+  background: var(--border-focus);
+}
+.col-splitter:hover::after,
+.col-splitter:focus-visible::after,
+.col-splitter[data-dragging]::after {
+  opacity: 1;
+}
+
 /* ---- Responsive (PRESERVED breakpoints) ------------------------------ */
 @media (max-width: 1024px) {
   .app-container { grid-template-columns: 210px 1fr !important; }
+  /* Splitters are desktop-only; hiding them restores the original
+     child→track mapping under the responsive !important templates. */
+  .col-splitter { display: none; }
 }
 @media (max-width: 768px) {
   body { overflow: auto; }
@@ -475,4 +546,7 @@ button.surface-card:hover {
   .skeleton-line { animation: none; }
   .mode-pulse-dot { animation: none; }      /* Phase 43 — ModeSelector pulse dot */
   .solve-sweep { animation: none; }         /* Phase 43 — SolverProgressPanel sweep */
+  .col-splitter,
+  .col-splitter::before,
+  .col-splitter::after { transition: none; }   /* Phase 44 A — splitter (B:-1) */
 }
