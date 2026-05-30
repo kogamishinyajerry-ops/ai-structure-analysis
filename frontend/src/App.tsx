@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, type ChangeEvent } from 'react';
 import {
   Activity,
   Box,
@@ -19,6 +19,10 @@ import { type CaeReviewCard } from './components/ChatPanel';
 import { ProjectManager } from './components/ProjectManager';
 import { ModeSelector } from './components/ModeSelector';
 import { ResultMeshPlaybackPanel } from './components/ResultMeshPlaybackPanel';
+// FM-04a Phase 43 Slice 2 — golden-path shell polish.
+import { SolverProgressPanel } from './components/SolverProgressPanel';
+import { StatusBar } from './components/StatusBar';
+import { NoResultState } from './components/NoResultState';
 // FM-04a Phase 29 C — App-root onboarding mounts.
 import { OnboardingTour } from './components/OnboardingTour';
 import { AdvancedModePromo } from './components/AdvancedModePromo';
@@ -217,7 +221,6 @@ function App() {
     useState<string | null>(null);
   const [activeExperiment, setActiveExperiment] = useState<ExperimentStatus | null>(null);
   const [comparedIndices, setComparedIndices] = useState<[number, number] | null>(null);
-  const terminalEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch available cases when project changes
   useEffect(() => {
@@ -262,10 +265,6 @@ function App() {
     };
   }, [availableCases]);
 
-  // Auto-scroll terminal
-  useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [logs]);
 
   const clearJobContext = () => {
     setSolving(false);
@@ -1421,10 +1420,7 @@ function App() {
                             </div>
                         </div>
                     ) : (
-                        <div style={{ height: '400px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: '16px' }}>
-                            <LayoutDashboard size={48} strokeWidth={1} />
-                            <div>Select a structural case from the gallery to begin analysis</div>
-                        </div>
+                        <NoResultState />
                     )}
                     </>
                 )}
@@ -1473,13 +1469,11 @@ function App() {
             </div>
 
             {showConsole && (
-            <div className="glass-panel" style={{ margin: '0 40px 40px 40px', height: '160px', display: 'flex', flexDirection: 'column', background: '#000' }}>
-                <div style={{ flex: 1, padding: '12px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', color: '#ccc' }}>
-                {logs.map((log, i) => <div key={i}>{log}</div>)}
-                <div ref={terminalEndRef} />
-                </div>
-            </div>
+              <div style={{ margin: '0 40px 40px 40px' }}>
+                <SolverProgressPanel logs={logs} solving={solving} jobStatusLabel={jobStatusLabel} />
+              </div>
             )}
+            <StatusBar caseLabel={caseLabel} runStateLabel={runState} runStateTone={runStateTone === 'warning' ? 'danger' : runStateTone} jobStatusLabel={jobStatusLabel} />
         </main>
 
         <RightRail
