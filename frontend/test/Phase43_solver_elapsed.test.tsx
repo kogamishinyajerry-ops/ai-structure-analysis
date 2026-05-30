@@ -102,4 +102,35 @@ describe('SolverProgressPanel — elapsed timer honesty (authoritative start)', 
     })
     expect(screen.queryByTestId('solver-elapsed')).toBeNull()
   })
+
+  it('(e) does NOT leak a prior run\'s elapsed once the start becomes unknown (Codex R2 stale-leak)', () => {
+    const start = Date.now()
+    const { rerender } = render(
+      <SolverProgressPanel
+        logs={['Solving...']}
+        solving
+        jobStatusLabel="running"
+        solveStartedAt={start}
+      />,
+    )
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(screen.getByTestId('solver-elapsed').textContent).toBe('4s')
+
+    // A later render arrives with an UNKNOWN start — the panel MUST omit the
+    // readout, not keep rendering the previous run's measured 4s.
+    rerender(
+      <SolverProgressPanel
+        logs={['Solving...']}
+        solving
+        jobStatusLabel="running"
+        solveStartedAt={null}
+      />,
+    )
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.queryByTestId('solver-elapsed')).toBeNull()
+  })
 })

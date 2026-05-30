@@ -241,9 +241,10 @@ export function SolverProgressPanel({
     };
   }, [hasStart, solveStartedAt, solving]);
 
-  // elapsedMs is non-null ONLY after a measured tick (which requires an
-  // authoritative start). It alone gates the readout — no ref reads in render.
-  const showElapsed = elapsedMs !== null;
+  // elapsedMs is non-null ONLY after a measured tick. We ALSO gate on hasStart
+  // so a prior run's frozen value can never leak into a later unknown-start job
+  // (Codex Slice-2 R2 — honesty contract). No ref reads in render.
+  const showElapsed = hasStart && elapsedMs !== null;
   const elapsedSeconds = showElapsed ? Math.floor((elapsedMs as number) / 1000) : 0;
 
   // ---- Auto-scroll the log area to the newest line ------------------------

@@ -500,7 +500,7 @@ function App() {
           setCurrentJobAnalysis(analysisType);
           setShowConsole(true);
           setSolving(true);
-          setSolveStartedAt(null);
+          setSolveStartedAt(epochNowMs()); // Copilot /execute creates a FRESH run (copilot.py run_simulation) → timestamp it like runSolver (Codex R2).
           connectToLogs(data.job_id);
       } else if (data.experiment_id) {
           pollExperiment(data.experiment_id);
