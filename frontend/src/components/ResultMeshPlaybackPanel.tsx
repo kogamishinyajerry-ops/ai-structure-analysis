@@ -49,6 +49,14 @@ import type { StressComponent } from '../stressDerivatives';
 // single-pick to a comparison list (max 8). State owned here so the
 // panel can render the table next to the viewport.
 import { ProbeListPanel } from './ProbeListPanel';
+// FM-04a Phase 43 — hero peak-result readout banner. Lifts the demo
+// payoff number (summary.valueMax + fieldLabel + units) above the
+// MetricGrid at a headline type size. Extracted to its own file so the
+// readout is unit-testable in isolation.
+import { HeroPeakReadout } from './HeroPeakReadout';
+// FM-04a Phase 43 (Codex R0 P2) — pick the hero field that matches the
+// currently-displayed component (von Mises vs an active σ-component).
+import { selectActiveFieldPeak } from './heroPeakFormat';
 // FM-04a Phase 27 D — probe-list save/restore across sessions
 // (loadProbeList / loadProbeListWithDiagnostic / saveProbeList all
 // moved to useViewportLayout in Phase 31 B; the panel only needs
@@ -330,6 +338,25 @@ export function ResultMeshPlaybackPanel({
   const projection = useMemo(
     () => buildProjection(summary?.selectedFrame ?? null, summary?.valueMin ?? 0, summary?.valueMax ?? 0),
     [summary],
+  );
+
+  // FM-04a Phase 43 (Codex R0 P2) — the hero headline must track the field
+  // the viewport is actually coloring by, so it can't claim the von Mises
+  // peak while a σ-component is selected. Recomputes the component peak only
+  // when a non-Mises component is active.
+  const heroField = useMemo(
+    () =>
+      summary
+        ? selectActiveFieldPeak(
+            {
+              fieldLabel: summary.fieldLabel,
+              valueMax: summary.valueMax,
+              elements: summary.selectedFrame?.elements ?? [],
+            },
+            fieldComponent,
+          )
+        : null,
+    [summary, fieldComponent],
   );
 
   const vtuState = readVtuState(payload);
@@ -907,6 +934,11 @@ export function ResultMeshPlaybackPanel({
           </div>
 
           <div style={{ minHeight: 0, overflowY: 'auto', display: 'grid', gap: '10px', alignContent: 'start' }}>
+            <HeroPeakReadout
+              fieldLabel={heroField?.label}
+              valueMax={heroField?.value}
+              units={fieldUnits}
+            />
             <MetricGrid summary={summary} />
 
             <div style={panelBoxStyle}>

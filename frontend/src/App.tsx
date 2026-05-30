@@ -1367,7 +1367,7 @@ function App() {
                                     <div
                                       style={{
                                         display: 'grid',
-                                        gridTemplateRows: activeCaseId ? '400px minmax(300px, 1fr)' : '1fr',
+                                        gridTemplateRows: activeCaseId ? 'minmax(480px, 1fr) 300px' : '1fr',
                                         gap: activeCaseId ? '12px' : 0,
                                         padding: activeCaseId ? '12px' : 0,
                                         minHeight: activeCaseId ? '820px' : '600px',

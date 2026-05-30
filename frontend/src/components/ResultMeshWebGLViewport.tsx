@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { ResultMeshFrame } from '../resultMeshPlayback';
 import { componentValue, type StressComponent } from '../stressDerivatives';
@@ -45,6 +45,12 @@ import {
   type ValueFilterState,
 } from './viewportRaycaster';
 import { detectWebGLSupport } from './viewportAnimation';
+// FM-04a Phase 43 — viewport navigation gizmo (standard-view presets +
+// orientation triad). The gizmo is a dark-glass overlay; this viewport
+// owns the camera seam that maps each preset onto azimuth/elevation
+// (and, for fit, a bounds-framing radius recompute).
+import { ViewportNavGizmo } from './ViewportNavGizmo';
+import { VIEW_PRESET_ANGLES, type ViewPreset } from './viewportNavPresets';
 // FM-04a Phase 40 A — iso-surface overlay. The extraction is a SMOOTHED
 // Tier-0 viz approximation (cell→point averaging of the genuinely
 // discontinuous per-element field, tet-only); the per-element coloring
@@ -156,6 +162,10 @@ export function ResultMeshWebGLViewport({
   isoThreshold,
 }: ResultMeshWebGLViewportProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // FM-04a Phase 43 — latest geometry bounds, captured by the geometry
+  // effect so the nav gizmo's Fit/Home preset can reframe the model
+  // (recompute radius from the bounding-box span) on demand.
+  const boundsRef = useRef<THREE.Box3 | null>(null);
   const stateRef = useRef<{
     renderer: THREE.WebGLRenderer;
     scene: THREE.Scene;
@@ -392,6 +402,25 @@ export function ResultMeshWebGLViewport({
     // bounds-fit logic that overwrites the camera target/radius, so
     // close-up threshold tuning no longer snaps the camera back.
 
+    // FM-04a Phase 43 (Codex R0 P2) — retain the FULL-model bounds for the
+    // nav gizmo's Fit/Home preset. The `bounds` above are computed from only
+    // the RETAINED elements when a value-filter is active, so caching them
+    // would make Fit zoom to the filtered subset (or no-op if the filter
+    // empties the mesh). When a filter is active, recompute bounds from the
+    // unfiltered model (same deformation state, filter omitted) and dispose
+    // the throwaway geometry; otherwise `bounds` already frames the whole model.
+    if (valueFilter) {
+      const full = buildBufferGeometry(frame, valueMin, valueMax, {
+        nextFrame: nextFrame ?? null,
+        tInterp: animTInterp,
+        deformationScale,
+        fieldComponent,
+      });
+      boundsRef.current = full.bounds;
+      full.geometry.dispose();
+    } else {
+      boundsRef.current = bounds;
+    }
     const center = new THREE.Vector3();
     bounds.getCenter(center);
     const size = new THREE.Vector3();
@@ -685,6 +714,33 @@ export function ResultMeshWebGLViewport({
     return null;
   }, [supported, frame, triangleCount]);
 
+  // FM-04a Phase 43 — camera-preset seam for the nav gizmo. Maps a named
+  // preset onto the hand-rolled spherical camera (azimuth/elevation) and,
+  // for the framing presets (Fit/Home), recomputes `radius` from the
+  // retained geometry bounds so the whole model is framed. Then triggers
+  // the existing render path (renderScene). No-ops safely when the GL
+  // context isn't initialised (jsdom / WebGL-unavailable).
+  const setView = useCallback((preset: ViewPreset) => {
+    const state = stateRef.current;
+    if (!state) return;
+    const angles = VIEW_PRESET_ANGLES[preset];
+    state.azimuth = angles.azimuth;
+    state.elevation = angles.elevation;
+    if (angles.frame) {
+      const bounds = boundsRef.current;
+      if (bounds && !bounds.isEmpty()) {
+        const center = new THREE.Vector3();
+        bounds.getCenter(center);
+        const size = new THREE.Vector3();
+        bounds.getSize(size);
+        const span = Math.max(size.x, size.y, size.z) || 1;
+        state.target.copy(center);
+        state.radius = span * 2.2;
+      }
+    }
+    renderScene(state);
+  }, []);
+
   return (
     <div
       data-testid="result-mesh-webgl-viewport"
@@ -844,6 +900,10 @@ export function ResultMeshWebGLViewport({
           )}
         </div>
       )}
+      {/* FM-04a Phase 43 — viewport navigation gizmo. Only mounted when
+          WebGL is supported (the camera seam is a no-op otherwise, but
+          there's no canvas to navigate in the SVG-fallback path). */}
+      {supported && <ViewportNavGizmo onSetView={setView} />}
     </div>
   );
 }

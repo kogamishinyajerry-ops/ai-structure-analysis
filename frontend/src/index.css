@@ -429,6 +429,15 @@ button.surface-card:hover {
   animation: skeleton-shimmer 1.5s linear infinite;
 }
 
+/* FM-04a Phase 43 — ModeSelector dark-glass HUD pulse dot. The selected
+   mode row carries a small accent pulse dot. Keyframe lives here so it is
+   suppressed under reduced motion via the foundation block below (B:-1). */
+@keyframes fm04a-mode-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
+}
+.mode-pulse-dot { animation: fm04a-mode-pulse 1.6s var(--ease-in-out) infinite; }
+
 /* ---- Markdown (PRESERVED) -------------------------------------------- */
 .report-markdown h1, .report-markdown h2, .report-markdown h3 {
   color: var(--text-primary);
@@ -453,4 +462,5 @@ button.surface-card:hover {
   .run-solver-btn:hover:not(:disabled) { transform: none; }
   .run-solver-btn[data-solving="true"] { animation: none; }
   .skeleton-line { animation: none; }
+  .mode-pulse-dot { animation: none; }      /* Phase 43 — ModeSelector pulse dot */
 }
