@@ -96,3 +96,25 @@ export function sampleColormap(id: ColormapId, t: number): [number, number, numb
     (a[2] + (b[2] - a[2]) * k) / 255,
   ];
 }
+
+/**
+ * Build a CSS linear-gradient for a colormap by sampling it at `steps` stops.
+ * `direction` is any CSS gradient direction ('to right' for a horizontal
+ * legend bar, 'to top' for a vertical one). Used by the legend surfaces so a
+ * single ramp definition drives the mesh AND every legend (no drift).
+ */
+export function colormapCssGradient(
+  id: ColormapId,
+  direction = 'to right',
+  steps = 11,
+): string {
+  const n = Math.max(2, steps);
+  const stops: string[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const t = i / (n - 1);
+    const [r, g, b] = sampleColormap(id, t);
+    const rgb = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+    stops.push(`${rgb} ${(t * 100).toFixed(1)}%`);
+  }
+  return `linear-gradient(${direction}, ${stops.join(', ')})`;
+}

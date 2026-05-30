@@ -39,6 +39,13 @@ import { CoordReadoutTooltip } from './CoordReadoutTooltip';
 // Phase 30 UX Dim 3 -1 debit).
 import { useViewportLayout } from '../state/useViewportLayout';
 import type { StressComponent } from '../stressDerivatives';
+import {
+  COLORMAP_IDS,
+  COLORMAP_LABELS,
+  DEFAULT_COLORMAP,
+  colormapCssGradient,
+  type ColormapId,
+} from './colormaps';
 // FM-04a Phase 24 B — onboarding tour mounted into the result-mesh
 // panel because that's where Phase 23 B/C/D added the new control
 // surfaces. The tour persists dismissal in localStorage so it shows
@@ -141,6 +148,10 @@ export function ResultMeshPlaybackPanel({
   // Mises; when the frame's elements carry a stressTensor the viewport
   // recolors by the selected derivative.
   const [fieldComponent, setFieldComponent] = useState<StressComponent>('mises');
+  // FM-04a Phase 43 Slice 4b — active colormap for the WebGL coloring + every
+  // legend surface. Default 'spectral' (legacy ramp) → no visual change unless
+  // the reviewer switches it.
+  const [colormap, setColormap] = useState<ColormapId>(DEFAULT_COLORMAP);
   // FM-04a Phase 23 D — element-value threshold filter.
   const [valueFilter, setValueFilter] = useState<ValueFilterState | null>(null);
   // FM-04a Phase 40 A — iso-surface overlay (opt-in, default OFF). The
@@ -650,6 +661,7 @@ export function ResultMeshPlaybackPanel({
                   sectionCut={sectionCut}
                   fieldComponent={fieldComponent}
                   fieldUnits={fieldUnits}
+                  colormap={colormap}
                   valueFilter={valueFilter}
                   onNodePicked={setActivePick}
                   onHoverCoords={setHoverCoords}
@@ -722,11 +734,13 @@ export function ResultMeshPlaybackPanel({
                 >
                   <div className="eyebrow">Field value</div>
                   <div
+                    data-testid="legend-gradient-bar"
                     style={{
                       height: 8,
                       borderRadius: 4,
-                      background:
-                        'linear-gradient(to right, #2563eb 0%, #10b981 50%, #f97316 100%)',
+                      // FM-04a Phase 43 Slice 4b — driven by the active colormap
+                      // so this legend bar always matches the mesh + ScaleBar.
+                      background: colormapCssGradient(colormap, 'to right'),
                     }}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -800,6 +814,40 @@ export function ResultMeshPlaybackPanel({
                       </div>
                     );
                   })()}
+                  {/* FM-04a Phase 43 Slice 4b — colormap selector. Switches the
+                      WebGL coloring + every legend ramp. Always available (a
+                      low-cognitive color preference, not gated on advanced). */}
+                  <div data-testid="legend-colormap" style={{ marginTop: 2 }}>
+                    <select
+                      data-testid="legend-colormap-select"
+                      aria-label="Colormap"
+                      value={colormap}
+                      onChange={(event) =>
+                        setColormap(event.target.value as ColormapId)
+                      }
+                      title="Switch the result colormap (Spectral / Viridis / Turbo / Grayscale)"
+                      style={{
+                        background: 'transparent',
+                        color: 'var(--text-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 3,
+                        padding: '2px 6px',
+                        fontSize: '0.66rem',
+                        fontFamily:
+                          'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
+                    >
+                      {COLORMAP_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {COLORMAP_LABELS[id]}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
               {/* FM-04a Phase 30 C — floating coord-readout tooltip.

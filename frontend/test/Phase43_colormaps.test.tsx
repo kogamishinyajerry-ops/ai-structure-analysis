@@ -18,6 +18,7 @@ import { describe, it, expect } from 'vitest'
 
 import {
   sampleColormap,
+  colormapCssGradient,
   COLORMAP_IDS,
   DEFAULT_COLORMAP,
   COLORMAP_LABELS,
@@ -102,5 +103,22 @@ describe('colormaps — sampling contract', () => {
   it('metadata: DEFAULT is spectral and every id has a label', () => {
     expect(DEFAULT_COLORMAP).toBe('spectral')
     for (const id of COLORMAP_IDS) expect(typeof COLORMAP_LABELS[id]).toBe('string')
+  })
+})
+
+describe('colormapCssGradient — legend ramp builder', () => {
+  it('builds a CSS linear-gradient with the requested direction', () => {
+    const g = colormapCssGradient('spectral', 'to right')
+    expect(g.startsWith('linear-gradient(to right,')).toBe(true)
+    expect(g).toContain('rgb(')
+  })
+
+  it('defaults to a horizontal (to right) gradient', () => {
+    expect(colormapCssGradient('viridis').startsWith('linear-gradient(to right,')).toBe(true)
+  })
+
+  it('different colormaps yield different gradient strings (legend follows the ramp)', () => {
+    expect(colormapCssGradient('spectral')).not.toBe(colormapCssGradient('grayscale'))
+    expect(colormapCssGradient('turbo')).not.toBe(colormapCssGradient('viridis'))
   })
 })
