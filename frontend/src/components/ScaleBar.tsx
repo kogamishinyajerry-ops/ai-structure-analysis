@@ -63,6 +63,15 @@ function buildGradient(): string {
   return `linear-gradient(to top, ${stops.join(', ')})`;
 }
 
+// When the range collapses (valueMax <= valueMin / non-finite bound) the mesh
+// paints EVERY element with the single t=0 ramp color (colorForElement forces
+// t=0 in that case). The legend must match — a SOLID band of that same color,
+// not the full ramp, or it would contradict the on-screen mesh (Codex R0).
+function solidStopColor(): string {
+  const [r, g, b] = colorForValueFraction(0);
+  return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+}
+
 export function ScaleBar({
   valueMin,
   valueMax,
@@ -88,7 +97,9 @@ export function ScaleBar({
     : // Degenerate: a single value (prefer the finite bound; fall back to 0).
       [Number.isFinite(valueMax) ? valueMax : Number.isFinite(valueMin) ? valueMin : 0];
 
-  const gradient = buildGradient();
+  // Full ramp when there's a real range; a solid t=0 band when it collapses,
+  // so the legend always matches what colorForElement paints on the mesh.
+  const gradient = hasRange ? buildGradient() : solidStopColor();
 
   return (
     <div

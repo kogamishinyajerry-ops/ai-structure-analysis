@@ -51,16 +51,26 @@ const SHORTCUTS: readonly ShortcutRow[] = [
 export function ShortcutsOverlay() {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Mirror `open` into a ref so the mount-once key handler reads the LIVE
+  // value (no stale closure) when deciding whether to consume Escape.
+  const openRef = useRef(false);
 
   // Trap Tab focus inside the dialog while it is open (WCAG 2.4.3),
   // reusing the project's established focus-trap hook. Paused when
   // closed; the conditional render below also tears it down.
   useFocusTrap({ containerRef: dialogRef, active: open });
 
-  // Global `?` toggle + Escape-to-close. A direct window listener is
-  // the established self-contained pattern (cf. ResultMeshWebGLViewport)
-  // — we deliberately do NOT route this through useKeyboardShortcuts so
-  // the host needs zero wiring.
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  // Global `?` toggle + Escape-to-close. A direct window listener is the
+  // established self-contained pattern (cf. ResultMeshWebGLViewport) — we
+  // deliberately do NOT route this through useKeyboardShortcuts so the host
+  // needs zero wiring. Registered in the CAPTURE phase so that, when WE are the
+  // open dialog, Escape can be consumed (stopImmediatePropagation) BEFORE the
+  // viewport's window-level Escape listener runs — dismissing this panel must
+  // not also clear a picked 3D node (Codex R0).
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
       if (event.key === '?') {
@@ -73,15 +83,19 @@ export function ShortcutsOverlay() {
         setOpen((prev) => !prev);
         return;
       }
-      if (event.key === 'Escape') {
-        // Only act on Escape when we are the open dialog; otherwise let
-        // it pass through to the palette / selection-clear handlers.
-        setOpen((prev) => (prev ? false : prev));
+      if (event.key === 'Escape' && openRef.current) {
+        // We are open → consume Escape entirely so no other global handler
+        // reacts to dismissing this panel. stopImmediatePropagation also
+        // suppresses sibling window listeners (works whether the event target
+        // is the focused element or window itself).
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setOpen(false);
       }
     };
-    window.addEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
     return () => {
-      window.removeEventListener('keydown', handler);
+      window.removeEventListener('keydown', handler, true);
     };
   }, []);
 
@@ -146,7 +160,10 @@ const backdropStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  zIndex: 60,
+  // Above the app modal stack (OnboardingTour / AdvancedModePromo /
+  // CommandPalette top out at 999–1000) so `?` opened from within any of
+  // those flows is never hidden behind them (Codex R0).
+  zIndex: 1100,
 };
 const cardStyle: React.CSSProperties = {
   background: 'var(--bg-surface)',

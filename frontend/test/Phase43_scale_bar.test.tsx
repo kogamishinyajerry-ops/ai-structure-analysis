@@ -67,6 +67,17 @@ describe('ScaleBar — color legend', () => {
     expect(ticks[0].textContent).toBe(formatHeroValue(42))
   })
 
+  it('renders a SOLID band (NOT the full ramp) when the range collapses', () => {
+    // colorForElement forces t=0 for a constant/invalid range, so the mesh is
+    // a single color; the legend must match — no multicolor gradient that
+    // would contradict the on-screen mesh (Codex Slice-3 R0).
+    render(<ScaleBar valueMin={42} valueMax={42} fieldComponent="mises" />)
+    const band = screen.getByTestId('scale-bar-band')
+    const bg = band.style.background || band.style.backgroundImage
+    expect(bg).not.toContain('linear-gradient')
+    expect(bg).toMatch(/rgb\(/)
+  })
+
   it('renders the units suffix when units are provided', () => {
     render(<ScaleBar valueMin={0} valueMax={5e8} fieldComponent="mises" units="Pa" />)
     const title = screen.getByTestId('scale-bar-title')

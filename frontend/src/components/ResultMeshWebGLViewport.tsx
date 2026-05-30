@@ -92,6 +92,10 @@ interface ResultMeshWebGLViewportProps {
    * scalar derives the per-element color. Defaults to 'mises'.
    * Elements without a tensor fall back to the `value` field. */
   fieldComponent?: StressComponent;
+  /** FM-04a Phase 43 — engineering units suffix for the in-canvas color
+   * legend (ScaleBar), e.g. 'Pa' / 'MPa'. Omitted → the legend shows no
+   * unit suffix (never fabricated). */
+  fieldUnits?: string;
   /** FM-04a Phase 23 C — node-pick callback. Fires when the reviewer
    * left-clicks the canvas (without dragging) and the raycaster
    * finds a node within hit tolerance. Forwards a `PickedNodeInfo`
@@ -155,6 +159,7 @@ export function ResultMeshWebGLViewport({
   deformationScale = 1,
   sectionCut = null,
   fieldComponent = 'mises',
+  fieldUnits,
   onNodePicked,
   valueFilter = null,
   onHoverCoords,
@@ -906,10 +911,17 @@ export function ResultMeshWebGLViewport({
           there's no canvas to navigate in the SVG-fallback path). */}
       {supported && <ViewportNavGizmo onSetView={setView} />}
       {/* FM-04a Phase 43 — color legend (ScaleBar): the value→color ramp the
-          mesh is painted with, the conspicuous missing CAE viz primitive. Same
-          {supported &&} gate as the gizmo (no canvas in the SVG-fallback). */}
-      {supported && (
-        <ScaleBar valueMin={valueMin} valueMax={valueMax} fieldComponent={fieldComponent} />
+          mesh is painted with, the conspicuous missing CAE viz primitive.
+          Gated on `message === null` (Codex R0) — i.e. ONLY when there is
+          renderable colored geometry; otherwise the empty-state message is
+          showing and a legend would describe a non-existent range. */}
+      {message === null && (
+        <ScaleBar
+          valueMin={valueMin}
+          valueMax={valueMax}
+          fieldComponent={fieldComponent}
+          units={fieldUnits}
+        />
       )}
     </div>
   );

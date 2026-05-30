@@ -649,6 +649,7 @@ export function ResultMeshPlaybackPanel({
                   deformationScale={deformationScale}
                   sectionCut={sectionCut}
                   fieldComponent={fieldComponent}
+                  fieldUnits={fieldUnits}
                   valueFilter={valueFilter}
                   onNodePicked={setActivePick}
                   onHoverCoords={setHoverCoords}

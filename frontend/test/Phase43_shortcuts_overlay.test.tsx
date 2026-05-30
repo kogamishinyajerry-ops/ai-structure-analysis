@@ -6,7 +6,7 @@
 // close-button / backdrop, and — critically — respects the
 // shouldFire text-input guard so `?` does NOT hijack typing.
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ShortcutsOverlay } from '../src/components/ShortcutsOverlay';
 
@@ -86,5 +86,26 @@ describe('ShortcutsOverlay', () => {
     expect(screen.queryByTestId('shortcuts-overlay')).toBeNull();
 
     document.body.removeChild(input);
+  });
+
+  it('consumes Escape when open — does not leak to other global handlers (Codex R0)', () => {
+    render(<ShortcutsOverlay />);
+    // A sibling window keydown listener standing in for the viewport's
+    // selection-clear Escape handler.
+    const sibling = vi.fn();
+    window.addEventListener('keydown', sibling); // bubble phase
+    try {
+      fireEvent.keyDown(window, { key: '?' });
+      expect(screen.getByTestId('shortcuts-overlay')).not.toBeNull();
+      sibling.mockClear();
+      // Dispatch on a focused element so capture/bubble phases are distinct
+      // (mirrors a real keydown). The overlay's capture-phase handler must
+      // consume Escape BEFORE the bubble-phase sibling can run.
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(screen.queryByTestId('shortcuts-overlay')).toBeNull();
+      expect(sibling).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', sibling);
+    }
   });
 });
