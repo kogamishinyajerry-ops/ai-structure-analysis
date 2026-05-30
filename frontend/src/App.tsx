@@ -1226,7 +1226,8 @@ function App() {
   ])
 
   return (
-    <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '210px 300px 1fr', height: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="app-container" style={{ display: 'grid', gridTemplateColumns: '210px 300px 1fr', flex: '1 1 auto', minHeight: 0 }}>
       {/* FM-04a Phase 29 C — onboarding tour + advanced-mode auto-
           promote mounted at App-root so reviewers landing on the
           Narrative tab (or any future tab) still see onboarding.
@@ -1286,7 +1287,7 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <div style={{ display: 'grid', gridTemplateColumns: showChat ? '1fr 340px' : '1fr', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: showChat ? '1fr 340px' : '1fr', height: '100%', overflow: 'hidden' }}>
         <main style={{ overflowY: 'auto', background: 'var(--bg-base)', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             <Topbar
               breadcrumbLabel={activeCaseId || (file ? file.name : "Session")}
@@ -1473,7 +1474,6 @@ function App() {
                 <SolverProgressPanel logs={logs} solving={solving} jobStatusLabel={jobStatusLabel} />
               </div>
             )}
-            <StatusBar caseLabel={caseLabel} runStateLabel={runState} runStateTone={runStateTone === 'warning' ? 'danger' : runStateTone} jobStatusLabel={jobStatusLabel} />
         </main>
 
         <RightRail
@@ -1485,6 +1485,8 @@ function App() {
             allowedClaim={allowedClaim}
         />
       </div>
+    </div>
+      <StatusBar caseLabel={caseLabel} runStateLabel={runState} runStateTone={runStateTone === 'warning' ? 'danger' : runStateTone} jobStatusLabel={jobStatusLabel} />
     </div>
   );
 }

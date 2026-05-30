@@ -217,15 +217,17 @@ export function SolverProgressPanel({
     const prevSolving = prevSolvingRef.current;
     prevSolvingRef.current = solving;
 
-    // A measurable solve is one we observed START after mount (false→true).
-    // A solve already in-flight at mount (firstRun && solving) has an unknown
-    // true start time → we do NOT start the clock and OMIT the readout, rather
-    // than reporting a wrong number (project honesty / Tier discipline).
-    // Ref write only — NO setState in the effect body (react-hooks/
-    // set-state-in-effect). The readout is updated exclusively from the timer
-    // callbacks below, and freezes at its last value when they are cleared on
-    // stop (so the "Solve complete" state shows the final elapsed).
-    if (solving && prevSolving === false) {
+    // Start (or restart) the MEASURED clock when a solve begins. Two genuine
+    // starts: (a) a rising edge (false→true) on an already-mounted panel, and
+    // (b) the COMMON case (Codex R0 P2) where this panel is conditionally
+    // mounted AT solve start — `showConsole` flips true together with the run,
+    // so the first effect run sees prevSolving===null && solving===true. Both
+    // are real starts (mount ≈ solve start, so the measurement is accurate);
+    // only an ONGOING solve (prevSolving===true) must not reset. Ref write
+    // only — NO setState in the effect body (react-hooks/set-state-in-effect);
+    // the readout updates from the timer callbacks below and freezes at its
+    // last value when they are cleared on stop.
+    if (solving && prevSolving !== true) {
       startRef.current = Date.now();
     }
 
