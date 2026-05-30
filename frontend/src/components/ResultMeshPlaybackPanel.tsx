@@ -44,6 +44,7 @@ import {
   COLORMAP_LABELS,
   DEFAULT_COLORMAP,
   colormapCssGradient,
+  sampleColormap,
   type ColormapId,
 } from './colormaps';
 // FM-04a Phase 24 B — onboarding tour mounted into the result-mesh
@@ -347,8 +348,8 @@ export function ResultMeshPlaybackPanel({
   }, [frameCount, playing]);
 
   const projection = useMemo(
-    () => buildProjection(summary?.selectedFrame ?? null, summary?.valueMin ?? 0, summary?.valueMax ?? 0),
-    [summary],
+    () => buildProjection(summary?.selectedFrame ?? null, summary?.valueMin ?? 0, summary?.valueMax ?? 0, colormap),
+    [summary, colormap],
   );
 
   // FM-04a Phase 43 (Codex R0 P2) — the hero headline must track the field
@@ -885,6 +886,7 @@ export function ResultMeshPlaybackPanel({
                 playing={playing}
                 deformationScale={deformationScale}
                 fieldComponent={fieldComponent}
+                colormap={colormap}
                 valueFilter={valueFilter}
                 isoSurfaceEnabled={isoSurfaceEnabled}
                 isoThreshold={
@@ -1086,7 +1088,7 @@ function MetricGrid({ summary }: { summary: NonNullable<ReturnType<typeof summar
   );
 }
 
-function buildProjection(frame: ResultMeshFrame | null, valueMin: number, valueMax: number): ProjectedPolygon[] {
+function buildProjection(frame: ResultMeshFrame | null, valueMin: number, valueMax: number, colormap: ColormapId): ProjectedPolygon[] {
   if (!frame) return [];
   const nodeMap = new Map<number, number[]>();
   frame.nodes.forEach((node) => {
@@ -1101,7 +1103,7 @@ function buildProjection(frame: ResultMeshFrame | null, valueMin: number, valueM
 
   const projected = frame.elements
     .filter((element) => (element.connectivity?.length ?? 0) >= 3)
-    .map((element, index) => projectElement(element, index, nodeMap, axes, bounds, valueMin, valueMax))
+    .map((element, index) => projectElement(element, index, nodeMap, axes, bounds, valueMin, valueMax, colormap))
     .filter((polygon): polygon is ProjectedPolygon => Boolean(polygon))
     .sort((a, b) => a.order - b.order);
   return projected;
@@ -1147,6 +1149,7 @@ function projectElement(
   bounds: NonNullable<ReturnType<typeof computeBounds>>,
   valueMin: number,
   valueMax: number,
+  colormap: ColormapId,
 ): ProjectedPolygon | null {
   const projectedPoints = (element.connectivity ?? [])
     .map((nodeLabel) => nodeMap.get(nodeLabel))
@@ -1163,34 +1166,29 @@ function projectElement(
   return {
     key: `${element.sourceElement ?? element.label ?? index}-${index}`,
     points: projectedPoints.join(' '),
-    fill: alive ? colorForElement(element, valueMin, valueMax) : 'rgba(239, 68, 68, 0.28)',
+    fill: alive ? colorForElement(element, valueMin, valueMax, colormap) : 'rgba(239, 68, 68, 0.28)',
     stroke: isProjectile ? '#f8fafc' : alive ? 'rgba(148, 163, 184, 0.5)' : 'rgba(239, 68, 68, 0.75)',
     opacity: isProjectile ? 0.92 : alive ? 0.86 : 0.5,
     order: isProjectile ? 3 : alive ? 1 : 2,
   };
 }
 
-function colorForElement(element: ResultMeshElement, valueMin: number, valueMax: number) {
+// FM-04a Phase 43 Slice 4b (Codex R0 P2) — the SVG-fallback mesh coloring now
+// samples the SHARED colormap SSOT, so changing the colormap selector recolors
+// the SVG polygons too (previously hard-coded spectral, leaving the legend and
+// mesh inconsistent in viewportMode==='svg' / context-loss fallback). At the
+// default 'spectral' the rgb() output is byte-identical to the prior ramp.
+function colorForElement(
+  element: ResultMeshElement,
+  valueMin: number,
+  valueMax: number,
+  colormap: ColormapId,
+) {
   if (element.partRole === 'projectile') return '#e5e7eb';
   const value = element.value ?? valueMin;
   const t = valueMax > valueMin ? Math.min(Math.max((value - valueMin) / (valueMax - valueMin), 0), 1) : 0;
-  if (t < 0.5) return mixColor('#2563eb', '#10b981', t * 2);
-  return mixColor('#10b981', '#f97316', (t - 0.5) * 2);
-}
-
-function mixColor(start: string, end: string, t: number) {
-  const a = hexToRgb(start);
-  const b = hexToRgb(end);
-  const mixed = a.map((value, index) => Math.round(value + (b[index] - value) * t));
-  return `rgb(${mixed[0]}, ${mixed[1]}, ${mixed[2]})`;
-}
-
-function hexToRgb(hex: string): [number, number, number] {
-  return [
-    Number.parseInt(hex.slice(1, 3), 16),
-    Number.parseInt(hex.slice(3, 5), 16),
-    Number.parseInt(hex.slice(5, 7), 16),
-  ];
+  const [r, g, b] = sampleColormap(colormap, t);
+  return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
 function readVtuState(payload: ResultMeshPayload | null) {

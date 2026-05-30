@@ -39,6 +39,7 @@ import { useCallback, useState } from 'react';
 import type { ResultMeshFrame } from '../resultMeshPlayback';
 import type { StressComponent } from '../stressDerivatives';
 import { ResultMeshWebGLViewport } from './ResultMeshWebGLViewport';
+import type { ColormapId } from './colormaps';
 import type {
   SectionCutState,
   ValueFilterState,
@@ -64,6 +65,9 @@ interface CompanionViewportProps {
   deformationScale?: number;
   /** Shared field component switcher. */
   fieldComponent?: StressComponent;
+  /** FM-04a Phase 43 Slice 4b (Codex R0 P2) — shared colormap, so both
+   * compare-cuts panes (and their scale bars) recolor together. */
+  colormap?: ColormapId;
   /** Shared threshold filter. */
   valueFilter?: ValueFilterState | null;
   /** FM-04a Phase 40 A (step 2, Codex R0 P2) — shared iso-surface
@@ -90,6 +94,7 @@ export function CompanionViewport({
   playing,
   deformationScale,
   fieldComponent,
+  colormap,
   valueFilter,
   isoSurfaceEnabled,
   isoThreshold,
@@ -264,6 +269,7 @@ export function CompanionViewport({
           deformationScale={deformationScale}
           sectionCut={sectionCut}
           fieldComponent={fieldComponent}
+          colormap={colormap}
           valueFilter={valueFilter}
           isoSurfaceEnabled={isoSurfaceEnabled}
           isoThreshold={isoThreshold}
