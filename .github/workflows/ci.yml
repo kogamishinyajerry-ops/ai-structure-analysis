@@ -37,3 +37,46 @@ jobs:
 
       - name: Test — pytest
         run: pytest tests/ -v --tb=short
+
+      # --- Frontend gate (vitest + eslint) ---
+      # FM-04a: the frontend suite (vitest) and lint (eslint) previously ran
+      # in no CI job, so 99 test files + the eslint baseline never gated `main`.
+      # Wired here into the existing required `lint-and-test` check.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Frontend — eslint baseline guard (ceiling 70)
+        working-directory: frontend
+        run: |
+          # eslint-70 baseline (FM-04a honesty contract): 70 known problems
+          # (69 errors + 1 warning) are tracked debt toward zero, NOT a clean
+          # gate — `eslint .` exits non-zero at baseline. This guard blocks
+          # REGRESSIONS above 70 without forcing the debt to zero. As debt is
+          # paid, lower the ceiling; never raise it to admit new problems.
+          set +e
+          npx eslint . -f json > eslint-report.json
+          ESLINT_EXIT=$?
+          set -e
+          if [ "$ESLINT_EXIT" -gt 1 ]; then
+            echo "::error::eslint crashed (exit $ESLINT_EXIT), not a lint-count failure"
+            cat eslint-report.json
+            exit 1
+          fi
+          COUNT=$(node -e "const d=require('./eslint-report.json'); console.log(d.reduce((n,f)=>n+f.errorCount+f.warningCount,0))")
+          echo "eslint problems: $COUNT (baseline ceiling 70)"
+          if [ "$COUNT" -gt 70 ]; then
+            echo "::error::eslint regressed above the 70 baseline ($COUNT > 70) — fix new problems before merge"
+            exit 1
+          fi
+
+      - name: Frontend — test (vitest)
+        run: npm test
+        working-directory: frontend
