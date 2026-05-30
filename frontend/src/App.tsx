@@ -48,7 +48,8 @@ import { ExplorationTabPanel } from './components/ExplorationTabPanel';
 import { OperatorStatusPanel } from './components/OperatorStatusPanel';
 import { TabButton } from './components/TabButton';
 import { RightRail } from './components/RightRail';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import { type Command } from './commands/registry';
 import { FALLBACK_MATERIALS, type MaterialRecord } from './materialsClient';
 // FM-04a Phase 25 B — palette + topbar config extracted for LOC discipline.
@@ -1218,16 +1219,7 @@ function App() {
     activeCaseId,
     materials: FALLBACK_MATERIALS,
   });
-  useKeyboardShortcuts([
-    {
-      hotkey: 'mod+k',
-      handler: (e) => {
-        e.preventDefault()
-        setPaletteOpen((prev) => !prev)
-      },
-      fireInTextInput: true,
-    },
-  ])
+  useGlobalShortcuts({ togglePalette: () => setPaletteOpen((prev) => !prev) })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -1491,6 +1483,7 @@ function App() {
       </div>
     </div>
       <StatusBar caseLabel={caseLabel} runStateLabel={runState} runStateTone={runStateTone === 'warning' ? 'danger' : runStateTone} jobStatusLabel={jobStatusLabel} />
+      <ShortcutsOverlay />
     </div>
   );
 }
