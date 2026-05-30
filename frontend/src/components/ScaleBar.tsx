@@ -24,6 +24,7 @@
 import type { StressComponent } from '../stressDerivatives';
 import { colorForValueFraction } from './viewportGeometry';
 import { FIELD_COMPONENT_LABELS, formatHeroValue } from './heroPeakFormat';
+import { DEFAULT_COLORMAP, type ColormapId } from './colormaps';
 
 export interface ScaleBarProps {
   /** Lower bound of the active mesh-coloring range (maps to t=0, band bottom). */
@@ -34,6 +35,9 @@ export interface ScaleBarProps {
   fieldComponent?: StressComponent;
   /** Engineering units suffix (e.g. 'Pa'); OMITTED when absent — never fabricated. */
   units?: string | null;
+  /** Active colormap — MUST match the viewport's so the legend ramp equals the
+   * mesh coloring. Defaults to 'spectral' (legacy ramp). */
+  colormap?: ColormapId;
 }
 
 // Number of color stops sampled to build the CSS gradient. 11 stops resolve
@@ -51,11 +55,11 @@ const BAND_WIDTH = 14;
 // points. CSS gradients run top→bottom by default; we declare `to top` so the
 // stop at offset 0% sits at the BOTTOM (t=0 = valueMin) and 100% at the TOP
 // (t=1 = valueMax) — value increases upward, matching the CAE convention.
-function buildGradient(): string {
+function buildGradient(colormap: ColormapId): string {
   const stops: string[] = [];
   for (let i = 0; i < GRADIENT_STOPS; i++) {
     const t = i / (GRADIENT_STOPS - 1);
-    const [r, g, b] = colorForValueFraction(t);
+    const [r, g, b] = colorForValueFraction(t, colormap);
     const rgb = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
     const pct = (t * 100).toFixed(1);
     stops.push(`${rgb} ${pct}%`);
@@ -67,8 +71,8 @@ function buildGradient(): string {
 // paints EVERY element with the single t=0 ramp color (colorForElement forces
 // t=0 in that case). The legend must match — a SOLID band of that same color,
 // not the full ramp, or it would contradict the on-screen mesh (Codex R0).
-function solidStopColor(): string {
-  const [r, g, b] = colorForValueFraction(0);
+function solidStopColor(colormap: ColormapId): string {
+  const [r, g, b] = colorForValueFraction(0, colormap);
   return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
 }
 
@@ -77,6 +81,7 @@ export function ScaleBar({
   valueMax,
   fieldComponent = 'mises',
   units,
+  colormap = DEFAULT_COLORMAP,
 }: ScaleBarProps) {
   const title = FIELD_COMPONENT_LABELS[fieldComponent] ?? fieldComponent;
   const unitSuffix = units ? ` ${units}` : '';
@@ -99,7 +104,7 @@ export function ScaleBar({
 
   // Full ramp when there's a real range; a solid t=0 band when it collapses,
   // so the legend always matches what colorForElement paints on the mesh.
-  const gradient = hasRange ? buildGradient() : solidStopColor();
+  const gradient = hasRange ? buildGradient(colormap) : solidStopColor(colormap);
 
   return (
     <div

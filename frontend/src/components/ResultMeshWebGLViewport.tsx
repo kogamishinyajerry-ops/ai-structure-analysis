@@ -51,6 +51,7 @@ import { detectWebGLSupport } from './viewportAnimation';
 // (and, for fit, a bounds-framing radius recompute).
 import { ViewportNavGizmo } from './ViewportNavGizmo';
 import { ScaleBar } from './ScaleBar';
+import { DEFAULT_COLORMAP, type ColormapId } from './colormaps';
 import { VIEW_PRESET_ANGLES, type ViewPreset } from './viewportNavPresets';
 // FM-04a Phase 40 A — iso-surface overlay. The extraction is a SMOOTHED
 // Tier-0 viz approximation (cell→point averaging of the genuinely
@@ -96,6 +97,10 @@ interface ResultMeshWebGLViewportProps {
    * legend (ScaleBar), e.g. 'Pa' / 'MPa'. Omitted → the legend shows no
    * unit suffix (never fabricated). */
   fieldUnits?: string;
+  /** FM-04a Phase 43 Slice 4 — active colormap for the per-element coloring
+   * AND the legend ramp. Defaults to 'spectral' (the legacy blue→green→orange
+   * ramp), so omitting it preserves the pre-Slice-4 rendering exactly. */
+  colormap?: ColormapId;
   /** FM-04a Phase 23 C — node-pick callback. Fires when the reviewer
    * left-clicks the canvas (without dragging) and the raycaster
    * finds a node within hit tolerance. Forwards a `PickedNodeInfo`
@@ -160,6 +165,7 @@ export function ResultMeshWebGLViewport({
   sectionCut = null,
   fieldComponent = 'mises',
   fieldUnits,
+  colormap = DEFAULT_COLORMAP,
   onNodePicked,
   valueFilter = null,
   onHoverCoords,
@@ -364,6 +370,7 @@ export function ResultMeshWebGLViewport({
         deformationScale,
         fieldComponent,
         valueFilter,
+        colormap,
       },
     );
 
@@ -441,7 +448,7 @@ export function ResultMeshWebGLViewport({
     }
     setTriangleCount(count);
     renderScene(state);
-  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter]);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter, colormap]);
 
   // FM-04a Phase 40 A (Codex R1 P2) — iso-surface overlay built in a
   // SEPARATE effect from the base mesh. It rebuilds on isoData (toggle /
@@ -921,6 +928,7 @@ export function ResultMeshWebGLViewport({
           valueMax={valueMax}
           fieldComponent={fieldComponent}
           units={fieldUnits}
+          colormap={colormap}
         />
       )}
     </div>

@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import type { ResultMeshElement, ResultMeshFrame } from '../resultMeshPlayback';
 import { componentValue, type StressComponent } from '../stressDerivatives';
 import { applyValueFilter, type ValueFilterState } from './viewportRaycaster';
+import { sampleColormap, DEFAULT_COLORMAP, type ColormapId } from './colormaps';
 
 /** Phase 22 B — section-cut clipping plane state. */
 export interface SectionCutState {
@@ -99,23 +100,12 @@ export function elementTriangles(
   return out;
 }
 
+// FM-04a Phase 43 Slice 4 — the blue→green→orange ramp is now the 'spectral'
+// colormap (colormaps.ts). gradientStop is retained as a thin spectral alias
+// (kept byte-identical: sampleColormap('spectral', …) reproduces the original
+// piecewise-linear arithmetic) so legacy internal callers are unaffected.
 export function gradientStop(t: number): [number, number, number] {
-  const tc = Math.max(0, Math.min(1, t));
-  // blue (#2563eb = 37/99/235) → green (#10b981 = 16/185/129) → orange (#f97316 = 249/115/22)
-  if (tc < 0.5) {
-    const k = tc * 2;
-    return [
-      (37 + (16 - 37) * k) / 255,
-      (99 + (185 - 99) * k) / 255,
-      (235 + (129 - 235) * k) / 255,
-    ];
-  }
-  const k = (tc - 0.5) * 2;
-  return [
-    (16 + (249 - 16) * k) / 255,
-    (185 + (115 - 185) * k) / 255,
-    (129 + (22 - 129) * k) / 255,
-  ];
+  return sampleColormap('spectral', t);
 }
 
 export function colorForElement(
@@ -123,6 +113,7 @@ export function colorForElement(
   valueMin: number,
   valueMax: number,
   fieldComponent: StressComponent = 'mises',
+  colormap: ColormapId = DEFAULT_COLORMAP,
 ): [number, number, number] {
   if (element.alive === false) return [0.94, 0.27, 0.27]; // red for deleted
   if (element.partRole === 'projectile') return [0.9, 0.92, 0.94];
@@ -134,11 +125,14 @@ export function colorForElement(
     ? componentValue(element.stressTensor, fieldComponent, fallback)
     : fallback;
   const t = valueMax > valueMin ? (v - valueMin) / (valueMax - valueMin) : 0;
-  return gradientStop(t);
+  return sampleColormap(colormap, t);
 }
 
-export function colorForValueFraction(t: number): [number, number, number] {
-  return gradientStop(t);
+export function colorForValueFraction(
+  t: number,
+  colormap: ColormapId = DEFAULT_COLORMAP,
+): [number, number, number] {
+  return sampleColormap(colormap, t);
 }
 
 /** Phase 22 B — build node-coordinate map honouring optional
@@ -210,6 +204,7 @@ export function buildBufferGeometry(
     deformationScale?: number;
     fieldComponent?: StressComponent;
     valueFilter?: ValueFilterState | null;
+    colormap?: ColormapId;
   } = {},
 ): {
   geometry: THREE.BufferGeometry;
@@ -236,6 +231,7 @@ export function buildBufferGeometry(
       valueMin,
       valueMax,
       options.fieldComponent ?? 'mises',
+      options.colormap ?? DEFAULT_COLORMAP,
     );
     triangles.push(...elementTriangles(element, nodeCoords, color));
   }
