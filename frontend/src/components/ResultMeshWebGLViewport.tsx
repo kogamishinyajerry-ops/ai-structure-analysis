@@ -50,6 +50,7 @@ import { detectWebGLSupport } from './viewportAnimation';
 // owns the camera seam that maps each preset onto azimuth/elevation
 // (and, for fit, a bounds-framing radius recompute).
 import { ViewportNavGizmo } from './ViewportNavGizmo';
+import { ScaleBar } from './ScaleBar';
 import { VIEW_PRESET_ANGLES, type ViewPreset } from './viewportNavPresets';
 // FM-04a Phase 40 A — iso-surface overlay. The extraction is a SMOOTHED
 // Tier-0 viz approximation (cell→point averaging of the genuinely
@@ -904,6 +905,12 @@ export function ResultMeshWebGLViewport({
           WebGL is supported (the camera seam is a no-op otherwise, but
           there's no canvas to navigate in the SVG-fallback path). */}
       {supported && <ViewportNavGizmo onSetView={setView} />}
+      {/* FM-04a Phase 43 — color legend (ScaleBar): the value→color ramp the
+          mesh is painted with, the conspicuous missing CAE viz primitive. Same
+          {supported &&} gate as the gizmo (no canvas in the SVG-fallback). */}
+      {supported && (
+        <ScaleBar valueMin={valueMin} valueMax={valueMax} fieldComponent={fieldComponent} />
+      )}
     </div>
   );
 }
