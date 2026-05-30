@@ -48,6 +48,16 @@ export interface SolverProgressPanelProps {
   solving: boolean;
   /** Short status string, e.g. "running" / "completed" / "failed" / null. */
   jobStatusLabel?: string | null;
+  /**
+   * Authoritative epoch-ms timestamp of when THIS solve was locally
+   * initiated (the host's run handler stamps Date.now()). The elapsed
+   * readout is measured purely from this value. When null/undefined —
+   * e.g. the panel mounted onto a job that was ALREADY running before we
+   * appeared (a Copilot-attached solve whose true start we never observed)
+   * — the start is UNKNOWN, so the readout is OMITTED rather than
+   * under-reported (Codex Slice-2 R1; honesty contract).
+   */
+  solveStartedAt?: number | null;
 }
 
 const cardStyle: CSSProperties = {
@@ -195,6 +205,7 @@ export function SolverProgressPanel({
   logs,
   solving,
   jobStatusLabel,
+  solveStartedAt,
 }: SolverProgressPanelProps) {
   const safeLogs = Array.isArray(logs) ? logs : [];
 
@@ -202,54 +213,36 @@ export function SolverProgressPanel({
   const tone = chipToneFor(jobStatusLabel, solving);
   const complete = !solving && isCompleteLabel(jobStatusLabel);
 
-  // ---- Elapsed timer: measured from a real start timestamp ----------------
-  // Resets when a NEW solve starts (solving false→true). Counts up via an
-  // interval while solving, then freezes when solving ends. We never derive
-  // elapsed from the logs; if a solve was already running at mount (no rising
-  // edge observed) we omit the readout rather than show a wrong number.
-  const startRef = useRef<number | null>(null);
-  // null = effect has not run yet (mount). After the first run it holds the
-  // previous `solving` value so we can detect a genuine false→true transition.
-  const prevSolvingRef = useRef<boolean | null>(null);
+  // ---- Elapsed timer: measured from the host's AUTHORITATIVE start ---------
+  // The host stamps `solveStartedAt` (epoch ms) at the genuine local solve
+  // initiation. We measure elapsed purely from that — never from the logs and
+  // never guessed from mount timing. When `solveStartedAt` is null/undefined
+  // (e.g. the panel mounted onto an already-running Copilot-attached job whose
+  // true start we never observed) the readout is OMITTED rather than
+  // under-reported (Codex Slice-2 R1; honesty contract). The clock ticks only
+  // while solving and FREEZES at its last value when solving ends.
+  const hasStart =
+    typeof solveStartedAt === 'number' && Number.isFinite(solveStartedAt);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   useEffect(() => {
-    const prevSolving = prevSolvingRef.current;
-    prevSolvingRef.current = solving;
-
-    // Start (or restart) the MEASURED clock when a solve begins. Two genuine
-    // starts: (a) a rising edge (false→true) on an already-mounted panel, and
-    // (b) the COMMON case (Codex R0 P2) where this panel is conditionally
-    // mounted AT solve start — `showConsole` flips true together with the run,
-    // so the first effect run sees prevSolving===null && solving===true. Both
-    // are real starts (mount ≈ solve start, so the measurement is accurate);
-    // only an ONGOING solve (prevSolving===true) must not reset. Ref write
-    // only — NO setState in the effect body (react-hooks/set-state-in-effect);
-    // the readout updates from the timer callbacks below and freezes at its
-    // last value when they are cleared on stop.
-    if (solving && prevSolving !== true) {
-      startRef.current = Date.now();
-    }
-
-    if (!solving || startRef.current === null) return undefined;
-
-    const tick = () => {
-      if (startRef.current !== null) setElapsedMs(Date.now() - startRef.current);
-    };
-    // A 0ms kick paints (and, on a re-solve, resets) the readout promptly
-    // without a synchronous setState; the interval then counts up.
+    // Only run a clock when we have an authoritative start AND a live solve.
+    if (!hasStart || !solving) return undefined;
+    const startedAt = solveStartedAt as number;
+    const tick = () => setElapsedMs(Math.max(0, Date.now() - startedAt));
+    // A 0ms kick paints the readout promptly without a synchronous setState in
+    // the effect body (react-hooks/set-state-in-effect); the interval counts
+    // up. On stop the cleanup clears both, freezing elapsedMs at its last tick.
     const kick = window.setTimeout(tick, 0);
     const id = window.setInterval(tick, 250);
     return () => {
       window.clearTimeout(kick);
       window.clearInterval(id);
     };
-  }, [solving]);
+  }, [hasStart, solveStartedAt, solving]);
 
-  // `elapsedMs` is set to a number ONLY after a measurable start (rising edge);
-  // it stays null when a solve was already running at mount. So it alone tells
-  // us whether to show the readout — we must NOT read startRef.current during
-  // render (react-hooks: no ref access in render).
+  // elapsedMs is non-null ONLY after a measured tick (which requires an
+  // authoritative start). It alone gates the readout — no ref reads in render.
   const showElapsed = elapsedMs !== null;
   const elapsedSeconds = showElapsed ? Math.floor((elapsedMs as number) / 1000) : 0;
 

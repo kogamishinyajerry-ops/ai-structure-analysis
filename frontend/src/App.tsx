@@ -121,6 +121,7 @@ const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
+const epochNowMs = (): number => Date.now(); // module-scope clock read — react-hooks/purity-safe; called from event handlers (e.g. runSolver) only.
 
 const SOLVER_FAILURE_MARKERS = [
   'System Error:',
@@ -207,6 +208,7 @@ function App() {
   
   // Solver & Explorer State
   const [solving, setSolving] = useState(false);
+  const [solveStartedAt, setSolveStartedAt] = useState<number | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -341,6 +343,7 @@ function App() {
     if (!activeCaseId) return;
     const caseIdForRun = activeCaseId;
     setSolving(true);
+    setSolveStartedAt(epochNowMs());
     setLogs([]);
     setShowConsole(true);
     setCurrentJobId(null);
@@ -497,6 +500,7 @@ function App() {
           setCurrentJobAnalysis(analysisType);
           setShowConsole(true);
           setSolving(true);
+          setSolveStartedAt(null);
           connectToLogs(data.job_id);
       } else if (data.experiment_id) {
           pollExperiment(data.experiment_id);
@@ -1471,7 +1475,7 @@ function App() {
 
             {showConsole && (
               <div style={{ margin: '0 40px 40px 40px' }}>
-                <SolverProgressPanel logs={logs} solving={solving} jobStatusLabel={jobStatusLabel} />
+                <SolverProgressPanel logs={logs} solving={solving} jobStatusLabel={jobStatusLabel} solveStartedAt={solveStartedAt} />
               </div>
             )}
         </main>
