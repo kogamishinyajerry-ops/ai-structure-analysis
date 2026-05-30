@@ -354,9 +354,11 @@ export function ResultMeshPlaybackPanel({
               elements: summary.selectedFrame?.elements ?? [],
             },
             fieldComponent,
+            viewportMode,
+            valueFilter,
           )
         : null,
-    [summary, fieldComponent],
+    [summary, fieldComponent, viewportMode, valueFilter],
   );
 
   const vtuState = readVtuState(payload);

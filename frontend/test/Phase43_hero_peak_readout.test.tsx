@@ -27,6 +27,7 @@ import {
   FIELD_COMPONENT_LABELS,
 } from '../src/components/heroPeakFormat'
 import type { ResultMeshElement } from '../src/resultMeshPlayback'
+import type { ValueFilterState } from '../src/components/viewportRaycaster'
 
 describe('HeroPeakReadout — Phase 43 hero peak banner', () => {
   it('displays the formatted peak value (valueMax) + field label + units', () => {
@@ -152,6 +153,53 @@ describe('selectActiveFieldPeak — Phase 43 Codex R0 P2 (hero tracks active com
     expect(selectActiveFieldPeak(mixed, 'sxx')).toEqual({
       label: FIELD_COMPONENT_LABELS.sxx,
       value: 900,
+    })
+  })
+
+  it('falls back to the scalar field in SVG mode (Codex R1 P2)', () => {
+    // SVG colors by the scalar `value` path (colorForElement) and ignores
+    // tensor-component switching — so the headline must NOT advertise σxx there.
+    expect(selectActiveFieldPeak(input, 'sxx', 'svg')).toEqual({
+      label: 'Von Mises stress',
+      value: 9_000,
+    })
+  })
+
+  it('excludes hidden elements — deleted cells + projectile parts (Codex R1 P2)', () => {
+    // The renderer does not field-color deleted cells (alive===false) or
+    // projectile parts (drawn fixed gray), so they must not headline the peak.
+    const withHidden = {
+      fieldLabel: 'Von Mises stress',
+      valueMax: 9_000,
+      elements: [
+        { value: 200, stressTensor: { sxx: 200, syy: 0, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+        { value: 8000, alive: false, stressTensor: { sxx: 8000, syy: 0, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+        { value: 7000, partRole: 'projectile', stressTensor: { sxx: 7000, syy: 0, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+      ] as ResultMeshElement[],
+    }
+    // Only the first (visible) element counts → σxx peak 200, not 8000 / 7000.
+    expect(selectActiveFieldPeak(withHidden, 'sxx', 'webgl')).toEqual({
+      label: FIELD_COMPONENT_LABELS.sxx,
+      value: 200,
+    })
+  })
+
+  it('honors an active value-filter when computing the component peak (Codex R1 P2)', () => {
+    // A value-filtered-out element is not in the visible contour, so it cannot
+    // be the headline — mirror the renderer's applyValueFilter selection.
+    const filter: ValueFilterState = { minValue: null, maxValue: 250, mode: 'inside' }
+    const filtered = {
+      fieldLabel: 'Von Mises stress',
+      valueMax: 9_000,
+      elements: [
+        { value: 200, stressTensor: { sxx: 200, syy: 0, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+        { value: 600, stressTensor: { sxx: 600, syy: 0, szz: 0, sxy: 0, syz: 0, sxz: 0 } },
+      ] as ResultMeshElement[],
+    }
+    // σxx=600 is filtered out (>250); the visible peak is 200.
+    expect(selectActiveFieldPeak(filtered, 'sxx', 'webgl', filter)).toEqual({
+      label: FIELD_COMPONENT_LABELS.sxx,
+      value: 200,
     })
   })
 })

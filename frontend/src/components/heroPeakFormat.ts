@@ -6,6 +6,7 @@
 
 import { componentValue, type StressComponent } from '../stressDerivatives';
 import type { ResultMeshElement } from '../resultMeshPlayback';
+import { applyValueFilter, type ValueFilterState } from './viewportRaycaster';
 
 // Largest sensible heading token for the value. The MetricGrid cells
 // render their value at 0.9rem; --fs-xl (1.6rem) is unambiguously larger
@@ -63,24 +64,38 @@ export interface HeroFieldSelection {
 export function selectActiveFieldPeak(
   input: HeroFieldInput,
   fieldComponent: StressComponent,
+  viewportMode: 'webgl' | 'svg' = 'webgl',
+  valueFilter: ValueFilterState | null = null,
 ): HeroFieldSelection {
-  if (fieldComponent === 'mises') {
+  // The scalar summary peak is authoritative whenever the displayed field IS
+  // the scalar `value` path:
+  //   • the Mises default; OR
+  //   • the SVG renderer — it colors by element.value (colorForElement) and
+  //     ignores tensor-component switching, so the headline must NOT advertise
+  //     a σ-component there (Codex R1 P2); OR
+  //   • a frame with no tensor data at all — the switcher is gated on tensor
+  //     presence, so naming a σ-component would mislabel scalar data (Codex R0
+  //     P2 defensive fallback).
+  const tensorActive =
+    viewportMode === 'webgl' &&
+    fieldComponent !== 'mises' &&
+    input.elements.some((el) => Boolean(el.stressTensor));
+  if (!tensorActive) {
     return { label: input.fieldLabel, value: input.valueMax };
   }
-  // No tensor anywhere → the field IS the scalar `value` path (the switcher is
-  // gated on tensor presence); naming it a σ-component would mislabel scalar
-  // data, so keep the scalar summary. (Codex R0 P2 — defensive fallback.)
-  if (!input.elements.some((el) => Boolean(el.stressTensor))) {
-    return { label: input.fieldLabel, value: input.valueMax };
-  }
-  // Mixed / all-tensor frame: recompute the peak over EVERY element via the
-  // SAME path the viewport colors by (viewportGeometry.colorForElement +
-  // ResultMeshWebGLViewport) — tensor elements through the component,
-  // scalar-only elements through their `value` fallback (componentValue
-  // returns the fallback when the tensor is absent). Skipping the scalar-only
-  // elements (Codex R1 P2) would under-report the maximum actually displayed.
+  // Recompute the component peak over ONLY the elements the WebGL renderer
+  // actually field-colors, mirroring ResultMeshWebGLViewport / viewportGeometry
+  // (Codex R1 P2 — otherwise the banner can headline a value not present in the
+  // visible contour): skip deleted cells (alive===false render as the delete
+  // hue), projectile parts (drawn a fixed gray, not field-colored), and
+  // value-filtered-out elements. Per element use the SAME componentValue path
+  // (tensor → component; scalar-only → `value` fallback) so the headline equals
+  // the maximum actually visible.
   let peak = -Infinity;
   for (const el of input.elements) {
+    if (el.alive === false) continue;
+    if (el.partRole === 'projectile') continue;
+    if (valueFilter && !applyValueFilter(el, valueFilter, fieldComponent)) continue;
     const v = componentValue(el.stressTensor, fieldComponent, el.value ?? Number.NaN);
     if (Number.isFinite(v) && v > peak) peak = v;
   }
