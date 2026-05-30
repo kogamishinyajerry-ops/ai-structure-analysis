@@ -2,7 +2,7 @@
 //
 // Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import assert from 'node:assert/strict'
 
 import {
@@ -13,20 +13,52 @@ import {
 } from '../src/candidateCaseRegistry.ts'
 
 describe('candidate case registry', () => {
-  it('exposes the three on-disk candidate dirs as a fallback list', () => {
+  it('exposes every on-disk candidate dir as a fallback list, each honesty-guarded', () => {
+    // FM-04a — the fallback cohort grew from the original 3 GS-102 demo
+    // decks to the full on-disk `golden_samples/*-candidate/` set as the
+    // harness added validated cases. `Phase38H_fallback_cohort_coverage`
+    // is the disk-parity drift guard; this exact-set pin is the unit-level
+    // mirror (re-run scripts/gen_fallback_candidate_registry.py on drift).
     const ids = FALLBACK_CANDIDATE_CASES.map((c) => c.caseId).sort()
     assert.deepEqual(ids, [
       'GS-102-candidate',
       'GS-102-hifi-candidate',
       'GS-102-refined-candidate',
+      'cantilever-beam-candidate',
+      'cantilever-beam-modal-candidate',
+      'cantilever-beam-modal-l50-candidate',
+      'cantilever-buckle-candidate',
+      'cantilever-dynamic-candidate',
+      'cylinder-pv-candidate',
+      'cylinder-pv-collapsed-candidate',
+      'cylinder-pv-extended-candidate',
+      'euler-column-candidate',
+      'heat-transfer-1d-candidate',
+      'hertz-contact-candidate',
+      'modal-cantilever-candidate',
+      'modal-cantilever-stiff-candidate',
+      'nafems-le10-thick-plate-candidate',
+      'plate-simply-supported-candidate',
+      'plate-ss-shell-candidate',
+      'plate-with-hole-candidate',
+      'rod-wave-impact-candidate',
+      'rod-wave-impact-energy-leak-candidate',
+      'rod-wave-impact-stiff-candidate',
+      'wedge-c3d6-candidate',
     ])
-    // Every fallback case must carry the Tier 1 boundary; never an unguarded
-    // claim of signed validation.
+    // Anti-overclaim guard. The fallback cohort is a Tier 1 + Tier 2 mix
+    // (Tier 2 entries were promoted via a real-solver cross_check_verdict.yaml
+    // overlay). EVERY entry — regardless of tier — must explicitly disclaim
+    // signed validation and never imply a benchmark/signoff it lacks.
     for (const c of FALLBACK_CANDIDATE_CASES) {
-      assert.match(c.claimBoundary, /tier1_engineering_candidate/)
       assert.match(c.claimBoundary, /not_signed_validation/)
-      assert.match(c.claimBoundary, /not_benchmark_agreement/)
-      assert.equal(c.claimTier, 'Tier 1 engineering candidate')
+      if (c.claimTier === 'Tier 1 engineering candidate') {
+        assert.match(c.claimBoundary, /tier1_engineering_candidate/)
+        assert.match(c.claimBoundary, /not_benchmark_agreement/)
+      } else {
+        assert.match(c.claimTier, /Tier 2/)
+        assert.match(c.claimBoundary, /tier2_real_solver_validated/)
+      }
     }
   })
 

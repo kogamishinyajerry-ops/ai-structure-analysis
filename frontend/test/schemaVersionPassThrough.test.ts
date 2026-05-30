@@ -13,7 +13,7 @@
 // which schema each captured artifact was emitted under.
 
 import { strict as assert } from 'node:assert'
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import { parseAcceptancePacket } from '../src/acceptancePacketClient.ts'
 import { parseArchivedPacketDiff } from '../src/archivedPacketDiffClient.ts'
 import { parseCaseComparison } from '../src/caseComparisonClient.ts'

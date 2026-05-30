@@ -8,7 +8,7 @@
 // `numericalDeltas` must be an empty array, not undefined.
 
 import { strict as assert } from 'node:assert'
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import { parseCohortSnapshotDiff } from '../src/cohortSnapshotClient.ts'
 
 describe('parseCohortSnapshotDiff — numerical_deltas (Phase 6 A)', () => {

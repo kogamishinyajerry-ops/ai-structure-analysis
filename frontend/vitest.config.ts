@@ -15,11 +15,13 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
-    // Phase 7 E — only the new component .test.tsx files. The legacy
-    // .test.ts files use `node --test` (see frontend/test/*.test.ts);
-    // we do not migrate them here. A future slice could either run them
-    // under vitest too or keep two runners.
-    include: ['test/**/*.test.tsx'],
+    // FM-04a — run BOTH the component `.test.tsx` files AND the logic
+    // `.test.ts` files under one vitest runner. The legacy `.test.ts`
+    // files were authored against `node:test`/`node:assert` but were
+    // gated by no runner in CI; their `describe`/`it`/`test` imports
+    // were migrated to vitest (node:assert kept — it is a Node builtin
+    // that works under vitest, so assertion semantics are unchanged).
+    include: ['test/**/*.test.{ts,tsx}'],
     css: false,
   },
 })

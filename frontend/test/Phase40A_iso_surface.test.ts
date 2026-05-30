@@ -4,7 +4,7 @@
 // against hand-computed crossings + the honesty metadata contract.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 
 import {
   averageElementValuesToNodes,

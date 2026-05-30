@@ -3,7 +3,7 @@
 // Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
 import { strict as assert } from 'node:assert'
-import { describe, it } from 'node:test'
+import { describe, it } from 'vitest'
 import {
   parseCohortSnapshotDiff,
   parseSnapshotListing,
