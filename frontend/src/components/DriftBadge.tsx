@@ -96,7 +96,22 @@ const baseStyle: CSSProperties = {
 }
 
 const severityStyles: Record<DriftSeverity, CSSProperties> = {
-  info: { ...baseStyle, background: '#1e3a5f', color: '#cfe4ff' },
-  warn: { ...baseStyle, background: '#5c4416', color: '#ffe3b3' },
-  danger: { ...baseStyle, background: '#5c1e1e', color: '#ffcdcd' },
+  info: {
+    ...baseStyle,
+    background: 'rgba(47, 111, 219, 0.10)',
+    color: 'var(--info-400)',
+    border: '1px solid rgba(47, 111, 219, 0.30)',
+  },
+  warn: {
+    ...baseStyle,
+    background: 'rgba(179, 121, 26, 0.10)',
+    color: 'var(--warn-400)',
+    border: '1px solid rgba(179, 121, 26, 0.30)',
+  },
+  danger: {
+    ...baseStyle,
+    background: 'rgba(197, 69, 59, 0.10)',
+    color: 'var(--danger-400)',
+    border: '1px solid rgba(197, 69, 59, 0.30)',
+  },
 }

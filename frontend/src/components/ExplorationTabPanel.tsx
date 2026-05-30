@@ -75,7 +75,7 @@ export function ExplorationTabPanel({
                   style={{
                     background: comparedIndices?.includes(i) ? 'var(--accent)' : 'transparent',
                     border: '1px solid var(--accent)',
-                    color: comparedIndices?.includes(i) ? '#000' : 'var(--accent)',
+                    color: comparedIndices?.includes(i) ? '#fff' : 'var(--accent)',
                     padding: '4px 12px',
                     borderRadius: '4px',
                     fontSize: '0.75rem',

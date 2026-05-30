@@ -121,17 +121,17 @@ export function ChatPanel({
   });
 
   const severityColor = (severity: CaeReviewCard['severity']) => {
-    if (severity === 'critical') return '#ef4444';
-    if (severity === 'warning') return '#f59e0b';
+    if (severity === 'critical') return 'var(--danger-400)';
+    if (severity === 'warning') return 'var(--warn-400)';
     return 'var(--accent)';
   };
 
   const renderReviewCards = () => (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ display: 'grid', gap: '8px' }}>
-        <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'rgba(15, 23, 42, 0.65)' }}>
+        <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--c-50)' }}>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>Current claim boundary</div>
-          <div style={{ color: '#f59e0b', fontSize: '0.84rem', fontWeight: 700 }}>{claimTier}</div>
+          <div style={{ color: 'var(--warn-400)', fontSize: '0.84rem', fontWeight: 700 }}>{claimTier}</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '6px', lineHeight: 1.4 }}>{allowedClaim}</div>
         </div>
       </div>
@@ -142,7 +142,7 @@ export function ChatPanel({
         </div>
       ) : (
         cardsForTab.map((card) => (
-          <div key={`${card.card_type}-${card.finding}`} style={{ padding: '14px', borderRadius: '8px', border: `1px solid ${severityColor(card.severity)}`, background: 'rgba(2, 6, 23, 0.5)' }}>
+          <div key={`${card.card_type}-${card.finding}`} style={{ padding: '14px', borderRadius: '8px', border: `1px solid ${severityColor(card.severity)}`, background: 'var(--c-50)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
               <div style={{ fontSize: '0.68rem', color: severityColor(card.severity), textTransform: 'uppercase', fontWeight: 800 }}>{card.card_type.replace(/_/g, ' ')}</div>
               <div style={{ color: severityColor(card.severity), fontSize: '0.68rem', fontWeight: 800 }}>{card.severity}</div>
@@ -154,7 +154,7 @@ export function ChatPanel({
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.45 }}>
               <strong style={{ color: 'var(--text-primary)' }}>Action:</strong> {card.recommended_action}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '6px', lineHeight: 1.45 }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--warn-400)', marginTop: '6px', lineHeight: 1.45 }}>
               {card.claim_impact}
             </div>
           </div>
@@ -185,8 +185,8 @@ export function ChatPanel({
                 padding: '7px 6px',
                 borderRadius: '6px',
                 border: '1px solid var(--border)',
-                background: activeTab === tab.id ? 'var(--accent)' : 'rgba(15, 23, 42, 0.65)',
-                color: activeTab === tab.id ? '#000' : 'var(--text-secondary)',
+                background: activeTab === tab.id ? 'var(--accent)' : 'var(--c-50)',
+                color: activeTab === tab.id ? '#fff' : 'var(--text-secondary)',
                 fontSize: '0.68rem',
                 fontWeight: 800,
                 cursor: 'pointer',
@@ -208,30 +208,30 @@ export function ChatPanel({
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', gap: '10px', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
             {m.role === 'assistant' && <div style={{ minWidth: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Bot size={16} color="var(--accent)" /></div>}
-            <div style={{ background: m.role === 'user' ? 'var(--accent)' : 'rgba(255,255,255,0.05)', color: m.role === 'user' ? '#000' : '#fff', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', lineHeight: '1.4' }}>
+            <div style={{ background: m.role === 'user' ? 'var(--accent)' : 'var(--c-100)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', lineHeight: '1.4' }}>
               {m.content}
               
               {m.proposedAction && !m.executed && (
-                <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                <div style={{ marginTop: '12px', padding: '12px', background: 'var(--c-200)', borderRadius: '8px', border: '1px solid var(--border)' }}>
                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Sparkles size={12} /> PROPOSED ACTION
                    </div>
-                   <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#ccc' }}>{m.proposedAction.description}</p>
+                   <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{m.proposedAction.description}</p>
                    <div style={{ display: 'flex', gap: '8px' }}>
                      <button 
                        onClick={() => confirmAction(i, m.proposedAction!)}
-                       style={{ flex: 1, padding: '6px', background: 'var(--accent)', color: '#000', border: 'none', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                       style={{ flex: 1, padding: '6px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                      >
                        <Check size={12} /> Confirm
                      </button>
-                     <button style={{ flex: 1, padding: '6px', background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer' }}>
+                     <button style={{ flex: 1, padding: '6px', background: 'transparent', color: 'var(--danger-400)', border: '1px solid rgba(197, 69, 59, 0.30)', borderRadius: '4px', fontSize: '0.7rem', cursor: 'pointer' }}>
                        <X size={12} /> Cancel
                      </button>
                    </div>
                 </div>
               )}
             </div>
-            {m.role === 'user' && <div style={{ minWidth: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={16} /></div>}
+            {m.role === 'user' && <div style={{ minWidth: '32px', height: '32px', borderRadius: '50%', background: 'var(--c-100)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={16} /></div>}
           </div>
         ))}
         <div ref={scrollRef} />
@@ -239,7 +239,7 @@ export function ChatPanel({
       ) : renderReviewCards()}
 
       {activeTab === 'command' && (
-      <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+      <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'var(--c-50)' }}>
         <div style={{ position: 'relative' }}>
           <input 
             type="text" 
@@ -247,7 +247,7 @@ export function ChatPanel({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Ask copilot to run a study..."
-            style={{ width: '100%', padding: '12px 40px 12px 12px', borderRadius: '8px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: '#fff', fontSize: '0.85rem' }}
+            style={{ width: '100%', padding: '12px 40px 12px 12px', borderRadius: '8px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
           />
           <button 
              onClick={handleSend}

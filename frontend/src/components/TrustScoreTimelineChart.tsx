@@ -61,7 +61,7 @@ export function TrustScoreTimelineChart({
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>
@@ -82,7 +82,7 @@ export function TrustScoreTimelineChart({
         </div>
       )}
       {caseId && error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>
           {error}
         </div>
       )}
@@ -114,7 +114,7 @@ export function TrustScoreTimelineChart({
               height={SPARKLINE_HEIGHT}
               viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`}
               style={{
-                background: 'var(--background, transparent)',
+                background: 'transparent',
                 border: '1px solid var(--border)',
                 marginBottom: '8px',
                 display: 'block',
@@ -128,7 +128,7 @@ export function TrustScoreTimelineChart({
                 y1={SPARKLINE_HEIGHT * 0.2}
                 x2={SPARKLINE_WIDTH}
                 y2={SPARKLINE_HEIGHT * 0.2}
-                stroke="var(--accent, #0a8a4a)"
+                stroke="var(--accent)"
                 strokeDasharray="2 4"
                 opacity={0.4}
               />
@@ -138,14 +138,14 @@ export function TrustScoreTimelineChart({
                 y1={SPARKLINE_HEIGHT * 0.5}
                 x2={SPARKLINE_WIDTH}
                 y2={SPARKLINE_HEIGHT * 0.5}
-                stroke="var(--text-warning, #b8860b)"
+                stroke="var(--warn-400)"
                 strokeDasharray="2 4"
                 opacity={0.4}
               />
               <path
                 d={path}
                 fill="none"
-                stroke="var(--accent, #0a8a4a)"
+                stroke="var(--accent)"
                 strokeWidth={2}
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -182,7 +182,7 @@ export function TrustScoreTimelineChart({
                     gap: '4px 8px',
                     fontSize: '0.78rem',
                     padding: '4px 0',
-                    borderBottom: '1px solid var(--border-subtle, var(--border))',
+                    borderBottom: '1px solid var(--border)',
                     fontFamily: 'monospace',
                   }}
                 >

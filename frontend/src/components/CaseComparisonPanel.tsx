@@ -74,9 +74,9 @@ function hasAnyBallisticAxisData(comparison: CaseComparison): boolean {
 }
 
 function toneColor(tone: DeltaTone): string {
-  if (tone === 'accent') return 'var(--accent, #0a8a4a)'
-  if (tone === 'warning') return 'var(--text-warning, #b8860b)'
-  if (tone === 'danger') return 'var(--danger, #c0392b)'
+  if (tone === 'accent') return 'var(--accent, #bd5d3a)'
+  if (tone === 'warning') return 'var(--text-warning, var(--warn-400))'
+  if (tone === 'danger') return 'var(--danger, var(--danger-400))'
   return 'var(--text-secondary)'
 }
 
@@ -206,7 +206,7 @@ export function CaseComparisonPanel({
       data-testid="case-comparison-panel"
     >
       <div>
-        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, var(--warn-400))' }}>
           Case-vs-case comparison
         </div>
         <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
@@ -327,7 +327,7 @@ export function CaseComparisonPanel({
                 color: 'var(--text-secondary)',
                 padding: '8px 10px',
                 borderRadius: '6px',
-                background: 'var(--bg-muted, rgba(255,255,255,0.03))',
+                background: 'var(--bg-muted, var(--c-100))',
                 border: '1px dashed var(--border)',
                 lineHeight: 1.5,
               }}
@@ -353,7 +353,7 @@ export function CaseComparisonPanel({
             {renderArtifactBucket('a only', comparison.deckArtifactDiff.aOnly)}
             {renderArtifactBucket('b only', comparison.deckArtifactDiff.bOnly)}
             {comparison.deckArtifactDiff.hashChanged.length > 0 && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-warning, #b8860b)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-warning, var(--warn-400))' }}>
                 <strong>hash changed:</strong>{' '}
                 {comparison.deckArtifactDiff.hashChanged.map((h) => h.kind).join(', ')}
               </div>
@@ -366,7 +366,7 @@ export function CaseComparisonPanel({
             {renderArtifactBucket('a only', comparison.evidenceArtifactDiff.aOnly)}
             {renderArtifactBucket('b only', comparison.evidenceArtifactDiff.bOnly)}
             {comparison.evidenceArtifactDiff.hashChanged.length > 0 && (
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-warning, #b8860b)' }}>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-warning, var(--warn-400))' }}>
                 <strong>hash changed:</strong>{' '}
                 {comparison.evidenceArtifactDiff.hashChanged.map((h) => h.kind).join(', ')}
               </div>

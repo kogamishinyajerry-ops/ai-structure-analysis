@@ -236,7 +236,7 @@ const stubBadgeStyle: CSSProperties = {
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   padding: '2px 8px',
   borderRadius: 6,
-  background: 'var(--bg-muted, rgba(255,255,255,0.05))',
+  background: 'var(--bg-muted, var(--c-100))',
   border: '1px solid var(--border)',
   color: 'var(--text-secondary)',
 }

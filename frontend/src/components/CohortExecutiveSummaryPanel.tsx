@@ -16,9 +16,9 @@ export interface CohortExecutiveSummaryPanelProps {
 }
 
 function toneColor(t: 'info' | 'warn' | 'danger'): string {
-  if (t === 'info') return 'var(--accent, #0a8a4a)'
-  if (t === 'warn') return 'var(--text-warning, #b8860b)'
-  return 'var(--danger, #c0392b)'
+  if (t === 'info') return 'var(--info-400)'
+  if (t === 'warn') return 'var(--warn-400)'
+  return 'var(--danger-400)'
 }
 
 function BucketCounter({
@@ -76,7 +76,7 @@ export function CohortExecutiveSummaryPanel({
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>
@@ -90,7 +90,7 @@ export function CohortExecutiveSummaryPanel({
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
       )}
       {error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>{error}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>{error}</div>
       )}
 
       {summary && (

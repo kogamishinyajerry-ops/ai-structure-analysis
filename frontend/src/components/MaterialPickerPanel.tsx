@@ -162,14 +162,14 @@ export function MaterialPickerPanel(props: MaterialPickerPanelProps) {
 }
 
 const panelStyle: React.CSSProperties = {
-  background: '#161616',
-  border: '1px solid #2a2a2a',
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border)',
   borderRadius: 10,
   padding: 16,
   display: 'flex',
   flexDirection: 'column',
   gap: 10,
-  color: '#e5e5e5',
+  color: 'var(--text-primary)',
 }
 const headerStyle: React.CSSProperties = {
   display: 'flex',
@@ -182,23 +182,23 @@ const headingStyle: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: 0.3,
   textTransform: 'uppercase',
-  color: '#cfcfcf',
+  color: 'var(--text-secondary)',
 }
 const countBadgeStyle: React.CSSProperties = {
   fontSize: 11,
-  background: '#22303f',
-  color: '#cfe4ff',
+  background: 'rgba(47, 111, 219, 0.10)',
+  color: 'var(--info-400)',
   padding: '2px 8px',
   borderRadius: 10,
 }
 const bannerStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 11.5,
-  color: '#9a9a9a',
+  color: 'var(--text-muted)',
   lineHeight: 1.5,
 }
 const fallbackStyle: React.CSSProperties = {
-  color: '#e8b865',
+  color: 'var(--warn-400)',
 }
 const listStyle: React.CSSProperties = {
   listStyle: 'none',
@@ -209,8 +209,8 @@ const listStyle: React.CSSProperties = {
   gap: 8,
 }
 const rowStyle: React.CSSProperties = {
-  background: '#1c1c1c',
-  border: '1px solid #2c2c2c',
+  background: 'var(--c-50)',
+  border: '1px solid var(--border)',
   borderRadius: 8,
   padding: 12,
   cursor: 'pointer',
@@ -220,8 +220,8 @@ const rowStyle: React.CSSProperties = {
 }
 const selectedRowStyle: React.CSSProperties = {
   ...rowStyle,
-  borderColor: '#3a5fa8',
-  background: '#1f2940',
+  borderColor: 'rgba(47, 111, 219, 0.30)',
+  background: 'rgba(47, 111, 219, 0.10)',
 }
 const titleRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -232,13 +232,13 @@ const titleRowStyle: React.CSSProperties = {
 const nameStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: '#f0f0f0',
+  color: 'var(--text-primary)',
 }
 const idPillStyle: React.CSSProperties = {
   fontSize: 11,
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
-  color: '#9a9a9a',
+  color: 'var(--text-muted)',
 }
 const propsGridStyle: React.CSSProperties = {
   display: 'grid',
@@ -253,7 +253,7 @@ const propCellStyle: React.CSSProperties = {
 }
 const dtStyle: React.CSSProperties = {
   fontSize: 11,
-  color: '#888',
+  color: 'var(--text-muted)',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
 }
@@ -261,12 +261,12 @@ const ddStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 13,
   fontWeight: 500,
-  color: '#dcdcdc',
+  color: 'var(--text-primary)',
 }
 const referenceStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 11.5,
-  color: '#9a9a9a',
+  color: 'var(--text-muted)',
   lineHeight: 1.45,
   fontStyle: 'italic',
 }

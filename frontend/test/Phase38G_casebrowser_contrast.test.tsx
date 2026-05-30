@@ -60,7 +60,11 @@ describe('CaseBrowser WCAG 1.4.3 contrast (Phase 38 G — eval #5 disposition)',
 })
 
 describe('TabButton WCAG 1.4.3 contrast (Phase 38 G — last 1.4.3 GAP → 10/10)', () => {
-  // TabButton.tsx: active = #000 on --accent; idle = #fff on transparent (panel).
+  // NOTE (Phase 42): TabButton now adopts the `.tab-pill` primitive, so the
+  // live colors are active = #04130d on --accent, idle = --text-secondary on
+  // panel (the calmer pair, both still AA — pinned in Phase42_aesthetic_motion).
+  // The #000/#fff pair below is retained as a conservative AA *floor*: the old
+  // high-contrast colors still pass, so the move to .tab-pill cannot regress AA.
   it('active tab (#000 on --accent) passes AA', () => {
     const ratio = computeContrastRatio('#000000', ACCENT)
     expect(ratio).toBeGreaterThanOrEqual(AA_SMALL)

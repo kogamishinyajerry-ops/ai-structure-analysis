@@ -104,7 +104,7 @@ export function AcceptancePacketPanel({ apiBase, caseId }: AcceptancePacketPanel
         }}
       >
         <div>
-          <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+          <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--warn-400)' }}>
             Acceptance evidence packet
           </div>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>

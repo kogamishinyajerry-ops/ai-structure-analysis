@@ -36,9 +36,9 @@ const SECTION_TITLE_STYLE = {
 }
 
 function toneColor(tone: TrustCenterTone): string {
-  if (tone === 'accent') return 'var(--accent, #0a8a4a)'
-  if (tone === 'warning') return 'var(--text-warning, #b8860b)'
-  if (tone === 'danger') return 'var(--danger, #c0392b)'
+  if (tone === 'accent') return 'var(--success-500)'
+  if (tone === 'warning') return 'var(--warn-400)'
+  if (tone === 'danger') return 'var(--danger-400)'
   return 'var(--text-secondary)'
 }
 
@@ -63,7 +63,7 @@ function CohortRow({
         fontSize: '0.78rem',
         color: 'var(--text-primary)',
         alignItems: 'center',
-        background: selected ? 'rgba(255,255,255,0.04)' : 'transparent',
+        background: selected ? 'rgba(42,39,34,0.04)' : 'transparent',
       }}
       data-testid={`cohort-row-${entry.caseId}`}
     >
@@ -163,7 +163,7 @@ export function CohortDashboardPanel({
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}
       >
         <div>
-          <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+          <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--warn-400)' }}>
             Cohort dashboard
           </div>
           <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>

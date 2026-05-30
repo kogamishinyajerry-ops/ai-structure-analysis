@@ -36,7 +36,7 @@ export function SensitivityForm({ activeCaseId, onRunStudy, loading }: Sensitivi
           <select 
             value={param} 
             onChange={(e) => setParam(e.target.value)}
-            style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: '#fff' }}
+            style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
           >
             <option value="load">Load Magnitude (*CLOAD)</option>
             <option value="elastic_modulus">Young's Modulus (*ELASTIC)</option>
@@ -46,21 +46,21 @@ export function SensitivityForm({ activeCaseId, onRunStudy, loading }: Sensitivi
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>MIN</label>
-            <input type="number" value={min} onChange={(e) => setMin(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: '#fff' }} />
+            <input type="number" value={min} onChange={(e) => setMin(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>MAX</label>
-            <input type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: '#fff' }} />
+            <input type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px' }}>STEPS</label>
-            <input type="number" value={steps} onChange={(e) => setSteps(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: '#fff' }} />
+            <input type="number" value={steps} onChange={(e) => setSteps(Number(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-          <Info size={16} color="#3b82f6" style={{ marginTop: '2px' }} />
-          <p style={{ margin: 0, fontSize: '0.75rem', color: '#93c5fd' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '12px', background: 'rgba(47, 111, 219, 0.10)', borderRadius: '8px', border: '1px solid rgba(47, 111, 219, 0.30)' }}>
+          <Info size={16} color="var(--info-400)" style={{ marginTop: '2px' }} />
+          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--info-400)' }}>
             This will trigger <strong>{steps}</strong> simulation runs in parallel. 
             Automated report generation will follow each completion.
           </p>
@@ -69,7 +69,7 @@ export function SensitivityForm({ activeCaseId, onRunStudy, loading }: Sensitivi
         <button 
           type="submit" 
           disabled={loading}
-          style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'var(--accent)', color: '#000', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: loading ? 0.6 : 1 }}
+          style={{ width: '100%', padding: '12px', borderRadius: '8px', background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', opacity: loading ? 0.6 : 1 }}
         >
           <Play size={16} fill="currentColor" /> {loading ? 'Exploration in Progress...' : 'Start Study'}
         </button>

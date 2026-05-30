@@ -15,9 +15,9 @@ export interface CohortAnomaliesPanelProps {
 }
 
 function severityColor(s: AnomalySeverity): string {
-  if (s === 'info') return 'var(--accent, #0a8a4a)'
-  if (s === 'warn') return 'var(--text-warning, #b8860b)'
-  return 'var(--danger, #c0392b)'
+  if (s === 'info') return 'var(--info-400)'
+  if (s === 'warn') return 'var(--warn-400)'
+  return 'var(--danger-400)'
 }
 
 export function CohortAnomaliesPanel({ apiBase }: CohortAnomaliesPanelProps) {
@@ -47,7 +47,7 @@ export function CohortAnomaliesPanel({ apiBase }: CohortAnomaliesPanelProps) {
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>
@@ -61,7 +61,7 @@ export function CohortAnomaliesPanel({ apiBase }: CohortAnomaliesPanelProps) {
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
       )}
       {error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>{error}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>{error}</div>
       )}
 
       {report && report.anomalyCount === 0 && (

@@ -35,15 +35,15 @@ export interface SignoffHistoryPanelProps {
 }
 
 function toneBackground(tone: VerdictTone): string {
-  if (tone === 'info') return 'var(--accent-bg, #e6f3ec)'
-  if (tone === 'warn') return 'var(--warning-bg, #fff3d6)'
-  return 'var(--danger-bg, #fbe6e3)'
+  if (tone === 'info') return 'rgba(47, 111, 219, 0.10)'
+  if (tone === 'warn') return 'rgba(179, 121, 26, 0.10)'
+  return 'rgba(197, 69, 59, 0.10)'
 }
 
 function toneForeground(tone: VerdictTone): string {
-  if (tone === 'info') return 'var(--accent, #0a8a4a)'
-  if (tone === 'warn') return 'var(--text-warning, #b8860b)'
-  return 'var(--danger, #c0392b)'
+  if (tone === 'info') return 'var(--info-400)'
+  if (tone === 'warn') return 'var(--warn-400)'
+  return 'var(--danger-400)'
 }
 
 function VerdictPill({ verdict }: { verdict: SignoffVerdict }) {
@@ -108,7 +108,7 @@ export function SignoffHistoryPanel({
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>

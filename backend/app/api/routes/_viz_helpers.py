@@ -176,10 +176,10 @@ def _fallback_html_unavailable_pyvista(case_name: str | None) -> str:
     error strings leak to the browser."""
     safe_name = html.escape(case_name or "(unnamed case)")
     return (
-        "<html><body style='background:#0d1117;color:#fff;padding:2rem;"
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
         "font-family:sans-serif'>"
         f"<h2>{safe_name}</h2>"
-        "<p style='color:#f88'>3D scene unavailable: PyVista not installed.</p>"
+        "<p style='color:#c5453b'>3D scene unavailable: PyVista not installed.</p>"
         "</body></html>"
     )
 
@@ -197,19 +197,19 @@ def _fallback_html_render_failed(
     safe_name = html.escape(case_name or "(unnamed case)")
     safe_struct = html.escape(structure_type or "")
     return (
-        "<html><body style='background:#0d1117;color:#fff;padding:2rem;"
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
         "font-family:system-ui,sans-serif;line-height:1.6'>"
-        f"<h2 style='color:#39d353'>{safe_name}</h2>"
+        f"<h2 style='color:#2b2823'>{safe_name}</h2>"
         "<table style='border-collapse:collapse'>"
-        f"<tr><td style='padding:4px 12px;color:#7d8590'>structure</td><td>{safe_struct}</td></tr>"
-        f"<tr><td style='padding:4px 12px;color:#7d8590'>nodes</td><td>{n_nodes}</td></tr>"
-        f"<tr><td style='padding:4px 12px;color:#7d8590'>elements</td><td>{n_elements}</td></tr>"
-        "<tr><td style='padding:4px 12px;color:#7d8590'>increments</td>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>structure</td><td>{safe_struct}</td></tr>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>nodes</td><td>{n_nodes}</td></tr>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>elements</td><td>{n_elements}</td></tr>"
+        "<tr><td style='padding:4px 12px;color:#6e6759'>increments</td>"
         f"<td>{n_increments}</td></tr>"
         "</table>"
-        "<p style='color:#f88;margin-top:2rem'>3D scene unavailable; rendering failed for "
+        "<p style='color:#c5453b;margin-top:2rem'>3D scene unavailable; rendering failed for "
         "all candidate fields.</p>"
-        "<p style='color:#7d8590;font-size:0.875rem'>FRD parsed successfully; check "
+        "<p style='color:#6e6759;font-size:0.875rem'>FRD parsed successfully; check "
         "server logs for details.</p>"
         "</body></html>"
     )
@@ -224,11 +224,11 @@ def _fallback_html_no_frd(case_name: str | None) -> str:
     fallbacks). R2 XSS guard: case_name is html.escape'd; no internal paths leak."""
     safe_name = html.escape(case_name or "(unnamed case)")
     return (
-        "<html><body style='background:#0d1117;color:#fff;padding:2rem;"
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
         "font-family:system-ui,sans-serif;line-height:1.6'>"
-        f"<h2 style='color:#39d353'>{safe_name}</h2>"
-        "<p style='color:#9aa4af'>No server-rendered field plot for this case.</p>"
-        "<p style='color:#7d8590;font-size:0.875rem'>This case has no static FRD "
+        f"<h2 style='color:#2b2823'>{safe_name}</h2>"
+        "<p style='color:#6e6759'>No server-rendered field plot for this case.</p>"
+        "<p style='color:#6e6759;font-size:0.875rem'>This case has no static FRD "
         "result on disk — use the interactive 3D&nbsp;Scene viewport above for its "
         "result.</p>"
         "</body></html>"

@@ -46,24 +46,27 @@ export function OperatorStatusPanel({
   useEffect(() => {
     installPolishStyles();
   }, []);
+  // FM-04a Phase 42: status hues route through the --warn-400 / --danger-400
+  // tokens (text), and the bg/border tints use the SAME token RGB so each tone
+  // stays self-consistent (warn #fbbf24 = 251,191,36 · danger #f87171 = 248,113,113).
   const toneColor = (tone?: OperatorStatusItem['tone']) => {
     if (tone === 'accent') return 'var(--accent)';
-    if (tone === 'warning') return '#f59e0b';
-    if (tone === 'danger') return '#ef4444';
+    if (tone === 'warning') return 'var(--warn-400)';
+    if (tone === 'danger') return 'var(--danger-400)';
     return 'var(--text-primary)';
   };
 
   const toneBackground = (tone?: OperatorStatusItem['tone']) => {
-    if (tone === 'accent') return 'rgba(16, 185, 129, 0.08)';
-    if (tone === 'warning') return 'rgba(245, 158, 11, 0.08)';
-    if (tone === 'danger') return 'rgba(239, 68, 68, 0.08)';
-    return 'rgba(15, 23, 42, 0.55)';
+    if (tone === 'accent') return 'var(--accent-glow)';
+    if (tone === 'warning') return 'rgba(179, 121, 26, 0.10)';
+    if (tone === 'danger') return 'rgba(197, 69, 59, 0.10)';
+    return 'var(--c-50)';
   };
 
   const toneBorder = (tone?: OperatorStatusItem['tone']) => {
-    if (tone === 'accent') return 'rgba(16, 185, 129, 0.35)';
-    if (tone === 'warning') return 'rgba(245, 158, 11, 0.35)';
-    if (tone === 'danger') return 'rgba(239, 68, 68, 0.35)';
+    if (tone === 'accent') return 'var(--border-focus)';
+    if (tone === 'warning') return 'rgba(179, 121, 26, 0.30)';
+    if (tone === 'danger') return 'rgba(197, 69, 59, 0.30)';
     return 'var(--border)';
   };
 
@@ -79,7 +82,7 @@ export function OperatorStatusPanel({
           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
           <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Evidence-first workbench state</h2>
         </div>
-        <div style={{ color: '#ef4444', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(239, 68, 68, 0.08)' }}>
+        <div style={{ color: 'var(--danger-400)', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(197, 69, 59, 0.30)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(197, 69, 59, 0.10)' }}>
           not signed validation
         </div>
       </div>
@@ -104,7 +107,7 @@ export function OperatorStatusPanel({
         ))}
       </div>
 
-      <div style={{ marginTop: '14px', background: 'rgba(15, 23, 42, 0.48)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
+      <div style={{ marginTop: '14px', background: 'var(--c-50)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
         <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <ShieldAlert size={16} color="var(--accent)" />
           Golden Sample Review Queue

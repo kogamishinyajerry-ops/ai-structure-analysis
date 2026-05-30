@@ -24,10 +24,8 @@ export function SkeletonCard(props: SkeletonCardProps) {
       <div
         key={i}
         data-testid="skeleton-line"
-        style={{
-          ...lineStyle,
-          width: i === lines - 1 ? '60%' : '100%',
-        }}
+        className="skeleton-line"
+        style={{ width: i === lines - 1 ? '60%' : '100%' }}
       />,
     )
   }
@@ -37,6 +35,7 @@ export function SkeletonCard(props: SkeletonCardProps) {
       aria-busy="true"
       aria-live="polite"
       data-testid="skeleton-card"
+      className="skeleton-block"
       style={cardStyle}
     >
       <span style={srOnly}>{props.label ?? 'Loading'}</span>
@@ -45,23 +44,14 @@ export function SkeletonCard(props: SkeletonCardProps) {
   )
 }
 
+// FM-04a Phase 42: surface tokens (bg/border/radius) now come from the
+// `.skeleton-block` class; only layout stays inline. The per-line gradient +
+// the (previously dead) shimmer animation live in the `.skeleton-line` class.
 const cardStyle: CSSProperties = {
-  background: '#1a1a1a',
-  border: '1px solid #2a2a2a',
-  borderRadius: 8,
   padding: 16,
   display: 'flex',
   flexDirection: 'column',
   gap: 10,
-}
-
-const lineStyle: CSSProperties = {
-  height: 12,
-  borderRadius: 6,
-  background:
-    'linear-gradient(90deg, #232323 0%, #2f2f2f 50%, #232323 100%)',
-  backgroundSize: '200% 100%',
-  animation: 'skeleton-shimmer 1.5s infinite linear',
 }
 
 const srOnly: CSSProperties = {

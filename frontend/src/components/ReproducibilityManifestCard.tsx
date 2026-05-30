@@ -63,7 +63,7 @@ export function ReproducibilityManifestCard({
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>
@@ -82,7 +82,7 @@ export function ReproducibilityManifestCard({
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
       )}
       {caseId && error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>{error}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>{error}</div>
       )}
       {manifest && (
         <div>
@@ -190,7 +190,7 @@ function PackageRow({ name, version }: { name: string; version: string }) {
       <div>{name}</div>
       <div
         style={{
-          color: installed ? 'var(--text-primary)' : 'var(--danger, #c0392b)',
+          color: installed ? 'var(--text-primary)' : 'var(--danger-400)',
         }}
       >
         {version}

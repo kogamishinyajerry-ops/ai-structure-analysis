@@ -134,10 +134,10 @@ export function OnboardingTour({
                 ...STYLES.dot,
                 background:
                   i === state.currentStepIndex
-                    ? '#2563eb'
+                    ? 'var(--accent)'
                     : i < state.currentStepIndex
-                      ? '#94a3b8'
-                      : '#e2e8f0',
+                      ? 'var(--text-secondary)'
+                      : 'var(--c-300)',
               }}
             />
           ))}
@@ -190,19 +190,19 @@ const STYLES: Record<string, CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: 'rgba(15, 23, 42, 0.55)',
+    background: 'rgba(42, 39, 34, 0.55)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
   },
   card: {
-    background: 'white',
+    background: 'var(--bg-surface)',
     borderRadius: 12,
     padding: '24px 28px',
     maxWidth: 480,
     width: '90%',
-    boxShadow: '0 24px 48px rgba(15, 23, 42, 0.18)',
+    boxShadow: 'var(--elev-3)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   header: {
@@ -212,27 +212,27 @@ const STYLES: Record<string, CSSProperties> = {
     marginBottom: 8,
   },
   shipped: {
-    color: '#475569',
+    color: 'var(--text-secondary)',
     fontSize: 11,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
     fontWeight: 600,
   },
   progress: {
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontSize: 12,
     fontWeight: 500,
   },
   title: {
     fontSize: 18,
     fontWeight: 700,
-    color: '#0f172a',
+    color: 'var(--text-primary)',
     margin: '0 0 8px',
   },
   body: {
     fontSize: 14,
     lineHeight: 1.5,
-    color: '#334155',
+    color: 'var(--text-secondary)',
     margin: 0,
   },
   dotRow: {
@@ -263,7 +263,7 @@ const STYLES: Record<string, CSSProperties> = {
     padding: '4px 8px',
   },
   advanceButton: {
-    background: '#2563eb',
+    background: 'var(--accent)',
     color: 'white',
     border: 'none',
     borderRadius: 6,

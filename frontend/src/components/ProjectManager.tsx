@@ -247,7 +247,7 @@ const fieldLabelStyle: CSSProperties = {
 const fieldInputStyle: CSSProperties = {
   width: '100%',
   boxSizing: 'border-box',
-  background: 'var(--c-900)',
+  background: 'var(--c-100)',
   border: '1px solid var(--border)',
   borderRadius: 'var(--r-sm)',
   padding: 'var(--sp-2) var(--sp-3)',
@@ -271,7 +271,7 @@ const createButtonStyle: CSSProperties = {
   padding: 'var(--sp-2)',
   background: 'var(--accent)',
   border: '1px solid var(--accent)',
-  color: '#04130d',
+  color: '#fff',
   borderRadius: 'var(--r-sm)',
   cursor: 'pointer',
   fontFamily: 'inherit',

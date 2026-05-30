@@ -48,8 +48,8 @@ export interface SectionFrameProps {
 /** Resolve tone → text color (matches OperatorStatusPanel's palette). */
 function toneColor(tone?: OperatorStatusItem['tone']): string {
   if (tone === 'accent') return 'var(--accent)';
-  if (tone === 'warning') return '#f59e0b';
-  if (tone === 'danger') return '#ef4444';
+  if (tone === 'warning') return 'var(--warn-400)';
+  if (tone === 'danger') return 'var(--danger-400)';
   return 'var(--text-primary)';
 }
 
@@ -151,7 +151,7 @@ export function SectionFrame({
 
 const STYLES: Record<string, CSSProperties> = {
   card: {
-    background: 'rgba(15, 23, 42, 0.48)',
+    background: 'var(--bg-surface)',
     border: '1px solid var(--border)',
     borderRadius: 8,
     padding: 14,

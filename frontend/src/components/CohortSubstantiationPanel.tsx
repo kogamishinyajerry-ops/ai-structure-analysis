@@ -176,7 +176,7 @@ export function CohortSubstantiationPanel({
       }}
     >
       <div>
-        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, var(--warn-400))' }}>
           Cohort substantiation dashboard
         </div>
         <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>
@@ -289,7 +289,7 @@ export function CohortSubstantiationPanel({
           {errors.length > 0 && (
             <div
               data-testid="substantiation-errors"
-              style={{ fontSize: '0.65rem', color: 'var(--text-warning, #b8860b)' }}
+              style={{ fontSize: '0.65rem', color: 'var(--text-warning, var(--warn-400))' }}
             >
               {errors.join(' · ')}
             </div>

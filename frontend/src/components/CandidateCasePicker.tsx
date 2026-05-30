@@ -122,7 +122,7 @@ export function CandidateCasePicker({
             color:
               source === 'live'
                 ? 'var(--text-secondary)'
-                : 'var(--text-warning, #b8860b)',
+                : 'var(--text-warning, var(--warn-400))',
           }}
         >
           source: {source === 'live' ? 'live /candidate-cases endpoint' : 'static fallback list'}
@@ -138,7 +138,7 @@ export function CandidateCasePicker({
         <div
           style={{
             fontSize: '0.7rem',
-            color: 'var(--text-warning, #b8860b)',
+            color: 'var(--text-warning, var(--warn-400))',
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
           }}

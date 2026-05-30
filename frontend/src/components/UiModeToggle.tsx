@@ -49,15 +49,15 @@ export function UiModeToggle({ mode, onChange }: UiModeToggleProps) {
 const STYLES: Record<string, CSSProperties> = {
   container: {
     display: 'inline-flex',
-    background: 'rgba(15, 23, 42, 0.45)',
-    border: '1px solid rgba(148, 163, 184, 0.25)',
+    background: 'var(--c-100)',
+    border: '1px solid var(--border)',
     borderRadius: 6,
     padding: 2,
     gap: 0,
   },
   segment: {
     background: 'transparent',
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     border: 'none',
     padding: '4px 12px',
     fontSize: '0.72rem',
@@ -67,7 +67,7 @@ const STYLES: Record<string, CSSProperties> = {
     borderRadius: 4,
   },
   segmentActive: {
-    background: '#2563eb',
+    background: 'var(--accent)',
     color: 'white',
     border: 'none',
     padding: '4px 12px',

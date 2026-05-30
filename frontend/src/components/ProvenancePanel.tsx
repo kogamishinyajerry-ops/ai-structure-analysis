@@ -89,7 +89,7 @@ export function ProvenancePanel({
         </div>
       )}
       {error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger, var(--danger-400))' }}>
           {error}
         </div>
       )}

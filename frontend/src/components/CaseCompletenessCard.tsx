@@ -33,9 +33,9 @@ function entryTone(entry: CompletenessBreakdownEntry): TrustCenterTone {
 }
 
 function toneColor(tone: TrustCenterTone): string {
-  if (tone === 'accent') return 'var(--accent, #0a8a4a)'
-  if (tone === 'warning') return 'var(--text-warning, #b8860b)'
-  if (tone === 'danger') return 'var(--danger, #c0392b)'
+  if (tone === 'accent') return 'var(--success-500)'
+  if (tone === 'warning') return 'var(--warn-400)'
+  if (tone === 'danger') return 'var(--danger-400)'
   return 'var(--text-secondary)'
 }
 
@@ -99,7 +99,7 @@ export function CaseCompletenessCard({ apiBase, caseId }: CaseCompletenessCardPr
       data-testid="case-completeness-card"
     >
       <div>
-        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--warn-400)' }}>
           Case completeness rubric
         </div>
         <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>

@@ -60,12 +60,12 @@ export function EmptyStateCard(props: EmptyStateCardProps) {
 }
 
 const cardStyle: CSSProperties = {
-  background: '#1a1a1a',
-  border: '1px dashed #3a3a3a',
+  background: 'var(--bg-surface)',
+  border: '1px dashed var(--border)',
   borderRadius: 8,
   padding: 24,
   textAlign: 'center',
-  color: '#bbb',
+  color: 'var(--text-muted)',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -80,7 +80,7 @@ const headlineStyle: CSSProperties = {
   margin: 0,
   fontSize: 16,
   fontWeight: 600,
-  color: '#e5e5e5',
+  color: 'var(--text-primary)',
 }
 const bodyStyle: CSSProperties = {
   margin: 0,
@@ -90,8 +90,8 @@ const bodyStyle: CSSProperties = {
 }
 const actionStyle: CSSProperties = {
   marginTop: 8,
-  background: '#2a4a82',
-  border: '1px solid #3a5fa8',
+  background: 'var(--accent)',
+  border: 'none',
   borderRadius: 6,
   color: '#fff',
   padding: '8px 18px',

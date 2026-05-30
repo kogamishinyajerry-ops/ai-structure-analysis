@@ -79,7 +79,7 @@ const hintStyle: CSSProperties = {
   margin: '0 0 10px',
   borderRadius: 8,
   border: '1px solid var(--border)',
-  background: 'var(--bg-muted, rgba(255,255,255,0.04))',
+  background: 'var(--bg-muted, var(--c-100))',
   color: 'var(--text-secondary)',
   fontSize: 12,
   lineHeight: 1.45,

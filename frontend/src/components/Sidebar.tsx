@@ -82,7 +82,7 @@ export function Sidebar({
         display: 'flex',
         flexDirection: 'column',
         gap: '24px',
-        borderLeft: '1px solid rgba(255,255,255,0.05)',
+        borderLeft: '1px solid var(--border)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -97,7 +97,7 @@ export function Sidebar({
             justifyContent: 'center',
           }}
         >
-          <Zap size={24} color="#000" />
+          <Zap size={24} color="#fff" />
         </div>
         <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
           Structure<span style={{ color: 'var(--accent)' }}>AI</span>
@@ -118,8 +118,8 @@ export function Sidebar({
           gap: '8px',
           padding: '6px 10px',
           borderRadius: '6px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--c-50)',
+          border: '1px solid var(--border)',
           color: 'var(--text-secondary)',
           cursor: 'pointer',
           fontSize: '0.75rem',
@@ -132,7 +132,7 @@ export function Sidebar({
             fontSize: '0.7rem',
             padding: '1px 6px',
             borderRadius: 4,
-            background: 'rgba(255,255,255,0.08)',
+            background: 'var(--c-100)',
             fontFamily: 'ui-monospace, Menlo, monospace',
           }}
         >
@@ -197,7 +197,7 @@ export function Sidebar({
                   padding: '10px 12px',
                   borderRadius: '8px',
                   background:
-                    activeCaseId === c.id ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    activeCaseId === c.id ? 'var(--accent-glow)' : 'transparent',
                   color:
                     activeCaseId === c.id ? 'var(--accent)' : 'var(--text-secondary)',
                   border: 'none',
@@ -250,7 +250,7 @@ export function Sidebar({
                     padding: '10px 12px',
                     borderRadius: '8px',
                     background: isActive
-                      ? 'rgba(255,255,255,0.05)'
+                      ? 'var(--accent-glow)'
                       : 'transparent',
                     color: isActive
                       ? 'var(--accent)'

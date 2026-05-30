@@ -181,26 +181,26 @@ const STYLES: Record<string, CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    background: 'rgba(15, 23, 42, 0.4)',
+    background: 'rgba(42, 39, 34, 0.4)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999, // one below the tour
   },
   card: {
-    background: 'white',
+    background: 'var(--bg-surface)',
     borderRadius: 12,
     padding: '22px 26px',
     maxWidth: 440,
     width: '90%',
-    boxShadow: '0 18px 36px rgba(15, 23, 42, 0.16)',
+    boxShadow: 'var(--elev-3)',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   header: {
     marginBottom: 6,
   },
   eyebrow: {
-    color: '#475569',
+    color: 'var(--text-muted)',
     fontSize: 11,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -209,13 +209,13 @@ const STYLES: Record<string, CSSProperties> = {
   title: {
     fontSize: 17,
     fontWeight: 700,
-    color: '#0f172a',
+    color: 'var(--text-primary)',
     margin: '0 0 10px',
   },
   body: {
     fontSize: 13.5,
     lineHeight: 1.5,
-    color: '#334155',
+    color: 'var(--text-secondary)',
     margin: '0 0 16px',
   },
   actions: {
@@ -226,8 +226,8 @@ const STYLES: Record<string, CSSProperties> = {
   },
   stayButton: {
     background: 'transparent',
-    border: '1px solid #cbd5e1',
-    color: '#475569',
+    border: '1px solid var(--border)',
+    color: 'var(--text-secondary)',
     borderRadius: 6,
     padding: '7px 14px',
     fontWeight: 500,
@@ -235,8 +235,8 @@ const STYLES: Record<string, CSSProperties> = {
     cursor: 'pointer',
   },
   switchButton: {
-    background: '#2563eb',
-    color: 'white',
+    background: 'var(--accent)',
+    color: '#fff',
     border: 'none',
     borderRadius: 6,
     padding: '7px 16px',

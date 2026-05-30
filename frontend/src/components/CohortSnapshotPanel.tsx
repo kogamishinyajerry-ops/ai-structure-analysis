@@ -49,8 +49,8 @@ const SECTION_TITLE_STYLE = {
 
 function deltaTone(delta: number | null): string {
   if (delta === null) return 'var(--text-secondary)'
-  if (delta > 0) return 'var(--accent, #0a8a4a)'
-  if (delta < 0) return 'var(--danger, #c0392b)'
+  if (delta > 0) return 'var(--success-500)'
+  if (delta < 0) return 'var(--danger-400)'
   return 'var(--text-primary)'
 }
 
@@ -99,8 +99,8 @@ function SnapshotRow({
         type="button"
         onClick={onClickA}
         style={{
-          background: selectedA ? 'var(--accent, #0a8a4a)' : 'transparent',
-          color: selectedA ? 'white' : 'var(--text-primary)',
+          background: selectedA ? 'var(--accent)' : 'transparent',
+          color: selectedA ? '#fff' : 'var(--text-primary)',
           border: '1px solid var(--border)',
           padding: '3px 8px',
           borderRadius: '4px',
@@ -114,8 +114,8 @@ function SnapshotRow({
         type="button"
         onClick={onClickB}
         style={{
-          background: selectedB ? 'var(--accent, #0a8a4a)' : 'transparent',
-          color: selectedB ? 'white' : 'var(--text-primary)',
+          background: selectedB ? 'var(--accent)' : 'transparent',
+          color: selectedB ? '#fff' : 'var(--text-primary)',
           border: '1px solid var(--border)',
           padding: '3px 8px',
           borderRadius: '4px',
@@ -247,12 +247,12 @@ function ReproDriftTable({ diff }: { diff: CohortSnapshotDiff }) {
               </div>
             )}
             {d.gitShaChanged && (
-              <div style={{ color: 'var(--text-warning, #b8860b)', fontSize: '0.72rem' }}>
+              <div style={{ color: 'var(--warn-400)', fontSize: '0.72rem' }}>
                 git sha drift
               </div>
             )}
             {d.pythonVersionChanged && (
-              <div style={{ color: 'var(--text-warning, #b8860b)', fontSize: '0.72rem' }}>
+              <div style={{ color: 'var(--warn-400)', fontSize: '0.72rem' }}>
                 python: {d.aPythonVersion} → {d.bPythonVersion}
               </div>
             )}
@@ -348,7 +348,7 @@ export function CohortSnapshotPanel({
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <header style={{ marginBottom: '8px' }}>
@@ -359,7 +359,7 @@ export function CohortSnapshotPanel({
       <div style={{ marginBottom: '12px' }}>
         <div style={SECTION_TITLE_STYLE}>available snapshots</div>
         {listingError && (
-          <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>
+          <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>
             {listingError}
           </div>
         )}
@@ -401,7 +401,7 @@ export function CohortSnapshotPanel({
       </div>
 
       {diffError && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400)' }}>
           {diffError}
         </div>
       )}

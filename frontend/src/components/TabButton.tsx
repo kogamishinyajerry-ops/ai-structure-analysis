@@ -17,22 +17,20 @@ export function TabButton({
   label: string;
   icon: ReactNode;
 }) {
+  // FM-04a Phase 42: adopt the calm `.tab-pill` primitive (index.css) — it
+  // brings tokenized padding/radius/typography, a real idle→hover color lift
+  // (idle text-secondary, hover text-primary), and reduced-motion-safe
+  // transitions, replacing the old un-tokenized `transition: all 0.2s` + raw
+  // #000/#fff. The active fill (accent bg + #04130d text) comes from
+  // `.tab-pill.active`; the inline background on the active branch is the
+  // single value Phase22C pins via `style.background` (kept in sync, not a
+  // visual override), and is OMITTED when idle so `.tab-pill:hover` is free
+  // to paint the hover background (an inline value would block the :hover rule).
   return (
     <button
       onClick={onClick}
-      style={{
-        padding: '8px 16px',
-        border: 'none',
-        borderRadius: '8px',
-        background: active ? 'var(--accent)' : 'transparent',
-        color: active ? '#000' : '#fff',
-        fontWeight: 600,
-        cursor: 'pointer',
-        transition: 'all 0.2s',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}
+      className={`tab-pill${active ? ' active' : ''}`}
+      style={active ? { background: 'var(--accent)' } : undefined}
     >
       {icon} {label}
     </button>

@@ -342,7 +342,7 @@ export function ResultMeshPlaybackPanel({
         minHeight: '360px',
         border: '1px solid var(--border)',
         borderRadius: '8px',
-        background: 'rgba(2, 6, 23, 0.72)',
+        background: 'var(--bg-surface)',
         overflow: 'hidden',
         display: 'grid',
         gridTemplateRows: 'auto 1fr',
@@ -454,9 +454,9 @@ export function ResultMeshPlaybackPanel({
         </div>
         <div
           style={{
-            color: '#ef4444',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            background: 'rgba(239, 68, 68, 0.08)',
+            color: 'var(--danger-400)',
+            border: '1px solid rgba(197, 69, 59, 0.30)',
+            background: 'rgba(197, 69, 59, 0.10)',
             borderRadius: '999px',
             padding: '5px 10px',
             fontSize: '0.72rem',
@@ -674,8 +674,9 @@ export function ResultMeshPlaybackPanel({
                     position: 'absolute',
                     right: 16,
                     bottom: 16,
-                    background: 'rgba(2, 6, 23, 0.78)',
+                    background: 'rgba(255, 255, 255, 0.92)',
                     border: '1px solid var(--border-strong)',
+                    boxShadow: 'var(--elev-2)',
                     borderRadius: 'var(--r-md)',
                     padding: '8px 12px',
                     color: 'var(--text-secondary)',
@@ -877,7 +878,7 @@ export function ResultMeshPlaybackPanel({
                   borderRadius: '8px',
                   border: '1px solid var(--border)',
                   background: frameCount > 1 ? 'var(--accent)' : 'var(--bg-surface)',
-                  color: frameCount > 1 ? '#000' : 'var(--text-muted)',
+                  color: frameCount > 1 ? '#fff' : 'var(--text-muted)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -944,7 +945,7 @@ export function ResultMeshPlaybackPanel({
 
             <div style={panelBoxStyle}>
               <div style={panelTitleStyle}>
-                <ShieldAlert size={15} color="#ef4444" />
+                <ShieldAlert size={15} color="var(--danger-400)" />
                 Evidence boundary
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.76rem', lineHeight: 1.45, overflowWrap: 'anywhere' }}>
@@ -1132,7 +1133,7 @@ function formatInteger(value: number) {
 const panelBoxStyle = {
   border: '1px solid var(--border)',
   borderRadius: '8px',
-  background: 'rgba(15, 23, 42, 0.5)',
+  background: 'var(--c-100)',
   padding: '12px',
 } satisfies CSSProperties;
 
@@ -1228,7 +1229,7 @@ export function ViewportDepthControls({
         padding: '8px 10px',
         border: '1px solid var(--border)',
         borderRadius: 6,
-        background: 'rgba(15, 23, 42, 0.45)',
+        background: 'var(--c-100)',
         fontSize: '0.72rem',
         color: 'var(--text-secondary)',
       }}

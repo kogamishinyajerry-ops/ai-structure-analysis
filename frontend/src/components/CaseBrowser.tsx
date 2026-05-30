@@ -356,7 +356,7 @@ const filterRowStyle: CSSProperties = {
 const searchInputStyle: CSSProperties = {
   flex: '1 1 200px',
   minWidth: 0,
-  background: 'var(--bg-muted, rgba(255,255,255,0.04))',
+  background: 'var(--c-50)',
   border: '1px solid var(--border)',
   color: 'var(--text-primary)',
   padding: '8px 12px',
@@ -378,9 +378,9 @@ const chipIdleStyle: CSSProperties = {
 }
 const chipActiveStyle: CSSProperties = {
   ...chipBase,
-  background: 'var(--accent, #0a8a4a)',
-  border: '1px solid var(--accent, #0a8a4a)',
-  color: '#000',
+  background: 'var(--accent, #bd5d3a)',
+  border: '1px solid var(--accent, #bd5d3a)',
+  color: '#fff',
 }
 const paneRowStyle: CSSProperties = {
   display: 'grid',
@@ -450,7 +450,7 @@ const caseRowActiveStyle: CSSProperties = {
 const previewPaneStyle: CSSProperties = {
   borderRadius: 'var(--r-lg)',
   border: '1px solid var(--border)',
-  background: 'var(--bg-muted, rgba(255,255,255,0.03))',
+  background: 'var(--c-50)',
   padding: 'var(--sp-5)',
   display: 'flex',
   flexDirection: 'column',
@@ -511,7 +511,7 @@ const runnerBadgeStyle: CSSProperties = {
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   padding: '1px 6px',
   borderRadius: 6,
-  background: 'rgba(255, 180, 80, 0.10)',
-  border: '1px solid rgba(255, 180, 80, 0.45)',
-  color: 'var(--text-secondary)',
+  background: 'rgba(179, 121, 26, 0.10)',
+  border: '1px solid rgba(179, 121, 26, 0.30)',
+  color: 'var(--warn-400)',
 }

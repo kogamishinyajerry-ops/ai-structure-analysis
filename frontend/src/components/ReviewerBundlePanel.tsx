@@ -49,7 +49,7 @@ export function ReviewerBundlePanel({ apiBase }: ReviewerBundlePanelProps) {
       data-testid="reviewer-bundle-panel"
     >
       <div>
-        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, #b8860b)' }}>
+        <div style={{ ...SECTION_TITLE_STYLE, color: 'var(--text-warning, var(--warn-400))' }}>
           Reviewer bundle (multi-case zip)
         </div>
         <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>

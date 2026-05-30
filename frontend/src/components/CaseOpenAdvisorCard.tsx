@@ -265,7 +265,7 @@ const stubBadgeStyle: CSSProperties = {
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   padding: '2px 8px',
   borderRadius: 6,
-  background: 'var(--bg-muted, rgba(255,255,255,0.05))',
+  background: 'var(--bg-muted, var(--c-100))',
   border: '1px solid var(--border)',
   color: 'var(--text-secondary)',
 }
@@ -278,9 +278,9 @@ const runnerBadgeStyle: CSSProperties = {
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   padding: '2px 8px',
   borderRadius: 6,
-  background: 'rgba(255, 180, 80, 0.10)',
-  border: '1px solid rgba(255, 180, 80, 0.45)',
-  color: 'var(--text-secondary)',
+  background: 'rgba(179, 121, 26, 0.10)',
+  border: '1px solid rgba(179, 121, 26, 0.30)',
+  color: 'var(--warn-400)',
 }
 const briefStyle: CSSProperties = {
   margin: 0,

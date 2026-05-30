@@ -1,83 +1,92 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 /*
- * FM-04a Phase 41.1 — modern-premium design-token foundation.
+ * FM-04a Phase 42 — warm-light "Claude app" design-token foundation.
  *
- * Aesthetic target: Linear / Vercel / Arc — near-black tinted surfaces,
- * restrained accent, layered elevation, refined typography + motion.
+ * Aesthetic target: the Claude app — warm PAPER background (not cool
+ * near-black slate), warm-ink text, a single restrained clay/coral accent,
+ * crisp white cards with hairline borders + soft warm shadows, generous
+ * whitespace + radii, editorial calm. Replaces the prior Linear/Vercel
+ * dark-slate + emerald theme (user verdict: "暗淡 / 重文字").
  *
- * Back-compat contract: every token name + shared class name from the
- * pre-41 foundation is preserved (a few are refined in value, none
- * removed). Existing `var(--token)` consumers and `.glass-*`/`.case-item`
- * consumers keep working unchanged. New scales are additive.
+ * Back-compat contract: every token NAME + shared class name is preserved
+ * (only VALUES are inverted dark→warm-light). Existing `var(--token)` and
+ * `.glass-*`/`.case-item`/`.tab-pill`/`.surface-card` consumers keep working.
  *
- * Anti-gaming guard B:-1 — `prefers-reduced-motion: reduce` honored at
- * the foundation level (see bottom). WCAG 1.4.3 — text tokens kept ≥4.5:1
- * on their intended surface (see per-token notes).
+ * Anti-gaming guard B:-1 — `prefers-reduced-motion: reduce` honored at the
+ * foundation level (see bottom). Text tokens kept legible on paper.
  */
 
 :root {
-  /* ---- Neutral ramp (slate, blue-tinted near-black → white) ---------- */
-  --c-950: #060a14;   /* deepest base */
-  --c-900: #0b1120;
-  --c-850: #0f1729;
-  --c-800: #151f33;
-  --c-700: #1d2940;
-  --c-600: #2a3852;
-  --c-500: #3d4d6a;
-  --c-400: #5b6c8a;
-  --c-300: #8c9bb5;   /* ≥4.5:1 on --c-900 */
-  --c-200: #b8c3d6;
-  --c-100: #dde3ee;
-  --c-50:  #f4f7fc;
+  /* ---- Warm neutral ramp (paper → ink). Names preserved: in the
+     warm-light theme c-50 = lightest paper, c-950 = deepest ink. -------- */
+  --c-50:  #fbfaf6;   /* lightest paper / raised card */
+  --c-100: #f5f2eb;
+  --c-200: #ece8de;   /* sunken / hover wash */
+  --c-300: #ded8cb;   /* divider / quiet border */
+  --c-400: #c8c0b0;   /* strong border / scrollbar */
+  --c-500: #aba290;
+  --c-600: #8a8270;
+  --c-700: #6b6457;   /* muted text */
+  --c-800: #4e483d;   /* secondary text */
+  --c-850: #3c372e;
+  --c-900: #2e2a23;   /* primary text / headings */
+  --c-950: #1e1b16;   /* deepest ink */
 
-  /* ---- Accent ramp (emerald, kept as the brand hue) ------------------ */
-  --accent-700: #047857;
-  --accent-600: #059669;
-  --accent-500: #10b981;   /* primary brand accent (unchanged value) */
-  --accent-400: #34d399;
-  --accent-300: #6ee7b7;
+  /* ---- Accent ramp (Claude clay / coral) ----------------------------- */
+  --accent-700: #8f4126;
+  --accent-600: #a64f30;
+  --accent-500: #b3552f;   /* primary brand accent (clay) — white text ≥AA 4.5 */
+  --accent-400: #d97757;   /* Claude signature coral (focus ring / hover, non-text) */
+  --accent-300: #e6a385;
 
-  /* ---- Status hues ---------------------------------------------------- */
-  --info-400: #60a5fa;
-  --warn-400: #fbbf24;
-  --danger-400: #f87171;
-  --danger-300: #fca5a5;
+  /* ---- Status hues (tuned for a light surface) ----------------------- */
+  /* Status TEXT tokens are darkened to clear WCAG AA 4.5:1 on white cards
+     (warn/success are routed through these as normal-size text in badges). */
+  --info-400: #2f6fdb;     /* 4.75:1 on white */
+  --warn-400: #8f6200;     /* 5.4:1 on white (was #b3791a = 3.7, AA fail) */
+  --danger-400: #c5453b;   /* 4.88:1 on white */
+  --danger-300: #dd8b84;
+  /* Success (pass / validated) — muted sage-green, distinct from the coral
+     brand accent so "Tier 2 validated" / pass states stay green, not coral. */
+  --success-600: #34603f;
+  --success-500: #3f7a52;  /* 5.1:1 on white (was #4a8a5e = 4.1, AA fail) */
+  --success-400: #5fa977;  /* lighter — fills / icons only, not normal text */
+  --success-glow: rgba(74, 138, 94, 0.10);
 
-  /* ---- Legacy semantic tokens (PRESERVED names; values refined) ------ */
-  --bg-base: var(--c-950);
-  --bg-sidebar: rgba(11, 17, 32, 0.72);
-  --bg-surface: rgba(21, 31, 51, 0.55);
+  /* ---- Legacy semantic tokens (PRESERVED names; values inverted) ------ */
+  --bg-base: #f1eee6;                    /* warm paper app background */
+  --bg-sidebar: rgba(236, 232, 222, 0.82);
+  --bg-surface: #ffffff;                 /* crisp white card / panel */
 
   --accent: var(--accent-500);
-  /* 41.2 RESTRAINED-ACCENT: accent = the single primary action (Run Solver /
-     active tab+case / focus ring) only — never neutral-card borders, never a
-     glow wash; tint fills cap at ~10% alpha. */
-  --accent-glow: rgba(16, 185, 129, 0.10);   /* 41.2: 0.18→0.10, calm tint not neon */
+  /* RESTRAINED-ACCENT: accent = the single primary action (Run Solver /
+     active tab + case / focus ring) only — never neutral-card borders. */
+  --accent-glow: rgba(189, 93, 58, 0.10);
 
-  --text-primary: #f6f9ff;
-  --text-secondary: #aab6cc;            /* ≥4.5:1 on base + glass */
-  --text-muted: #8b97ad;                /* WCAG 1.4.3 ≥4.5:1 (was #828fa6) */
+  --text-primary: #2b2823;               /* warm ink */
+  --text-secondary: #5a544b;             /* warm gray, AA on paper */
+  --text-muted: #6e6759;                 /* lighter warm gray, AA on paper */
 
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --border-focus: rgba(16, 185, 129, 0.45);
+  --border: rgba(42, 39, 34, 0.10);
+  --border-strong: rgba(42, 39, 34, 0.17);
+  --border-focus: rgba(189, 93, 58, 0.50);
 
-  --glass-blur: blur(18px) saturate(140%);
+  --glass-blur: blur(16px) saturate(120%);
 
-  /* ---- Elevation (layered soft shadows, Linear-style) ---------------- */
-  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.32), 0 1px 1px rgba(0, 0, 0, 0.24);
-  --elev-2: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
-  --elev-3: 0 12px 32px -8px rgba(0, 0, 0, 0.5), 0 6px 12px -6px rgba(0, 0, 0, 0.4);
+  /* ---- Elevation (soft, warm-gray, light-theme shadows) -------------- */
+  --elev-1: 0 1px 2px rgba(60, 52, 42, 0.06), 0 1px 1px rgba(60, 52, 42, 0.04);
+  --elev-2: 0 4px 14px -3px rgba(60, 52, 42, 0.10), 0 2px 6px -3px rgba(60, 52, 42, 0.07);
+  --elev-3: 0 16px 40px -12px rgba(60, 52, 42, 0.16), 0 6px 16px -8px rgba(60, 52, 42, 0.10);
   --shadow-lg: var(--elev-3);            /* PRESERVED name */
-  --glow-accent: 0 0 0 1px rgba(16, 185, 129, 0.30), var(--elev-2);   /* 41.2: emerald-halo → accent ring + neutral elevation */
+  --glow-accent: 0 0 0 1px rgba(189, 93, 58, 0.25), var(--elev-2);
 
   /* ---- Spacing rhythm (4px base) ------------------------------------- */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
 
-  /* ---- Radius scale --------------------------------------------------- */
-  --r-xs: 4px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 20px; --r-full: 999px;
+  /* ---- Radius scale (generous, Claude-soft) -------------------------- */
+  --r-xs: 5px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 22px; --r-full: 999px;
 
   /* ---- Type scale ----------------------------------------------------- */
   --fs-xs: 0.72rem; --fs-sm: 0.82rem; --fs-base: 0.94rem;
@@ -110,12 +119,11 @@ body {
   min-width: 320px;
   min-height: 100vh;
   overflow: hidden;
-  /* Premium ambient depth: two faint accent/cool light wells over the
-     near-black base. Fixed, non-interactive, cheap (paint-once). */
+  /* Warm paper with a whisper of coral/tan light — calm, not a wash. */
   background-color: var(--bg-base);
   background-image:
-    radial-gradient(900px 600px at 78% -8%, rgba(16, 185, 129, 0.07), transparent 60%),
-    radial-gradient(1000px 700px at -6% 110%, rgba(56, 96, 165, 0.08), transparent 60%);
+    radial-gradient(900px 620px at 82% -10%, rgba(217, 119, 87, 0.05), transparent 62%),
+    radial-gradient(1000px 720px at -6% 112%, rgba(190, 150, 92, 0.06), transparent 62%);
   background-attachment: fixed;
 }
 
@@ -141,7 +149,7 @@ h1, h2, h3, h4 {
 }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.28);
+  background: rgba(217, 119, 87, 0.22);
   color: var(--text-primary);
 }
 
@@ -155,18 +163,16 @@ h1, h2, h3, h4 {
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--c-600);
+  background: var(--c-400);
   border-radius: var(--r-full);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-500); background-clip: padding-box; }
 
-/* ---- Glass surfaces (PRESERVED class names, refined) ----------------- */
+/* ---- Glass surfaces (PRESERVED class names, re-themed light) --------- */
 .glass-panel {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 40%),
-    var(--bg-surface);
+  background: rgba(255, 255, 255, 0.82);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border);
@@ -189,7 +195,7 @@ h1, h2, h3, h4 {
   border-radius: var(--r-sm);
 }
 .case-item:hover {
-  background: rgba(255, 255, 255, 0.045) !important;
+  background: rgba(42, 39, 34, 0.05) !important;
   color: var(--text-primary) !important;
 }
 .case-item.active {
@@ -200,20 +206,17 @@ h1, h2, h3, h4 {
 
 /* ---- Tab active glow (PRESERVED) ------------------------------------- */
 .tab-button-active {
-  box-shadow: var(--glow-accent);   /* 41.2: de-glow, reuse calm ring */
+  box-shadow: var(--glow-accent);
 }
 
 /* ====================================================================
-   FM-04a Phase 41.2 — calm-premium primitives (Claude/Codex aesthetic).
-   Opt-in classes; no existing markup is forced to change. All values use
-   41.1 tokens. New motion is honored in the reduced-motion block below.
+   Calm content primitives (Claude aesthetic). Opt-in classes; values use
+   the tokens above. New motion honored in the reduced-motion block below.
    ==================================================================== */
 
-/* Canonical calm content card — solid (no blur), quiet border, soft lift. */
+/* Canonical calm content card — crisp white, hairline border, soft lift. */
 .surface-card {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 38%),
-    var(--c-900);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--elev-1);
@@ -258,7 +261,7 @@ button.surface-card:hover {
 .cb-case-card:hover {
   transform: translateY(-1px);
   border-color: var(--border-strong);
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(42, 39, 34, 0.035);
   box-shadow: var(--elev-2);
 }
 .cb-chip {
@@ -277,23 +280,21 @@ button.surface-card:hover {
   letter-spacing: var(--tracking-wide);
   padding: 1px var(--sp-2);
   border-radius: var(--r-full);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(42, 39, 34, 0.04);
   border: 1px solid var(--border);
   color: var(--text-muted);
 }
 .cb-tier-badge[data-tier2] {
   background: var(--accent-glow);
   border-color: var(--border-focus);
-  color: var(--accent-300);
+  color: var(--accent-600);
 }
 
 /* Viewport-hero + tab-pill + in-viewport toggle (active-case golden path). */
 .viewport-hero {
   border: 1px solid var(--border-strong);
   border-radius: var(--r-xl);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 38%),
-    var(--bg-surface);
+  background: var(--bg-surface);
   box-shadow: var(--elev-3);
   overflow: hidden;
 }
@@ -305,6 +306,7 @@ button.surface-card:hover {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--bg-surface);
+  box-shadow: var(--elev-1);
 }
 .tab-pill {
   padding: var(--sp-2) var(--sp-4);
@@ -321,8 +323,8 @@ button.surface-card:hover {
   transition: background var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out);
 }
-.tab-pill:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.045); }
-.tab-pill.active { background: var(--accent); color: #04130d; }
+.tab-pill:hover { color: var(--text-primary); background: rgba(42, 39, 34, 0.05); }
+.tab-pill.active { background: var(--accent); color: #ffffff; }
 .vp-toggle {
   padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-xs);
@@ -335,7 +337,7 @@ button.surface-card:hover {
 }
 .vp-toggle[aria-pressed="true"], .vp-toggle.active {
   background: var(--accent-glow);
-  color: var(--accent-300);
+  color: var(--accent-600);
   border-color: var(--border-focus);
 }
 
@@ -370,32 +372,30 @@ button.surface-card:hover {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  background: linear-gradient(90deg, transparent, rgba(42, 39, 34, 0.05), transparent);
   animation: shimmer 2s infinite;
 }
 
 /* ====================================================================
-   FM-04a Phase 41.3 — golden-path motion + solve affordance.
-   Single source for: spinner BUG-fix, the one solid-accent primary
-   (Run Solver), calm skeleton, Copilot-active tint. Token-based; new
-   motion honored in the reduced-motion block below.
+   Golden-path motion + solve affordance. Single source for: spinner,
+   the one solid-accent primary (Run Solver), calm skeleton. Token-based;
+   new motion honored in the reduced-motion block below.
    ==================================================================== */
 
-/* (A) BUG FIX: the solving spinner used Tailwind's `animate-spin`, which is
-   INERT in this raw-CSS repo (no keyframe existed) — the spinner never turned. */
+/* The solving spinner (Tailwind's `animate-spin` is INERT in this raw-CSS repo). */
 @keyframes fm04a-spin { to { transform: rotate(360deg); } }
 .animate-spin { animation: fm04a-spin 0.8s linear infinite; }
 
-/* (B) The ONE place a solid restrained-accent fill is spent: the primary
-   Run Solver CTA. Additive — the button keeps its inline accent background;
-   this class adds the confident glow/lift + an in-progress pulse. */
+/* The ONE place a solid restrained-accent fill is spent: the primary
+   Run Solver CTA. Additive — keeps its inline accent background; this class
+   adds the confident lift + an in-progress pulse. */
 .run-solver-btn {
   box-shadow: var(--glow-accent);
   transition: transform var(--dur-fast) var(--ease-out),
               box-shadow var(--dur-base) var(--ease-out),
               filter var(--dur-fast) var(--ease-out);
 }
-.run-solver-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+.run-solver-btn:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
 .run-solver-btn:active:not(:disabled) { transform: translateY(0); }
 .run-solver-btn:disabled { box-shadow: none; }
 @keyframes fm04a-solve-pulse {
@@ -404,7 +404,7 @@ button.surface-card:hover {
 }
 .run-solver-btn[data-solving="true"] { animation: fm04a-solve-pulse 1.6s var(--ease-in-out) infinite; }
 
-/* (C) Calm token skeleton (replaces a raw inline shimmer div). */
+/* Calm token skeleton (replaces a raw inline shimmer div). */
 .skeleton-block {
   position: relative;
   overflow: hidden;
@@ -413,9 +413,21 @@ button.surface-card:hover {
   border-radius: var(--r-lg);
 }
 
-/* (D) Copilot-active demote to tint (single-accent) is applied inline in
-   Topbar.tsx (accent-glow bg + accent-300 text + border-focus) — kept inline
-   to avoid an inline-vs-class specificity fight on that button. */
+/* FM-04a Phase 42 — SkeletonCard line shimmer: the `skeleton-shimmer`
+   keyframe was referenced but NEVER defined (frozen-skeleton bug; same
+   class as the `animate-spin` fix). Defined here on the light ramp,
+   suppressed under reduced motion below. */
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.skeleton-line {
+  height: 12px;
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--c-200) 0%, var(--c-100) 50%, var(--c-200) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s linear infinite;
+}
 
 /* ---- Markdown (PRESERVED) -------------------------------------------- */
 .report-markdown h1, .report-markdown h2, .report-markdown h3 {
@@ -431,15 +443,14 @@ button.surface-card:hover {
 @media (prefers-reduced-motion: reduce) {
   .shimmer-active::after { animation: none; }
   .case-item { transition: none; }
-  /* 41.2 — every new motion utility honored (anti-gaming guard B:-1). */
   .rise-in { animation: none; }
   .surface-card { transition: none; }
   .cb-case-card, .cb-chip, .cb-search { transition: none; }
   .cb-case-card:hover { transform: none; }
   .tab-pill, .vp-toggle { transition: none; }
-  /* 41.3 — solve affordance + spinner. */
   .animate-spin { animation: none; }
   .run-solver-btn { transition: none; }
   .run-solver-btn:hover:not(:disabled) { transform: none; }
   .run-solver-btn[data-solving="true"] { animation: none; }
+  .skeleton-line { animation: none; }
 }

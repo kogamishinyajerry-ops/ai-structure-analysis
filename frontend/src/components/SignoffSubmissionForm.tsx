@@ -79,7 +79,7 @@ export function SignoffSubmissionForm({
         marginBottom: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface-subtle, #fafafa)',
+        background: 'var(--surface-subtle, var(--c-50))',
       }}
     >
       <div
@@ -146,7 +146,7 @@ export function SignoffSubmissionForm({
           data-testid="signoff-form-forbidden-preview"
           style={{
             fontSize: '0.7rem',
-            color: 'var(--text-warning, #b8860b)',
+            color: 'var(--text-warning, var(--warn-400))',
           }}
         >
           notes contain forbidden positive claim {`"${forbiddenPreview}"`} outside
@@ -172,7 +172,7 @@ export function SignoffSubmissionForm({
           data-testid="signoff-form-error"
           style={{
             fontSize: '0.72rem',
-            color: 'var(--danger, #c0392b)',
+            color: 'var(--danger, var(--danger-400))',
           }}
         >
           {result.error}
@@ -186,7 +186,7 @@ export function SignoffSubmissionForm({
           data-testid="signoff-form-success"
           style={{
             fontSize: '0.72rem',
-            color: 'var(--accent, #0a8a4a)',
+            color: 'var(--success-500, #0a8a4a)',
           }}
         >
           signoff recorded as {result.record?.verdict} at {result.record?.signoffUtc}

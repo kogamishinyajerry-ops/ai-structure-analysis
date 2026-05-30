@@ -40,9 +40,9 @@ const SECTION_TITLE_STYLE = {
 }
 
 function toneColor(tone: ReturnType<typeof trustTone>): string {
-  if (tone === 'accent') return 'var(--accent, #0a8a4a)'
-  if (tone === 'warning') return 'var(--text-warning, #b8860b)'
-  if (tone === 'danger') return 'var(--danger, #c0392b)'
+  if (tone === 'accent') return 'var(--success-500, #4a8a5e)'
+  if (tone === 'warning') return 'var(--warn-400, #b3791a)'
+  if (tone === 'danger') return 'var(--danger-400, #c5453b)'
   return 'var(--text-secondary)'
 }
 
@@ -106,7 +106,7 @@ export function TrustScoreGauge({
         <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>loading…</div>
       )}
       {caseId && error && !loading && (
-        <div style={{ fontSize: '0.78rem', color: 'var(--danger, #c0392b)' }}>{error}</div>
+        <div style={{ fontSize: '0.78rem', color: 'var(--danger-400, #c5453b)' }}>{error}</div>
       )}
 
       {score && (

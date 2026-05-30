@@ -183,19 +183,19 @@ const backdropStyle: React.CSSProperties = {
 }
 const cardStyle: React.CSSProperties = {
   width: 'min(680px, 92vw)',
-  background: '#1e1e1e',
-  color: '#f5f5f5',
-  border: '1px solid #333',
+  background: 'var(--bg-surface)',
+  color: 'var(--text-primary)',
+  border: '1px solid var(--border)',
   borderRadius: 8,
-  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+  boxShadow: 'var(--elev-3)',
   overflow: 'hidden',
 }
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  background: '#161616',
-  color: '#f5f5f5',
+  background: 'var(--c-50)',
+  color: 'var(--text-primary)',
   border: 'none',
-  borderBottom: '1px solid #333',
+  borderBottom: '1px solid var(--border)',
   padding: '14px 18px',
   fontSize: 16,
   outline: 'none',
@@ -210,17 +210,17 @@ const listStyle: React.CSSProperties = {
 }
 const emptyStyle: React.CSSProperties = {
   padding: '20px 18px',
-  color: '#888',
+  color: 'var(--text-muted)',
   fontSize: 14,
 }
 const rowStyle: React.CSSProperties = {
   padding: '10px 18px',
   cursor: 'pointer',
-  borderBottom: '1px solid #262626',
+  borderBottom: '1px solid var(--border)',
 }
 const activeRowStyle: React.CSSProperties = {
   ...rowStyle,
-  background: '#2a2a2a',
+  background: 'var(--c-100)',
 }
 const labelRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -233,11 +233,11 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 500,
 }
 const hotkeyStyle: React.CSSProperties = {
-  background: '#333',
+  background: 'var(--c-200)',
   borderRadius: 4,
   padding: '2px 6px',
   fontSize: 12,
-  color: '#bbb',
+  color: 'var(--text-muted)',
 }
 const categoryRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -249,9 +249,9 @@ const categoryStyle: React.CSSProperties = {
   fontSize: 11,
   textTransform: 'uppercase',
   letterSpacing: 0.6,
-  color: '#888',
+  color: 'var(--text-muted)',
 }
 const descriptionStyle: React.CSSProperties = {
   fontSize: 12,
-  color: '#aaa',
+  color: 'var(--text-muted)',
 }

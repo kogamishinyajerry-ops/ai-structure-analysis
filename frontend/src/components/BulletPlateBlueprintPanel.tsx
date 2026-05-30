@@ -11,17 +11,17 @@ import {
 
 const anchorTone = (status: BulletPlateBlueprintAnchor['status']) => {
   if (status === 'frontend_surface') return 'var(--accent)';
-  if (status === 'evidence_required') return '#f59e0b';
+  if (status === 'evidence_required') return 'var(--warn-400)';
   return 'var(--text-secondary)';
 };
 
 const sliceTone = (status: BulletPlateBlueprintSlice['status']) =>
-  status === 'started' || status === 'available' ? 'var(--accent)' : '#f59e0b';
+  status === 'started' || status === 'available' ? 'var(--accent)' : 'var(--warn-400)';
 
 const evidenceTone = (status: BulletPlateEvidenceRef['status']) => {
   if (status === 'available') return 'var(--accent)';
   if (status === 'disabled') return 'var(--text-secondary)';
-  return '#f59e0b';
+  return 'var(--warn-400)';
 };
 
 export function BulletPlateBlueprintPanel() {
@@ -70,9 +70,9 @@ export function BulletPlateBlueprintPanel() {
           </div>
           <div
             style={{
-              border: '1px solid rgba(245, 158, 11, 0.35)',
-              color: '#f59e0b',
-              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(179, 121, 26, 0.30)',
+              color: 'var(--warn-400)',
+              background: 'rgba(179, 121, 26, 0.10)',
               borderRadius: '999px',
               padding: '5px 10px',
               fontSize: '0.72rem',
@@ -89,15 +89,15 @@ export function BulletPlateBlueprintPanel() {
       <div style={{ display: 'grid', gap: '12px', alignContent: 'start' }}>
         <div
           style={{
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(197, 69, 59, 0.30)',
+            background: 'rgba(197, 69, 59, 0.10)',
             borderRadius: '8px',
             padding: '12px',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <ShieldAlert size={15} color="#ef4444" />
-            <div style={{ fontSize: '0.76rem', color: '#ef4444', fontWeight: 800 }}>
+            <ShieldAlert size={15} color="var(--danger-400)" />
+            <div style={{ fontSize: '0.76rem', color: 'var(--danger-400)', fontWeight: 800 }}>
               Claim boundary
             </div>
           </div>
@@ -117,13 +117,13 @@ export function BulletPlateBlueprintPanel() {
           <Metric label="covered" value={`${summary.coveredAnchorCount}/${summary.anchorCount}`} />
           <Metric label="evidence" value={`${summary.availableEvidenceCount}/${summary.evidenceCount}`} />
           <Metric label="started" value={summary.startedSlices.toString()} />
-          <Metric label="blockers" value={summary.blockerCount.toString()} tone="#f59e0b" />
+          <Metric label="blockers" value={summary.blockerCount.toString()} tone="var(--warn-400)" />
         </div>
 
         <div
           style={{
             border: '1px solid var(--border)',
-            background: 'rgba(15, 23, 42, 0.48)',
+            background: 'var(--c-50)',
             borderRadius: '8px',
             padding: '12px',
           }}
@@ -139,7 +139,7 @@ export function BulletPlateBlueprintPanel() {
         <div
           style={{
             border: '1px solid var(--border)',
-            background: 'rgba(15, 23, 42, 0.48)',
+            background: 'var(--c-50)',
             borderRadius: '8px',
             padding: '12px',
           }}
@@ -166,7 +166,7 @@ export function BulletPlateBlueprintPanel() {
         <div
           style={{
             border: '1px solid var(--border)',
-            background: 'rgba(15, 23, 42, 0.48)',
+            background: 'var(--c-50)',
             borderRadius: '8px',
             padding: '12px',
           }}
@@ -199,7 +199,7 @@ export function BulletPlateBlueprintPanel() {
 function EvidenceList({ evidenceRefs }: { evidenceRefs: BulletPlateEvidenceRef[] }) {
   if (evidenceRefs.length === 0) {
     return (
-      <div style={{ color: '#f59e0b', fontSize: '0.68rem', lineHeight: 1.35, marginTop: '6px' }}>
+      <div style={{ color: 'var(--warn-400)', fontSize: '0.68rem', lineHeight: 1.35, marginTop: '6px' }}>
         Evidence not indexed yet.
       </div>
     );
@@ -229,7 +229,7 @@ function Metric({ label, value, tone = 'var(--accent)' }: { label: string; value
     <div
       style={{
         border: '1px solid var(--border)',
-        background: 'rgba(15, 23, 42, 0.48)',
+        background: 'var(--c-50)',
         borderRadius: '8px',
         padding: '10px',
         minHeight: '64px',

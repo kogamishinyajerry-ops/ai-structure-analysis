@@ -83,7 +83,7 @@ export function Topbar(props: TopbarProps) {
         alignItems: 'center',
         position: 'sticky',
         top: 0,
-        background: 'rgba(2, 6, 23, 0.8)',
+        background: 'rgba(250, 249, 245, 0.82)',
         backdropFilter: 'blur(8px)',
         zIndex: 10,
       }}
@@ -115,9 +115,9 @@ export function Topbar(props: TopbarProps) {
               gap: 6,
               padding: '4px 10px',
               borderRadius: 999,
-              border: '1px solid rgba(96, 165, 250, 0.35)',
-              background: 'rgba(96, 165, 250, 0.12)',
-              color: '#bfdbfe',
+              border: '1px solid rgba(47, 111, 219, 0.30)',
+              background: 'rgba(47, 111, 219, 0.10)',
+              color: 'var(--info-400)',
               fontSize: '0.72rem',
               fontWeight: 700,
               maxWidth: 320,
@@ -139,7 +139,7 @@ export function Topbar(props: TopbarProps) {
             padding: '8px 16px',
             borderRadius: '8px',
             background: showChat ? 'var(--accent-glow)' : 'var(--bg-surface)',
-            color: showChat ? 'var(--accent-300)' : '#fff',
+            color: showChat ? 'var(--accent-600)' : 'var(--text-primary)',
             border: showChat ? '1px solid var(--border-focus)' : '1px solid var(--border)',
             fontWeight: 600,
             display: 'flex',
@@ -163,7 +163,7 @@ export function Topbar(props: TopbarProps) {
                 onChange={(e) => onChangeMaterialId?.(e.target.value)}
                 style={{
                   background: 'var(--bg-surface)',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: '1px solid var(--border)',
                   borderRadius: '8px',
                   padding: '0 12px',
@@ -187,7 +187,7 @@ export function Topbar(props: TopbarProps) {
               }
               style={{
                 background: 'var(--bg-surface)',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 border: '1px solid var(--border)',
                 borderRadius: '8px',
                 padding: '0 12px',
@@ -210,7 +210,7 @@ export function Topbar(props: TopbarProps) {
                 padding: '8px 16px',
                 borderRadius: '8px',
                 background: 'var(--accent)',
-                color: '#000',
+                color: '#fff',
                 border: 'none',
                 fontWeight: 600,
                 display: 'flex',
@@ -235,9 +235,9 @@ export function Topbar(props: TopbarProps) {
                 style={{
                   padding: '8px 16px',
                   borderRadius: '8px',
-                  background: 'rgba(255,100,100,0.2)',
-                  color: '#ff6b6b',
-                  border: '1px solid rgba(255,100,100,0.3)',
+                  background: 'rgba(197, 69, 59, 0.10)',
+                  color: 'var(--danger-400)',
+                  border: '1px solid rgba(197, 69, 59, 0.30)',
                   fontWeight: 600,
                   cursor: 'pointer',
                 }}

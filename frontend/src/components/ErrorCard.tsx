@@ -104,11 +104,11 @@ export function ErrorCard(props: ErrorCardProps) {
 }
 
 const cardStyle: CSSProperties = {
-  background: '#2a1414',
-  border: '1px solid #5c1e1e',
+  background: 'rgba(197, 69, 59, 0.10)',
+  border: '1px solid rgba(197, 69, 59, 0.30)',
   borderRadius: 8,
   padding: 16,
-  color: '#ffcdcd',
+  color: 'var(--danger-400)',
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
@@ -126,14 +126,14 @@ const titleStyle: CSSProperties = {
 }
 const codeStyle: CSSProperties = {
   marginLeft: 'auto',
-  background: '#3a1818',
-  border: '1px solid #5c1e1e',
+  background: 'rgba(197, 69, 59, 0.16)',
+  border: '1px solid rgba(197, 69, 59, 0.30)',
   borderRadius: 4,
   padding: '1px 6px',
   fontFamily:
     'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   fontSize: 11,
-  color: '#ffe3e3',
+  color: 'var(--danger-400)',
 }
 const messageStyle: CSSProperties = {
   margin: 0,
@@ -157,8 +157,8 @@ const remediationItemStyle: CSSProperties = {
 const retryButtonStyle: CSSProperties = {
   alignSelf: 'flex-start',
   marginTop: 6,
-  background: '#5c1e1e',
-  border: '1px solid #8a3535',
+  background: 'var(--danger-400)',
+  border: '1px solid rgba(197, 69, 59, 0.30)',
   borderRadius: 6,
   color: '#fff',
   padding: '6px 14px',

@@ -46,9 +46,9 @@ export interface AdvisorPanelProps {
 
 const _STATUS_COLOR: Record<AdvisorStatus, string> = {
   online: 'var(--accent)',
-  offline: '#9b6b00',
-  stub: '#666',
-  unknown: '#888',
+  offline: 'var(--warn-400)',
+  stub: 'var(--text-muted)',
+  unknown: 'var(--text-muted)',
 }
 
 const _STATUS_LABEL: Record<AdvisorStatus, string> = {
@@ -101,7 +101,7 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
         padding: '12px',
         border: '1px solid var(--border)',
         borderRadius: '6px',
-        background: 'var(--surface)',
+        background: 'var(--bg-surface)',
       }}
     >
       <InContextHint
@@ -173,8 +173,8 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
               style={{
                 marginTop: '8px',
                 padding: '6px',
-                background: '#fff4e0',
-                border: '1px solid #d9a96b',
+                background: 'rgba(179, 121, 26, 0.10)',
+                border: '1px solid rgba(179, 121, 26, 0.30)',
                 fontSize: '0.7rem',
                 fontFamily: 'monospace',
               }}
@@ -196,7 +196,7 @@ export function AdvisorPanel({ apiBase, caseId, snapshotLabel }: AdvisorPanelPro
                   <li key={key} data-testid={`advisor-gate-${key}`}>
                     <span
                       style={{
-                        color: present ? 'var(--accent)' : '#b00020',
+                        color: present ? 'var(--accent)' : 'var(--danger-400)',
                         fontWeight: 700,
                       }}
                     >
@@ -286,8 +286,8 @@ function _RefusedClaimsSection({ refusedClaims }: _RefusedClaimsSectionProps) {
         marginTop: '8px',
         padding: '6px 10px',
         borderRadius: '6px',
-        border: '1px solid var(--text-warning, #b8860b)',
-        background: 'rgba(184, 134, 11, 0.06)',
+        border: '1px solid rgba(179, 121, 26, 0.30)',
+        background: 'rgba(179, 121, 26, 0.10)',
       }}
     >
       <div
@@ -295,7 +295,7 @@ function _RefusedClaimsSection({ refusedClaims }: _RefusedClaimsSectionProps) {
         style={{
           fontSize: '0.72rem',
           fontWeight: 600,
-          color: 'var(--text-warning, #b8860b)',
+          color: 'var(--warn-400)',
         }}
       >
         Refused LLM claims ({refusedClaims.length})
@@ -359,7 +359,7 @@ function _Section({ testid, title, entries }: _SectionProps) {
                 data-testid={`${testid}-item-${idx}`}
                 data-safe={safe ? 'true' : 'false'}
                 style={{
-                  color: safe ? undefined : '#b00020',
+                  color: safe ? undefined : 'var(--danger-400)',
                   fontStyle: safe ? undefined : 'italic',
                 }}
               >
