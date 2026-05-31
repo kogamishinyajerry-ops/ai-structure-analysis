@@ -84,6 +84,12 @@ export function Topbar(props: TopbarProps) {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        // Wrap (not clip) when the main column is narrow — e.g. chat open at
+        // ~1280 + a long case id + the matl chip + 5 right-side controls. Only
+        // engages under pressure; identical single-line layout at wide widths.
+        // Intrinsic wrap, no media query (Codex 45 P2; desktop-overflow path).
+        flexWrap: 'wrap',
+        rowGap: 'var(--sp-2)',
         position: 'sticky',
         top: 0,
         background: 'rgba(250, 249, 245, 0.82)',
@@ -133,7 +139,7 @@ export function Topbar(props: TopbarProps) {
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto', gap: 'var(--sp-3)' }}>
         <DensityToggle density={density} onChange={setDensity} />
         <button
           type="button"
