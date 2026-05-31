@@ -21,7 +21,7 @@
 //
 // Tier 1 engineering candidate; not signed validation; not benchmark agreement.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 
 export type Density = 'comfortable' | 'compact';
 
@@ -99,9 +99,14 @@ export function useDensity(): UseDensityResult {
   }, [density, setDensity]);
 
   // Apply to the document root so the compact token block (index.css) takes
-  // effect document-wide. Effect scope → no render-scope impurity, no
-  // setState-in-effect; the attribute persists across Topbar re-renders.
-  useEffect(() => {
+  // effect document-wide. useLayoutEffect (NOT useEffect) runs synchronously
+  // after the render commit but BEFORE the browser paints, so a persisted
+  // 'compact' preference is honored on the FIRST paint — no comfortable→compact
+  // flash/reflow on reload (Codex 45A R0 P2). Topbar (this hook's caller) is in
+  // App's initial tree, so this fires before the first meaningful paint. Layout
+  // -effect scope → no render-scope impurity, no setState-in-effect; the
+  // attribute persists across Topbar re-renders.
+  useLayoutEffect(() => {
     document.documentElement.setAttribute('data-density', density);
   }, [density]);
 
