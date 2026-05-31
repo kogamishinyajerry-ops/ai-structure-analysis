@@ -24,12 +24,32 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.0",
+    # pydantic v2 split BaseSettings into its own package. app.core.config
+    # (Settings(BaseSettings), imported transitively by ~all of app.*) needs
+    # it. It was only reachable via the optional `rag` extra (chromadb →
+    # pydantic-settings) before, i.e. undeclared for the core import path.
+    "pydantic-settings>=2.0",
     "jinja2>=3.1",
     "numpy>=1.24",
     "pyyaml>=6.0",
     "httpx>=0.25",
     "python-docx>=1.1",
     "pyvista>=0.47.3",
+    # Core FastAPI backend deps. Every one of these is loaded at
+    # `import app.main`, so they are mandatory for the app to construct —
+    # not optional capabilities like the rag/viz/solvers/openradioss extras.
+    # CI's `pytest tests/` imports app.main across ~40 endpoint test modules;
+    # while these were undeclared the suite died at collection with
+    # ModuleNotFoundError. Source: backend/app/{main,api/*,db/session,
+    # core/config}.py, services/{pdf_service,*animation*}.py, parsers/nl_parser.py.
+    "fastapi>=0.110",
+    "python-multipart>=0.0.9",  # fastapi Form/UploadFile routes (frd, report, visualization)
+    "sqlalchemy>=2.0",          # app.db.session: async engine + DeclarativeBase
+    "aiosqlite>=0.20",          # sqlite+aiosqlite async dialect (app/db/session.py DATABASE_URL)
+    "greenlet>=3.0",            # required by sqlalchemy.ext.asyncio (async engine)
+    "reportlab>=4.0",           # app.services.pdf_service (PDF report generation)
+    "pillow>=10.0",             # app.services.* animation frame writers (PIL)
+    "openai>=1.0",              # app.parsers.nl_parser OpenAI client
 ]
 
 [project.optional-dependencies]
