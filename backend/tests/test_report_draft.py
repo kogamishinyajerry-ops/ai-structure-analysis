@@ -172,13 +172,41 @@ def test_draft_module_does_not_import_layer1_adapter_directly() -> None:
     """ADR-001: Layer-4 must not depend on a concrete adapter — only
     on the ReaderHandle Protocol (Layer 2). The CalculiXReader import
     in this test is fine; the production module must NOT import any
-    app.adapters.* package.
+    app.adapters.* package or a concrete solver adapter (e.g. calculix).
     """
+    import ast
+
     import app.services.report.draft as draft_mod
-    src = (Path(draft_mod.__file__)).read_text(encoding="utf-8")
-    # No literal mention of adapter packages in the production module.
-    assert "app.adapters" not in src
-    assert "calculix" not in src.lower()
+
+    src = Path(draft_mod.__file__).read_text(encoding="utf-8")
+    # Enforce the contract against the actual IMPORT GRAPH (AST), not raw
+    # source text — explanatory docstring/comment prose may legitimately
+    # mention "CalculiX" (FRD/erosion notes) without importing an adapter.
+    # A blanket `"calculix" not in src.lower()` guard tripped on exactly
+    # such docstrings even though the module imports zero concrete adapters.
+    imported: list[str] = []
+    for node in ast.walk(ast.parse(src)):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if base:
+                imported.append(base)
+            imported.extend(f"{base}.{alias.name}" for alias in node.names)
+
+    def _is_adapter_import(name: str) -> bool:
+        # Match the app.adapters package, or any dotted-path SEGMENT named
+        # exactly "calculix" (a concrete solver adapter). Segment-exact, not
+        # substring, so legit names like "calculix_helpers" don't false-positive.
+        if name == "app.adapters" or name.startswith("app.adapters."):
+            return True
+        return any(seg.lower() == "calculix" for seg in name.split("."))
+
+    offenders = [name for name in imported if _is_adapter_import(name)]
+    assert not offenders, (
+        f"Layer-4 draft module must not import a concrete adapter "
+        f"(ADR-001); found: {offenders}"
+    )
 
 
 # --- empty / partial reader --------------------------------------------

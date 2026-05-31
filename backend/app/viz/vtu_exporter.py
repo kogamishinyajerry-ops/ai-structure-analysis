@@ -493,7 +493,11 @@ def export_run(
         If no animation frames are found, the rootname does not match,
         or the frame parser fails.
     """
-    pv, RadiossReader = _resolve_pyvista_and_reader()
+    # Cheap precondition checks run BEFORE resolving the heavy optional deps
+    # (pyvista + vortex_radioss). These refusal contracts — non-SI_MM,
+    # missing-dir, no-frames — must hold regardless of whether the optional
+    # OpenRadioss reader is installed; otherwise their negative-path tests
+    # would have to skip in CI (which omits the openradioss extra).
     _check_unit_system(unit_system)
 
     if not openradioss_root.is_dir():
@@ -507,6 +511,8 @@ def export_run(
             f"no animation frames found at {openradioss_root}/{rootname}A* "
             f"(checked plain and .gz). Did the engine run terminate normally?"
         )
+
+    pv, RadiossReader = _resolve_pyvista_and_reader()
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -579,7 +585,9 @@ def export_run_streaming(
         bad deletion flags, etc.). Streaming does NOT swallow these —
         a corrupt frame is a fatal manifest event.
     """
-    pv, RadiossReader = _resolve_pyvista_and_reader()
+    # Cheap precondition checks run BEFORE resolving the heavy optional deps,
+    # mirroring export_run: non-SI_MM / missing-dir / bad-poll refusals must
+    # hold without the optional OpenRadioss reader installed.
     _check_unit_system(unit_system)
 
     if not openradioss_root.is_dir():
@@ -596,6 +604,8 @@ def export_run_streaming(
         raise VTUExportError(
             f"poll_interval_s must be positive; got {poll_interval_s}"
         )
+
+    pv, RadiossReader = _resolve_pyvista_and_reader()
 
     with _StreamingExporter(
         rootname=rootname,
