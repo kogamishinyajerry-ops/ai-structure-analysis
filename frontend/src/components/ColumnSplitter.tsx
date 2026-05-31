@@ -92,9 +92,19 @@ export function ColumnSplitter({
       onToggleCollapse?.(track);
       return;
     }
-    // Resize keys are INERT while collapsed — committing here would overwrite
-    // the hidden rail's saved width with valueNow(=0)±step (Codex R0 P2).
-    if (collapsed) return;
+    // The resize keys this separator owns. While collapsed they must NOT commit
+    // (that clobbers the hidden rail's saved width — Codex R0 P2), but they MUST
+    // still be CONSUMED: a focused collapsed splitter that lets Home/End fall
+    // through would scroll the overflow:auto pane instead of no-op'ing (R1 P3).
+    const isResizeKey =
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'Home' ||
+      event.key === 'End';
+    if (collapsed) {
+      if (isResizeKey) event.preventDefault();
+      return;
+    }
     const step = event.shiftKey ? NUDGE_PX_SHIFT : NUDGE_PX;
     switch (event.key) {
       case 'ArrowLeft':

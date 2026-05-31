@@ -175,16 +175,22 @@ describe('Phase 44 B — ColumnSplitter collapse UX', () => {
     expect(onToggleCollapse).toHaveBeenLastCalledWith('left')
   })
 
-  it('while collapsed, resize keys are inert but Enter still expands (R0 P2)', () => {
+  it('while collapsed, resize keys are inert-but-consumed; Enter still expands (R0 P2 / R1 P3)', () => {
     const onCommit = vi.fn()
     const onToggleCollapse = vi.fn()
     const { el } = setup({ collapsed: true, valueNow: 0, onCommit, onToggleCollapse })
     // Arrow/Home/End must NOT commit — committing valueNow(=0)±step would clobber
-    // the hidden rail's saved width, breaking non-destructive restore.
+    // the hidden rail's saved width, breaking non-destructive restore (R0 P2).
+    // They must STILL be consumed (preventDefault) so a focused collapsed splitter
+    // doesn't scroll the overflow:auto pane (R1 P3). fireEvent returns false when
+    // the dispatched cancelable event had preventDefault() called.
     for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
-      fireEvent.keyDown(el, { key })
+      const notCancelled = fireEvent.keyDown(el, { key })
+      expect(notCancelled).toBe(false) // preventDefault was called → key consumed
     }
     expect(onCommit).not.toHaveBeenCalled()
+    // An unhandled key (e.g. Tab) is NOT consumed — focus traversal still works.
+    expect(fireEvent.keyDown(el, { key: 'Tab' })).toBe(true)
     // Enter/Space still reach the toggle so a collapsed rail is keyboard-recoverable.
     fireEvent.keyDown(el, { key: 'Enter' })
     expect(onToggleCollapse).toHaveBeenCalledWith('left')
