@@ -6,7 +6,7 @@
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
-import type { Command, CommandCategory } from '../components/CommandPalette';
+import type { Command, CommandCategory } from '../commands/registry';
 import type { MaterialRecord } from '../materialsClient';
 
 /** Callback bag for palette command handlers. Keeping this typed at

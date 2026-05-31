@@ -93,7 +93,10 @@ export interface ViewportLayoutActions {
   setCompanionSectionCut: (next: SectionCutState) => void;
   setHoverCoords: (info: HoverCoordsInfo | null) => void;
   setProbeList: React.Dispatch<React.SetStateAction<ProbeListState>>;
-  setExitingProbeLabel: (label: number | null) => void;
+  // Full Dispatch so callers can use the updater form
+  // (setExitingProbeLabel((current) => ...)) as well as a direct value — mirrors
+  // setProbeList above. Labels are node numbers, so number | null is correct.
+  setExitingProbeLabel: React.Dispatch<React.SetStateAction<number | null>>;
   setRestoredCount: (count: number) => void;
   dismissCorruptedToast: () => void;
 }

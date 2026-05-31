@@ -51,7 +51,10 @@ export interface UseTrustSectionsContext {
   referenceStatusRaw: Parameters<typeof buildTrustStrip>[0]['referenceStatusRaw'];
   goldenSampleSummary: Parameters<typeof buildTrustStrip>[0]['goldenSampleSummary'];
   goldenSampleReviewCount: Parameters<typeof buildTrustStrip>[0]['goldenSampleReviewCount'];
-  blueprintSummary: Parameters<typeof buildTrustStrip>[0]['blueprintSummary'];
+  // Derive from buildBlueprintTargetSection (the RICHER blueprint shape:
+  // imagePath/evidenceCaseId/claimTier/evidenceCount/… ). buildTrustStrip needs
+  // only a structural subset, so it still accepts this richer value.
+  blueprintSummary: Parameters<typeof buildBlueprintTargetSection>[0]['blueprintSummary'];
 
   // Section icons (supplied by App.tsx to keep this hook
   // lucide-icon-agnostic)
@@ -88,7 +91,10 @@ export interface UseTrustSectionsContext {
   candidateManifest: Parameters<typeof buildEvidenceSection>[0]['candidateManifest'];
   backendProvenance: Parameters<typeof buildEvidenceSection>[0]['backendProvenance'];
   meshArtifactSource: Parameters<typeof buildEvidenceSection>[0]['meshArtifactSource'];
-  candidateMeshEvidence: Parameters<typeof buildEvidenceSection>[0]['candidateMeshEvidence'];
+  // Derive from buildValidationSection (typed `{ quality } | null`), not
+  // buildEvidenceSection (which loosely types it `unknown`). buildEvidenceSection
+  // accepts the narrower type (unknown accepts anything).
+  candidateMeshEvidence: Parameters<typeof buildValidationSection>[0]['candidateMeshEvidence'];
   convergenceArtifactList: Parameters<typeof buildEvidenceSection>[0]['convergenceArtifactList'];
   meshConvergenceStudySource: Parameters<typeof buildEvidenceSection>[0]['meshConvergenceStudySource'];
   meshConvergenceStudy: Parameters<typeof buildEvidenceSection>[0]['meshConvergenceStudy'];

@@ -11,6 +11,9 @@ import * as THREE from 'three';
 import type { ResultMeshElement, ResultMeshFrame } from '../resultMeshPlayback';
 import { componentValue, type StressComponent } from '../stressDerivatives';
 import { applyValueFilter, type ValueFilterState } from './viewportRaycaster';
+// Re-export so consumers (e.g. CompanionViewport) can source the type from this
+// module, which is the geometry SSOT they already import from.
+export type { ValueFilterState } from './viewportRaycaster';
 import { sampleColormap, DEFAULT_COLORMAP, type ColormapId } from './colormaps';
 
 /** Phase 22 B — section-cut clipping plane state. */

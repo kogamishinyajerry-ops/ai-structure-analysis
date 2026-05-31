@@ -65,7 +65,10 @@ function getTabbables(container: HTMLElement): HTMLElement[] {
 
 export interface UseFocusTrapOptions {
   /** Ref to the dialog container. Required. */
-  containerRef: RefObject<HTMLElement>;
+  // React 19 / TS6: useRef<T>(null) yields RefObject<T | null>, so accept the
+  // nullable ref the callers (AdvancedModePromo / OnboardingTour / ShortcutsOverlay)
+  // pass; the effect already guards `containerRef.current` before use.
+  containerRef: RefObject<HTMLElement | null>;
   /** When false, the trap is disabled (no key handler, no initial
    * focus side effect). Useful when the parent toggles visibility
    * via conditional render — but if you ARE conditionally rendering,
