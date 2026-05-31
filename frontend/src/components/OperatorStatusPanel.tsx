@@ -71,16 +71,16 @@ export function OperatorStatusPanel({
   };
 
   return (
-    <section className="glass-panel" style={{ padding: '18px 20px', marginBottom: '24px' }} aria-label="Validation and trust center">
+    <section className="glass-panel" style={{ padding: '18px var(--sp-5)', marginBottom: 'var(--sp-6)' }} aria-label="Validation and trust center">
       <InContextHint
         hintId="operator-status"
         label="Workbench state"
         text="This panel tracks the live solve and trust state. If the log connection drops mid-run, you'll get a recovery card with a Retry."
       />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)', marginBottom: 'var(--sp-4)', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
-          <h2 style={{ fontSize: '1.1rem', margin: '4px 0 0 0' }}>Evidence-first workbench state</h2>
+          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase' }}>Validation & Trust Center</div>
+          <h2 style={{ fontSize: '1.1rem', margin: 'var(--sp-1) 0 0 0' }}>Evidence-first workbench state</h2>
         </div>
         <div style={{ color: 'var(--danger-400)', fontSize: '0.78rem', fontWeight: 800, border: '1px solid rgba(197, 69, 59, 0.30)', borderRadius: '999px', padding: '5px 10px', background: 'rgba(197, 69, 59, 0.10)' }}>
           not signed validation
@@ -89,15 +89,15 @@ export function OperatorStatusPanel({
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '18px' }}>
         {strip.map((item) => (
-          <div key={item.label} style={{ background: toneBackground(item.tone), border: `1px solid ${toneBorder(item.tone)}`, borderRadius: '8px', padding: '12px', minHeight: '78px' }}>
+          <div key={item.label} style={{ background: toneBackground(item.tone), border: `1px solid ${toneBorder(item.tone)}`, borderRadius: 'var(--r-sm)', padding: 'var(--sp-3)', minHeight: '78px' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>{item.label}</div>
             <div style={{ color: toneColor(item.tone), fontSize: '0.88rem', fontWeight: 650, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{item.value}</div>
-            {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
+            {item.detail && <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--fs-xs)', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{item.detail}</div>}
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 'var(--sp-3)' }}>
         {sections.map((section) => (
           <SectionFrame
             key={section.title}
@@ -107,20 +107,20 @@ export function OperatorStatusPanel({
         ))}
       </div>
 
-      <div style={{ marginTop: '14px', background: 'var(--c-50)', border: '1px solid var(--border)', borderRadius: '8px', padding: '14px' }}>
-        <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ marginTop: '14px', background: 'var(--c-50)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', padding: '14px' }}>
+        <div style={{ fontSize: '0.86rem', fontWeight: 800, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
           <ShieldAlert size={16} color="var(--accent)" />
           Golden Sample Review Queue
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px' }}>
           {goldenSamples.map((sample) => (
-            <div key={sample.caseId} style={{ border: `1px solid ${toneBorder(sample.tone)}`, background: toneBackground(sample.tone), borderRadius: '8px', padding: '12px', minHeight: '106px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: '0.82rem' }}>{sample.caseId}</div>
+            <div key={sample.caseId} style={{ border: `1px solid ${toneBorder(sample.tone)}`, background: toneBackground(sample.tone), borderRadius: 'var(--r-sm)', padding: 'var(--sp-3)', minHeight: '106px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--sp-2)', marginBottom: '6px' }}>
+                <div style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 'var(--fs-sm)' }}>{sample.caseId}</div>
                 <div style={{ color: toneColor(sample.tone), fontWeight: 800, fontSize: '0.68rem', textTransform: 'uppercase' }}>{sample.status}</div>
               </div>
               <div style={{ color: 'var(--text-secondary)', fontSize: '0.74rem', lineHeight: 1.35, marginBottom: '6px' }}>{sample.name}</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{sample.reason}</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--fs-xs)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>{sample.reason}</div>
               <div style={{ color: toneColor(sample.tone), fontSize: '0.7rem', lineHeight: 1.35, marginTop: '6px', overflowWrap: 'anywhere' }}>{sample.failurePatternRef}</div>
             </div>
           ))}

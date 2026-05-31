@@ -127,9 +127,9 @@ export function ChatPanel({
   };
 
   const renderReviewCards = () => (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ display: 'grid', gap: '8px' }}>
-        <div style={{ padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--c-50)' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+      <div style={{ display: 'grid', gap: 'var(--sp-2)' }}>
+        <div style={{ padding: 'var(--sp-3)', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'var(--c-50)' }}>
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '6px' }}>Current claim boundary</div>
           <div style={{ color: 'var(--warn-400)', fontSize: '0.84rem', fontWeight: 700 }}>{claimTier}</div>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '6px', lineHeight: 1.4 }}>{allowedClaim}</div>
@@ -137,18 +137,18 @@ export function ChatPanel({
       </div>
 
       {cardsForTab.length === 0 ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: '0.82rem', lineHeight: 1.45, padding: '12px' }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', lineHeight: 1.45, padding: 'var(--sp-3)' }}>
           No structured card is available for this view yet. Load a case or run/report a solver path before promoting evidence.
         </div>
       ) : (
         cardsForTab.map((card) => (
-          <div key={`${card.card_type}-${card.finding}`} style={{ padding: '14px', borderRadius: '8px', border: `1px solid ${severityColor(card.severity)}`, background: 'var(--c-50)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
+          <div key={`${card.card_type}-${card.finding}`} style={{ padding: '14px', borderRadius: 'var(--r-sm)', border: `1px solid ${severityColor(card.severity)}`, background: 'var(--c-50)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-3)', alignItems: 'center', marginBottom: 'var(--sp-2)' }}>
               <div style={{ fontSize: '0.68rem', color: severityColor(card.severity), textTransform: 'uppercase', fontWeight: 800 }}>{card.card_type.replace(/_/g, ' ')}</div>
               <div style={{ color: severityColor(card.severity), fontSize: '0.68rem', fontWeight: 800 }}>{card.severity}</div>
             </div>
             <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.35 }}>{card.finding}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.45 }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 'var(--sp-2)', lineHeight: 1.45 }}>
               <strong style={{ color: 'var(--text-primary)' }}>Evidence:</strong> {card.evidence}
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.45 }}>
@@ -165,8 +165,8 @@ export function ChatPanel({
 
   return (
     <div className="glass-panel" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ padding: 'var(--sp-4)', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
           <MessageSquare size={18} color="var(--accent)" />
           <h3 style={{ margin: 0, fontSize: '0.9rem' }}>Trust-aware AI Engineer</h3>
         </div>
@@ -193,7 +193,7 @@ export function ChatPanel({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '4px',
+                gap: 'var(--sp-1)',
               }}
             >
               {tab.icon}
@@ -204,23 +204,23 @@ export function ChatPanel({
       </div>
 
       {activeTab === 'command' ? (
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         {messages.map((m, i) => (
           <div key={i} style={{ display: 'flex', gap: '10px', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
             {m.role === 'assistant' && <div style={{ minWidth: '32px', height: '32px', borderRadius: '50%', background: 'var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Bot size={16} color="var(--accent)" /></div>}
-            <div style={{ background: m.role === 'user' ? 'var(--accent)' : 'var(--c-100)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', padding: '12px', borderRadius: '12px', fontSize: '0.85rem', lineHeight: '1.4' }}>
+            <div style={{ background: m.role === 'user' ? 'var(--accent)' : 'var(--c-100)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', padding: 'var(--sp-3)', borderRadius: 'var(--r-md)', fontSize: '0.85rem', lineHeight: '1.4' }}>
               {m.content}
               
               {m.proposedAction && !m.executed && (
-                <div style={{ marginTop: '12px', padding: '12px', background: 'var(--c-200)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                   <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ marginTop: 'var(--sp-3)', padding: 'var(--sp-3)', background: 'var(--c-200)', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)' }}>
+                   <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent)', marginBottom: 'var(--sp-2)', display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }}>
                       <Sparkles size={12} /> PROPOSED ACTION
                    </div>
-                   <p style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{m.proposedAction.description}</p>
-                   <div style={{ display: 'flex', gap: '8px' }}>
+                   <p style={{ margin: '0 0 var(--sp-3) 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{m.proposedAction.description}</p>
+                   <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
                      <button 
                        onClick={() => confirmAction(i, m.proposedAction!)}
-                       style={{ flex: 1, padding: '6px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                       style={{ flex: 1, padding: '6px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--sp-1)' }}
                      >
                        <Check size={12} /> Confirm
                      </button>
@@ -239,7 +239,7 @@ export function ChatPanel({
       ) : renderReviewCards()}
 
       {activeTab === 'command' && (
-      <div style={{ padding: '16px', borderTop: '1px solid var(--border)', background: 'var(--c-50)' }}>
+      <div style={{ padding: 'var(--sp-4)', borderTop: '1px solid var(--border)', background: 'var(--c-50)' }}>
         <div style={{ position: 'relative' }}>
           <input 
             type="text" 
@@ -247,7 +247,7 @@ export function ChatPanel({
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Ask copilot to run a study..."
-            style={{ width: '100%', padding: '12px 40px 12px 12px', borderRadius: '8px', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+            style={{ width: '100%', padding: 'var(--sp-3) var(--sp-10) var(--sp-3) var(--sp-3)', borderRadius: 'var(--r-sm)', background: 'var(--bg-base)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
           />
           <button 
              onClick={handleSend}

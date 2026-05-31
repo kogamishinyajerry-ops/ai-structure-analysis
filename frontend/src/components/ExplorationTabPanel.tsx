@@ -30,7 +30,7 @@ export function ExplorationTabPanel({
   return (
     <div
       data-testid="exploration-tab-panel"
-      style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 500px) 1fr', gap: '32px' }}
+      style={{ display: 'grid', gridTemplateColumns: 'minmax(400px, 500px) 1fr', gap: 'var(--sp-8)' }}
     >
       <SensitivityForm
         activeCaseId={activeCaseId}
@@ -41,12 +41,12 @@ export function ExplorationTabPanel({
         <div
           data-testid="exploration-result-comparison"
           className="glass-panel"
-          style={{ padding: '24px' }}
+          style={{ padding: 'var(--sp-6)' }}
         >
           <h3
             style={{
               fontSize: '1rem',
-              marginBottom: '16px',
+              marginBottom: 'var(--sp-4)',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
@@ -54,13 +54,13 @@ export function ExplorationTabPanel({
           >
             <ArrowRightLeft size={18} color="var(--accent)" /> Result Comparison
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
             {activeExperiment.runs.map((r, i) => (
               <div
                 key={i}
                 className="glass-panel"
                 style={{
-                  padding: '12px',
+                  padding: 'var(--sp-3)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -76,7 +76,7 @@ export function ExplorationTabPanel({
                     background: comparedIndices?.includes(i) ? 'var(--accent)' : 'transparent',
                     border: '1px solid var(--accent)',
                     color: comparedIndices?.includes(i) ? '#fff' : 'var(--accent)',
-                    padding: '4px 12px',
+                    padding: 'var(--sp-1) var(--sp-3)',
                     borderRadius: '4px',
                     fontSize: '0.75rem',
                     cursor: 'pointer',

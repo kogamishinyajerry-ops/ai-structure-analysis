@@ -131,7 +131,7 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
   return (
     <div
       data-testid="visual-tab-panel"
-      style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}
     >
       {/* FM-04a Phase 41.4 (B.2 + retro P2-B) — the 22 evidence/governance panels
           were a dense "wall" directly under the 3D hero. Collapse them into one
@@ -167,7 +167,7 @@ export function VisualTabPanel(props: VisualTabPanelProps) {
           </span>
         </summary>
         {hasOpened && (
-        <div data-testid="evidence-trust-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
+        <div data-testid="evidence-trust-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', marginTop: '14px' }}>
       <CohortDashboardPanel
         apiBase={apiBase}
         selectedCaseId={selectedCandidateCaseId}
@@ -271,8 +271,8 @@ const EVIDENCE_WALL_STYLES = `
 const EVIDENCE_SUMMARY_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '12px',
-  padding: '14px 16px',
+  gap: 'var(--sp-3)',
+  padding: '14px var(--sp-4)',
   background: 'var(--bg-surface)',
   border: '1px solid var(--border)',
   borderRadius: '10px',

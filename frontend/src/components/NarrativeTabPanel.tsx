@@ -19,7 +19,7 @@ export function NarrativeTabPanel({ report, onDownloadPDF }: NarrativeTabPanelPr
   return (
     <div
       data-testid="narrative-tab-panel"
-      style={{ padding: '40px', color: 'var(--text-secondary)' }}
+      style={{ padding: 'var(--sp-10)', color: 'var(--text-secondary)' }}
       className="report-markdown"
     >
       <div
@@ -27,12 +27,12 @@ export function NarrativeTabPanel({ report, onDownloadPDF }: NarrativeTabPanelPr
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: '24px',
-          paddingBottom: '16px',
+          marginBottom: 'var(--sp-6)',
+          paddingBottom: 'var(--sp-4)',
           borderBottom: '1px solid var(--border)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
           <BookOpen size={20} color="var(--accent)" />
           <h2 style={{ margin: 0 }}>Design Auditor Insight</h2>
         </div>
@@ -50,7 +50,7 @@ export function NarrativeTabPanel({ report, onDownloadPDF }: NarrativeTabPanelPr
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: 'var(--sp-2)',
           }}
         >
           <Download size={14} /> Export PDF Document

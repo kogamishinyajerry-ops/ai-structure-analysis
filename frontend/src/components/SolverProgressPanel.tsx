@@ -75,7 +75,7 @@ const headerRowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: '8px',
+  gap: 'var(--sp-2)',
 };
 
 const titleStyle: CSSProperties = {
@@ -157,7 +157,7 @@ const stageRowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
   justifyContent: 'space-between',
-  gap: '8px',
+  gap: 'var(--sp-2)',
   fontSize: 'var(--fs-xs)',
   color: 'var(--text-muted)',
 };
