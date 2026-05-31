@@ -409,6 +409,35 @@ button.surface-card:hover {
   opacity: 1;
 }
 
+/* Phase 44 B — collapse/expand: animate the grid-template change ONLY when the
+   hook sets data-anim (drag + resize clear it, so neither lags). */
+.app-container[data-anim="1"] {
+  transition: grid-template-columns var(--dur-base) var(--ease-out);
+}
+/* A collapsed rail is a thin strip; the splitter hosts the expand chevron. */
+.col-splitter[data-collapsed] {
+  background: var(--c-200);
+}
+.col-splitter-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.col-splitter-chevron:hover {
+  color: var(--accent-500);
+  background: var(--c-100);
+}
+
 /* ---- Responsive (PRESERVED breakpoints) ------------------------------ */
 @media (max-width: 1024px) {
   .app-container { grid-template-columns: 210px 1fr !important; }
@@ -549,4 +578,6 @@ button.surface-card:hover {
   .col-splitter,
   .col-splitter::before,
   .col-splitter::after { transition: none; }   /* Phase 44 A — splitter (B:-1) */
+  .app-container[data-anim="1"] { transition: none; }   /* Phase 44 B — collapse (B:-1) */
+  .col-splitter-chevron { transition: none; }
 }

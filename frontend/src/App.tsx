@@ -1222,7 +1222,7 @@ function App() {
     materials: FALLBACK_MATERIALS,
   });
   useGlobalShortcuts({ togglePalette: () => setPaletteOpen((prev) => !prev) })
-  const { shellRef, railVars, splitterProps } = useColumnLayout();
+  const { shellRef, railVars, splitterProps } = useColumnLayout({ stageReservePx: showChat ? 340 : 0 });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
