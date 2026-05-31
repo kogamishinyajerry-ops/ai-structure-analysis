@@ -163,7 +163,11 @@ export function Topbar(props: TopbarProps) {
         {showRunControls && (
           <div
             data-testid="topbar-run-controls"
-            style={{ display: 'flex', gap: 'var(--sp-2)' }}
+            // Also wrap the INNER solver sub-row: when solving=true it grows to
+            // matl + analysis + Run + Stop, which alone can exceed the ~520px
+            // main column (chat open) and clip Stop. flex-end keeps it tidy when
+            // it wraps (Codex 45 R1 P2; same desktop-overflow path, no media query).
+            style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 'var(--sp-2)' }}
           >
             {showMaterialSelect && (
               <select
