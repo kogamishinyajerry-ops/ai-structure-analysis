@@ -150,7 +150,11 @@ export function projectLayout(
   if (!collapse.left && !collapse.case) {
     return clampLayoutToViewport(saved, viewportW, reservePx);
   }
-  const budget = railBudget(viewportW, reservePx);
+  // Each collapsed rail still occupies a COLLAPSED_STRIP_PX strip, so subtract
+  // it from the budget the live rail may use — otherwise the returned grid is
+  // STRIP px too wide and re-starves the stage (Codex R0 P2).
+  const collapsedCount = (collapse.left ? 1 : 0) + (collapse.case ? 1 : 0);
+  const budget = railBudget(viewportW, reservePx) - collapsedCount * COLLAPSED_STRIP_PX;
   let leftW = collapse.left ? 0 : clampW('left', saved.leftW);
   let caseW = collapse.case ? 0 : clampW('case', saved.caseW);
   let over = leftW + caseW - budget;

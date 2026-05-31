@@ -111,6 +111,13 @@ describe('Phase 44 B — collapse model', () => {
       caseW: COLLAPSED_STRIP_PX,
     })
   })
+  it('projectLayout: a collapsed strip counts against the budget — stage not starved (R0 P2)', () => {
+    // mid-width desktop + chat open, left collapsed, case live near its max: the
+    // 14px strip must be reserved so left+case never exceeds the rail budget.
+    const out = projectLayout({ leftW: 210, caseW: 480 }, { left: true, case: false }, 1300, 340)
+    expect(out.leftW).toBe(COLLAPSED_STRIP_PX)
+    expect(out.leftW + out.caseW).toBeLessThanOrEqual(railBudget(1300, 340))
+  })
 })
 
 describe('Phase 44 B — collapse hook behaviour', () => {
@@ -166,6 +173,21 @@ describe('Phase 44 B — ColumnSplitter collapse UX', () => {
     fireEvent.keyDown(el, { key: ' ' })
     expect(onToggleCollapse).toHaveBeenCalledTimes(3)
     expect(onToggleCollapse).toHaveBeenLastCalledWith('left')
+  })
+
+  it('while collapsed, resize keys are inert but Enter still expands (R0 P2)', () => {
+    const onCommit = vi.fn()
+    const onToggleCollapse = vi.fn()
+    const { el } = setup({ collapsed: true, valueNow: 0, onCommit, onToggleCollapse })
+    // Arrow/Home/End must NOT commit — committing valueNow(=0)±step would clobber
+    // the hidden rail's saved width, breaking non-destructive restore.
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      fireEvent.keyDown(el, { key })
+    }
+    expect(onCommit).not.toHaveBeenCalled()
+    // Enter/Space still reach the toggle so a collapsed rail is keyboard-recoverable.
+    fireEvent.keyDown(el, { key: 'Enter' })
+    expect(onToggleCollapse).toHaveBeenCalledWith('left')
   })
 
   it('a legacy model without onToggleCollapse does not throw on toggle gestures', () => {

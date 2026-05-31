@@ -85,6 +85,16 @@ export function ColumnSplitter({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    // Enter / Space toggles collapse in any state (so a collapsed rail is
+    // keyboard-expandable).
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onToggleCollapse?.(track);
+      return;
+    }
+    // Resize keys are INERT while collapsed — committing here would overwrite
+    // the hidden rail's saved width with valueNow(=0)±step (Codex R0 P2).
+    if (collapsed) return;
     const step = event.shiftKey ? NUDGE_PX_SHIFT : NUDGE_PX;
     switch (event.key) {
       case 'ArrowLeft':
@@ -102,11 +112,6 @@ export function ColumnSplitter({
       case 'End':
         event.preventDefault();
         onCommit(track, valueMax);
-        break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        onToggleCollapse?.(track);
         break;
       default:
         break;
