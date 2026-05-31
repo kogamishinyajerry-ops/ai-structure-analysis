@@ -11,6 +11,8 @@
 
 import { ChevronRight, Loader2, MessageSquare, Play } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useDensity } from '../state/useDensity'
+import { DensityToggle } from './DensityToggle'
 
 export type AnalysisType = 'static' | 'modal' | 'buckling'
 
@@ -68,6 +70,7 @@ export function Topbar(props: TopbarProps) {
     selectedMaterialId,
     onChangeMaterialId,
   } = props
+  const { density, setDensity } = useDensity()
   const showMaterialSelect =
     showRunControls &&
     materialOptions !== undefined &&
@@ -131,6 +134,7 @@ export function Topbar(props: TopbarProps) {
         )}
       </div>
       <div style={{ display: 'flex', gap: '12px' }}>
+        <DensityToggle density={density} onChange={setDensity} />
         <button
           type="button"
           onClick={onToggleChat}

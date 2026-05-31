@@ -120,6 +120,35 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ============================================================
+   FM-04a Phase 45 A — design-token DENSITY (compact mode).
+   useDensity sets data-density on <html>; this block redefines ONLY the
+   token VALUES under the compact selector. 'comfortable' carries the
+   byte-identical :root values above (zero change on upgrade).
+
+   HONEST SCOPE (Tier 1): this is TOKEN-SURFACE density, not a full-UI
+   shrink. Only var(--sp-*)/var(--fs-*)/var(--r-*) consumers rescale —
+   the type scale, card/panel radius, and token-spacing rhythm tighten;
+   inline-hardcoded padding (Topbar, Sidebar, advisor cards) stays at
+   comfortable until a later slice migrates it to tokens.
+
+   Deliberately NOT redefined: --rail-w/--caserail-w/--grip (owned at
+   runtime by useColumnLayout, Phase 44) and --r-full (pills/badges keep
+   their shape). No transition is declared — the attribute swap is instant
+   (correct desktop behavior, matches CAE compact toggles), so the existing
+   @media (prefers-reduced-motion) block needs no new entry. ============ */
+:root[data-density="compact"] {
+  /* Spacing ~0.80x (recon industrial target 0.75-0.85x) */
+  --sp-1: 3px;  --sp-2: 6px;  --sp-3: 10px; --sp-4: 13px;
+  --sp-5: 16px; --sp-6: 19px; --sp-8: 26px; --sp-10: 32px; --sp-12: 38px;
+  /* Radius ~0.80x (--r-full left alone — pills stay pills) */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 10px; --r-lg: 13px; --r-xl: 18px;
+  /* Type ~0.91x — lighter compression keeps --fs-xs legible */
+  --fs-xs: 0.66rem; --fs-sm: 0.74rem; --fs-base: 0.86rem;
+  --fs-md: 0.96rem; --fs-lg: 1.15rem; --fs-xl: 1.45rem; --fs-2xl: 1.9rem;
+  line-height: 1.45;
+}
+
 body {
   margin: 0;
   display: flex;
