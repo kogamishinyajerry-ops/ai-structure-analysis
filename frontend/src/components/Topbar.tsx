@@ -79,7 +79,7 @@ export function Topbar(props: TopbarProps) {
     <header
       data-testid="workbench-topbar"
       style={{
-        padding: '20px 40px',
+        padding: 'var(--sp-5) var(--sp-10)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         justifyContent: 'space-between',
@@ -91,13 +91,13 @@ export function Topbar(props: TopbarProps) {
         zIndex: 10,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)' }}>
         <div
           data-testid="topbar-breadcrumb"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: 'var(--sp-2)',
             color: 'var(--text-muted)',
             fontSize: '0.875rem',
           }}
@@ -121,7 +121,7 @@ export function Topbar(props: TopbarProps) {
               border: '1px solid rgba(47, 111, 219, 0.30)',
               background: 'rgba(47, 111, 219, 0.10)',
               color: 'var(--info-400)',
-              fontSize: '0.72rem',
+              fontSize: 'var(--fs-xs)',
               fontWeight: 700,
               maxWidth: 320,
               overflow: 'hidden',
@@ -133,22 +133,22 @@ export function Topbar(props: TopbarProps) {
           </span>
         )}
       </div>
-      <div style={{ display: 'flex', gap: '12px' }}>
+      <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
         <DensityToggle density={density} onChange={setDensity} />
         <button
           type="button"
           onClick={onToggleChat}
           data-testid="topbar-copilot-toggle"
           style={{
-            padding: '8px 16px',
-            borderRadius: '8px',
+            padding: 'var(--sp-2) var(--sp-4)',
+            borderRadius: 'var(--r-sm)',
             background: showChat ? 'var(--accent-glow)' : 'var(--bg-surface)',
             color: showChat ? 'var(--accent-600)' : 'var(--text-primary)',
             border: showChat ? '1px solid var(--border-focus)' : '1px solid var(--border)',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: 'var(--sp-2)',
             cursor: 'pointer',
           }}
         >
@@ -157,7 +157,7 @@ export function Topbar(props: TopbarProps) {
         {showRunControls && (
           <div
             data-testid="topbar-run-controls"
-            style={{ display: 'flex', gap: '8px' }}
+            style={{ display: 'flex', gap: 'var(--sp-2)' }}
           >
             {showMaterialSelect && (
               <select
@@ -169,8 +169,8 @@ export function Topbar(props: TopbarProps) {
                   background: 'var(--bg-surface)',
                   color: 'var(--text-primary)',
                   border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  padding: '0 12px',
+                  borderRadius: 'var(--r-sm)',
+                  padding: '0 var(--sp-3)',
                   fontSize: '0.85rem',
                   outline: 'none',
                   maxWidth: 220,
@@ -193,8 +193,8 @@ export function Topbar(props: TopbarProps) {
                 background: 'var(--bg-surface)',
                 color: 'var(--text-primary)',
                 border: '1px solid var(--border)',
-                borderRadius: '8px',
-                padding: '0 12px',
+                borderRadius: 'var(--r-sm)',
+                padding: '0 var(--sp-3)',
                 fontSize: '0.85rem',
                 outline: 'none',
               }}
@@ -211,15 +211,15 @@ export function Topbar(props: TopbarProps) {
               disabled={solving}
               onClick={onRunSolver}
               style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
+                padding: 'var(--sp-2) var(--sp-4)',
+                borderRadius: 'var(--r-sm)',
                 background: 'var(--accent)',
                 color: '#fff',
                 border: 'none',
                 fontWeight: 600,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: 'var(--sp-2)',
                 cursor: solving ? 'not-allowed' : 'pointer',
                 opacity: solving ? 0.6 : 1,
               }}
@@ -237,8 +237,8 @@ export function Topbar(props: TopbarProps) {
                 data-testid="topbar-stop-solver"
                 onClick={onStopSolver}
                 style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
+                  padding: 'var(--sp-2) var(--sp-4)',
+                  borderRadius: 'var(--r-sm)',
                   background: 'rgba(197, 69, 59, 0.10)',
                   color: 'var(--danger-400)',
                   border: '1px solid rgba(197, 69, 59, 0.30)',

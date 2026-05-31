@@ -78,14 +78,14 @@ export function Sidebar({
       className="glass-sidebar"
       data-testid="case-sidebar"
       style={{
-        padding: '24px',
+        padding: 'var(--sp-6)',
         display: 'flex',
         flexDirection: 'column',
-        gap: '24px',
+        gap: 'var(--sp-6)',
         borderLeft: '1px solid var(--border)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
         <div
           style={{
             width: '40px',
@@ -99,7 +99,7 @@ export function Sidebar({
         >
           <Zap size={24} color="#fff" />
         </div>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+        <h2 style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, margin: 0 }}>
           Structure<span style={{ color: 'var(--accent)' }}>AI</span>
         </h2>
       </div>
@@ -115,7 +115,7 @@ export function Sidebar({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '8px',
+          gap: 'var(--sp-2)',
           padding: '6px 10px',
           borderRadius: '6px',
           background: 'var(--c-50)',
@@ -140,15 +140,15 @@ export function Sidebar({
         </kbd>
       </button>
 
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
         <button
           className="nav-item active"
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            padding: '12px',
-            borderRadius: '8px',
+            gap: 'var(--sp-3)',
+            padding: 'var(--sp-3)',
+            borderRadius: 'var(--r-sm)',
             background: 'var(--accent-glow)',
             color: 'var(--accent)',
             border: 'none',
@@ -168,8 +168,8 @@ export function Sidebar({
             fontWeight: 600,
             color: 'var(--text-muted)',
             textTransform: 'uppercase',
-            marginBottom: '12px',
-            paddingLeft: '12px',
+            marginBottom: 'var(--sp-3)',
+            paddingLeft: 'var(--sp-3)',
           }}
         >
           Case Gallery
@@ -183,7 +183,7 @@ export function Sidebar({
             />
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
             {availableCases.map((c) => (
               <button
                 key={c.id}
@@ -193,9 +193,9 @@ export function Sidebar({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: 'var(--sp-3)',
                   padding: '10px 12px',
-                  borderRadius: '8px',
+                  borderRadius: 'var(--r-sm)',
                   background:
                     activeCaseId === c.id ? 'var(--accent-glow)' : 'transparent',
                   color:
@@ -227,13 +227,13 @@ export function Sidebar({
               fontWeight: 600,
               color: 'var(--text-muted)',
               textTransform: 'uppercase',
-              marginBottom: '12px',
-              paddingLeft: '12px',
+              marginBottom: 'var(--sp-3)',
+              paddingLeft: 'var(--sp-3)',
             }}
           >
             Candidate Cases
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}>
             {candidateCases.map((cc) => {
               const isActive = selectedCandidateCaseId === cc.caseId
               return (
@@ -246,9 +246,9 @@ export function Sidebar({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '12px',
+                    gap: 'var(--sp-3)',
                     padding: '10px 12px',
-                    borderRadius: '8px',
+                    borderRadius: 'var(--r-sm)',
                     background: isActive
                       ? 'var(--accent-glow)'
                       : 'transparent',
@@ -273,14 +273,14 @@ export function Sidebar({
         <div
           className="glass-panel"
           data-testid="active-experiment-summary"
-          style={{ padding: '16px' }}
+          style={{ padding: 'var(--sp-4)' }}
         >
           <div
             style={{
               fontSize: '0.75rem',
               fontWeight: 600,
               color: 'var(--accent)',
-              marginBottom: '8px',
+              marginBottom: 'var(--sp-2)',
             }}
           >
             EXP: {activeExperiment.parameter.toUpperCase()}
@@ -292,7 +292,7 @@ export function Sidebar({
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '0.75rem',
-                marginBottom: '4px',
+                marginBottom: 'var(--sp-1)',
               }}
             >
               <span>V={r.value}</span>
@@ -315,7 +315,7 @@ export function Sidebar({
           data-testid="frd-upload-label"
           style={{
             display: 'block',
-            padding: '20px',
+            padding: 'var(--sp-5)',
             textAlign: 'center',
             border: '2px dashed var(--border)',
             cursor: 'pointer',
@@ -330,7 +330,7 @@ export function Sidebar({
           />
           <FileUp
             size={24}
-            style={{ marginBottom: '8px', color: 'var(--text-secondary)' }}
+            style={{ marginBottom: 'var(--sp-2)', color: 'var(--text-secondary)' }}
           />
           <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>Upload FRD</div>
         </label>
