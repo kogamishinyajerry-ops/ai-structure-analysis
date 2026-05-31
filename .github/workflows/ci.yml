@@ -53,6 +53,16 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      # FM-04a: CI ran eslint + vitest but NEVER type-checked the frontend, so
+      # 16 strict-mode (TS6 strict-by-default) errors in src/ accumulated unseen
+      # — a plain `tsc --noEmit` on the root tsconfig is a no-op (files:[] +
+      # references), so `tsc -b` (what `npm run build` runs) is the real gate.
+      # Wired here so TS regressions fail on `main` instead of rotting until a
+      # local `npm run build`.
+      - name: Frontend — typecheck (tsc -b)
+        run: npx tsc -b
+        working-directory: frontend
+
       - name: Frontend — eslint baseline guard (ceiling 70)
         working-directory: frontend
         run: |
