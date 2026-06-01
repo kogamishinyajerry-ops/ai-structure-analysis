@@ -1,0 +1,16 @@
+{
+  "case_id": "cylinder-pv-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_tier": "Tier 1 engineering candidate",
+  "convergence_combined_verdict": "candidate_observed_stable",
+  "dt_sweep": {
+    "axis": "dt",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "Static analysis \u2014 no time discretization. Marked stable as a sentinel value; not a temporal convergence claim."
+  },
+  "mesh_sweep": {
+    "axis": "mesh",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "32 C3D20 elements, 8 through-wall. Worst-case relative error vs Lame's analytical solution: \u03c3_r \u2264 1.16%, \u03c3_\u03b8 \u2264 0.14%, \u03c3_z \u2264 0.20%, vM \u2264 0.20%. All comfortably below the 5% engineering tolerance applied for Tier 1 candidate scoping."
+  }
+}
