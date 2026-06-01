@@ -63,23 +63,40 @@ test('bullet-plate blueprint evidence refs point at available local Tier 1 artif
   // The candidate's real-run evidence (OpenRadioss decks, result-mesh,
   // animation, engine log) is generated there by an actual local solve and
   // is intentionally NOT committed — present after a local run, absent on a
-  // fresh clone / CI by design. An 'available' ref is honest iff it EITHER
-  // exists on disk OR is declared under the `project_state/` runtime root.
-  // In-repo refs (anything NOT under project_state/) must exist, preserving
-  // the anti-vaporware intent — a fabricated or typo'd in-repo path fails.
-  // We deliberately do NOT gate on the project_state/ DIRECTORY existing:
-  // other tests may (re)create that tree on CI, so neither the artifact file
-  // nor the tree's presence is a reliable version-control signal — only the
-  // in-repo refs are verifiable in this environment.
-  const RUNTIME_ROOT = 'project_state/';
+  // fresh clone / CI by design. We deliberately do NOT gate on the
+  // project_state/ DIRECTORY existing: other tests may (re)create that tree
+  // on CI, so neither the artifact file nor the tree's presence is a reliable
+  // version-control signal. Honesty rules, by ref class:
+  //  • in-repo refs (NOT under project_state/) MUST exist on disk —
+  //    anti-vaporware: a fabricated or typo'd in-repo path fails.
+  //  • runtime refs (under project_state/) cannot be proven present on CI,
+  //    but are still checked for STRUCTURE — they must be well-formed under a
+  //    known runtime subdir with a case-id segment, and every runtime ref
+  //    must point at the SAME candidate case dir. A typo'd subdir or a
+  //    drifted case id in any ref trips this even when the gitignored
+  //    artifacts are absent (Codex remediation review P3).
+  const RUNTIME_PATH_RE = /^project_state\/(?:graph_executor|runs|visualizations)\/([^/]+)\//;
+  const runtimeCaseIds = new Set<string>();
   for (const evidence of availableRefs) {
-    const onDisk = existsSync(resolve(repoRoot, evidence.path));
-    const isRuntimeGenerated = evidence.path.startsWith(RUNTIME_ROOT);
-    assert.ok(
-      onDisk || isRuntimeGenerated,
-      `${evidence.id} should point at an existing artifact or a project_state/ runtime path (got ${evidence.path})`,
-    );
+    if (evidence.path.startsWith('project_state/')) {
+      const match = RUNTIME_PATH_RE.exec(evidence.path);
+      assert.ok(
+        match,
+        `${evidence.id} runtime evidence path is malformed (got ${evidence.path})`,
+      );
+      runtimeCaseIds.add(match[1]);
+    } else {
+      assert.ok(
+        existsSync(resolve(repoRoot, evidence.path)),
+        `${evidence.id} should point at an existing in-repo artifact (got ${evidence.path})`,
+      );
+    }
   }
+  assert.equal(
+    runtimeCaseIds.size,
+    1,
+    `runtime evidence refs disagree on case id: ${[...runtimeCaseIds].join(', ')}`,
+  );
 });
 
 test('bullet-plate blueprint result-mesh evidence is a real 150-frame OpenRadioss export', () => {
