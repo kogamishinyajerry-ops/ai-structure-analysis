@@ -170,7 +170,7 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
       /* SSR fallback */
     }
   })
-  it('defaults the legend units to "Pa" and surfaces the field label', async () => {
+  it('defaults the legend units to "MPa" (SI_mm) and surfaces the field label', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -188,8 +188,8 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
     await waitFor(() =>
       expect(screen.getByTestId('legend-min')).toBeInTheDocument(),
     )
-    expect(screen.getByTestId('legend-min').textContent).toMatch(/\bPa\b/)
-    expect(screen.getByTestId('legend-max').textContent).toMatch(/\bPa\b/)
+    expect(screen.getByTestId('legend-min').textContent).toMatch(/\bMPa\b/)
+    expect(screen.getByTestId('legend-max').textContent).toMatch(/\bMPa\b/)
     // Phase 22 D shipped a read-only field-component chip; Phase 23 B
     // promoted it to a dropdown switcher. The current selection is
     // exposed via the select's value. Default is 'mises' (Von Mises).
@@ -212,13 +212,13 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
       <ResultMeshPlaybackPanel
         caseId="phase22d-units"
         apiBase="http://localhost:8000/api/v1"
-        fieldUnits="MPa"
+        fieldUnits="GPa"
       />,
     )
     await waitFor(() =>
       expect(screen.getByTestId('legend-min')).toBeInTheDocument(),
     )
-    expect(screen.getByTestId('legend-min').textContent).toMatch(/\bMPa\b/)
+    expect(screen.getByTestId('legend-min').textContent).toMatch(/\bGPa\b/)
     expect(screen.getByTestId('legend-min').textContent).not.toMatch(/\bPa\b\s*$/)
   })
 })

@@ -128,7 +128,13 @@ export function ResultMeshPlaybackPanel({
   caseId,
   apiBase,
   enabled = true,
-  fieldUnits = 'Pa',
+  // Stress fields render in MPa: the result-mesh reader emits stress under the
+  // design-institute default unit system SI_mm (mm/MPa/t/N/s — see backend
+  // core/types/enums.py UnitSystem.SI_MM), and the viz payload carries no unit
+  // metadata, so this default IS the displayed unit. It only ever labels stress
+  // (von Mises + σ-components); displacement is shown separately in mm. (Was
+  // 'Pa' — off by 1e6 for real cases, e.g. GS-102 von Mises peak 731.493.)
+  fieldUnits = 'MPa',
   uiMode: uiModeProp,
   onUiModeChange,
 }: ResultMeshPlaybackPanelProps) {

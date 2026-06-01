@@ -82,7 +82,9 @@ export function ProbeListPanel({
   onPinActive,
   onRemove,
   onClearAll,
-  fieldUnits = 'Pa',
+  // Probe values are stress in MPa (SI_mm design-institute default; the result
+  // payload carries no unit, so this default IS the unit). Was 'Pa' (off by 1e6).
+  fieldUnits = 'MPa',
   onExportCsv,
   exitingLabel = null,
 }: ProbeListPanelProps) {
