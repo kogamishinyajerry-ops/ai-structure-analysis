@@ -82,9 +82,10 @@ export function ProbeListPanel({
   onPinActive,
   onRemove,
   onClearAll,
-  // Probe values are stress in MPa (SI_mm design-institute default; the result
-  // payload carries no unit, so this default IS the unit). Was 'Pa' (off by 1e6).
-  fieldUnits = 'MPa',
+  // Neutral by default — never assume a unit (Codex R1). The real unit flows in
+  // from ResultMeshPlaybackPanel's data-driven `effectiveFieldUnits` (payload-
+  // declared). Empty => the column header omits the unit gracefully (see below).
+  fieldUnits = '',
   onExportCsv,
   exitingLabel = null,
 }: ProbeListPanelProps) {
@@ -182,7 +183,7 @@ export function ProbeListPanel({
                   <th style={STYLES.th}>X (m)</th>
                   <th style={STYLES.th}>Y (m)</th>
                   <th style={STYLES.th}>Z (m)</th>
-                  <th style={STYLES.th}>Value ({fieldUnits})</th>
+                  <th style={STYLES.th}>Value{fieldUnits ? ` (${fieldUnits})` : ''}</th>
                   {showDiff && (
                     <th
                       style={STYLES.th}

@@ -66,6 +66,10 @@ export interface ResultMeshPayload {
   analysisType?: string;
   caseId?: string;
   fieldLabel?: string;
+  // Stress field unit declared by the producer (the result-mesh exporter,
+  // derived from the deck's unit system — e.g. SI_mm → "MPa"). The frontend
+  // displays this verbatim and never assumes a unit when it is absent.
+  fieldUnits?: string;
   fieldRanges?: ResultMeshFieldRanges;
   claimBoundary?: string;
   modelTree?: ResultMeshModelTreeNode;
@@ -84,6 +88,8 @@ export interface ResultMeshPlaybackSummary {
   aliveElements: number;
   deletedElements: number;
   fieldLabel: string;
+  /** Producer-declared stress unit (e.g. "MPa"); null when the payload omits it. */
+  fieldUnits: string | null;
   valueMin: number;
   valueMax: number;
   maxDisplacement: number;
@@ -127,6 +133,7 @@ export function summarizeResultMeshPlayback(
     deletedElements: elements.filter((element) => element.alive === false).length,
     fieldLabel:
       asString(root.fieldLabel) ?? selectedFrame?.fieldLabel ?? DEFAULT_FIELD_LABEL,
+    fieldUnits: asString(root.fieldUnits) ?? null,
     valueMin: ranges.valueMin ?? valueRange.valueMin ?? 0,
     valueMax: ranges.valueMax ?? valueRange.valueMax ?? 0,
     maxDisplacement: ranges.maxDisplacement ?? 0,

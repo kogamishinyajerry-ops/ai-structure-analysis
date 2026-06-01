@@ -170,13 +170,13 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
       /* SSR fallback */
     }
   })
-  it('defaults the legend units to "MPa" (SI_mm) and surfaces the field label', async () => {
+  it('uses the payload-declared field unit (MPa) and surfaces the field label', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
         ok: true,
         status: 200,
-        json: async () => dynamicPayload,
+        json: async () => ({ ...dynamicPayload, fieldUnits: 'MPa' }),
       })),
     )
     render(
@@ -220,6 +220,29 @@ describe('ResultMeshPlaybackPanel — Phase 22 D legend units', () => {
     )
     expect(screen.getByTestId('legend-min').textContent).toMatch(/\bGPa\b/)
     expect(screen.getByTestId('legend-min').textContent).not.toMatch(/\bPa\b\s*$/)
+  })
+
+  it('shows NO unit when neither the payload nor a prop provides one (Codex R1 neutral)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => dynamicPayload, // no fieldUnits declared
+      })),
+    )
+    render(
+      <ResultMeshPlaybackPanel
+        caseId="phase22d-neutral"
+        apiBase="http://localhost:8000/api/v1"
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('legend-min')).toBeInTheDocument(),
+    )
+    // Never assume a unit: no Pa / MPa / kPa / psi fabricated from a unit-less payload.
+    expect(screen.getByTestId('legend-min').textContent).not.toMatch(/Pa\b/)
+    expect(screen.getByTestId('legend-max').textContent).not.toMatch(/Pa\b/)
   })
 })
 

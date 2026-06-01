@@ -109,6 +109,9 @@ def test_result_mesh_json_contains_model_tree_full_parts_and_dynamic_frames(
     assert payload["claimTier"] == "Tier 1 engineering candidate"
     assert payload["source"]["solver"] == "OpenRadioss"
     assert payload["fieldLabel"] == "von Mises stress"
+    # Producer declares the stress unit so the frontend never assumes one
+    # (default SI_mm/(kg·mm·ms) → MPa). Codex R1.
+    assert payload["fieldUnits"] == "MPa"
     assert len(payload["dynamicFrames"]) == 2
     assert payload["nodes"] == payload["dynamicFrames"][0]["nodes"]
     assert payload["elements"] == payload["dynamicFrames"][0]["elements"]

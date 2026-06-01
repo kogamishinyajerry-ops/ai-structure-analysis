@@ -131,6 +131,10 @@ def export_dynamic_result_mesh(
     output_dir: Path,
     case_id: str,
     field: DynamicField = "von_mises",
+    # Stress unit DECLARED in the emitted payload (frontend reads it verbatim and
+    # never assumes). OpenRadioss decks here use kg/mm/ms (SI_mm) → stress in MPa;
+    # callers using another unit system MUST pass the matching unit.
+    field_units: str = "MPa",
     rootname: str | None = "model_00",
     source_root: str | None = None,
     write_vtu: bool = True,
@@ -147,6 +151,7 @@ def export_dynamic_result_mesh(
         output_dir=output_dir,
         case_id=case_id,
         field=field,
+        field_units=field_units,
         source_root=source_root or str(run_data_dir),
         write_vtu=write_vtu,
         model_metadata=model_metadata,
@@ -159,6 +164,9 @@ def export_dynamic_result_mesh_from_frames(
     output_dir: Path,
     case_id: str,
     field: DynamicField = "von_mises",
+    # Stress unit declared in the payload (see export_dynamic_result_mesh):
+    # kg/mm/ms (SI_mm) → MPa. Pass the matching unit for other unit systems.
+    field_units: str = "MPa",
     source_root: str | None = None,
     write_vtu: bool = True,
     model_metadata: Mapping[str, Any] | None = None,
@@ -233,6 +241,7 @@ def export_dynamic_result_mesh_from_frames(
         "generatedAtUtc": datetime.now(UTC).isoformat(),
         "field": field,
         "fieldLabel": _field_label(field),
+        "fieldUnits": field_units,
         "fieldSource": _field_source(field),
         "fieldRanges": overall_ranges,
         "modelTree": model_tree,
@@ -273,9 +282,7 @@ def _normalise_frame(frame: DynamicFrameData) -> DynamicFrameData:
 
     element_node_indexes = np.asarray(frame.element_node_indexes, dtype=int)
     if element_node_indexes.ndim != 2:
-        raise DynamicResultExportError(
-            f"{frame.source}: element_node_indexes must be a 2D array"
-        )
+        raise DynamicResultExportError(f"{frame.source}: element_node_indexes must be a 2D array")
     element_count = int(element_node_indexes.shape[0])
     element_ids = _coerce_1d_int(frame.element_ids, element_count, "element_ids", frame.source)
     part_ids = _coerce_1d_int(frame.part_ids, element_count, "part_ids", frame.source)

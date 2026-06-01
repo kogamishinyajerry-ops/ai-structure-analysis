@@ -128,13 +128,14 @@ export function ResultMeshPlaybackPanel({
   caseId,
   apiBase,
   enabled = true,
-  // Stress fields render in MPa: the result-mesh reader emits stress under the
-  // design-institute default unit system SI_mm (mm/MPa/t/N/s — see backend
-  // core/types/enums.py UnitSystem.SI_MM), and the viz payload carries no unit
-  // metadata, so this default IS the displayed unit. It only ever labels stress
-  // (von Mises + σ-components); displacement is shown separately in mm. (Was
-  // 'Pa' — off by 1e6 for real cases, e.g. GS-102 von Mises peak 731.493.)
-  fieldUnits = 'MPa',
+  // `fieldUnits` is an explicit caller OVERRIDE only — NOT a default unit. The
+  // real unit is data-driven: it comes from the payload's own `fieldUnits`
+  // (emitted by the result-mesh exporter from the deck's unit system, e.g.
+  // SI_mm → "MPa"). We never ASSUME a unit here: when neither the prop nor the
+  // payload provides one, `effectiveFieldUnits` (below) stays neutral so a
+  // non-SI_mm export (Pa / psi) is never mislabeled. (Codex R1 — a hardcoded
+  // default, whether 'Pa' or 'MPa', is wrong for some other unit system.)
+  fieldUnits,
   uiMode: uiModeProp,
   onUiModeChange,
 }: ResultMeshPlaybackPanelProps) {
@@ -332,6 +333,9 @@ export function ResultMeshPlaybackPanel({
     [payload, frameIndex],
   );
   const frameCount = summary?.frameCount ?? 0;
+  // Data-driven stress unit: explicit prop override > payload-declared unit >
+  // neutral (no assumption). Empty string => callees render no unit suffix.
+  const effectiveFieldUnits = fieldUnits ?? summary?.fieldUnits ?? '';
 
   // FM-04a Phase 22 B — next frame for WebGL interpolation. When the
   // current frame is the last one, nextFrame is null and the viewport
@@ -667,7 +671,7 @@ export function ResultMeshPlaybackPanel({
                   deformationScale={deformationScale}
                   sectionCut={sectionCut}
                   fieldComponent={fieldComponent}
-                  fieldUnits={fieldUnits}
+                  fieldUnits={effectiveFieldUnits}
                   colormap={colormap}
                   valueFilter={valueFilter}
                   onNodePicked={setActivePick}
@@ -752,10 +756,10 @@ export function ResultMeshPlaybackPanel({
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span data-testid="legend-min">
-                      min {formatNumber(summary.valueMin)} {fieldUnits}
+                      min {formatNumber(summary.valueMin)} {effectiveFieldUnits}
                     </span>
                     <span data-testid="legend-max">
-                      max {formatNumber(summary.valueMax)} {fieldUnits}
+                      max {formatNumber(summary.valueMax)} {effectiveFieldUnits}
                     </span>
                   </div>
                   {/* FM-04a Phase 23 B — field-component switcher.
@@ -915,7 +919,7 @@ export function ResultMeshPlaybackPanel({
                 <ProbeListPanel
                   state={probeList}
                   activePick={activePick}
-                  fieldUnits={fieldUnits}
+                  fieldUnits={effectiveFieldUnits}
                   exitingLabel={exitingProbeLabel}
                   onPinActive={() => {
                     if (activePick) {
@@ -996,7 +1000,7 @@ export function ResultMeshPlaybackPanel({
             <HeroPeakReadout
               fieldLabel={heroField?.label}
               valueMax={heroField?.value}
-              units={fieldUnits}
+              units={effectiveFieldUnits}
             />
             <MetricGrid summary={summary} />
 
