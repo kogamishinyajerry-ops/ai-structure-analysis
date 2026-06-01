@@ -29,6 +29,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,agents]"
 
+      # FM-04a: pyvista/vtk are HARD deps (pyproject), so the figure-render
+      # tests (test_report_cli_figures, test_visualize_plot_get_shim) clear
+      # their `importorskip` guards and actually execute on CI. On a bare
+      # headless ubuntu runner VTK's OpenGL2 render window has no GL context
+      # and `plotter.screenshot()` SEGFAULTS (exit 139), aborting the whole
+      # pytest run before later failures can even surface. Provide a virtual
+      # X display (xvfb) + Mesa software GL (llvmpipe via mesa-dri) so the
+      # off-screen render path has a context. Package names are 24.04-noble
+      # (libgl1-mesa-glx was dropped; use libglx-mesa0 + libgl1-mesa-dri).
+      - name: Install headless GL stack (VTK/pyvista off-screen render)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libxrender1 libxext6 libsm6
+
       - name: Lint — ruff check
         run: ruff check .
 
@@ -36,7 +51,9 @@ jobs:
         run: ruff format --check .
 
       - name: Test — pytest
-        run: pytest tests/ -v --tb=short
+        # xvfb-run -a wraps the suite in a virtual X display; transparent to
+        # the non-GL tests, gives VTK a context for the off-screen renders.
+        run: xvfb-run -a pytest tests/ -v --tb=short
 
       # --- Frontend gate (vitest + eslint) ---
       # FM-04a: the frontend suite (vitest) and lint (eslint) previously ran
