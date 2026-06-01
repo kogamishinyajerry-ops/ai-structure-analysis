@@ -20,6 +20,7 @@ from ...services.tier2_pipeline import (
     Tier2PipelineError,
 )
 from ...core.config import settings
+from ._signed_registry_refusal import assert_not_signed_registry
 
 
 router = APIRouter(prefix="/solver", tags=["求解控制"])
@@ -64,6 +65,15 @@ async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db
         # the route falls through to the Phase 1-17 legacy behaviour
         # (back-compat with every pre-Phase-20 caller).
         if request.material_id and not request.inp_path:
+            # FM-04a Codex R0 P1 — signed-registry golden samples are
+            # read-only (ADR-011 §HF1.7a). This branch composes and WRITES a
+            # fresh INP into gs_root/<case_id>; for a ^GS-\d{3}$ case that
+            # would overwrite a sealed deck (e.g. gs001.inp) and corrupt
+            # reproducibility evidence. Refuse BEFORE any filesystem write.
+            # (calculix/runner.py has its own signed-registry hard-stop, but
+            # it fires only at ccx-subprocess launch — after the compose
+            # write — so the gate must live here too.)
+            assert_not_signed_registry(request.case_id, "solver-run material compose")
             case_dir = settings.gs_root / request.case_id
             if not case_dir.is_dir():
                 raise HTTPException(
