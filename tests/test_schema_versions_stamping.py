@@ -269,7 +269,10 @@ def test_convergence_orchestrator_stamps_schema_version() -> None:
     [
         ("ACCEPTANCE_PACKET_SCHEMA_VERSION", "1.0.0"),
         ("CASE_COMPLETENESS_SCHEMA_VERSION", "1.2.0"),  # Phase 12 B MINOR (modal substantiation)
-        ("COHORT_OVERVIEW_SCHEMA_VERSION", "1.0.0"),
+        (
+            "COHORT_OVERVIEW_SCHEMA_VERSION",
+            "1.1.0",
+        ),  # Phase 17 C MINOR (per-axis percentage_delta_slope)
         ("CASE_COMPARISON_SCHEMA_VERSION", "1.0.0"),
         ("ARCHIVED_PACKET_DIFF_SCHEMA_VERSION", "1.0.0"),
         ("REVIEWER_BUNDLE_MANIFEST_SCHEMA_VERSION", "1.0.0"),
