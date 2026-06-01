@@ -164,6 +164,22 @@ def test_vtu_sidecars_are_written_for_each_dynamic_frame(tmp_path: Path) -> None
         assert frame["n_cells"] == 2
 
 
+def test_plastic_strain_export_declares_no_unit(tmp_path: Path) -> None:
+    # Codex R2: plastic_strain is dimensionless — the payload must NOT stamp a
+    # stress unit (MPa) onto it, since the frontend now renders payload units
+    # verbatim. von_mises stays MPa (asserted above); this locks the unit-less
+    # path so a future regression can't relabel strain as MPa.
+    result = export_dynamic_result_mesh_from_frames(
+        _two_hex_frames(),
+        output_dir=tmp_path,
+        case_id="CASE-PLASTIC-STRAIN",
+        field="plastic_strain",
+    )
+    payload = json.loads(result.result_mesh_path.read_text(encoding="utf-8"))
+    assert payload["field"] == "plastic_strain"
+    assert payload["fieldUnits"] == ""
+
+
 def test_cli_rejects_golden_sample_output_path(tmp_path: Path) -> None:
     spec = importlib.util.spec_from_file_location(
         "gs102_export_text_to_cae_result_mesh",

@@ -131,10 +131,11 @@ def export_dynamic_result_mesh(
     output_dir: Path,
     case_id: str,
     field: DynamicField = "von_mises",
-    # Stress unit DECLARED in the emitted payload (frontend reads it verbatim and
-    # never assumes). OpenRadioss decks here use kg/mm/ms (SI_mm) → stress in MPa;
-    # callers using another unit system MUST pass the matching unit.
-    field_units: str = "MPa",
+    # Unit DECLARED in the emitted payload (frontend reads it verbatim and never
+    # assumes). Default None → derive from `field`: stress fields use kg/mm/ms
+    # (SI_mm) → MPa, plastic_strain is dimensionless (""). Pass an explicit
+    # string only to override for another unit system.
+    field_units: str | None = None,
     rootname: str | None = "model_00",
     source_root: str | None = None,
     write_vtu: bool = True,
@@ -164,9 +165,10 @@ def export_dynamic_result_mesh_from_frames(
     output_dir: Path,
     case_id: str,
     field: DynamicField = "von_mises",
-    # Stress unit declared in the payload (see export_dynamic_result_mesh):
-    # kg/mm/ms (SI_mm) → MPa. Pass the matching unit for other unit systems.
-    field_units: str = "MPa",
+    # Unit declared in the payload (see export_dynamic_result_mesh): None →
+    # derive from `field` (stress → MPa, plastic_strain → ""). Pass a string to
+    # override.
+    field_units: str | None = None,
     source_root: str | None = None,
     write_vtu: bool = True,
     model_metadata: Mapping[str, Any] | None = None,
@@ -177,6 +179,10 @@ def export_dynamic_result_mesh_from_frames(
         raise DynamicResultExportError(f"unsupported dynamic field: {field}")
     if not frames:
         raise DynamicResultExportError("frames must not be empty")
+
+    # Derive the declared unit from the field unless the caller overrides it.
+    # plastic_strain is dimensionless ("") so the frontend never labels it MPa.
+    resolved_field_units = field_units if field_units is not None else _field_units(field)
 
     normalised = [_normalise_frame(frame) for frame in frames]
     _assert_frame_topology_stable(normalised)
@@ -241,7 +247,7 @@ def export_dynamic_result_mesh_from_frames(
         "generatedAtUtc": datetime.now(UTC).isoformat(),
         "field": field,
         "fieldLabel": _field_label(field),
-        "fieldUnits": field_units,
+        "fieldUnits": resolved_field_units,
         "fieldSource": _field_source(field),
         "fieldRanges": overall_ranges,
         "modelTree": model_tree,
@@ -778,6 +784,15 @@ def _field_source(field: DynamicField) -> str:
     if field.startswith("pressure"):
         return "element_solid_stress hydrostatic proxy"
     return "element_solid_stress"
+
+
+def _field_units(field: DynamicField) -> str:
+    # plastic_strain is dimensionless → "" (frontend renders no unit). The
+    # stress-like fields (von_mises + the hydrostatic pressure proxies) follow
+    # the SI_mm (kg·mm·ms) convention these OpenRadioss decks export → MPa.
+    if field == "plastic_strain":
+        return ""
+    return "MPa"
 
 
 def _vtk_type_for_connectivity_len(length: int) -> int:
