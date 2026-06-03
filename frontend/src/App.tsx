@@ -1,14 +1,5 @@
 import { useState, useEffect, type ChangeEvent } from 'react';
-import {
-  Activity,
-  Box,
-  LayoutDashboard,
-  Compass,
-  ShieldAlert,
-  Database,
-  ClipboardCheck,
-  AlertTriangle
-} from 'lucide-react';
+import { Activity, Box, LayoutDashboard, Compass, ShieldAlert, Database, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import './App.css';
 import { ComplianceBadge } from './components/ComplianceBadge';
 import { CaseOpenAdvisorCard } from './components/CaseOpenAdvisorCard';
@@ -47,6 +38,7 @@ import { NarrativeTabPanel } from './components/NarrativeTabPanel';
 import { ExplorationTabPanel } from './components/ExplorationTabPanel';
 import { OperatorStatusPanel } from './components/OperatorStatusPanel';
 import { TabButton } from './components/TabButton';
+import { WorkflowMonitorTabPanel } from './components/WorkflowMonitorTabPanel';
 import { RightRail } from './components/RightRail';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { ColumnSplitter } from './components/ColumnSplitter';
@@ -196,7 +188,7 @@ function App() {
   const [latestSignoff, setLatestSignoff] = useState<SignoffRecord | null>(null);
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<ReportData | null>(null);
-  const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore'>('visual');
+  const [activeTab, setActiveTab] = useState<'visual' | 'report' | 'explore' | 'monitor'>('visual');
   // FM-04a Phase 18 D/E — Cmd-K palette + selected material (round 2).
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialRecord>(
@@ -1335,10 +1327,11 @@ function App() {
                 <TabButton active={activeTab === 'visual'} onClick={() => setActiveTab('visual')} label="3D Scene" icon={<Box size={16} />} />
                 <TabButton active={activeTab === 'report'} onClick={() => setActiveTab('report')} label="Narrative" icon={<Activity size={16} />} />
                 {activeCaseId && <TabButton active={activeTab === 'explore'} onClick={() => setActiveTab('explore')} label="Exploration" icon={<Compass size={16} />} />}
+                <TabButton active={activeTab === 'monitor'} onClick={() => setActiveTab('monitor')} label="Workflow" icon={<LayoutDashboard size={16} />} />
             </div>
 
             <div style={{ padding: '0', flex: 1 }}>
-                {activeTab === 'explore' ? (
+                {activeTab === 'monitor' ? <WorkflowMonitorTabPanel apiBase={API_BASE} /> : activeTab === 'explore' ? (
                     <ExplorationTabPanel
                         activeCaseId={activeCaseId!}
                         loading={loading}
@@ -1429,7 +1422,7 @@ function App() {
             </div>
 
             {/* FM-04a Phase 41.4 — 3D-first: advisor guidance + the VisualTabPanel governance/evidence wall are demoted BELOW the 3D viewport (were above it) so the result visualization leads the visual tab. */}
-            {activeCaseId && (() => {
+            {activeTab !== 'monitor' && activeCaseId && (() => {
                 // FM-04a Phase 37 B — pair BCSetupAdvisorCard with CaseOpenAdvisorCard (3rd advisor surface; closes Dim 4 80-anchor 3-stage sub-bullet).
                 const caseOpenRecord = findCandidateCase(FALLBACK_CANDIDATE_CASES, activeCaseId);
                 return caseOpenRecord ? (
@@ -1463,7 +1456,7 @@ function App() {
 
             {/* FM-04a Phase 41.4 — trust center moved OFF the 3D-Scene tab so the
                 hero leads; it now lives on the Narrative/Exploration tabs (DOM-last). */}
-            {activeTab !== 'visual' && (
+            {activeTab !== 'visual' && activeTab !== 'monitor' && (
               <div style={{ marginTop: '32px' }}>
                 <OperatorStatusPanel strip={trustStrip} sections={trustSections} goldenSamples={goldenSampleQueue} />
               </div>

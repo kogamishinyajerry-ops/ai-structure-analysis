@@ -209,3 +209,10 @@ scripts/serve_workflow_demo.py               dependency-light demo server (:8077
 - **No in-app Realtime UI.** The Monitor polls FastAPI. `useRealtimeRun` on the
   orchestrator (consuming `publicAccessToken`) is M3.
 - **No deployment.** `npx trigger.dev dev` only. `deploy` is M4.
+
+> **M3 update (landed):** the Monitor is now a native in-app React tab —
+> `frontend/src/components/WorkflowMonitorTabPanel.tsx` (+ `workflowClient.ts` /
+> `workflowMonitorView.ts`), wired as the 4th App tab ("Workflow"). It is still
+> **poll-based** (GET `/workflow/runs/{id}`), faithfully porting
+> `docs/demo/workflow_monitor.html`. True realtime via `useRealtimeRun` (needs a
+> live Trigger.dev token from the Node layer) remains deferred to a later pass.
