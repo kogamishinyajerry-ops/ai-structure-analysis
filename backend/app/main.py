@@ -38,6 +38,7 @@ from .api.routes import (
     trust_score_provenance,
     trust_score_timeline,
     visualization,
+    workflow,
 )
 from .core.config import settings
 from .db.session import init_db
@@ -134,6 +135,10 @@ app.include_router(advisor_critique.router, prefix="/api/v1")
 # titanium-Ti-6Al-4V). Read-only GET surface exposed for the
 # MaterialPickerPanel front-end + downstream Tier 2 INP composition.
 app.include_router(materials.router, prefix="/api/v1")
+# Agentic FEA Workflow Runtime (plan .planning/AGENTIC-FEA-RUNTIME-PLAN.md) M1 —
+# Mock pipeline: 13-stage observable flow with synthetic solver data + StageState
+# events, driving the Workflow Monitor. Trigger.dev v4 fronts this at M2.
+app.include_router(workflow.router, prefix="/api/v1")
 
 
 @app.get("/")
