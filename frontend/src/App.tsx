@@ -116,6 +116,10 @@ const humanizeStatus = trustCenterHumanizeStatus;
 
 const API_BASE = "http://localhost:8000/api/v1";
 const WS_BASE = "ws://localhost:8000/api/v1";
+// Node trigger server (mints the run-scoped public token for Trigger.dev realtime).
+// The Workflow Monitor streams the orchestrator run when this is reachable, and
+// gracefully falls back to polling the FastAPI backend when it is not.
+const TRIGGER_SERVER_BASE = "http://localhost:3033";
 const epochNowMs = (): number => Date.now(); // module-scope clock read — react-hooks/purity-safe; called from event handlers (e.g. runSolver) only.
 
 const SOLVER_FAILURE_MARKERS = [
@@ -1331,7 +1335,7 @@ function App() {
             </div>
 
             <div style={{ padding: '0', flex: 1 }}>
-                {activeTab === 'monitor' ? <WorkflowMonitorTabPanel apiBase={API_BASE} /> : activeTab === 'explore' ? (
+                {activeTab === 'monitor' ? <WorkflowMonitorTabPanel apiBase={API_BASE} triggerServerBase={TRIGGER_SERVER_BASE} /> : activeTab === 'explore' ? (
                     <ExplorationTabPanel
                         activeCaseId={activeCaseId!}
                         loading={loading}

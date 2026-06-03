@@ -10,6 +10,24 @@ import { WorkflowMonitorTabPanel } from '../src/components/WorkflowMonitorTabPan
 import { activeStageIndex, formatMetric } from '../src/workflowMonitorView.ts'
 import { parseWorkflowRun } from '../src/workflowClient.ts'
 
+// Mock the Trigger.dev realtime hook so the realtime path is exercised without a
+// live cloud subscription. The holder lets each test choose what the orchestrator
+// run looks like (terminal COMPLETED / stream error / absent).
+const { realtimeHolder } = vi.hoisted(() => {
+  const current: { run: unknown; error: Error | undefined; stop: () => void } = {
+    run: undefined,
+    error: undefined,
+    stop: () => {},
+  }
+  return { realtimeHolder: { current } }
+})
+vi.mock('@trigger.dev/react-hooks', () => ({
+  useRealtimeRun: () => realtimeHolder.current,
+}))
+
+const TRIGGER_BASE = 'http://localhost:3033'
+const NODE_TRIGGER_BODY = { feaRunId: 'mock_1', orchRunId: 'run_x', publicAccessToken: 'tok_x' }
+
 const CATALOG = {
   stages: [
     { order: 0, stage: 'project_intake', wsStage: 'intake', currentObject: 'project', description: '项目接收' },
@@ -89,6 +107,7 @@ function routeFetch(routes: Record<string, RouteResp>): void {
 describe('WorkflowMonitorTabPanel', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    realtimeHolder.current = { run: undefined, error: undefined, stop: () => {} }
   })
 
   it('renders the stage catalog as nodes once loaded', async () => {
@@ -228,5 +247,58 @@ describe('WorkflowMonitorTabPanel', () => {
     fireEvent.click(screen.getByTestId('wf-run-button'))
     await waitFor(() => expect(screen.getByTestId('wf-run-error')).toBeInTheDocument(), { timeout: 5000 })
     expect(screen.getByTestId('wf-run-button')).not.toBeDisabled()
+  })
+
+  // --- realtime path (triggerServerBase set) -------------------------------
+
+  it('realtime mode: triggers via the Node server and streams the orchestrator run', async () => {
+    // The mocked orchestrator run is terminal (COMPLETED, 13/13) -> the live tick
+    // refreshes the per-stage detail from FastAPI.
+    realtimeHolder.current = {
+      run: { status: 'COMPLETED', metadata: { feaRunId: 'mock_1', completedStages: 13, totalStages: 13 } },
+      error: undefined,
+      stop: () => {},
+    }
+    routeFetch({
+      '/workflow/stages': { body: CATALOG },
+      '/trigger-pipeline': { body: NODE_TRIGGER_BODY },
+      '/workflow/runs/': { body: SUCCESS_RUN },
+    })
+    render(<WorkflowMonitorTabPanel apiBase="/api/v1" triggerServerBase={TRIGGER_BASE} />)
+    await waitFor(() => expect(screen.getByTestId('wf-run-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('wf-run-button'))
+    await waitFor(() => expect(screen.getByTestId('wf-run-badge')).toHaveTextContent('SUCCESS'))
+    // The live-mode chip proves the realtime path engaged (not polling).
+    expect(screen.getByTestId('wf-live-mode')).toHaveTextContent('realtime')
+    expect(screen.getByTestId('wf-agent-log')).toHaveTextContent('CalculiX 收敛')
+  })
+
+  it('realtime mode falls back to polling when the Node trigger server is unreachable', async () => {
+    // /trigger-pipeline fails -> the run still happens via the poll-only path,
+    // and the chip honestly reports "polling".
+    routeFetch({
+      '/workflow/stages': { body: CATALOG },
+      '/trigger-pipeline': { ok: false, status: 502, body: {} },
+      '/workflow/trigger': { body: PENDING_RUN },
+      '/workflow/runs/': { body: SUCCESS_RUN },
+    })
+    render(<WorkflowMonitorTabPanel apiBase="/api/v1" triggerServerBase={TRIGGER_BASE} />)
+    await waitFor(() => expect(screen.getByTestId('wf-run-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('wf-run-button'))
+    await waitFor(() => expect(screen.getByTestId('wf-run-badge')).toHaveTextContent('SUCCESS'))
+    expect(screen.getByTestId('wf-live-mode')).toHaveTextContent('polling')
+  })
+
+  it('realtime mode surfaces a stream error from useRealtimeRun', async () => {
+    realtimeHolder.current = { run: undefined, error: new Error('token expired'), stop: () => {} }
+    routeFetch({
+      '/workflow/stages': { body: CATALOG },
+      '/trigger-pipeline': { body: NODE_TRIGGER_BODY },
+      '/workflow/runs/': { body: SUCCESS_RUN },
+    })
+    render(<WorkflowMonitorTabPanel apiBase="/api/v1" triggerServerBase={TRIGGER_BASE} />)
+    await waitFor(() => expect(screen.getByTestId('wf-run-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('wf-run-button'))
+    await waitFor(() => expect(screen.getByTestId('wf-run-error')).toHaveTextContent(/realtime stream error/i))
   })
 })

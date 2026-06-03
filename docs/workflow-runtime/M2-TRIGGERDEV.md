@@ -206,13 +206,30 @@ scripts/serve_workflow_demo.py               dependency-light demo server (:8077
 - **No real solver.** Every stage is the Mock backend; `solver_run` synthesizes a
   safety factor. Real CalculiX is M4 — it swaps the backend inside `run_one_stage`
   with *no change* to `trigger/`.
-- **No in-app Realtime UI.** The Monitor polls FastAPI. `useRealtimeRun` on the
-  orchestrator (consuming `publicAccessToken`) is M3.
 - **No deployment.** `npx trigger.dev dev` only. `deploy` is M4.
 
 > **M3 update (landed):** the Monitor is now a native in-app React tab —
 > `frontend/src/components/WorkflowMonitorTabPanel.tsx` (+ `workflowClient.ts` /
-> `workflowMonitorView.ts`), wired as the 4th App tab ("Workflow"). It is still
-> **poll-based** (GET `/workflow/runs/{id}`), faithfully porting
-> `docs/demo/workflow_monitor.html`. True realtime via `useRealtimeRun` (needs a
-> live Trigger.dev token from the Node layer) remains deferred to a later pass.
+> `workflowMonitorView.ts`), wired as the 4th App tab ("Workflow"), faithfully
+> porting `docs/demo/workflow_monitor.html`.
+
+> **M3.5 update (landed — true realtime):** the Monitor now streams the
+> orchestrator run live via `useRealtimeRun` (`@trigger.dev/react-hooks`). When
+> `triggerServerBase` (App.tsx `TRIGGER_SERVER_BASE`, default
+> `http://localhost:3033`) is set, the Run button triggers through the Node
+> server, receives `{feaRunId, orchRunId, publicAccessToken}`, and subscribes —
+> each live tick refreshes the per-stage detail from FastAPI. A live-mode chip
+> ("● realtime" / "○ polling") shows which path engaged; if the Node layer is
+> unreachable it **falls back to the poll-only path** (so the no-account demo
+> still works). New file: `frontend/src/workflowRealtimeClient.ts`.
+>
+> **Live verification (2026-06-03, project `proj_elnboiduwewmhadaoiol`):** the
+> worker registered (`Local worker ready -> 20260603.2`); a real run through the
+> Node server drove all 13 stages to `success` on FastAPI; and a run-scoped
+> public-token subscription (`runs.subscribeToRun` — the mechanism behind
+> `useRealtimeRun`) streamed `status=COMPLETED feaRunId=… completedStages=13/13`
+> with the full `stageHistory`. Frontend: 13/13 Monitor tests + full 1300-test
+> suite green, eslint 70, App.tsx 1494, `vite build` clean. **Note:** the in-app
+> tab points `apiBase` at `:8000`; to use realtime you must run your backend on
+> `:8000` *with* `TRIGGER_INTERNAL_SECRET` set (M2 added the workflow routes — a
+> pre-M2 backend will 404 them).

@@ -4,16 +4,22 @@
 // a native React tab: a 13-stage node graph (left), an evolving
 // bracket-with-hole specimen that gains layers per stage (center), and an
 // agent-explanation log (right), with a run timeline + warnings/errors/artifacts
-// strip below. POLL-only against the real backend (GET /workflow/runs/{id});
-// no Trigger.dev realtime SDK — a clean seam for useRealtimeRun() remains in
-// workflowClient (orchRunId/publicAccessToken) for when a real token is minted
-// at the Node trigger layer.
+// strip below.
+//
+// Two run paths share one render tree:
+//   · poll-only (default, no account) — trigger + poll the FastAPI backend.
+//   · realtime (M3.5, when `triggerServerBase` is set) — trigger via the Node
+//     trigger server, then stream the orchestrator run with useRealtimeRun();
+//     each live tick refreshes the per-stage detail from FastAPI. Falls back to
+//     poll mode if the Node layer is unreachable. The live-mode chip shows which
+//     path actually engaged.
 //
 // Tier 1 / Tier 2 engineering candidate; not signed validation; not
 // benchmark agreement.
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Play, RotateCcw } from 'lucide-react'
+import { useRealtimeRun } from '@trigger.dev/react-hooks'
 
 import { EmptyStateCard } from './EmptyStateCard'
 import { ErrorCard } from './ErrorCard'
@@ -28,6 +34,7 @@ import {
   type WorkflowRun,
   type WorkflowStatus,
 } from '../workflowClient'
+import { isOrchTerminal, orchMetaNumber, triggerRealtimePipeline } from '../workflowRealtimeClient'
 import {
   activeStageIndex,
   bcHatchRows,
@@ -52,9 +59,14 @@ const MAX_POLL_FAILURES = 4
 
 export interface WorkflowMonitorTabPanelProps {
   readonly apiBase: string
+  // When set (e.g. http://localhost:3033), the Run button triggers via the Node
+  // trigger server and streams the orchestrator run live (useRealtimeRun). Omit
+  // for the poll-only path (no Trigger.dev account needed). Realtime gracefully
+  // falls back to poll mode if the Node layer is unreachable.
+  readonly triggerServerBase?: string
 }
 
-export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProps) {
+export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: WorkflowMonitorTabPanelProps) {
   const [catalog, setCatalog] = useState<readonly StageCatalogEntry[]>([])
   const [loadingCatalog, setLoadingCatalog] = useState(true)
   const [catalogError, setCatalogError] = useState<string | null>(null)
@@ -63,6 +75,10 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
   const [failAt, setFailAt] = useState('')
   const [busy, setBusy] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
+  // Realtime path state: which run path engaged, and the orchestrator
+  // run/token that the useRealtimeRun subscription consumes (null = poll mode).
+  const [liveMode, setLiveMode] = useState<'realtime' | 'poll' | null>(null)
+  const [realtime, setRealtime] = useState<{ orchRunId: string; accessToken: string } | null>(null)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const mountedRef = useRef(true)
@@ -70,13 +86,16 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
   // superseded run that resolves late cannot overwrite the current UI (P1).
   const runSeqRef = useRef(0)
   const pollFailRef = useRef(0)
+  // The active realtime run's FastAPI id + generation, read when a live tick
+  // refreshes the per-stage detail.
+  const realtimeRef = useRef<{ feaRunId: string; seq: number } | null>(null)
 
-  const stopPolling = (): void => {
+  const stopPolling = useCallback((): void => {
     if (pollRef.current !== null) {
       clearInterval(pollRef.current)
       pollRef.current = null
     }
-  }
+  }, [])
 
   const reloadCatalog = useCallback(
     (signal?: AbortSignal): void => {
@@ -108,37 +127,81 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
     }
   }, [reloadCatalog])
 
-  const pollOnce = async (runId: string, seq: number): Promise<void> => {
-    const res = await fetchWorkflowRun(apiBase, runId)
-    // Ignore a poll whose run was superseded (reset / newer run) or unmounted.
-    if (!mountedRef.current || seq !== runSeqRef.current) return
-    if (res.run !== null) {
-      pollFailRef.current = 0
-      setRun(res.run)
-      if (isTerminal(res.run.status)) {
+  const pollOnce = useCallback(
+    async (runId: string, seq: number): Promise<void> => {
+      const res = await fetchWorkflowRun(apiBase, runId)
+      // Ignore a poll whose run was superseded (reset / newer run) or unmounted.
+      if (!mountedRef.current || seq !== runSeqRef.current) return
+      if (res.run !== null) {
+        pollFailRef.current = 0
+        setRun(res.run)
+        if (isTerminal(res.run.status)) {
+          stopPolling()
+          setBusy(false)
+        }
+        return
+      }
+      // Tolerate transient blips, but stop + surface after a run of failures.
+      pollFailRef.current += 1
+      if (pollFailRef.current >= MAX_POLL_FAILURES) {
         stopPolling()
         setBusy(false)
+        setRunError(res.error ?? 'lost connection to the workflow backend while polling')
       }
-      return
-    }
-    // Tolerate transient blips, but stop + surface after a run of failures.
-    pollFailRef.current += 1
-    if (pollFailRef.current >= MAX_POLL_FAILURES) {
-      stopPolling()
-      setBusy(false)
-      setRunError(res.error ?? 'lost connection to the workflow backend while polling')
-    }
-  }
+    },
+    [apiBase, stopPolling],
+  )
+
+  // A live tick from the orchestrator subscription: refresh the per-stage detail
+  // from FastAPI, and settle (clear busy) once the orchestrator run is terminal
+  // or the stream errors. Stable so the driver effect does not re-fire on every
+  // render (called through a prop, so its setState is outside the effect rule).
+  const onRealtimeUpdate = useCallback(
+    (status: string | undefined, error?: Error): void => {
+      const rt = realtimeRef.current
+      if (rt === null) return
+      if (error !== undefined) {
+        setRunError(`realtime stream error: ${error.message}`)
+        setBusy(false)
+        return
+      }
+      void pollOnce(rt.feaRunId, rt.seq)
+      if (isOrchTerminal(status)) setBusy(false)
+    },
+    [pollOnce],
+  )
 
   const runPipeline = async (): Promise<void> => {
     stopPolling()
     const seq = runSeqRef.current + 1
     runSeqRef.current = seq
     pollFailRef.current = 0
+    realtimeRef.current = null
+    setRealtime(null)
     setSelectedStage(null)
     setRunError(null)
     setBusy(true)
-    const res = await triggerWorkflow(apiBase, { failAtStage: failAt === '' ? null : failAt })
+    const failAtStage = failAt === '' ? null : failAt
+
+    // Realtime path: trigger via the Node server, then stream the orchestrator
+    // run. The Node hop is required because only it can mint the run-scoped
+    // public token the browser subscription needs.
+    if (triggerServerBase !== undefined && triggerServerBase !== '') {
+      const rt = await triggerRealtimePipeline(triggerServerBase, { failAtStage })
+      if (!mountedRef.current || seq !== runSeqRef.current) return
+      if (rt.trigger !== null) {
+        setLiveMode('realtime')
+        realtimeRef.current = { feaRunId: rt.trigger.feaRunId, seq }
+        setRealtime({ orchRunId: rt.trigger.orchRunId, accessToken: rt.trigger.publicAccessToken })
+        void pollOnce(rt.trigger.feaRunId, seq) // seed the detail immediately
+        return
+      }
+      // Node layer unreachable — fall through to the proven poll-only path.
+    }
+
+    // Poll-only path (no account needed).
+    setLiveMode('poll')
+    const res = await triggerWorkflow(apiBase, { failAtStage })
     if (!mountedRef.current || seq !== runSeqRef.current) return
     if (res.run === null) {
       setRunError(res.error ?? 'failed to start the workflow run')
@@ -163,6 +226,9 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
     // discarded when it resolves (P1 stale-state race).
     runSeqRef.current += 1
     pollFailRef.current = 0
+    realtimeRef.current = null
+    setRealtime(null) // unmounts the driver -> useRealtimeRun stops the stream
+    setLiveMode(null)
     setRun(null)
     setSelectedStage(null)
     setRunError(null)
@@ -203,6 +269,13 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
 
   return (
     <div className="surface-card" style={shellStyle} data-testid="workflow-monitor">
+      {realtime !== null && (
+        <RealtimeRunDriver
+          orchRunId={realtime.orchRunId}
+          accessToken={realtime.accessToken}
+          onUpdate={onRealtimeUpdate}
+        />
+      )}
       <div style={headerRowStyle}>
         <div>
           <div style={titleStyle}>FEA Workflow Monitor</div>
@@ -210,7 +283,10 @@ export function WorkflowMonitorTabPanel({ apiBase }: WorkflowMonitorTabPanelProp
             Mock pipeline · synthetic solver data, real StageState events · 13 stages
           </div>
         </div>
-        <RunBadge run={run} />
+        <div style={badgeGroupStyle}>
+          {liveMode !== null && <LiveModeChip mode={liveMode} />}
+          <RunBadge run={run} />
+        </div>
       </div>
 
       <div style={controlsRowStyle}>
@@ -337,6 +413,48 @@ function RunBadge({ run }: { run: WorkflowRun | null }) {
   return (
     <span style={badgeStyle(STATUS_TOKEN[run.status])} data-testid="wf-run-badge">
       {run.runId} · {STATUS_LABEL[run.status]}
+    </span>
+  )
+}
+
+// Headless driver: subscribes to the Trigger.dev orchestrator run and reports
+// each live update up. Rendered only while a realtime run is active; unmounting
+// (reset / panel close) stops the subscription. Renders nothing.
+function RealtimeRunDriver({
+  orchRunId,
+  accessToken,
+  onUpdate,
+}: {
+  orchRunId: string
+  accessToken: string
+  onUpdate: (status: string | undefined, error?: Error) => void
+}) {
+  const { run: orchRun, error: realtimeError } = useRealtimeRun(orchRunId, {
+    accessToken,
+    enabled: orchRunId !== '' && accessToken !== '',
+  })
+  const status = orchRun?.status
+  // completedStages advances once per finished stage — drives the detail refresh.
+  const completed = orchMetaNumber(orchRun?.metadata, 'completedStages')
+  useEffect(() => {
+    onUpdate(status, realtimeError)
+  }, [status, completed, realtimeError, onUpdate])
+  return null
+}
+
+function LiveModeChip({ mode }: { mode: 'realtime' | 'poll' }) {
+  const live = mode === 'realtime'
+  return (
+    <span
+      style={badgeStyle(live ? 'var(--success-500)' : 'var(--text-muted)')}
+      data-testid="wf-live-mode"
+      title={
+        live
+          ? 'Streaming the orchestrator run via Trigger.dev realtime (useRealtimeRun)'
+          : 'Polling the FastAPI backend (Node trigger server unreachable or not configured)'
+      }
+    >
+      {live ? '● realtime' : '○ polling'}
     </span>
   )
 }
@@ -658,6 +776,8 @@ const columnTitleStyle: CSSProperties = {
   color: 'var(--text-muted)',
   fontWeight: 600,
 }
+
+const badgeGroupStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
 
 function badgeStyle(color: string): CSSProperties {
   return {
