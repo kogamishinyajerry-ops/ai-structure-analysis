@@ -1,0 +1,96 @@
+{
+  "schema": "le10-artifact-manifest/1.0",
+  "case_id": "nafems-le10-thick-plate-candidate",
+  "purpose": "ADR-027 G-2 evidence-packet item 5 (artifact manifest + hashes) for the NAFEMS LE10 thick-plate benchmark candidate. Seals the committed evidence set: any byte change to a sealed file must be a deliberate, reviewed event (tests/test_le10_artifact_manifest.py re-hashes on every PR).",
+  "claim_tier": "Tier 1 engineering candidate, public-benchmark cross-check (registry overlay: tier_2_validated). NOT signed validation - G-2 items 6 (reproduce-CLI audit log, ADR-027 V2-2) and 7 (independent signoff, owner-authorized per ADR-023) remain open.",
+  "sealed_artifacts": {
+    "NOTES.md": {
+      "sha256": "57a16c25b1324fb7bc320fb7ca98f251c3b9ec6bcdd56ca7bb782bca5781bf6f",
+      "bytes": 4979
+    },
+    "convergence_study.json": {
+      "sha256": "8910c5d3d350d33bd285ef54ff810b61ce4d479f610afd4efd117264b5a81563",
+      "bytes": 3076
+    },
+    "cross_check_verdict.yaml": {
+      "sha256": "347cf5729c663deadb3422839fbb3f37ee192208d47c9fa2bedd970570a17f2a",
+      "bytes": 3883
+    },
+    "data/generator.py": {
+      "sha256": "dc9b11b05f12ec5b7ec6c557a1325033d79fc086d0cb6a9908ac48ee843189b6",
+      "bytes": 8821
+    },
+    "data/run_40_20_6_C3D20/solve.inp": {
+      "sha256": "cb9c03b58daa705c2ba3432e8f7e03b26d95a637a6807319824e208010eab3ef",
+      "bytes": 2130066
+    },
+    "published_reference.yaml": {
+      "sha256": "ff0f063769fd7ea4e296ec45b3b22b07ebf0b2d5f9dfc734045d5a8e9b8715ef",
+      "bytes": 4368
+    }
+  },
+  "local_only_artifacts_not_sealed": {
+    "note": "Solver outputs (*.frd/*.dat/*.sta/*.cvg/*.12d/spooles.out) and the gmsh intermediate (le10.inp/le10.geo) are deliberately NOT in version control (.gitignore policy: only inputs enter VC). The committed deck data/run_40_20_6_C3D20/solve.inp is self-contained (no *INCLUDE); the live re-solve that regenerates the outputs runs in CI on every PR (.github/workflows/ci.yml job real-le10-e2e)."
+  },
+  "benchmark_provenance": {
+    "published_target": "sigma_yy at point D = 5.38 MPa magnitude",
+    "sign_convention_note": "The first-party NAFEMS table prints the target as +5.38 MPa (tension-positive rendering; mirrored verbatim by the Abaqus Benchmarks Guide, which cites TNSB Rev.3 October 1990). This project anchors -5.38 MPa: the global-Y solver-output rendering that ccx/FeenoX produce at D. Same physical quantity; both renderings must accompany any outward claim.",
+    "first_party_documents": [
+      {
+        "ref": "P18",
+        "title": "The Standard NAFEMS Benchmarks, TNSB Rev. 3 (October 1990)",
+        "url": "https://www.nafems.org/publications/resource_center/p18/",
+        "status": "NOT purchased (member GBP 15 / non-member GBP 45)"
+      },
+      {
+        "ref": "R0006",
+        "title": "NAFEMS Background to Benchmarks (Davies/Fenner/Lewis, 1993)",
+        "url": "https://www.nafems.org/publications/resource_center/r0006/",
+        "status": "NOT purchased (member GBP 5 / non-member GBP 15); covers LE10 with derivation commentary"
+      }
+    ],
+    "independent_reproductions_triangulated": [
+      {
+        "source": "FeenoX",
+        "value_mpa": -5.3792,
+        "url": "https://seamplex.com/feenox/tests/nafems/le10/"
+      },
+      {
+        "source": "Abaqus Benchmarks Guide (cites TNSB Rev.3)",
+        "value_mpa": "target +5.38; computed approx -5.53 (C3D20R)",
+        "url": "https://ceae-server.colorado.edu/v2016/books/bmk/ch04s02anf10.html"
+      },
+      {
+        "source": "Sparselizard/FeenoX hex study",
+        "value_mpa": -5.3773,
+        "url": "https://seamplex.com/feenox/tests/nafems/le10/"
+      },
+      {
+        "source": "ESRD StressCheck Benchmarks Guide",
+        "value_mpa": "converged results for TNSB Rev.3 linear elastic tests",
+        "url": "https://www.esrd.com/product/standard-nafems-benchmarks-linear-elastic-tests/"
+      },
+      {
+        "source": "Code_Aster (project NOTES.md triangulation)",
+        "value_mpa": -5.38,
+        "url": "see NOTES.md"
+      }
+    ],
+    "numeric_corroborator_only": [
+      {
+        "source": "Altair OptiStruct OS-V:0060",
+        "note": "target 5.38, Hex20 5.32-5.95; MIS-CITES R0015 so excluded as citation source"
+      }
+    ],
+    "honest_limitation": "First-party TNSB Rev.3 / R0006 NOT directly consulted; geometry and sign convention are triangulated from the independent reproductions above. A genuinely signed Tier-2 provenance claim should either purchase one first-party document or carry this limitation banner verbatim."
+  },
+  "g2_packet_coverage": {
+    "1_benchmark_source_and_sign": "covered-with-limitation (triangulated, first-party not purchased)",
+    "2_real_solver_run_with_provenance": "covered (committed deck + generator.py; live re-solve in CI)",
+    "3_residual_vs_target_with_tolerance": "covered (cross_check_verdict.yaml: -5.4379 vs -5.38 MPa, +1.08%, tol 3%)",
+    "4_mesh_convergence_evidence": "covered (convergence_study.json, 5-rung monotone)",
+    "5_artifact_manifest_hashes": "THIS FILE",
+    "6_reproduce_cli_audit_log": "OPEN - ADR-027 V2-2 dependency",
+    "7_independent_review_signoff": "OPEN - owner-authorized signoff required (ADR-023); no AI self-sign"
+  }
+}
