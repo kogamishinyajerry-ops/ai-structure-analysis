@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.2.0",
+  "_schema_note": "1.2.0 (Codex R1 P3, 2026-06-03): per-rung `verdict` REMOVED. A convergence rung is an OBSERVATION on the refinement branch, not a case verdict — marking the 216-element rung (residual 3.47% > the 3% case tolerance) as PASS was a per-rung honesty mismatch. The single case-level PASS verdict lives ONLY in the sibling cross_check_verdict.yaml (the canonical 40x20x6 / 4800-element solve, residual +1.08%). Each point now carries an honest `within_case_tolerance` flag instead.",
+  "case_id": "nafems-le10-thick-plate-candidate",
+  "cross_check_kind": "nafems_le10_thick_plate_pressure_point_d",
+  "refinement_param_name": "element_count",
+  "refinement_units": "C3D20 hexahedra (full thickness, quadratic)",
+  "case_tolerance_pct": 3.0,
+  "canonical_refinement_param": 4800,
+  "trend_monotone": true,
+  "generated_at_utc": "2026-06-03T12:00:00+00:00",
+  "analytical_value_pa": -5380000.0,
+  "reference_kind": "published_benchmark",
+  "notes": "NAFEMS LE10 sigma_yy at point D (2.0, 0, +0.3), upper surface, vs the published -5.38 MPa. Real ccx 2.23, full-integration C3D20, mid-plane frame. Convergence is MONOTONE from above on the refined branch (216 -> 4800 elements): residual falls +3.47% -> +1.08% as the mesh refines. The canonical 40x20x6 / 4800-element solve (+1.08%) is the only rung INSIDE the 3% case tolerance and is the one carrying the case PASS verdict (in cross_check_verdict.yaml); the coarser rungs are convergence-branch evidence, NOT passing verdicts. A constant refinement ratio Richardson extrapolation is NOT reported because the mesh ladder uses non-constant (nc,nr,nt) ratios (transfinite structured hex); the monotone decreasing residual toward the canonical 5.38 MPa magnitude is the convergence evidence. Coarser meshes below 216 el (e.g. 8x4x2 = 64 el, +3.02%; 6x3x2 = 36 el, +1.45%) are non-monotonic coarse-mesh artifacts at the sharp inner-edge stress and are excluded from the convergence branch.",
+  "points": [
+    {"label": "12x6x3", "refinement_param": 216,  "node_count": 1287,  "element_count": 216,  "observed_value": -5566900.0, "analytical_value": -5380000.0, "residual_pct": 3.47, "within_case_tolerance": false},
+    {"label": "16x8x4", "refinement_param": 512,  "node_count": 2779,  "element_count": 512,  "observed_value": -5526100.0, "analytical_value": -5380000.0, "residual_pct": 2.72, "within_case_tolerance": true},
+    {"label": "24x12x4","refinement_param": 1152, "node_count": 5987,  "element_count": 1152, "observed_value": -5510700.0, "analytical_value": -5380000.0, "residual_pct": 2.43, "within_case_tolerance": true},
+    {"label": "32x16x5","refinement_param": 2560, "node_count": 12605, "element_count": 2560, "observed_value": -5478900.0, "analytical_value": -5380000.0, "residual_pct": 1.84, "within_case_tolerance": true},
+    {"label": "40x20x6","refinement_param": 4800, "node_count": 22815, "element_count": 4800, "observed_value": -5437900.0, "analytical_value": -5380000.0, "residual_pct": 1.08, "within_case_tolerance": true, "is_canonical": true}
+  ]
+}

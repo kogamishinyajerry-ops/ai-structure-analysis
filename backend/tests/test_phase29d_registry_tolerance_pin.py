@@ -49,6 +49,9 @@ CANONICAL_TOLERANCES: dict[str, float] = {
     "hertz-contact-candidate": 20.0,      # Phase 34 C *CONTACT PAIR; registry-
     #                                       registered + surfaced in Phase 38 F
     #                                       (Codex R1 found it was omitted)
+    "nafems-le10-thick-plate-candidate": 3.0,  # V2-1 / ADR-027 — first PUBLIC-
+    #                                       benchmark agreement (NAFEMS LE10);
+    #                                       observed +1.08% within the 3% hex band
 }
 
 

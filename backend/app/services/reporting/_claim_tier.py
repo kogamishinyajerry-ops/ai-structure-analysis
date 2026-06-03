@@ -68,7 +68,30 @@ byte-identical to the ``CLAIM_BOUNDARY`` constants scattered across
 Phases 1-17 reporting modules (intentional — back-compat). The
 tier_2_validated boundary explicitly retains ``not_signed_validation``
 because real-solver validation is NOT signed validation, and adds
-``cross_check_against_analytical`` to signal the substantiation."""
+``cross_check_against_analytical`` to signal the substantiation. The
+DEFAULT tier_2 substantiation is analytical cross-check — true for every
+Phase-18-through-38 validated case; cases whose tier_2 evidence is a
+DIFFERENT substantiation (e.g. public-benchmark agreement) override it via
+:data:`CLAIM_BOUNDARY_OVERRIDES`."""
+
+CLAIM_BOUNDARY_OVERRIDES: Final[dict[str, str]] = {
+    # V2-1 / ADR-027 (Codex R1 P1, 2026-06-03) — LE10's tier_2 substantiation
+    # is NOT an analytical cross-check; it is agreement with the PUBLISHED
+    # NAFEMS LE10 reference. Surfacing it with the cohort-default
+    # ``cross_check_against_analytical`` boundary would mis-state the evidence.
+    # This override is honored only when the case actually resolves to
+    # tier_2_validated (see :func:`claim_boundary_for`); a tier_1 fall-back
+    # still uses the conservative default boundary.
+    "nafems-le10-thick-plate-candidate": (
+        "tier2_real_solver_validated; not_signed_validation; "
+        "public_benchmark_agreement_nafems_le10; "
+        "sign_normalized_to_solver_convention"
+    ),
+}
+"""Per-case claim-boundary overrides applied ONLY at tier_2_validated. Keyed
+by case_id; the value replaces :data:`CLAIM_BOUNDARIES`'s tier_2 default. Used
+when a validated case's substantiation differs from the analytical-cross-check
+default (the LE10 public-benchmark agreement is the first such case)."""
 
 # Per-case tier registry. The single source of truth for which case
 # gets which tier. Phase 19 B introduces verdict-driven promotion:
@@ -197,6 +220,13 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # artifact is YAML (not JSON) with a nested `verdict_outcome.verdict` —
     # the overlay below now parses both formats + shapes, promoting it.
     "hertz-contact-candidate": "tier_1_candidate",
+    # V2-1 / ADR-027 (2026-06-03) — the project's first PUBLIC-BENCHMARK
+    # AGREEMENT (all prior tier_2 cases cross-check an analytical closed form;
+    # this one agrees with the published NAFEMS LE10 reference σ_yy(D) = −5.38
+    # MPa). Real ccx 2.23, C3D20 40×20×6, observed −5.4379 MPa, +1.08% (tol 3%),
+    # monotone convergence. Promoted to tier_2_validated by the overlay on the
+    # cross_check_verdict.yaml verdict=PASS. Baseline tier_1 here.
+    "nafems-le10-thick-plate-candidate": "tier_1_candidate",
 }
 
 
@@ -336,8 +366,18 @@ def claim_tier_label_for(case_id: str, repo_root: Path | None = None) -> str:
 def claim_boundary_for(case_id: str, repo_root: Path | None = None) -> str:
     """Claim-boundary copy for ``case_id``. Convenience accessor that
     composes :func:`get_claim_tier` and :data:`CLAIM_BOUNDARIES`. See
-    :func:`get_claim_tier` for the ``repo_root`` scoping semantics."""
-    return CLAIM_BOUNDARIES[get_claim_tier(case_id, repo_root)]
+    :func:`get_claim_tier` for the ``repo_root`` scoping semantics.
+
+    A case in :data:`CLAIM_BOUNDARY_OVERRIDES` whose tier resolves to
+    ``tier_2_validated`` returns its bespoke boundary instead of the cohort
+    tier_2 default — this is how a validated case whose substantiation is NOT
+    an analytical cross-check (e.g. the LE10 public-benchmark agreement) states
+    its real evidence honestly. The override never applies at tier_1 (an
+    unpromoted case keeps the conservative default boundary)."""
+    tier = get_claim_tier(case_id, repo_root)
+    if tier == "tier_2_validated" and case_id in CLAIM_BOUNDARY_OVERRIDES:
+        return CLAIM_BOUNDARY_OVERRIDES[case_id]
+    return CLAIM_BOUNDARIES[tier]
 
 
 def register_tier_2_validated(case_id: str) -> None:
@@ -368,6 +408,7 @@ __all__ = [
     "CLAIM_TIER_TIER_2_VALIDATED",
     "CLAIM_TIER_LABELS",
     "CLAIM_BOUNDARIES",
+    "CLAIM_BOUNDARY_OVERRIDES",
     "CLAIM_TIER_REGISTRY",
     "get_claim_tier",
     "claim_tier_label_for",

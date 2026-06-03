@@ -119,10 +119,11 @@ def test_solver_kind_distribution_matches_phase35_backfill() -> None:
     so a future regression that flips a kind (e.g. modal → dynamic)
     is caught immediately.
 
-    Distribution post-Phase 38 B (13 cases total — Phase 38 B added
-    wedge-c3d6-candidate, the 6th element class, as a real-solver
-    linear_static cross-check):
-      linear_static            : 6
+    Distribution post-V2-1 / ADR-027 (14 cases total — 2026-06-03 added
+    nafems-le10-thick-plate-candidate, the project's first public-benchmark
+    agreement, as a real-solver linear_static cross-check vs the published
+    NAFEMS LE10 reference):
+      linear_static            : 7
       modal                    : 2
       buckling                 : 2
       dynamic                  : 1
@@ -140,7 +141,7 @@ def test_solver_kind_distribution_matches_phase35_backfill() -> None:
         kinds[kind] += 1
 
     expected = {
-        "linear_static": 6,
+        "linear_static": 7,
         "modal": 2,
         "buckling": 2,
         "dynamic": 1,

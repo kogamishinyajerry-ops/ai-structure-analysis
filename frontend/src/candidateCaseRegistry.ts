@@ -208,8 +208,8 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   // scripts/gen_fallback_candidate_registry.py (provenance / regeneration):
   // claimTier + claimBoundary come from the _claim_tier SSOT (a PASS
   // cross_check_verdict.yaml on a REGISTERED case promotes to Tier 2 — e.g.
-  // nafems-le10 stays Tier 1 because it is the analytical-only reference, not
-  // registered); solverKind + runnerAvailable from the verdict YAML;
+  // nafems-le10 is now Tier 2 (V2-1/ADR-027: registered + PASS
+  // cross_check_verdict.yaml, real ccx LE10 benchmark agreement)); solverKind + runnerAvailable from the verdict YAML;
   // notesExcerpt is the same 12-line / 1200-char rule the backend route emits
   // (online<->offline parity). Double-quoted to preserve embedded apostrophes
   // (Hooke's / Euler's / Young's). displayLabel intentionally omitted (the
@@ -346,14 +346,18 @@ export const FALLBACK_CANDIDATE_CASES: CandidateCaseRecord[] = [
   },
   {
     caseId: "nafems-le10-thick-plate-candidate",
-    runnerAvailable: false,
-    displayLabel: "NAFEMS LE10 Thick Plate · Tier 1 candidate",
-    claimTier: "Tier 1 engineering candidate",
+    runnerAvailable: true,
+    solverKind: "linear_static",
+    displayLabel: "NAFEMS LE10 Thick Plate · Tier 2 validated",
+    claimTier: "Tier 2 real-solver validated",
     starterDeckRelpath: null,
     engineDeckRelpath: null,
     generatorScriptRelpath: null,
-    notesExcerpt: "# NAFEMS LE10 — Thick Plate Pressure (published reference)\n\n> **Tier 1 engineering candidate · analytical-only PUBLISHED-REFERENCE record.**\n> NOT signed validation, NOT benchmark agreement, NOT a solved cross-check.\n\n## What this case is (and is NOT)\n\nPhase 38 A adds the **first NAFEMS-tagged entry** to the FM-04a cohort by\nrecording the *published* NAFEMS LE10 target stress as a reference value. **No\nCalculiX solve is performed at this phase** (analytical-only, following the\nPhase 33 D Hertz precedent). A real meshed `ccx` solve + signed residual\ncomparison against the −5.38 MPa target is deferred to the **Phase 41-43 NAFEMS",
-    claimBoundary: "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+    notesExcerpt: "# NAFEMS LE10 — Thick Plate Pressure (real ccx benchmark agreement)\n\n> **Tier 2 real-solver validated · PUBLIC-BENCHMARK AGREEMENT (NAFEMS LE10).**\n> NOT signed validation (no independent reviewer signoff per ADR-023 Tier-2-signed\n> / ADR-027 G-2). Real ccx 2.23 solve; sign normalized to the solver convention.\n\n## What this case is (V2-1 / ADR-027, 2026-06-03)\n\nThis is the project's **first genuine public-benchmark agreement** — every other\n`tier_2_validated` case is a real-ccx cross-check against an *analytical closed\nform*; this one compares a real ccx solve against the **published NAFEMS LE10\nreference value** σ_yy(D) = −5.38 MPa.",
+    // V2-1 / ADR-027 (Codex R1 P1): LE10's tier_2 substantiation is a
+    // public-benchmark agreement, NOT an analytical cross-check — mirrors the
+    // backend CLAIM_BOUNDARY_OVERRIDES entry in _claim_tier.py.
+    claimBoundary: "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_nafems_le10; sign_normalized_to_solver_convention",
   },
   {
     caseId: "plate-simply-supported-candidate",
