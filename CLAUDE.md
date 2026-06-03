@@ -97,8 +97,10 @@ imply Tier 2.
 
 ## Honesty contract (绝对诚实客观)
 
-FM-04a has run **22+ consecutive Tier-2 phases** under a strict honesty
-contract. Carried verbatim:
+FM-04a ran a long strict-honesty milestone. **Honest correction (ADR-027 §6):** the "22+
+consecutive Tier-2 phases" framing over-claims — the Tier-2 *analytical-cross-check* march ran
+through ~Phase 38; **Phases 40–45 were Tier-0 demo / UX work**, not Tier-2. Do not summarize the
+whole run as "22+ consecutive Tier-2 phases." Honesty contract carried verbatim:
 
 - `confidence: <h|m|l>` tag on **every** commit (already standard).
 - Honest scope adjustment at implementation time is documented inline, not
@@ -120,8 +122,15 @@ contract. Carried verbatim:
   FM-04a-class direct-execution = local-commit / no-push (standing authorization).
 - **No date/schedule gating** (ADR-011 AR-2026-05-03): gates are
   dependency/task-completion-driven, never calendar-driven.
-- **Composite rubric mandate**: 6-dim rubric v2.0 toward 99+ (currently 77.50
-  @ Phase 37; projected reach Phase ~45-46).
+- **Composite rubric mandate → REFRAMED by ADR-027 (2026-06-03, Accepted)**: the 6-dim
+  rubric v2.0 is now a **health dashboard / direction signal, NOT a binary ship gate**. The
+  former "all-6-dims-≥99 APPROVE gate" is **retired** (unreachable at the real ~+0.4/phase
+  slope; two anchors — commercial-CAE UI parity, signed public benchmark — mission-incompatible).
+  **FM-04a v1.0 = honest engineering-candidate, COMPLETE** (13 `tier_2_validated` real-ccx ↔
+  analytical cross-checks; **zero public-benchmark agreements; not signed validation**). Rigor is
+  held by two hard guardrails (ADR-027 **G-1** regression floor + **G-2** Tier-2 evidence packet),
+  not by a score. v2 (FM-05) = NAFEMS real benchmark agreement + reproduce-CLI/audit-log; UI
+  parity de-scoped. Latest dashboard read: **81.33 @ Phase 43** (code ~Phase 45 unscored).
 
 ## Files comprising the dev-team architecture (do NOT modify without Codex + user ratification)
 
