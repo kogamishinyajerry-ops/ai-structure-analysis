@@ -86,6 +86,27 @@ def test_real_le10_module_solve_and_extract(tmp_path):
     assert bench["node_d"] is not None
 
 
+@_needs_ccx
+def test_real_le10_sigma_yy_drift_pin(tmp_path):
+    """ADR-027 V2-0 (live re-solve, representative case): a fresh ccx re-solve
+    of the canonical LE10 deck must hold BOTH gates — the hard benchmark gate
+    (PASS within ±3% of the published −5.38 MPa, never relaxed) AND a tight
+    drift pin (±0.5%) against the frozen validated observation −5437900.0 Pa.
+    The pin catches solver/toolchain drift the wide gate would mask; it is a
+    regression watchdog, not a tighter truth claim (Tier 1, not signed)."""
+    out = real_le10.run_le10_solve(tmp_path, timeout_s=900)
+    assert out["converged"] is True
+    bench = real_le10.extract_le10_benchmark(out["deck_path"], out["frd_path"])
+    # hard gates — cross-ccx-version, never relaxed
+    assert bench["verdict"] == "PASS"
+    assert abs(bench["residual_pct"]) <= real_le10.LE10_TOLERANCE_PCT
+    assert bench["sigma_yy_pa"] < 0  # compression at D (ccx tension-positive)
+    # tight pin — version-window drift watchdog
+    assert bench["sigma_yy_pa"] == pytest.approx(
+        real_le10.LE10_OBSERVED_PA_PINNED, rel=real_le10.LE10_DRIFT_REL
+    )
+
+
 # --- honesty guards (Codex M4 R0 P1/P2 fixes; no ccx required) ----------------
 
 def test_real_path_never_emits_mock_scalars_without_solve_ctx():

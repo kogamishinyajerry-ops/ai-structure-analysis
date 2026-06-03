@@ -114,3 +114,50 @@ jobs:
       - name: Frontend — test (vitest)
         run: npm test
         working-directory: frontend
+
+  # --- ADR-027 V2-0 (partial): live re-solve of one representative case -----
+  # G-1's honest gap: the 13 cross-check residuals were pinned only by the
+  # committed verdict YAML — no CI job ever ran a real ccx solve (backend/tests
+  # never ran in CI, and no runner had ccx installed). This job re-solves the
+  # canonical NAFEMS LE10 deck with a real CalculiX on every PR and asserts the
+  # benchmark verdict + a tight drift pin against the frozen observation
+  # (backend/tests/test_workflow_real_le10.py). Claim tier: Tier 1 (real
+  # solver, public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-le10-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        # ubuntu-24.04 (noble) universe ships calculix-ccx 2.21 — exactly the
+        # tools/calculix_driver REQUIRED_CCX_VERSION minimum. If the runner
+        # image ever regresses below 2.21, run_solve raises loudly inside the
+        # tests (a visible FAIL, never a silent skip).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        # le10_available() == (ccx on PATH) and (deck exists). Hard-fail both
+        # preconditions here so the ccx-guarded tests below can never silently
+        # skip and let this job report green without a live solve.
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/nafems-le10-thick-plate-candidate/data/run_40_20_6_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real LE10 e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_le10.py -v --tb=short

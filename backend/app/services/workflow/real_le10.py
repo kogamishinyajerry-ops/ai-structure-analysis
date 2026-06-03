@@ -38,6 +38,16 @@ LE10_DECK = _LE10_CASE_DIR / "data" / "run_40_20_6_C3D20" / "solve.inp"
 # cross_check_verdict.yaml (tolerance_pct: 3.0).
 LE10_TARGET_PA = -5.38e6
 LE10_TOLERANCE_PCT = 3.0
+# ADR-027 V2-0 drift watchdog: the frozen observation from the canonical
+# validated run (cross_check_verdict.yaml observed_pa, ccx 2.23). Same deck +
+# same ccx version re-solves deterministically (direct sparse solve, no
+# parallel nondeterminism); across ccx versions O(0.1–0.5%) drift is physically
+# expected. Layered gate: verdict PASS within LE10_TOLERANCE_PCT of the
+# published target is the hard, never-relaxed claim; this pin is a tight
+# regression watchdog on the live re-solve, NOT a new truth claim (Tier 1,
+# not signed validation).
+LE10_OBSERVED_PA_PINNED = -5_437_900.0
+LE10_DRIFT_REL = 5e-3
 # Authoritative counts from cross_check_verdict.yaml (parse_inp does not parse the
 # two-line C3D20 element block, so these are sourced from the verdict record).
 LE10_NODE_COUNT = 22815
