@@ -9,7 +9,6 @@ verdict; `test_le10_residual_reproduces` (requires_solver) re-runs the real solv
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -49,8 +48,10 @@ def test_le10_sign_and_point_are_correct() -> None:
 
 
 def test_le10_promotes_to_tier_2_validated() -> None:
-    sys.path.insert(0, str(REPO))
-    from backend.app.services.reporting._claim_tier import get_claim_tier
+    # backend/tests resolves ``app`` directly (rootdir=backend); importing via
+    # ``backend.app.X`` would create a second module object and is forbidden
+    # by tests/test_packaging.py::test_no_source_imports_via_backend_app_path.
+    from app.services.reporting._claim_tier import get_claim_tier
 
     assert get_claim_tier("nafems-le10-thick-plate-candidate") == "tier_2_validated"
 
