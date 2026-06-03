@@ -68,10 +68,13 @@ async def startup_event():
 
 
 # CORS配置
+# allow_credentials=False: the frontend uses bare fetch (no cookies/credentials),
+# and the wildcard-origin + allow_credentials=True combination is rejected by
+# browsers anyway (Fetch spec) — fixed per M2 threat model (P3).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 生产环境应限制来源
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

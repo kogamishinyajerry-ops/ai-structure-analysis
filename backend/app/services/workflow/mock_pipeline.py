@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -35,6 +36,11 @@ from schemas.workflow_state import (
 )
 
 from .mock_backend import MockFEABackend
+
+class StageOrderError(Exception):
+    """Raised by run_one_stage when a stage is driven out of order or after a
+    terminal failure (the M2 route maps this to HTTP 409)."""
+
 
 # Stages that complete as WARNING (passing-with-caveats) in the canonical demo.
 _WARNING_STAGES = frozenset({WorkflowStage.MESH_QUALITY_CHECK, WorkflowStage.RESULT_ANALYSIS})
@@ -281,6 +287,13 @@ class MockWorkflowStore:
 
     def __init__(self) -> None:
         self.runs: dict[str, MockRun] = {}
+        # Serialises the run_one_stage check-and-set so two concurrent
+        # POST /workflow/stage/run for the same run/stage cannot both pass the
+        # pending check and double-execute (Codex M2 R0 P2). The critical
+        # section is tiny + synchronous, so a single process-wide lock is
+        # cheap; it matters most once M4 swaps in a real (non-idempotent)
+        # solver backend.
+        self._stage_lock = threading.Lock()
 
     def _new_run(self, label: str | None, fail_at_stage: WorkflowStage | None) -> MockRun:
         seq = next(self._counter)
@@ -311,6 +324,80 @@ class MockWorkflowStore:
             message=f"injected failure at {stage.value}",
             detail="MockWorkflowStore fail_at_stage demo path",
         )
+
+    # --- M2: external (Trigger.dev) single-stage orchestration ---------------
+
+    def create_run(
+        self, label: str | None = None, fail_at_stage: WorkflowStage | None = None
+    ) -> MockRun:
+        """M2: mint + store a PENDING run WITHOUT starting any execution.
+
+        The external orchestrator (Trigger.dev) then drives each stage via
+        :meth:`run_one_stage`. The M1 self-advancing path (``trigger`` /
+        ``run_sync``) is unaffected."""
+        return self._new_run(label, fail_at_stage)
+
+    def run_one_stage(
+        self, run_id: str, stage: WorkflowStage, fail: bool = False
+    ) -> StageState:
+        """M2: execute exactly ONE stage for an existing run (sync, no sleeps).
+
+        Idempotent + order-guarded so a Trigger.dev retry (same idempotency key)
+        re-POSTing a completed stage returns the existing StageState rather than
+        re-executing (which would, e.g., overwrite a WARNING with SUCCESS).
+
+        Raises:
+            KeyError: unknown ``run_id`` (route -> 404).
+            StageOrderError: the run already failed, or a prior stage has not
+                completed (out-of-order drive) (route -> 409).
+        """
+        # One lock over the whole check-and-set: concurrent calls for the same
+        # run/stage serialise, so only the first executes and the rest hit the
+        # idempotent-replay branch (Codex M2 R0 P2).
+        with self._stage_lock:
+            run = self.runs.get(run_id)
+            if run is None:
+                raise KeyError(run_id)
+            idx = CANONICAL_STAGE_ORDER.index(stage)
+            existing = run.stages[idx]
+            # Idempotent replay: a terminal stage returns its recorded state as-is.
+            if existing.status in (StageStatus.SUCCESS, StageStatus.WARNING, StageStatus.FAILED):
+                return existing
+            # A run that already failed cannot be driven further.
+            if run.status is StageStatus.FAILED:
+                raise StageOrderError(
+                    f"run {run_id} already failed; cannot run stage {stage.value}"
+                )
+            # Strict ordering: every prior stage must be terminal-success/warning.
+            for prior in CANONICAL_STAGE_ORDER[:idx]:
+                if run.stages[CANONICAL_STAGE_ORDER.index(prior)].status not in (
+                    StageStatus.SUCCESS,
+                    StageStatus.WARNING,
+                ):
+                    raise StageOrderError(
+                        f"out-of-order: stage {stage.value} requested before "
+                        f"{prior.value} completed"
+                    )
+            backend = MockFEABackend(
+                force_fault=FaultClass.SOLVER_CONVERGENCE
+                if (fail and stage is WorkflowStage.SOLVER_RUN)
+                else None
+            )
+            run.current_stage = stage
+            run.status = StageStatus.RUNNING
+            if fail:
+                st = _build_stage_state(
+                    run.run_id, stage, StageStatus.FAILED, 1.0,
+                    backend=backend, error=self._fail_error(stage),
+                )
+            else:
+                st = _build_stage_state(
+                    run.run_id, stage, _terminal_status(stage), 1.0, backend=backend
+                )
+            run.stages[idx] = st
+            if fail or stage is CANONICAL_STAGE_ORDER[-1]:
+                self._finalize(run)
+            return st
 
     def run_sync(
         self, label: str | None = None, fail_at_stage: WorkflowStage | None = None

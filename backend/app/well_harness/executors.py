@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import time
@@ -11,6 +12,11 @@ from typing import Protocol
 from ..models.task_spec import TaskSpec
 from .knowledge_store import GoldenSampleKnowledgeStore
 from .schemas import ExecutorRunResult
+
+# ADR-011 §HF1.7a signed-registry guard. CalculiXRunner + the solver route
+# already hard-stop signed cases; CalculixExecutor was the missing path (M2
+# threat model P2). Pattern mirrors backend/app/adapters/calculix/runner.py.
+_SIGNED_REGISTRY_PATTERN = re.compile(r"^GS-\d{3}$")
 
 
 class StructuralExecutor(Protocol):
@@ -56,6 +62,15 @@ class CalculixExecutor:
         task_spec: TaskSpec,
         store: GoldenSampleKnowledgeStore,
     ) -> ExecutorRunResult:
+        # HF1.7a hard-stop: never launch ccx inside a signed golden_samples dir
+        # (would overwrite the sealed .frd/.dat/.cvg/.sta reproducibility
+        # evidence). Enforced here so CLI/test paths respect it independent of
+        # the API-boundary check.
+        if _SIGNED_REGISTRY_PATTERN.fullmatch(case_id):
+            raise ValueError(
+                f"refused to run CalculiX on signed-registry case {case_id!r} "
+                f"(ADR-011 §HF1.7a hard-stop)"
+            )
         inp_path = store.find_input_file(case_id)
         if inp_path is None:
             return ExecutorRunResult(

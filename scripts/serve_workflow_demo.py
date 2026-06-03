@@ -27,6 +27,14 @@ sys.path.insert(0, str(_REPO / "backend"))  # app/
 from app.core.config import settings  # noqa: E402
 
 settings.openai_api_key = None
+# Demo-only internal secret so POST /workflow/stage/run (the M2 external path)
+# is usable without extra config. Real deployments set TRIGGER_INTERNAL_SECRET.
+if not settings.trigger_internal_secret:
+    settings.trigger_internal_secret = "demo-internal-secret"
+# Allow loopback wait-token callbacks for local fake-orchestrator testing (the
+# SSRF guard rejects loopback by default; production callbacks are on the
+# Trigger.dev host). Demo/self-host only.
+settings.trigger_allow_loopback_callback = True
 
 import uvicorn  # noqa: E402
 from app.api.routes import workflow  # noqa: E402
