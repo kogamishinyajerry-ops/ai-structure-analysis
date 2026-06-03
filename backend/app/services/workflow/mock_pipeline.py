@@ -16,14 +16,17 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from aeron.protocols.fea_backend import CasePackage, SolveOptions, SolveStatusCode
+from app.core.config import settings
 from schemas.sim_state import FaultClass
 from schemas.workflow_state import (
     CANONICAL_STAGE_ORDER,
@@ -35,6 +38,7 @@ from schemas.workflow_state import (
     WorkflowStage,
 )
 
+from . import real_le10
 from .mock_backend import MockFEABackend
 
 class StageOrderError(Exception):
@@ -180,6 +184,116 @@ STAGE_SPECS: dict[WorkflowStage, StageSpec] = {
     ),
 }
 
+# M4 — LE10-accurate stage content, used when settings.workflow_real_solver is on.
+# The solver_run / post_processing / result_analysis metrics are OVERWRITTEN at
+# runtime from the real ccx solve (see _build_stage_state's real branch); the rest
+# describe the actual NAFEMS LE10 case so the displayed narrative is not a lie.
+LE10_STAGE_SPECS: dict[WorkflowStage, StageSpec] = {
+    WorkflowStage.PROJECT_INTAKE: StageSpec(
+        current_object="user_request",
+        description="解析分析目标（NAFEMS LE10 基准）",
+        metrics={"physics": "linear_static", "benchmark": "NAFEMS LE10", "target": "sigma_yy@D"},
+        agent_explanation="目标：复现 NAFEMS LE10「厚板受压」基准，比对发布参考 σ_yy(D) = −5.38 MPa。",
+        next_action="导入 LE10 厚板几何。",
+    ),
+    WorkflowStage.CAD_IMPORT: StageSpec(
+        current_object="le10_thick_plate",
+        description="导入 LE10 厚板几何（椭圆板，四分之一对称）",
+        metrics={"outerEllipseM": "3.25 x 2.75", "innerEllipseM": "2.0 x 1.0", "thicknessM": 0.6},
+        agent_explanation="LE10 厚椭圆板：外椭圆半轴 3.25×2.75 m，内椭圆孔 2.0×1.0 m，厚 0.6 m，取四分之一对称模型。",
+        next_action="校验几何。",
+    ),
+    WorkflowStage.GEOMETRY_VALIDATION: StageSpec(
+        current_object="le10_quarter",
+        description="校验四分之一对称几何",
+        metrics={"quarterModel": 1, "symmetryPlanes": 2},
+        agent_explanation="确认 x=0 与 y=0 两个对称面、外椭圆边与厚度方向（z∈[−0.3,+0.3]）。",
+        next_action="赋予材料。",
+    ),
+    WorkflowStage.MATERIAL_ASSIGNMENT: StageSpec(
+        current_object="le10_steel",
+        description="赋予各向同性钢材（LE10 规范）",
+        metrics={"youngsModulusPa": 2.1e11, "poissonRatio": 0.3},
+        agent_explanation="E=210 GPa、ν=0.30（LE10 规范材料；密度对线性静力目标无关）。",
+        next_action="设置对称与边界约束。",
+    ),
+    WorkflowStage.BOUNDARY_CONDITIONS: StageSpec(
+        current_object="symmetry_and_rim",
+        description="设置对称面与外缘约束",
+        metrics={"constraints": 4, "rigidBodyModes": 0},
+        agent_explanation="x=0 面 ux=0；y=0 面 uy=0（含 D 点）；外椭圆缘面内固定 ux=uy=0；外缘中面 uz=0（替代 NAFEMS EE' 线，去除 z 刚体）。",
+        next_action="施加压力载荷。",
+    ),
+    WorkflowStage.LOAD_CASES: StageSpec(
+        current_object="upper_surface",
+        description="上表面施加均布压力",
+        metrics={"loadCases": 1, "pressurePa": 1.0e6, "type": "normal_pressure"},
+        agent_explanation="上表面施加 1.0 MPa 法向均布压力（向下 −z），单工况。",
+        next_action="生成网格。",
+    ),
+    WorkflowStage.MESH_GENERATION: StageSpec(
+        current_object="le10_quarter",
+        description="生成二次六面体网格（C3D20）",
+        metrics={
+            "nodes": real_le10.LE10_NODE_COUNT,
+            "elements": real_le10.LE10_ELEMENT_COUNT,
+            "elementType": real_le10.LE10_ELEMENT_TYPE,
+            "meshNcNrNt": "40 x 20 x 6",
+        },
+        agent_explanation="结构化六面体 C3D20 全积分单元，40×20×6（4800 单元 / 22815 节点）；该网格已通过单调收敛验证。",
+        next_action="检查网格质量。",
+    ),
+    WorkflowStage.MESH_QUALITY_CHECK: StageSpec(
+        current_object="inner_edge",
+        description="检查网格质量",
+        metrics={
+            "nodes": real_le10.LE10_NODE_COUNT,
+            "elements": real_le10.LE10_ELEMENT_COUNT,
+            "badElements": 0,
+            "structured": True,
+        },
+        agent_explanation="结构化 transfinite 网格，无畸形单元；孔内缘（含 D 点）应力梯度由全积分 C3D20 捕捉。",
+        next_action="运行 CalculiX 求解。",
+    ),
+    WorkflowStage.SOLVER_RUN: StageSpec(
+        current_object="le10_model",
+        description="运行求解器（CalculiX · 真实 ccx）",
+        metrics={"step": "static", "increment": 1},  # overwritten with real solve metrics
+        agent_explanation="对 LE10 模型做线性静力一步求解，调用真实 ccx（版本见 ccxVersion 指标）。",
+        next_action="监控收敛。",
+        fault_class=FaultClass.SOLVER_CONVERGENCE,
+    ),
+    WorkflowStage.CONVERGENCE_MONITORING: StageSpec(
+        current_object="residual",
+        description="监控收敛",
+        metrics={"converged": True, "increments": 1, "analysis": "linear_static"},
+        agent_explanation="线性静力一步收敛；ccx SPOOLES 直接求解，无迭代残差曲线。",
+        next_action="后处理提取场量。",
+    ),
+    WorkflowStage.POST_PROCESSING: StageSpec(
+        current_object="result_field",
+        description="从 .frd 提取应力 / 位移场",
+        metrics={"frames": 1, "fields": "S,U"},  # nodes filled at runtime
+        agent_explanation="解析 ccx 输出 .frd，提取应力张量 S 与位移 U（逐节点，未平均）。",
+        next_action="提取 D 点 σ_yy 并比对基准。",
+    ),
+    WorkflowStage.RESULT_ANALYSIS: StageSpec(
+        current_object="point_D",
+        description="提取 σ_yy(D) 并比对 NAFEMS 基准",
+        metrics={},  # filled at runtime from the real benchmark extraction
+        agent_explanation="在 D 点 (2.0, 0, +0.3) 读取 σ_yy，按 ±3% 容差比对发布参考 −5.38 MPa。",
+        next_action="生成基准吻合报告。",
+        fault_class=FaultClass.REFERENCE_MISMATCH,
+    ),
+    WorkflowStage.REPORT_GENERATION: StageSpec(
+        current_object="report",
+        description="生成基准吻合报告",
+        metrics={"sections": 5},
+        agent_explanation="汇总几何 / 材料 / 边界 / 载荷 / 网格 / σ_yy(D) 与残差为一份基准吻合报告。",
+        next_action="完成（Tier 1 真求解，比对 Tier-2 公开基准；非签字验证）。",
+    ),
+}
+
 _PROGRESS_TICKS = (0.34, 0.67, 1.0)
 
 
@@ -215,6 +329,31 @@ def _initial_stages(run_id: str) -> list[StageState]:
     ]
 
 
+def _le10_real_metrics(stage: WorkflowStage, solve_ctx: dict) -> dict | None:
+    """Real-solve metrics for the three number-stages (M4). None → use the spec's."""
+    if stage is WorkflowStage.SOLVER_RUN:
+        return {
+            "step": "static",
+            "increment": 1,
+            "ccxVersion": solve_ctx.get("ccx_version"),
+            "wallTimeS": round(solve_ctx.get("wall_time_s") or 0.0, 2),
+            "converged": bool(solve_ctx.get("converged")),
+        }
+    if stage is WorkflowStage.POST_PROCESSING:
+        return {"frames": 1, "fields": "S,U", "nodes": solve_ctx.get("node_count")}
+    if stage is WorkflowStage.RESULT_ANALYSIS:
+        b = solve_ctx.get("benchmark", {})
+        return {
+            "benchmark": "NAFEMS LE10",
+            "observedSigmaYyMpa": round((b.get("sigma_yy_pa") or 0.0) / 1e6, 4),
+            "targetSigmaYyMpa": round((b.get("target_pa") or 0.0) / 1e6, 2),
+            "residualPct": round(b.get("residual_pct") or 0.0, 2),
+            "tolerancePct": b.get("tolerance_pct"),
+            "verdict": b.get("verdict"),
+        }
+    return None
+
+
 def _build_stage_state(
     run_id: str,
     stage: WorkflowStage,
@@ -222,14 +361,26 @@ def _build_stage_state(
     progress: float,
     *,
     backend: MockFEABackend,
+    specs: dict[WorkflowStage, StageSpec] = STAGE_SPECS,
+    solve_ctx: dict | None = None,
     error: StageError | None = None,
 ) -> StageState:
-    spec = STAGE_SPECS[stage]
+    spec = specs[stage]
     metrics_src = dict(spec.metrics)
     artifacts = dict(spec.artifacts)
 
-    # Wire the FEABackend in at the solve + result stages.
-    if stage is WorkflowStage.RESULT_ANALYSIS:
+    if solve_ctx is not None:
+        # M4 real path: real ccx solve metrics for solve/post/result stages.
+        real_metrics = _le10_real_metrics(stage, solve_ctx)
+        if real_metrics is not None:
+            metrics_src = real_metrics
+        if stage is WorkflowStage.SOLVER_RUN and solve_ctx.get("frd_path"):
+            artifacts = {"log_file": solve_ctx["frd_path"]}
+    elif stage is WorkflowStage.RESULT_ANALYSIS and specs is STAGE_SPECS:
+        # Mock path ONLY (canned scalars from MockFEABackend). Gated on the mock
+        # specs so the real path NEVER synthesizes mock numbers when solve_ctx is
+        # absent (e.g. process restart / cache miss) — it emits the spec's empty
+        # metrics instead, which a verdict-aware terminal status flags (Codex M4 R0 P1).
         from aeron.protocols.fea_backend import SolveOutcome, SolveStatus
 
         outcome = SolveOutcome(
@@ -264,7 +415,19 @@ def _build_stage_state(
     )
 
 
-def _terminal_status(stage: WorkflowStage) -> StageStatus:
+def _terminal_status(
+    stage: WorkflowStage, real: bool = False, solve_ctx: dict | None = None
+) -> StageStatus:
+    # The synthetic WARNING stages are mock-demo artifacts (e.g. 142 bad bracket
+    # elements). In real mode every stage completes SUCCESS EXCEPT result_analysis,
+    # whose status follows the real benchmark verdict: PASS -> SUCCESS, a
+    # disagreement OR a missing solve context -> WARNING, so a failed benchmark
+    # check is never shown as a plain green success (Codex M4 R0 P2).
+    if real:
+        if stage is WorkflowStage.RESULT_ANALYSIS:
+            verdict = (solve_ctx or {}).get("benchmark", {}).get("verdict")
+            return StageStatus.SUCCESS if verdict == "PASS" else StageStatus.WARNING
+        return StageStatus.SUCCESS
     return StageStatus.WARNING if stage in _WARNING_STAGES else StageStatus.SUCCESS
 
 
@@ -294,6 +457,30 @@ class MockWorkflowStore:
         # cheap; it matters most once M4 swaps in a real (non-idempotent)
         # solver backend.
         self._stage_lock = threading.Lock()
+        # M4: per-run real-solve context (frd path, ccx metadata, benchmark
+        # verdict), set at the SOLVER_RUN stage and read by the later
+        # post_processing / result_analysis stages (which are separate calls in
+        # the M2 external path). Keyed by run_id; only used when the real-solver
+        # flag is on.
+        self._solve_ctx: dict[str, dict] = {}
+
+    def _run_real_le10(self, run_id: str) -> dict:
+        """Run the real LE10 ccx solve + benchmark extraction; cache per run.
+
+        Raises RuntimeError if the solve did not converge (surfaced as a FAILED
+        solver_run stage by the callers).
+        """
+        work = Path(tempfile.mkdtemp(prefix=f"le10_{run_id}_"))
+        solve = real_le10.run_le10_solve(work)
+        frd = solve.get("frd_path")
+        if not solve.get("converged") or not frd:
+            raise RuntimeError(
+                str(solve.get("failure_reason") or "LE10 ccx solve did not converge")
+            )
+        benchmark = real_le10.extract_le10_benchmark(Path(solve["deck_path"]), Path(frd))
+        ctx = {**solve, "benchmark": benchmark}
+        self._solve_ctx[run_id] = ctx
+        return ctx
 
     def _new_run(self, label: str | None, fail_at_stage: WorkflowStage | None) -> MockRun:
         seq = next(self._counter)
@@ -383,16 +570,38 @@ class MockWorkflowStore:
                 if (fail and stage is WorkflowStage.SOLVER_RUN)
                 else None
             )
+            real = settings.workflow_real_solver
+            specs = LE10_STAGE_SPECS if real else STAGE_SPECS
             run.current_stage = stage
             run.status = StageStatus.RUNNING
             if fail:
                 st = _build_stage_state(
                     run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, error=self._fail_error(stage),
+                    backend=backend, specs=specs, error=self._fail_error(stage),
                 )
             else:
+                solve_ctx: dict | None = None
+                if real and stage is WorkflowStage.SOLVER_RUN:
+                    try:
+                        solve_ctx = self._run_real_le10(run.run_id)
+                    except Exception as exc:  # honest failure, not a silent mock
+                        st = _build_stage_state(
+                            run.run_id, stage, StageStatus.FAILED, 1.0,
+                            backend=backend, specs=specs,
+                            error=StageError(
+                                fault_class=FaultClass.SOLVER_CONVERGENCE,
+                                message=str(exc),
+                                detail="real LE10 ccx solve failed",
+                            ),
+                        )
+                        run.stages[idx] = st
+                        self._finalize(run)
+                        return st
+                elif real:
+                    solve_ctx = self._solve_ctx.get(run.run_id)
                 st = _build_stage_state(
-                    run.run_id, stage, _terminal_status(stage), 1.0, backend=backend
+                    run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx,
                 )
             run.stages[idx] = st
             if fail or stage is CANONICAL_STAGE_ORDER[-1]:
@@ -410,17 +619,35 @@ class MockWorkflowStore:
             if fail_at_stage is WorkflowStage.SOLVER_RUN
             else None
         )
+        real = settings.workflow_real_solver
+        specs = LE10_STAGE_SPECS if real else STAGE_SPECS
         run.status = StageStatus.RUNNING
+        solve_ctx: dict | None = None
         for idx, stage in enumerate(CANONICAL_STAGE_ORDER):
             run.current_stage = stage
             if fail_at_stage is stage:
                 run.stages[idx] = _build_stage_state(
                     run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, error=self._fail_error(stage),
+                    backend=backend, specs=specs, error=self._fail_error(stage),
                 )
                 break
+            if real and stage is WorkflowStage.SOLVER_RUN:
+                try:
+                    solve_ctx = self._run_real_le10(run.run_id)
+                except Exception as exc:
+                    run.stages[idx] = _build_stage_state(
+                        run.run_id, stage, StageStatus.FAILED, 1.0,
+                        backend=backend, specs=specs,
+                        error=StageError(
+                            fault_class=FaultClass.SOLVER_CONVERGENCE,
+                            message=str(exc),
+                            detail="real LE10 ccx solve failed",
+                        ),
+                    )
+                    break
             run.stages[idx] = _build_stage_state(
-                run.run_id, stage, _terminal_status(stage), 1.0, backend=backend
+                run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
+                backend=backend, specs=specs, solve_ctx=solve_ctx,
             )
         self._finalize(run)
         return run
@@ -432,22 +659,42 @@ class MockWorkflowStore:
             if run.fail_at_stage is WorkflowStage.SOLVER_RUN
             else None
         )
+        real = settings.workflow_real_solver
+        specs = LE10_STAGE_SPECS if real else STAGE_SPECS
         run.status = StageStatus.RUNNING
+        solve_ctx: dict | None = None
         for idx, stage in enumerate(CANONICAL_STAGE_ORDER):
             run.current_stage = stage
             for p in _PROGRESS_TICKS:
                 run.stages[idx] = _build_stage_state(
-                    run.run_id, stage, StageStatus.RUNNING, p, backend=backend
+                    run.run_id, stage, StageStatus.RUNNING, p,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx,
                 )
                 await asyncio.sleep(tick_delay_s)
             if run.fail_at_stage is stage:
                 run.stages[idx] = _build_stage_state(
                     run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, error=self._fail_error(stage),
+                    backend=backend, specs=specs, error=self._fail_error(stage),
                 )
                 break
+            if real and stage is WorkflowStage.SOLVER_RUN:
+                try:
+                    # Off-thread so the ~8s ccx subprocess does not block the loop.
+                    solve_ctx = await asyncio.to_thread(self._run_real_le10, run.run_id)
+                except Exception as exc:
+                    run.stages[idx] = _build_stage_state(
+                        run.run_id, stage, StageStatus.FAILED, 1.0,
+                        backend=backend, specs=specs,
+                        error=StageError(
+                            fault_class=FaultClass.SOLVER_CONVERGENCE,
+                            message=str(exc),
+                            detail="real LE10 ccx solve failed",
+                        ),
+                    )
+                    break
             run.stages[idx] = _build_stage_state(
-                run.run_id, stage, _terminal_status(stage), 1.0, backend=backend
+                run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
+                backend=backend, specs=specs, solve_ctx=solve_ctx,
             )
         self._finalize(run)
 

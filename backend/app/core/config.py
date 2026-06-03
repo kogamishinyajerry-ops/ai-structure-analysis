@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # become additionally allowed — never arbitrary external hosts.
     trigger_allow_loopback_callback: bool = False
 
+    # M4: when True, the Workflow Monitor's solver_run / post_processing /
+    # result_analysis stages run a REAL CalculiX solve of the NAFEMS LE10
+    # benchmark (σ_yy@D vs the published −5.38 MPa) instead of synthetic mock
+    # numbers. Default False so CI (no ccx), the no-account demo, and the M2/M3
+    # contract tests are unchanged. Tier 1 real-solver path; not signed validation.
+    workflow_real_solver: bool = False
+
     @property
     def gs_root(self):
         from pathlib import Path

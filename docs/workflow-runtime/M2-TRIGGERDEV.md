@@ -203,10 +203,24 @@ scripts/serve_workflow_demo.py               dependency-light demo server (:8077
 
 ## 5. What M2 deliberately does NOT do
 
-- **No real solver.** Every stage is the Mock backend; `solver_run` synthesizes a
-  safety factor. Real CalculiX is M4 — it swaps the backend inside `run_one_stage`
-  with *no change* to `trigger/`.
-- **No deployment.** `npx trigger.dev dev` only. `deploy` is M4.
+- **No real solver** (until M4 — see below). Every M2 stage is the Mock backend;
+  `solver_run` synthesizes a safety factor.
+- **No deployment.** `npx trigger.dev dev` only. `deploy` is a later milestone.
+
+> **M4 update (landed — real CalculiX):** flag-gated by
+> `WORKFLOW_REAL_SOLVER` (default off → the Mock path above is unchanged). When
+> on, the Monitor's `solver_run` / `post_processing` / `result_analysis` stages
+> run a **real ccx solve of the validated NAFEMS LE10 thick-plate benchmark** and
+> extract σ_yy at point D, cross-checking the published **−5.38 MPa** (±3%). A
+> live solve reproduces **−5.4379 MPa (+1.08%, PASS)** in ~8s. The deck +
+> extraction are the canonical ones from
+> `golden_samples/nafems-le10-thick-plate-candidate` (re-solved in a fresh work
+> dir; the sealed artifacts are never overwritten). `trigger/` is **unchanged** —
+> only the Python stage computation differs. Tier 1 real-solver path that
+> cross-checks a Tier-2 public benchmark; **not signed validation**. New file:
+> `backend/app/services/workflow/real_le10.py`. Needs `ccx` on PATH (CI without it
+> skips the real tests). Known limit: the per-run solve work dir is not
+> auto-cleaned (matches the existing in-memory runs dict).
 
 > **M3 update (landed):** the Monitor is now a native in-app React tab —
 > `frontend/src/components/WorkflowMonitorTabPanel.tsx` (+ `workflowClient.ts` /
