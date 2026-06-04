@@ -249,6 +249,10 @@ const fpsSel    = document.getElementById("fpsSel");
 const loading   = document.getElementById("loading");
 
 // ── Pre-load all 150 PNG frames ─────────────────────────────────
+// The PNG frame set is intentionally NOT committed (~24MB; regenerable from
+// project_state result_mesh.json) — so a clean checkout must fail LOUDLY
+// with regeneration instructions, never render a silent blank viewport.
+let failCount = 0;
 function preloadAll() {
   return new Promise((resolve) => {
     for (let i = 0; i < TOTAL; i++) {
@@ -261,12 +265,24 @@ function preloadAll() {
       };
       img.onerror = () => {
         imgCache[ii] = null;
+        failCount++;
         loadCount++;
         if (loadCount === TOTAL) resolve();
       };
       img.src = `${FRAME_DIR}frame_${String(i).padStart(4, "0")}.png`;
     }
   });
+}
+
+function showMissingFrames() {
+  loading.classList.remove("hidden");
+  loading.innerHTML =
+    `<div style="max-width:560px;text-align:center;line-height:1.6">` +
+    `<b>${failCount}/${TOTAL} frame PNGs missing</b><br>` +
+    `The per-frame renders are not committed (~24MB). Regenerate them locally:<br>` +
+    `<code style="font-size:12px">python3 docs/demo/render_gs102_anim.py</code><br>` +
+    `<span style="opacity:.7;font-size:12px">requires project_state/&hellip;/result_mesh.json ` +
+    `+ pyvista — then reload this page over HTTP.</span></div>`;
 }
 
 // ── HUD update ────────────────────────────────────────────────
@@ -301,7 +317,10 @@ function updateHUD(idx) {
   scrubLeft.textContent = `frame ${idx}`;
   scrubRight.textContent = `frame ${TOTAL-1} · t = ${frames[TOTAL-1].timeMs.toFixed(3)} ms`;
 
-  const fmt2 = (ms) => `${String(Math.floor(ms/1000)).padStart(2,"0")}:${String(Math.floor(ms%1000)).padStart(3,"0")}`;
+  // timeMs is fractional (whole run ≈ 0.149 ms) — flooring to integer ms
+  // collapsed the clock to 00:000 / 00:000 for every frame. Show the real
+  // sub-millisecond value instead.
+  const fmt2 = (ms) => `${ms.toFixed(4)} ms`;
   clk.textContent = `${fmt2(fd.timeMs)} / ${fmt2(frames[TOTAL-1].timeMs)}`;
 }
 
@@ -439,6 +458,10 @@ document.addEventListener("keydown", e => {
   }
 
   await preloadAll();
+  if (failCount > 0) {
+    showMissingFrames();   // honest fail-fast: never a silent blank viewport
+    return;
+  }
   loading.classList.add("hidden");
   showFrame(0);
 })();

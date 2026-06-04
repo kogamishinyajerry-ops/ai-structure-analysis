@@ -32,6 +32,7 @@ swap or geometry edit can refresh the artifact).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 import tempfile
 from pathlib import Path
@@ -48,11 +49,23 @@ from app.services.cross_check import (  # noqa: E402
 )
 
 
+def _case_workspace(stack: contextlib.ExitStack, workdir: Path | None, prefix: str) -> Path:
+    """Workspace root for a runner: a persistent --workdir if given (artifacts
+    survive for downstream consumers, e.g. docs/demo/render_assets.py), else a
+    TemporaryDirectory whose cleanup the caller's ExitStack owns (the historical
+    default — deleted on exit, byte-identical behavior)."""
+    if workdir is not None:
+        workdir.mkdir(parents=True, exist_ok=True)
+        return workdir
+    return Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=prefix)))
+
+
 def _run_cantilever(
     *,
     ccx_binary: str,
     gmsh_binary: str,
     material_id: str,
+    workdir: Path | None = None,
 ) -> int:
     case_id = "cantilever-beam-candidate"
     case_golden = REPO_ROOT / "golden_samples" / case_id
@@ -61,13 +74,12 @@ def _run_cantilever(
         print(f"error: missing {src_geo}", file=sys.stderr)
         return 2
 
-    with tempfile.TemporaryDirectory(prefix="phase21a-cantilever-") as tmp:
-        case_dir = Path(tmp) / case_id
-        case_dir.mkdir()
+    with contextlib.ExitStack() as stack:
+        base = _case_workspace(stack, workdir, "phase21a-cantilever-")
+        case_dir = base / case_id
+        case_dir.mkdir(exist_ok=True)
         dst_geo = case_dir / "cantilever.geo"
-        dst_geo.write_text(
-            src_geo.read_text(encoding="utf-8"), encoding="utf-8"
-        )
+        dst_geo.write_text(src_geo.read_text(encoding="utf-8"), encoding="utf-8")
         print(
             f"Running cantilever cross-check (L=1.0 m, h=b=0.1 m, "
             f"P=-1000 N, material={material_id!r}, cl=0.015 m)"
@@ -99,9 +111,7 @@ def _run_cantilever(
     artifact = write_cantilever_verdict_yaml(case_golden, result)
     print(f"  wrote: {artifact}")
     if result.verdict == "PASS":
-        print(
-            f"  → next import will promote {case_id!r} to tier_2_validated"
-        )
+        print(f"  → next import will promote {case_id!r} to tier_2_validated")
         return 0
     print(f"  → {case_id!r} stays at tier_1_candidate")
     return 1
@@ -112,6 +122,7 @@ def _run_plate_kirsch(
     ccx_binary: str,
     gmsh_binary: str,
     material_id: str,
+    workdir: Path | None = None,
 ) -> int:
     case_id = "plate-with-hole-candidate"
     case_golden = REPO_ROOT / "golden_samples" / case_id
@@ -120,13 +131,12 @@ def _run_plate_kirsch(
         print(f"error: missing {src_geo}", file=sys.stderr)
         return 2
 
-    with tempfile.TemporaryDirectory(prefix="phase21a-kirsch-") as tmp:
-        case_dir = Path(tmp) / case_id
-        case_dir.mkdir()
+    with contextlib.ExitStack() as stack:
+        base = _case_workspace(stack, workdir, "phase21a-kirsch-")
+        case_dir = base / case_id
+        case_dir.mkdir(exist_ok=True)
         dst_geo = case_dir / "plate_with_hole.geo"
-        dst_geo.write_text(
-            src_geo.read_text(encoding="utf-8"), encoding="utf-8"
-        )
+        dst_geo.write_text(src_geo.read_text(encoding="utf-8"), encoding="utf-8")
         print(
             f"Running Kirsch cross-check (L=100, W=50, T=5, R=10 mm; "
             f"F=250 N → σ_∞=1.0 MPa; K≈3.74 at 2a/W=0.4; "
@@ -162,9 +172,7 @@ def _run_plate_kirsch(
     artifact = write_plate_kirsch_verdict_yaml(case_golden, result)
     print(f"  wrote: {artifact}")
     if result.verdict == "PASS":
-        print(
-            f"  → next import will promote {case_id!r} to tier_2_validated"
-        )
+        print(f"  → next import will promote {case_id!r} to tier_2_validated")
         return 0
     print(f"  → {case_id!r} stays at tier_1_candidate")
     return 1
@@ -188,6 +196,16 @@ def main() -> int:
         help="Material library id (default: steel-s355)",
     )
     parser.add_argument(
+        "--workdir",
+        type=Path,
+        default=None,
+        help=(
+            "Persistent workspace for solver artifacts (mesh/.inp/.frd). "
+            "Default: a TemporaryDirectory deleted on exit. Pass a path to "
+            "keep artifacts, e.g. for docs/demo/render_assets.py."
+        ),
+    )
+    parser.add_argument(
         "--skip",
         choices=["cantilever", "plate"],
         action="append",
@@ -203,6 +221,7 @@ def main() -> int:
                 ccx_binary=args.ccx,
                 gmsh_binary=args.gmsh,
                 material_id=args.material_id,
+                workdir=args.workdir,
             )
         )
     if "plate" not in args.skip:
@@ -211,6 +230,7 @@ def main() -> int:
                 ccx_binary=args.ccx,
                 gmsh_binary=args.gmsh,
                 material_id=args.material_id,
+                workdir=args.workdir,
             )
         )
     return max(rcs) if rcs else 0
