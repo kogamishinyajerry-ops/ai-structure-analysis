@@ -280,9 +280,11 @@ function showMissingFrames() {
     `<div style="max-width:560px;text-align:center;line-height:1.6">` +
     `<b>${failCount}/${TOTAL} frame PNGs missing</b><br>` +
     `The per-frame renders are not committed (~24MB). Regenerate them locally:<br>` +
-    `<code style="font-size:12px">python3 docs/demo/render_gs102_anim.py</code><br>` +
-    `<span style="opacity:.7;font-size:12px">requires project_state/&hellip;/result_mesh.json ` +
-    `+ pyvista — then reload this page over HTTP.</span></div>`;
+    `<code style="font-size:12px">PYVISTA_OFF_SCREEN=true .venv/bin/python ` +
+    `docs/demo/render_gs102_anim.py</code><br>` +
+    `<span style="opacity:.7;font-size:12px">run from the repo root (the documented ` +
+    `interpreter — pyvista lives in the repo venv); requires ` +
+    `project_state/&hellip;/result_mesh.json — then reload this page over HTTP.</span></div>`;
 }
 
 // ── HUD update ────────────────────────────────────────────────

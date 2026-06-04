@@ -50,13 +50,32 @@ from app.services.cross_check import (  # noqa: E402
 
 
 def _case_workspace(stack: contextlib.ExitStack, workdir: Path | None, prefix: str) -> Path:
-    """Workspace root for a runner: a persistent --workdir if given (artifacts
+    r"""Workspace root for a runner: a persistent --workdir if given (artifacts
     survive for downstream consumers, e.g. docs/demo/render_assets.py), else a
     TemporaryDirectory whose cleanup the caller's ExitStack owns (the historical
-    default — deleted on exit, byte-identical behavior)."""
+    default — deleted on exit, byte-identical behavior).
+
+    Fail-closed guard (Codex R2 P1): a persistent workdir must never point
+    inside golden_samples/ — the runners' own HF1.7a refusal only fires when
+    case_dir.name itself matches ^GS-\d{3}$, so an arbitrary --workdir under a
+    signed-registry tree would bypass the read-only guarantee and scatter
+    scratch .msh/.inp/.frd into evidence trees. Refused for ALL of
+    golden_samples (signed AND candidates): scratch artifacts never belong in
+    evidence directories. Checked on the resolved path BEFORE any mkdir.
+    """
     if workdir is not None:
-        workdir.mkdir(parents=True, exist_ok=True)
-        return workdir
+        resolved = workdir.resolve()
+        golden = (REPO_ROOT / "golden_samples").resolve()
+        if resolved == golden or golden in resolved.parents:
+            print(
+                f"error: --workdir must not point inside {golden} "
+                "(HF1.7a signed-registry protection; scratch solver artifacts "
+                "do not belong in evidence trees)",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved
     return Path(stack.enter_context(tempfile.TemporaryDirectory(prefix=prefix)))
 
 
