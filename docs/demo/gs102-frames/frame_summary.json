@@ -1,0 +1,1065 @@
+{
+  "caseId": "GS-102-transient-refined-cfl085-v365-bracket-20260512",
+  "frameCount": 150,
+  "field": "von_mises",
+  "fieldLabel": "von Mises stress",
+  "fieldUnits": "MPa",
+  "claimTier": "Tier 1 engineering candidate",
+  "claimBoundary": "Tier 1 engineering candidate; not signed validation; not benchmark agreement",
+  "valueMaxOverall": 731.493228199161,
+  "plateElementCount": 120,
+  "timeStart": 0.0,
+  "timeEnd": 0.14902067184448242,
+  "frames": [
+    {
+      "frame": 0,
+      "timeMs": 0.0,
+      "peakVonMises": 0.0,
+      "aliveCount": 120,
+      "maxDisplacement": 0.0
+    },
+    {
+      "frame": 1,
+      "timeMs": 0.0012328673619776964,
+      "peakVonMises": 0.00017166137695312503,
+      "aliveCount": 120,
+      "maxDisplacement": 0.4499988556034522
+    },
+    {
+      "frame": 2,
+      "timeMs": 0.0020189869683235884,
+      "peakVonMises": 29.523089809448702,
+      "aliveCount": 120,
+      "maxDisplacement": 1.1919212341308594
+    },
+    {
+      "frame": 3,
+      "timeMs": 0.0030528369825333357,
+      "peakVonMises": 68.83268226822888,
+      "aliveCount": 120,
+      "maxDisplacement": 2.614971160888672
+    },
+    {
+      "frame": 4,
+      "timeMs": 0.004004472866654396,
+      "peakVonMises": 104.99170299915033,
+      "aliveCount": 120,
+      "maxDisplacement": 3.8279190063476562
+    },
+    {
+      "frame": 5,
+      "timeMs": 0.00501392362639308,
+      "peakVonMises": 143.4863249703695,
+      "aliveCount": 120,
+      "maxDisplacement": 5.039665222167969
+    },
+    {
+      "frame": 6,
+      "timeMs": 0.006010368466377258,
+      "peakVonMises": 181.53602345465623,
+      "aliveCount": 120,
+      "maxDisplacement": 6.170940399169922
+    },
+    {
+      "frame": 7,
+      "timeMs": 0.00700221536681056,
+      "peakVonMises": 218.87534931354656,
+      "aliveCount": 120,
+      "maxDisplacement": 7.241954803466797
+    },
+    {
+      "frame": 8,
+      "timeMs": 0.008004119619727135,
+      "peakVonMises": 255.6224146998169,
+      "aliveCount": 120,
+      "maxDisplacement": 8.282073974609375
+    },
+    {
+      "frame": 9,
+      "timeMs": 0.00901075266301632,
+      "peakVonMises": 291.90468148036354,
+      "aliveCount": 120,
+      "maxDisplacement": 9.296760559082031
+    },
+    {
+      "frame": 10,
+      "timeMs": 0.010000351816415787,
+      "peakVonMises": 327.40907968857516,
+      "aliveCount": 120,
+      "maxDisplacement": 10.27301025390625
+    },
+    {
+      "frame": 11,
+      "timeMs": 0.011030361987650394,
+      "peakVonMises": 364.81088262647506,
+      "aliveCount": 120,
+      "maxDisplacement": 11.2728271484375
+    },
+    {
+      "frame": 12,
+      "timeMs": 0.012018226087093353,
+      "peakVonMises": 401.72074092563696,
+      "aliveCount": 120,
+      "maxDisplacement": 12.21950912475586
+    },
+    {
+      "frame": 13,
+      "timeMs": 0.013027992099523544,
+      "peakVonMises": 440.9231227051405,
+      "aliveCount": 120,
+      "maxDisplacement": 13.176082611083984
+    },
+    {
+      "frame": 14,
+      "timeMs": 0.014050132595002651,
+      "peakVonMises": 481.91908384322335,
+      "aliveCount": 120,
+      "maxDisplacement": 14.13388442993164
+    },
+    {
+      "frame": 15,
+      "timeMs": 0.015095194801688194,
+      "peakVonMises": 524.2459092329809,
+      "aliveCount": 120,
+      "maxDisplacement": 15.103279113769531
+    },
+    {
+      "frame": 16,
+      "timeMs": 0.01606529951095581,
+      "peakVonMises": 559.1279664492619,
+      "aliveCount": 120,
+      "maxDisplacement": 15.994762420654297
+    },
+    {
+      "frame": 17,
+      "timeMs": 0.01705421321094036,
+      "peakVonMises": 583.5004549315194,
+      "aliveCount": 120,
+      "maxDisplacement": 16.896015167236328
+    },
+    {
+      "frame": 18,
+      "timeMs": 0.018060903996229172,
+      "peakVonMises": 590.1239421197118,
+      "aliveCount": 120,
+      "maxDisplacement": 17.806907653808594
+    },
+    {
+      "frame": 19,
+      "timeMs": 0.0190836563706398,
+      "peakVonMises": 578.1052182816563,
+      "aliveCount": 120,
+      "maxDisplacement": 18.726932525634766
+    },
+    {
+      "frame": 20,
+      "timeMs": 0.02006448432803154,
+      "peakVonMises": 556.5544931776503,
+      "aliveCount": 120,
+      "maxDisplacement": 19.604412078857422
+    },
+    {
+      "frame": 21,
+      "timeMs": 0.021094640716910362,
+      "peakVonMises": 532.5008978294246,
+      "aliveCount": 120,
+      "maxDisplacement": 20.522972106933594
+    },
+    {
+      "frame": 22,
+      "timeMs": 0.02201487310230732,
+      "peakVonMises": 514.9538881336092,
+      "aliveCount": 120,
+      "maxDisplacement": 21.342025756835938
+    },
+    {
+      "frame": 23,
+      "timeMs": 0.023039501160383224,
+      "peakVonMises": 503.8042128742835,
+      "aliveCount": 120,
+      "maxDisplacement": 22.252880096435547
+    },
+    {
+      "frame": 24,
+      "timeMs": 0.024067476391792297,
+      "peakVonMises": 504.1695932665859,
+      "aliveCount": 120,
+      "maxDisplacement": 23.16583251953125
+    },
+    {
+      "frame": 25,
+      "timeMs": 0.02503088489174843,
+      "peakVonMises": 514.7195398938977,
+      "aliveCount": 120,
+      "maxDisplacement": 24.020713806152344
+    },
+    {
+      "frame": 26,
+      "timeMs": 0.02600046619772911,
+      "peakVonMises": 530.4650850899361,
+      "aliveCount": 120,
+      "maxDisplacement": 24.880359649658203
+    },
+    {
+      "frame": 27,
+      "timeMs": 0.02704443968832493,
+      "peakVonMises": 558.6099238998296,
+      "aliveCount": 120,
+      "maxDisplacement": 25.805191040039062
+    },
+    {
+      "frame": 28,
+      "timeMs": 0.028039995580911636,
+      "peakVonMises": 592.6977227575517,
+      "aliveCount": 120,
+      "maxDisplacement": 26.686504364013672
+    },
+    {
+      "frame": 29,
+      "timeMs": 0.02904965914785862,
+      "peakVonMises": 624.0855951576785,
+      "aliveCount": 120,
+      "maxDisplacement": 27.579792022705078
+    },
+    {
+      "frame": 30,
+      "timeMs": 0.030005592852830887,
+      "peakVonMises": 652.4812528045479,
+      "aliveCount": 120,
+      "maxDisplacement": 28.42513656616211
+    },
+    {
+      "frame": 31,
+      "timeMs": 0.03101063333451748,
+      "peakVonMises": 679.8215900018953,
+      "aliveCount": 120,
+      "maxDisplacement": 29.313533782958984
+    },
+    {
+      "frame": 32,
+      "timeMs": 0.03201523795723915,
+      "peakVonMises": 704.6577936126196,
+      "aliveCount": 120,
+      "maxDisplacement": 30.201160430908203
+    },
+    {
+      "frame": 33,
+      "timeMs": 0.033019013702869415,
+      "peakVonMises": 726.8950235170224,
+      "aliveCount": 120,
+      "maxDisplacement": 31.087677001953125
+    },
+    {
+      "frame": 34,
+      "timeMs": 0.034052908420562744,
+      "peakVonMises": 412.95961161096926,
+      "aliveCount": 120,
+      "maxDisplacement": 32.00039291381836
+    },
+    {
+      "frame": 35,
+      "timeMs": 0.0350114069879055,
+      "peakVonMises": 422.14164205264046,
+      "aliveCount": 120,
+      "maxDisplacement": 32.84629821777344
+    },
+    {
+      "frame": 36,
+      "timeMs": 0.03603716194629669,
+      "peakVonMises": 431.85145487958886,
+      "aliveCount": 116,
+      "maxDisplacement": 33.75141525268555
+    },
+    {
+      "frame": 37,
+      "timeMs": 0.03701107203960419,
+      "peakVonMises": 441.21071912082374,
+      "aliveCount": 116,
+      "maxDisplacement": 34.61078643798828
+    },
+    {
+      "frame": 38,
+      "timeMs": 0.03800825774669647,
+      "peakVonMises": 454.98341052243126,
+      "aliveCount": 116,
+      "maxDisplacement": 35.490692138671875
+    },
+    {
+      "frame": 39,
+      "timeMs": 0.03900162875652313,
+      "peakVonMises": 472.55526329517244,
+      "aliveCount": 116,
+      "maxDisplacement": 36.36724090576172
+    },
+    {
+      "frame": 40,
+      "timeMs": 0.04000403359532356,
+      "peakVonMises": 488.5887185898665,
+      "aliveCount": 116,
+      "maxDisplacement": 37.25175476074219
+    },
+    {
+      "frame": 41,
+      "timeMs": 0.04100417345762253,
+      "peakVonMises": 504.7328337895489,
+      "aliveCount": 116,
+      "maxDisplacement": 38.13426971435547
+    },
+    {
+      "frame": 42,
+      "timeMs": 0.04200237616896629,
+      "peakVonMises": 520.9342487480887,
+      "aliveCount": 116,
+      "maxDisplacement": 39.01507568359375
+    },
+    {
+      "frame": 43,
+      "timeMs": 0.043060943484306335,
+      "peakVonMises": 535.0759007558863,
+      "aliveCount": 116,
+      "maxDisplacement": 39.94914245605469
+    },
+    {
+      "frame": 44,
+      "timeMs": 0.0440480075776577,
+      "peakVonMises": 543.3845263600025,
+      "aliveCount": 116,
+      "maxDisplacement": 40.82012176513672
+    },
+    {
+      "frame": 45,
+      "timeMs": 0.04507315903902054,
+      "peakVonMises": 551.7609118628328,
+      "aliveCount": 116,
+      "maxDisplacement": 41.724708557128906
+    },
+    {
+      "frame": 46,
+      "timeMs": 0.04603678733110428,
+      "peakVonMises": 549.1495455624615,
+      "aliveCount": 116,
+      "maxDisplacement": 42.57500457763672
+    },
+    {
+      "frame": 47,
+      "timeMs": 0.04700453579425812,
+      "peakVonMises": 538.5245192260397,
+      "aliveCount": 116,
+      "maxDisplacement": 43.42893981933594
+    },
+    {
+      "frame": 48,
+      "timeMs": 0.048078503459692,
+      "peakVonMises": 528.4794384762226,
+      "aliveCount": 116,
+      "maxDisplacement": 44.37659454345703
+    },
+    {
+      "frame": 49,
+      "timeMs": 0.049109768122434616,
+      "peakVonMises": 519.5705143814276,
+      "aliveCount": 116,
+      "maxDisplacement": 45.286582946777344
+    },
+    {
+      "frame": 50,
+      "timeMs": 0.05000497028231621,
+      "peakVonMises": 517.2165877148911,
+      "aliveCount": 116,
+      "maxDisplacement": 46.076499938964844
+    },
+    {
+      "frame": 51,
+      "timeMs": 0.05110400170087814,
+      "peakVonMises": 520.7056909480041,
+      "aliveCount": 116,
+      "maxDisplacement": 47.04627227783203
+    },
+    {
+      "frame": 52,
+      "timeMs": 0.0520172119140625,
+      "peakVonMises": 523.493496790239,
+      "aliveCount": 116,
+      "maxDisplacement": 47.852081298828125
+    },
+    {
+      "frame": 53,
+      "timeMs": 0.05300070717930794,
+      "peakVonMises": 526.1291157193002,
+      "aliveCount": 116,
+      "maxDisplacement": 48.71990966796875
+    },
+    {
+      "frame": 54,
+      "timeMs": 0.05408835783600807,
+      "peakVonMises": 528.5361392399586,
+      "aliveCount": 116,
+      "maxDisplacement": 49.67964172363281
+    },
+    {
+      "frame": 55,
+      "timeMs": 0.05503030866384506,
+      "peakVonMises": 530.3121384010173,
+      "aliveCount": 116,
+      "maxDisplacement": 50.51081848144531
+    },
+    {
+      "frame": 56,
+      "timeMs": 0.05600975081324577,
+      "peakVonMises": 532.2129269280626,
+      "aliveCount": 116,
+      "maxDisplacement": 51.37506866455078
+    },
+    {
+      "frame": 57,
+      "timeMs": 0.05705014243721962,
+      "peakVonMises": 533.6445662036023,
+      "aliveCount": 116,
+      "maxDisplacement": 52.29309844970703
+    },
+    {
+      "frame": 58,
+      "timeMs": 0.05814003571867943,
+      "peakVonMises": 534.6863775413678,
+      "aliveCount": 116,
+      "maxDisplacement": 53.25481414794922
+    },
+    {
+      "frame": 59,
+      "timeMs": 0.05906098335981369,
+      "peakVonMises": 535.3339836796782,
+      "aliveCount": 116,
+      "maxDisplacement": 54.06745147705078
+    },
+    {
+      "frame": 60,
+      "timeMs": 0.060001201927661896,
+      "peakVonMises": 535.8379559155674,
+      "aliveCount": 116,
+      "maxDisplacement": 54.89708709716797
+    },
+    {
+      "frame": 61,
+      "timeMs": 0.06106092780828476,
+      "peakVonMises": 536.2577837608508,
+      "aliveCount": 116,
+      "maxDisplacement": 55.832183837890625
+    },
+    {
+      "frame": 62,
+      "timeMs": 0.06200408563017845,
+      "peakVonMises": 536.5242633814083,
+      "aliveCount": 116,
+      "maxDisplacement": 56.66442108154297
+    },
+    {
+      "frame": 63,
+      "timeMs": 0.06301159411668777,
+      "peakVonMises": 540.74582833158,
+      "aliveCount": 116,
+      "maxDisplacement": 57.553436279296875
+    },
+    {
+      "frame": 64,
+      "timeMs": 0.06400927156209946,
+      "peakVonMises": 551.1904287540927,
+      "aliveCount": 116,
+      "maxDisplacement": 58.43377685546875
+    },
+    {
+      "frame": 65,
+      "timeMs": 0.06501886248588562,
+      "peakVonMises": 561.502804013807,
+      "aliveCount": 116,
+      "maxDisplacement": 59.32463073730469
+    },
+    {
+      "frame": 66,
+      "timeMs": 0.06602506339550018,
+      "peakVonMises": 571.4959623896295,
+      "aliveCount": 116,
+      "maxDisplacement": 60.212501525878906
+    },
+    {
+      "frame": 67,
+      "timeMs": 0.06701239943504333,
+      "peakVonMises": 581.0026309036593,
+      "aliveCount": 116,
+      "maxDisplacement": 61.083717346191406
+    },
+    {
+      "frame": 68,
+      "timeMs": 0.0680268332362175,
+      "peakVonMises": 590.4617544567113,
+      "aliveCount": 116,
+      "maxDisplacement": 61.978843688964844
+    },
+    {
+      "frame": 69,
+      "timeMs": 0.06904910504817963,
+      "peakVonMises": 599.6896355446974,
+      "aliveCount": 116,
+      "maxDisplacement": 62.880882263183594
+    },
+    {
+      "frame": 70,
+      "timeMs": 0.07004375010728836,
+      "peakVonMises": 608.3888153400129,
+      "aliveCount": 116,
+      "maxDisplacement": 63.75856018066406
+    },
+    {
+      "frame": 71,
+      "timeMs": 0.0710587352514267,
+      "peakVonMises": 616.9930359177887,
+      "aliveCount": 116,
+      "maxDisplacement": 64.65416717529297
+    },
+    {
+      "frame": 72,
+      "timeMs": 0.07202021777629852,
+      "peakVonMises": 624.9003681595818,
+      "aliveCount": 116,
+      "maxDisplacement": 65.50257110595703
+    },
+    {
+      "frame": 73,
+      "timeMs": 0.07302726805210114,
+      "peakVonMises": 632.9170214323336,
+      "aliveCount": 116,
+      "maxDisplacement": 66.39118194580078
+    },
+    {
+      "frame": 74,
+      "timeMs": 0.07403983920812607,
+      "peakVonMises": 640.7295305341738,
+      "aliveCount": 116,
+      "maxDisplacement": 67.28467559814453
+    },
+    {
+      "frame": 75,
+      "timeMs": 0.07505939155817032,
+      "peakVonMises": 648.3479454962352,
+      "aliveCount": 116,
+      "maxDisplacement": 68.18431854248047
+    },
+    {
+      "frame": 76,
+      "timeMs": 0.07607299089431763,
+      "peakVonMises": 655.6589764082562,
+      "aliveCount": 116,
+      "maxDisplacement": 69.07870483398438
+    },
+    {
+      "frame": 77,
+      "timeMs": 0.07704641669988632,
+      "peakVonMises": 662.428799531555,
+      "aliveCount": 116,
+      "maxDisplacement": 69.93765258789062
+    },
+    {
+      "frame": 78,
+      "timeMs": 0.07803241908550262,
+      "peakVonMises": 669.0149842075757,
+      "aliveCount": 116,
+      "maxDisplacement": 70.80768585205078
+    },
+    {
+      "frame": 79,
+      "timeMs": 0.07901348918676376,
+      "peakVonMises": 675.3024768985138,
+      "aliveCount": 116,
+      "maxDisplacement": 71.67337799072266
+    },
+    {
+      "frame": 80,
+      "timeMs": 0.08005224168300629,
+      "peakVonMises": 681.6610485839651,
+      "aliveCount": 116,
+      "maxDisplacement": 72.5899658203125
+    },
+    {
+      "frame": 81,
+      "timeMs": 0.08120978623628616,
+      "peakVonMises": 688.4103667749287,
+      "aliveCount": 116,
+      "maxDisplacement": 73.61137390136719
+    },
+    {
+      "frame": 82,
+      "timeMs": 0.08216605335474014,
+      "peakVonMises": 693.6988482063016,
+      "aliveCount": 116,
+      "maxDisplacement": 74.4551773071289
+    },
+    {
+      "frame": 83,
+      "timeMs": 0.08312493562698364,
+      "peakVonMises": 698.729124135233,
+      "aliveCount": 116,
+      "maxDisplacement": 75.3012924194336
+    },
+    {
+      "frame": 84,
+      "timeMs": 0.08402827382087708,
+      "peakVonMises": 703.2083576086291,
+      "aliveCount": 116,
+      "maxDisplacement": 76.09838104248047
+    },
+    {
+      "frame": 85,
+      "timeMs": 0.08501940965652466,
+      "peakVonMises": 707.82680414747,
+      "aliveCount": 116,
+      "maxDisplacement": 76.97295379638672
+    },
+    {
+      "frame": 86,
+      "timeMs": 0.0861024484038353,
+      "peakVonMises": 712.5503300080511,
+      "aliveCount": 116,
+      "maxDisplacement": 77.92861938476562
+    },
+    {
+      "frame": 87,
+      "timeMs": 0.08712802082300186,
+      "peakVonMises": 716.7088455026736,
+      "aliveCount": 116,
+      "maxDisplacement": 78.83357238769531
+    },
+    {
+      "frame": 88,
+      "timeMs": 0.08804722130298615,
+      "peakVonMises": 720.1729964159673,
+      "aliveCount": 116,
+      "maxDisplacement": 79.64466857910156
+    },
+    {
+      "frame": 89,
+      "timeMs": 0.08901211619377136,
+      "peakVonMises": 723.5445818373921,
+      "aliveCount": 116,
+      "maxDisplacement": 80.49608612060547
+    },
+    {
+      "frame": 90,
+      "timeMs": 0.09003452211618423,
+      "peakVonMises": 726.8263580643529,
+      "aliveCount": 116,
+      "maxDisplacement": 81.39824676513672
+    },
+    {
+      "frame": 91,
+      "timeMs": 0.0911271721124649,
+      "peakVonMises": 730.0111216785225,
+      "aliveCount": 116,
+      "maxDisplacement": 82.36239624023438
+    },
+    {
+      "frame": 92,
+      "timeMs": 0.09209515154361725,
+      "peakVonMises": 729.571425227682,
+      "aliveCount": 116,
+      "maxDisplacement": 83.2165298461914
+    },
+    {
+      "frame": 93,
+      "timeMs": 0.09315158426761627,
+      "peakVonMises": 731.493228199161,
+      "aliveCount": 116,
+      "maxDisplacement": 84.14871978759766
+    },
+    {
+      "frame": 94,
+      "timeMs": 0.09404946863651276,
+      "peakVonMises": 672.3211923364254,
+      "aliveCount": 116,
+      "maxDisplacement": 84.94100952148438
+    },
+    {
+      "frame": 95,
+      "timeMs": 0.09523320943117142,
+      "peakVonMises": 676.0609773947378,
+      "aliveCount": 116,
+      "maxDisplacement": 85.98552703857422
+    },
+    {
+      "frame": 96,
+      "timeMs": 0.09619209915399551,
+      "peakVonMises": 678.8705850076725,
+      "aliveCount": 116,
+      "maxDisplacement": 86.8316421508789
+    },
+    {
+      "frame": 97,
+      "timeMs": 0.09715138375759125,
+      "peakVonMises": 681.4947568848578,
+      "aliveCount": 116,
+      "maxDisplacement": 87.67810821533203
+    },
+    {
+      "frame": 98,
+      "timeMs": 0.09811121970415115,
+      "peakVonMises": 683.9428473730792,
+      "aliveCount": 116,
+      "maxDisplacement": 88.52506256103516
+    },
+    {
+      "frame": 99,
+      "timeMs": 0.09907231479883194,
+      "peakVonMises": 686.2248491844259,
+      "aliveCount": 116,
+      "maxDisplacement": 89.37312316894531
+    },
+    {
+      "frame": 100,
+      "timeMs": 0.1000375747680664,
+      "peakVonMises": 688.3544807761672,
+      "aliveCount": 116,
+      "maxDisplacement": 90.22486114501953
+    },
+    {
+      "frame": 101,
+      "timeMs": 0.10100702941417694,
+      "peakVonMises": 690.3376065698261,
+      "aliveCount": 116,
+      "maxDisplacement": 91.0802993774414
+    },
+    {
+      "frame": 102,
+      "timeMs": 0.10222261399030685,
+      "peakVonMises": 692.6150820631444,
+      "aliveCount": 116,
+      "maxDisplacement": 92.15292358398438
+    },
+    {
+      "frame": 103,
+      "timeMs": 0.10319707542657852,
+      "peakVonMises": 694.2813651616013,
+      "aliveCount": 116,
+      "maxDisplacement": 93.01277923583984
+    },
+    {
+      "frame": 104,
+      "timeMs": 0.1041727289557457,
+      "peakVonMises": 695.8148554849959,
+      "aliveCount": 116,
+      "maxDisplacement": 93.87368774414062
+    },
+    {
+      "frame": 105,
+      "timeMs": 0.1051492989063263,
+      "peakVonMises": 697.2211343721517,
+      "aliveCount": 116,
+      "maxDisplacement": 94.73540496826172
+    },
+    {
+      "frame": 106,
+      "timeMs": 0.10612668842077255,
+      "peakVonMises": 698.5057984994098,
+      "aliveCount": 116,
+      "maxDisplacement": 95.59784698486328
+    },
+    {
+      "frame": 107,
+      "timeMs": 0.10701199620962143,
+      "peakVonMises": 699.5782146078708,
+      "aliveCount": 116,
+      "maxDisplacement": 96.37903594970703
+    },
+    {
+      "frame": 108,
+      "timeMs": 0.1080886572599411,
+      "peakVonMises": 700.7328327609112,
+      "aliveCount": 116,
+      "maxDisplacement": 97.32907104492188
+    },
+    {
+      "frame": 109,
+      "timeMs": 0.10914771258831024,
+      "peakVonMises": 701.7501725645659,
+      "aliveCount": 116,
+      "maxDisplacement": 98.26358032226562
+    },
+    {
+      "frame": 110,
+      "timeMs": 0.11013177037239075,
+      "peakVonMises": 702.5977129715453,
+      "aliveCount": 116,
+      "maxDisplacement": 99.13189697265625
+    },
+    {
+      "frame": 111,
+      "timeMs": 0.11111675202846527,
+      "peakVonMises": 703.3498599337254,
+      "aliveCount": 116,
+      "maxDisplacement": 100.00103759765625
+    },
+    {
+      "frame": 112,
+      "timeMs": 0.11210258305072784,
+      "peakVonMises": 704.011163848633,
+      "aliveCount": 116,
+      "maxDisplacement": 100.87092590332031
+    },
+    {
+      "frame": 113,
+      "timeMs": 0.1130891963839531,
+      "peakVonMises": 704.586162872794,
+      "aliveCount": 116,
+      "maxDisplacement": 101.74150085449219
+    },
+    {
+      "frame": 114,
+      "timeMs": 0.11407659202814102,
+      "peakVonMises": 705.0790929685361,
+      "aliveCount": 116,
+      "maxDisplacement": 102.61277770996094
+    },
+    {
+      "frame": 115,
+      "timeMs": 0.11506478488445282,
+      "peakVonMises": 705.4940997424227,
+      "aliveCount": 116,
+      "maxDisplacement": 103.4847412109375
+    },
+    {
+      "frame": 116,
+      "timeMs": 0.11605377495288849,
+      "peakVonMises": 705.8350257913312,
+      "aliveCount": 116,
+      "maxDisplacement": 104.357421875
+    },
+    {
+      "frame": 117,
+      "timeMs": 0.11700058728456497,
+      "peakVonMises": 706.1086516518197,
+      "aliveCount": 116,
+      "maxDisplacement": 105.19288635253906
+    },
+    {
+      "frame": 118,
+      "timeMs": 0.11810382455587387,
+      "peakVonMises": 706.3210784779333,
+      "aliveCount": 116,
+      "maxDisplacement": 106.1663818359375
+    },
+    {
+      "frame": 119,
+      "timeMs": 0.11901847273111343,
+      "peakVonMises": 706.4408079249594,
+      "aliveCount": 116,
+      "maxDisplacement": 106.97344970703125
+    },
+    {
+      "frame": 120,
+      "timeMs": 0.12020458281040192,
+      "peakVonMises": 706.5269140744281,
+      "aliveCount": 116,
+      "maxDisplacement": 108.02006530761719
+    },
+    {
+      "frame": 121,
+      "timeMs": 0.12119882553815842,
+      "peakVonMises": 706.5399753369527,
+      "aliveCount": 114,
+      "maxDisplacement": 108.89736938476562
+    },
+    {
+      "frame": 122,
+      "timeMs": 0.12219389528036118,
+      "peakVonMises": 706.4995522155984,
+      "aliveCount": 114,
+      "maxDisplacement": 109.77542114257812
+    },
+    {
+      "frame": 123,
+      "timeMs": 0.12318981438875198,
+      "peakVonMises": 706.4092048617824,
+      "aliveCount": 114,
+      "maxDisplacement": 110.65420532226562
+    },
+    {
+      "frame": 124,
+      "timeMs": 0.12418656796216965,
+      "peakVonMises": 706.2692965210688,
+      "aliveCount": 114,
+      "maxDisplacement": 111.53373718261719
+    },
+    {
+      "frame": 125,
+      "timeMs": 0.12518417835235596,
+      "peakVonMises": 706.0607302320182,
+      "aliveCount": 112,
+      "maxDisplacement": 112.41401672363281
+    },
+    {
+      "frame": 126,
+      "timeMs": 0.12618263065814972,
+      "peakVonMises": 705.7818666698668,
+      "aliveCount": 112,
+      "maxDisplacement": 113.2950439453125
+    },
+    {
+      "frame": 127,
+      "timeMs": 0.12718194723129272,
+      "peakVonMises": 705.4362014554885,
+      "aliveCount": 112,
+      "maxDisplacement": 114.17683410644531
+    },
+    {
+      "frame": 128,
+      "timeMs": 0.12818212807178497,
+      "peakVonMises": 706.1537178159047,
+      "aliveCount": 112,
+      "maxDisplacement": 115.05938720703125
+    },
+    {
+      "frame": 129,
+      "timeMs": 0.12918315827846527,
+      "peakVonMises": 707.6940096714408,
+      "aliveCount": 112,
+      "maxDisplacement": 115.94268798828125
+    },
+    {
+      "frame": 130,
+      "timeMs": 0.13018421828746796,
+      "peakVonMises": 709.1917444457912,
+      "aliveCount": 112,
+      "maxDisplacement": 116.82601928710938
+    },
+    {
+      "frame": 131,
+      "timeMs": 0.13118526339530945,
+      "peakVonMises": 710.6480140150584,
+      "aliveCount": 112,
+      "maxDisplacement": 117.70933532714844
+    },
+    {
+      "frame": 132,
+      "timeMs": 0.1321864277124405,
+      "peakVonMises": 712.0641960640534,
+      "aliveCount": 112,
+      "maxDisplacement": 118.59275817871094
+    },
+    {
+      "frame": 133,
+      "timeMs": 0.13318786025047302,
+      "peakVonMises": 713.4415876266592,
+      "aliveCount": 112,
+      "maxDisplacement": 119.47639465332031
+    },
+    {
+      "frame": 134,
+      "timeMs": 0.134189635515213,
+      "peakVonMises": 714.7815040511508,
+      "aliveCount": 112,
+      "maxDisplacement": 120.36036682128906
+    },
+    {
+      "frame": 135,
+      "timeMs": 0.13519187271595,
+      "peakVonMises": 716.0850237027897,
+      "aliveCount": 112,
+      "maxDisplacement": 121.24472045898438
+    },
+    {
+      "frame": 136,
+      "timeMs": 0.1361946165561676,
+      "peakVonMises": 717.3533336556869,
+      "aliveCount": 112,
+      "maxDisplacement": 122.12954711914062
+    },
+    {
+      "frame": 137,
+      "timeMs": 0.13719795644283295,
+      "peakVonMises": 718.5875080137056,
+      "aliveCount": 112,
+      "maxDisplacement": 123.014892578125
+    },
+    {
+      "frame": 138,
+      "timeMs": 0.13820195198059082,
+      "peakVonMises": 719.7886180858509,
+      "aliveCount": 112,
+      "maxDisplacement": 123.90080261230469
+    },
+    {
+      "frame": 139,
+      "timeMs": 0.1392066776752472,
+      "peakVonMises": 720.957784586959,
+      "aliveCount": 112,
+      "maxDisplacement": 124.787353515625
+    },
+    {
+      "frame": 140,
+      "timeMs": 0.14021217823028564,
+      "peakVonMises": 722.0959131491492,
+      "aliveCount": 112,
+      "maxDisplacement": 125.67460632324219
+    },
+    {
+      "frame": 141,
+      "timeMs": 0.14121849834918976,
+      "peakVonMises": 723.2040167001911,
+      "aliveCount": 112,
+      "maxDisplacement": 126.56257629394531
+    },
+    {
+      "frame": 142,
+      "timeMs": 0.14222568273544312,
+      "peakVonMises": 724.2830450932191,
+      "aliveCount": 112,
+      "maxDisplacement": 127.45130920410156
+    },
+    {
+      "frame": 143,
+      "timeMs": 0.14323373138904572,
+      "peakVonMises": 725.3338395882053,
+      "aliveCount": 112,
+      "maxDisplacement": 128.34078979492188
+    },
+    {
+      "frame": 144,
+      "timeMs": 0.14424265921115875,
+      "peakVonMises": 721.4906274605293,
+      "aliveCount": 112,
+      "maxDisplacement": 129.2310791015625
+    },
+    {
+      "frame": 145,
+      "timeMs": 0.14525249600410461,
+      "peakVonMises": 723.4087619023085,
+      "aliveCount": 112,
+      "maxDisplacement": 130.1221466064453
+    },
+    {
+      "frame": 146,
+      "timeMs": 0.14601044356822968,
+      "peakVonMises": 724.8021133724961,
+      "aliveCount": 112,
+      "maxDisplacement": 130.79095458984375
+    },
+    {
+      "frame": 147,
+      "timeMs": 0.1472509801387787,
+      "peakVonMises": 725.3242764248095,
+      "aliveCount": 112,
+      "maxDisplacement": 131.88558959960938
+    },
+    {
+      "frame": 148,
+      "timeMs": 0.14800934493541718,
+      "peakVonMises": 725.544533518508,
+      "aliveCount": 112,
+      "maxDisplacement": 132.5547637939453
+    },
+    {
+      "frame": 149,
+      "timeMs": 0.14902067184448242,
+      "peakVonMises": 686.6058634685054,
+      "aliveCount": 112,
+      "maxDisplacement": 133.4471435546875
+    }
+  ]
+}
