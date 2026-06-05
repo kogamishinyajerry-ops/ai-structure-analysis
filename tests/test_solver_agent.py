@@ -123,7 +123,7 @@ class TestSolverAgent:
 
         fake_backend = FakeBackend()
 
-        with patch("agents.solver._build_calculix_backend", return_value=fake_backend) as build:
+        with patch("agents.solver._build_backend", return_value=fake_backend) as build:
             result = solver_run(solver_state)
 
         build.assert_called_once()

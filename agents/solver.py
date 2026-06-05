@@ -9,7 +9,6 @@ from typing import Any
 import jinja2
 
 from aeron.protocols import SolveOptions, SolveOutcome, SolveStatusCode
-from schemas.sim_plan import SolverBackend
 from schemas.sim_state import FaultClass, SimState
 from tools.calculix_driver import run_solve
 
@@ -62,11 +61,17 @@ def _render_inp_deck(plan: Any, mesh_inp_path: str, output_dir: Path) -> Path:
     return deck_path
 
 
-def _build_calculix_backend(*, work_root: Path, mesh_input: Path):
-    """Create the AERON CalculiX backend without importing it at module load time."""
-    from aeron.drivers import CalculiXFEABackend
+def _build_backend(*, plan: Any, work_root: Path, mesh_input: Path):
+    """Build the AERON FEABackend for ``plan.solver.name`` via the aeron
+    ``get_backend()`` factory (ADR-028 D4 P2). Imported at call time so the agent
+    layer carries no aeron import at module load (circular-dep guard). A
+    non-CalculiX plan raises ``NotImplementedError`` here — the caller converts it
+    into the node's honest non-retriable failure, never a silent CalculiX fallback.
+    """
+    from aeron.drivers import get_backend
 
-    return CalculiXFEABackend(
+    return get_backend(
+        plan.solver.name,
         work_root=work_root,
         mesh_input=mesh_input,
         run_solve=run_solve,
@@ -148,9 +153,6 @@ def run(state: SimState) -> dict[str, Any]:
     plan = state.get("plan")
     if not plan:
         raise ValueError("SimState is missing a SimPlan.")
-    if plan.solver.name is not SolverBackend.CALCULIX:
-        logger.error("Unsupported solver backend for CalculiX path: %s", plan.solver.name)
-        return _unsupported_backend_failure(plan)
 
     project_dir = Path(state.get("project_state_dir", "."))
     artifacts = state.get("artifacts", [])
@@ -162,7 +164,16 @@ def run(state: SimState) -> dict[str, Any]:
         return {"fault_class": FaultClass.UNKNOWN}
 
     mesh_src = Path(mesh_inp)
-    backend = _build_calculix_backend(work_root=project_dir, mesh_input=mesh_src)
+    try:
+        backend = _build_backend(plan=plan, work_root=project_dir, mesh_input=mesh_src)
+    except NotImplementedError as exc:
+        # The factory rejected a non-CalculiX backend honestly (CalculiX-first,
+        # ADR-028 D4/D5). Convert the raise into the node's non-retriable failure
+        # contract (fault_class=UNKNOWN, no retry_budgets/verdict) — never a silent
+        # wrong-physics solve. CalculiXFEABackend.prepare_case keeps its own
+        # ValueError guard as the defense-in-depth last line.
+        logger.error("Unsupported solver backend: %s", exc)
+        return _unsupported_backend_failure(plan)
 
     try:
         case = backend.prepare_case(plan)
