@@ -174,3 +174,14 @@ Self-pass-rate: **30%** — match the current BLOCKING ceiling. The discipline-c
 3. Phase 2.1 follow-up PRs implement `agent_facade` / `task_spec_builder` / `run_orchestrator` without ever importing `agents.*` from outside the facade
 
 Until all three are met, this ADR remains `Draft`.
+
+**ADR-028 reconciliation (2026-06-04):** ADR-028 (Accepted) **implements this seam at last** — the
+`backend/app/workbench/agent_facade.py` choke point that has been a docstring-only stub since
+Phase 2.1. ADR-028 D4 is **faithful to this ADR's tested discipline**, not an amendment to it:
+(a) `agent_facade.py` remains the **only** workbench file importing `agents.*`; (b) `__init__.py`
+re-exports only; (c) the `sim_state → StageState` projector lives **outside** `backend/app/workbench/`
+so no workbench file imports `schemas.sim_state` (rule 3 holds). `tests/test_workbench_facade_discipline.py`
+is therefore **unchanged** by ratification — it already guards the landing (skips until the modules
+exist) and will enforce these invariants when ADR-028 P1 lands the real `agent_facade.py`. The one
+schema delta ADR-028 introduces (the additive `StageState.provenance` field) does **not** touch the
+workbench import surface this ADR governs.

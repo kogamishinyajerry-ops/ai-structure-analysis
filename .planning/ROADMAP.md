@@ -11,6 +11,12 @@
 > (see `aeron/README.md`), but it is not pursued as an active milestone. Text below retained for
 > historical context only.
 >
+> **As of ADR-028 (2026-06-04, Accepted)** the active **product** direction is **agentic wiring**:
+> wire the real `agents/graph.py` 7-node workbench agents behind the live runtime (replacing the
+> `mock_pipeline.py` scripted Tier-0 surface). FM-05 NAFEMS-benchmark agreement is **deferred, not
+> cancelled**; the `aeron/` seam is now **pursued** (reverses ADR-027 D4's "not wired"). SSOT =
+> `docs/adr/ADR-028-product-multi-agent-repositioning.md`.
+>
 > **Status:** SUPERSEDED (was: Active planning surface).
 > **Last updated:** 2026-05-07 (superseded 2026-06-03).
 > **Control truth:** Linear `Engineering` issues own scoped work; this file

@@ -130,7 +130,18 @@ whole run as "22+ consecutive Tier-2 phases." Honesty contract carried verbatim:
   analytical cross-checks; **zero public-benchmark agreements; not signed validation**). Rigor is
   held by two hard guardrails (ADR-027 **G-1** regression floor + **G-2** Tier-2 evidence packet),
   not by a score. v2 (FM-05) = NAFEMS real benchmark agreement + reproduce-CLI/audit-log; UI
-  parity de-scoped. Latest dashboard read: **81.33 @ Phase 43** (code ~Phase 45 unscored).
+  parity de-scoped. Last scored dashboard: **81.33 @ Phase 43** (`c3422b4`); code has since advanced
+  ~Phase 45 + the ADR-028 agentic-wiring track, both **unscored** — the rubric is a direction signal,
+  not a gate.
+- **Active product direction → ADR-028 (2026-06-04, Accepted)**: reposition the product as a genuine
+  **multi-agent** system by **wiring the real, orphaned workbench agents** (`agents/graph.py` 7-node
+  LangGraph) behind the live runtime, replacing the `mock_pipeline.py` 27-hardcoded-string Tier-0
+  masquerade (the product's highest-priority honesty defect). Honest **Tier-1 agentic
+  engineering-candidate** target; deterministic-fallback default (LLM opt-in); CalculiX-first; phased
+  **P0→P5**. **Amends/reverses ADR-027 D3/D4** (FM-05 NAFEMS benchmark **deferred, NOT cancelled**).
+  Anti-over-claim gate = one additive `StageState.provenance` field + run-level "N/13 agent-driven"
+  coverage qualifier. **Product agents (ADR-028) ≠ dev agents (ADR-026)** — distinct rosters. SSOT =
+  `docs/adr/ADR-028-product-multi-agent-repositioning.md`.
 
 ## Files comprising the dev-team architecture (do NOT modify without Codex + user ratification)
 

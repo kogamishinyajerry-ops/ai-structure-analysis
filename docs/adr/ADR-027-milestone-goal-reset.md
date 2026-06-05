@@ -146,6 +146,13 @@ which any rubric score can compensate for:
 
 ### D3 — Define v2 = FM-05 "Outward-Credible Validation & Reproducibility" (lean, evidence-gated)
 
+> **AMENDED by ADR-028 (2026-06-04, Accepted):** the v2 *ordering* below is amended — **agentic
+> wiring (ADR-028) is now the milestone headline**; **FM-05 NAFEMS-benchmark agreement is deferred,
+> NOT cancelled.** The V2-x objectives and their Tier-2 evidence gates remain in force as the
+> validation track; ADR-028 sequences the agentic-product track ahead of them per a 2026-06-04 owner
+> direction change. (No silent contradiction: both ADRs are Accepted; this note keeps the canon
+> internally consistent.)
+
 v2 is a **small** set of on-mission objectives, each gated by **concrete Tier-2 evidence (ADR-023)**,
 **not** by a rubric number:
 
@@ -173,6 +180,14 @@ capped at "usable and honest," not "Hyperworks parity." If the owner later wants
 its own opt-in milestone — not a standing gate that blocks everything else.
 
 ### D4 — AERON disposition: CLARIFY, do NOT archive the code (corrected per Codex R0 P1)
+
+> **REVERSED by ADR-028 (2026-06-04, Accepted):** the **owner decision below** ("AERON **not
+> pursued**; the `agents/solver.py`→AERON path left **as-is**, **NOT wired** into the live solve
+> flow, NOT a v2 item") is **reversed** per a 2026-06-04 owner direction change. Wiring the real
+> product agents into the live runtime — incl. a thin `get_backend()` dispatch over the tested
+> AERON `FEABackend` Protocol — **is now the work**. The "CLARIFY, do NOT archive / preserve all
+> `aeron/` code unchanged" part of D4 still holds; only the "not wired / not pursued" disposition
+> flips. See ADR-028 D4/D5.
 
 A full-repo import/use audit (2026-06-03, evidence below) **overturns** the "orphaned" premise:
 `aeron/` is **live, imported, and tested**, so blanket-archiving it would break `agents/solver.py`
