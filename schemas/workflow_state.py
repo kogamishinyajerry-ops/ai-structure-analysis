@@ -74,6 +74,25 @@ class StageStatus(StrEnum):
     FAILED = "failed"
 
 
+class StageProvenance(StrEnum):
+    """Machine-checkable provenance of a stage's ``agent_explanation`` /
+    ``next_action`` (ADR-028 D2 anti-over-claim gate). The runtime emits this as
+    **first-class data**; the UI MUST NOT infer it. The default ``SCRIPTED_DEMO``
+    keeps every un-wired stage honestly labeled as synthetic demo prose until a
+    real agent node drives it — so wiring one stage cannot accidentally relabel
+    the other twelve.
+
+    * ``SCRIPTED_DEMO`` — hardcoded/synthetic demo text; **NOT** agent output.
+    * ``DETERMINISTIC_AGENT`` — produced by a live **rule-based** agent node from
+      the actual run input (no LLM; hermetic, reproducible).
+    * ``LLM_AGENT`` — produced by a live **LLM-reasoning** agent node.
+    """
+
+    SCRIPTED_DEMO = "scripted_demo"
+    DETERMINISTIC_AGENT = "deterministic_agent"
+    LLM_AGENT = "llm_agent"
+
+
 #: Lossy projection of each fine stage onto the coarse ADR-014 ``Stage`` so a
 #: ``StageState`` can drive the existing ``node.entered``/``node.exited`` events.
 #: Setup stages (material/BC/loads) project onto ``solver`` because they define
@@ -178,6 +197,10 @@ class StageState(_CamelModel):
     # The "agentic" layer the plan adds on top of the existing runtime.
     agent_explanation: str = ""
     next_action: str = ""
+    # ADR-028 D2: machine-checkable provenance of agent_explanation/next_action.
+    # Additive + back-compat; defaults to SCRIPTED_DEMO so un-wired stages stay
+    # honestly labeled until a real agent node drives them.
+    provenance: StageProvenance = StageProvenance.SCRIPTED_DEMO
     updated_at: ISO8601UtcStr | None = None
 
 
@@ -186,6 +209,7 @@ __all__ = [
     "WorkflowStage",
     "CANONICAL_STAGE_ORDER",
     "StageStatus",
+    "StageProvenance",
     "WORKFLOW_STAGE_TO_WS_STAGE",
     "ws_stage_for",
     "StageMetrics",

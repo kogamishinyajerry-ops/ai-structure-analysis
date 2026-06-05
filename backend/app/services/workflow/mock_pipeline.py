@@ -19,14 +19,14 @@ import itertools
 import tempfile
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
+from app.core.config import settings
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from aeron.protocols.fea_backend import CasePackage, SolveOptions, SolveStatusCode
-from app.core.config import settings
+from aeron.protocols.fea_backend import SolveStatusCode
 from schemas.sim_state import FaultClass
 from schemas.workflow_state import (
     CANONICAL_STAGE_ORDER,
@@ -40,6 +40,7 @@ from schemas.workflow_state import (
 
 from . import real_le10
 from .mock_backend import MockFEABackend
+
 
 class StageOrderError(Exception):
     """Raised by run_one_stage when a stage is driven out of order or after a
@@ -298,7 +299,7 @@ _PROGRESS_TICKS = (0.34, 0.67, 1.0)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class MockRun(BaseModel):
@@ -364,7 +365,37 @@ def _build_stage_state(
     specs: dict[WorkflowStage, StageSpec] = STAGE_SPECS,
     solve_ctx: dict | None = None,
     error: StageError | None = None,
+    user_request: str | None = None,
 ) -> StageState:
+    # ADR-028 P1 (D4 facade seam): route the ONE PROJECT_INTAKE stage through the
+    # real agent node (deterministic by default) when there is genuine user input
+    # to analyze and we are on the mock-demo specs path. This delegates per-stage
+    # execution to backend/app/workbench/agent_facade.py — the ADR-015 choke point.
+    # Guards keeping this surgical + honest:
+    #   * error set       → demo failure injection is NOT agent-authored → scripted;
+    #   * specs ≠ mock     → the LE10 real-benchmark intake stays scripted until P3;
+    #   * no user_request  → nothing for the agent to analyze → scripted_demo.
+    # The returned StageState carries provenance=deterministic_agent; every OTHER
+    # stage keeps the default scripted_demo, so wiring one stage cannot relabel the
+    # other twelve (ADR-028 D2).
+    if (
+        stage is WorkflowStage.PROJECT_INTAKE
+        and error is None
+        and specs is STAGE_SPECS
+        and user_request
+        and user_request.strip()
+    ):
+        from app.workbench.agent_facade import run_node as _run_intake_node
+
+        return _run_intake_node(
+            stage,
+            run_id=run_id,
+            user_request=user_request,
+            status=status,
+            progress=progress,
+            allow_llm=False,
+        )
+
     spec = specs[stage]
     metrics_src = dict(spec.metrics)
     artifacts = dict(spec.artifacts)
@@ -484,7 +515,7 @@ class MockWorkflowStore:
 
     def _new_run(self, label: str | None, fail_at_stage: WorkflowStage | None) -> MockRun:
         seq = next(self._counter)
-        run_id = f"mock_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}_{seq:04d}"
+        run_id = f"mock_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{seq:04d}"
         run = MockRun(
             run_id=run_id,
             label=label,
@@ -601,7 +632,7 @@ class MockWorkflowStore:
                     solve_ctx = self._solve_ctx.get(run.run_id)
                 st = _build_stage_state(
                     run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
                 )
             run.stages[idx] = st
             if fail or stage is CANONICAL_STAGE_ORDER[-1]:
@@ -647,7 +678,7 @@ class MockWorkflowStore:
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx,
+                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
             )
         self._finalize(run)
         return run
@@ -668,7 +699,7 @@ class MockWorkflowStore:
             for p in _PROGRESS_TICKS:
                 run.stages[idx] = _build_stage_state(
                     run.run_id, stage, StageStatus.RUNNING, p,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
                 )
                 await asyncio.sleep(tick_delay_s)
             if run.fail_at_stage is stage:
@@ -694,7 +725,7 @@ class MockWorkflowStore:
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx,
+                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
             )
         self._finalize(run)
 

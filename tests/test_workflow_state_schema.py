@@ -17,6 +17,7 @@ from schemas.workflow_state import (
     StageArtifacts,
     StageError,
     StageMetrics,
+    StageProvenance,
     StageState,
     StageStatus,
     WorkflowStage,
@@ -140,6 +141,41 @@ def test_unknown_top_level_field_is_rejected() -> None:
     """extra='forbid' on StageState guards the contract (metrics stays open)."""
     with pytest.raises(ValueError):
         StageState.model_validate({"runId": "r1", "stage": "solver_run", "bogusField": 1})
+
+
+def test_provenance_defaults_to_scripted_demo_and_serializes() -> None:
+    """ADR-028 D2: the additive `provenance` field defaults to SCRIPTED_DEMO so
+    every un-wired stage stays honestly labeled as synthetic demo prose, and it
+    rides the camelCase wire as a first-class key (NOT inferred by the UI)."""
+    state = StageState(run_id="r1", stage=WorkflowStage.PROJECT_INTAKE)
+    assert state.provenance is StageProvenance.SCRIPTED_DEMO
+    wire = state.model_dump(by_alias=True)
+    assert wire["provenance"] == "scripted_demo"
+
+
+def test_provenance_accepts_agent_classes() -> None:
+    """The three honest provenance classes round-trip on the wire."""
+    assert {p.value for p in StageProvenance} == {
+        "scripted_demo",
+        "deterministic_agent",
+        "llm_agent",
+    }
+    state = StageState(
+        run_id="r1",
+        stage=WorkflowStage.PROJECT_INTAKE,
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+    )
+    assert state.model_dump(by_alias=True)["provenance"] == "deterministic_agent"
+    # snake or camel input both populate the field (populate_by_name=True).
+    via_wire = StageState.model_validate(
+        {"runId": "r1", "stage": "project_intake", "provenance": "llm_agent"}
+    )
+    assert via_wire.provenance is StageProvenance.LLM_AGENT
+
+
+def test_provenance_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError):
+        StageState.model_validate({"runId": "r1", "stage": "project_intake", "provenance": "human"})
 
 
 def test_metrics_allows_stage_specific_extras() -> None:
