@@ -20,6 +20,18 @@ export function isTerminal(status: WorkflowStatus): boolean {
   return TERMINAL_STATUSES.includes(status)
 }
 
+// ADR-028 D2 — machine-checkable provenance of a stage's agentExplanation /
+// nextAction. The backend emits it as first-class wire data
+// (schemas/workflow_state.py StageState.provenance); the UI MUST surface it and
+// never infer it. Default `scripted_demo` = synthetic demo prose, NOT agent output.
+export type StageProvenance = 'scripted_demo' | 'deterministic_agent' | 'llm_agent'
+
+export const PROVENANCE_LABEL: Readonly<Record<StageProvenance, string>> = {
+  scripted_demo: 'scripted demo',
+  deterministic_agent: 'deterministic agent',
+  llm_agent: 'LLM agent',
+}
+
 export interface StageError {
   readonly faultClass: string
   readonly message: string
@@ -46,6 +58,7 @@ export interface StageState {
   readonly artifacts: StageArtifacts
   readonly agentExplanation: string | null
   readonly nextAction: string | null
+  readonly provenance: StageProvenance
 }
 
 export interface WorkflowRun {
@@ -90,6 +103,12 @@ function asStatus(v: unknown): WorkflowStatus {
   return v === 'running' || v === 'success' || v === 'warning' || v === 'failed' ? v : 'pending'
 }
 
+// Defensive: an unknown/missing provenance collapses to scripted_demo so an
+// un-wired or malformed stage is never silently shown as agent-driven (ADR-028 D2).
+function asProvenance(v: unknown): StageProvenance {
+  return v === 'deterministic_agent' || v === 'llm_agent' ? v : 'scripted_demo'
+}
+
 function parseError(raw: unknown): StageError {
   const o = asRecord(raw)
   const detail = asString(o.detail)
@@ -132,6 +151,37 @@ export function parseStageState(raw: unknown): StageState {
     artifacts: parseArtifacts(o.artifacts),
     agentExplanation: asNonEmptyString(o.agentExplanation),
     nextAction: asNonEmptyString(o.nextAction),
+    provenance: asProvenance(o.provenance),
+  }
+}
+
+export interface ProvenanceCoverage {
+  readonly deterministic: number
+  readonly llm: number
+  readonly scripted: number
+  readonly total: number
+  /** stages whose explanation came from a live agent node (deterministic + llm). */
+  readonly agentDriven: number
+}
+
+// ADR-028 D2 run-level coverage qualifier: count each stage by provenance so the
+// Monitor can honestly disclose "N of total agent-driven" and never imply more.
+// Deterministic and LLM are kept DISTINCT (the enum distinction is the point of D2);
+// they are summed only into `agentDriven`, never blurred in the per-class counts.
+export function provenanceCoverage(stages: readonly StageState[]): ProvenanceCoverage {
+  let deterministic = 0
+  let llm = 0
+  for (const s of stages) {
+    if (s.provenance === 'deterministic_agent') deterministic += 1
+    else if (s.provenance === 'llm_agent') llm += 1
+  }
+  const total = stages.length
+  return {
+    deterministic,
+    llm,
+    scripted: total - deterministic - llm,
+    total,
+    agentDriven: deterministic + llm,
   }
 }
 
@@ -208,6 +258,10 @@ export async function fetchWorkflowRun(
 
 export interface TriggerWorkflowOptions {
   readonly label?: string
+  // ADR-028 P1 — the genuine NL analysis intent (distinct from the display label).
+  // Only a real request drives the project_intake agent node; absent it the stage
+  // stays scripted_demo. Sent as camelCase `userRequest` (backend populate_by_name).
+  readonly userRequest?: string | null
   readonly failAtStage?: string | null
 }
 
@@ -220,7 +274,11 @@ export async function triggerWorkflow(
     const res = await fetch(`${trimBase(apiBase)}/workflow/trigger`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ label: opts.label ?? 'monitor', failAtStage: opts.failAtStage ?? null }),
+      body: JSON.stringify({
+        label: opts.label ?? 'monitor',
+        userRequest: opts.userRequest ?? null,
+        failAtStage: opts.failAtStage ?? null,
+      }),
       signal,
     })
     if (!res.ok) throw new Error(`workflow/trigger returned ${res.status}`)

@@ -89,6 +89,23 @@ const FAILED_RUN = {
   ],
 }
 
+// ADR-028 P1.5: a run whose intake stage is genuinely agent-driven (deterministic
+// rule-based node), the other stages still scripted_demo — drives the D2 coverage
+// qualifier (1 deterministic · 0 LLM · 2 scripted of 3) + per-stage badges.
+const AGENTIC_RUN = {
+  ...PENDING_RUN,
+  status: 'success',
+  finishedAt: '2026-06-03T00:00:00Z',
+  stages: [
+    stageState('project_intake', 'success', {
+      provenance: 'deterministic_agent',
+      agentExplanation: '判定物理类型 = 模态分析。',
+    }),
+    stageState('solver_run', 'success'),
+    stageState('report_generation', 'success'),
+  ],
+}
+
 interface RouteResp {
   ok?: boolean
   status?: number
@@ -135,6 +152,41 @@ describe('WorkflowMonitorTabPanel', () => {
     fireEvent.click(screen.getByTestId('wf-run-button'))
     await waitFor(() => expect(screen.getByTestId('wf-run-badge')).toHaveTextContent('SUCCESS'))
     expect(screen.getByTestId('wf-agent-log')).toHaveTextContent('CalculiX 收敛')
+  })
+
+  it('surfaces the ADR-028 D2 provenance coverage qualifier + per-stage badges', async () => {
+    routeFetch({
+      '/workflow/stages': { body: CATALOG },
+      '/workflow/trigger': { body: PENDING_RUN },
+      '/workflow/runs/': { body: AGENTIC_RUN },
+    })
+    render(<WorkflowMonitorTabPanel apiBase="/api/v1" />)
+    await waitFor(() => expect(screen.getByTestId('wf-run-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('wf-run-button'))
+    await waitFor(() => expect(screen.getByTestId('wf-run-badge')).toHaveTextContent('SUCCESS'))
+    // Run-level coverage qualifier — deterministic and LLM kept DISTINCT, scripted honest.
+    expect(screen.getByTestId('wf-coverage')).toHaveTextContent(
+      'Agent-driven: deterministic 1 · LLM 0 · scripted 2 (of 3 stages)',
+    )
+    // Per-stage badges: the wired intake reads deterministic agent; the rest scripted demo.
+    expect(screen.getAllByTestId('wf-prov-deterministic_agent').length).toBeGreaterThan(0)
+    expect(screen.getAllByTestId('wf-prov-scripted_demo').length).toBeGreaterThan(0)
+  })
+
+  it('discloses 0 agent-driven for a default run with no genuine request (no over-claim)', async () => {
+    routeFetch({
+      '/workflow/stages': { body: CATALOG },
+      '/workflow/trigger': { body: PENDING_RUN },
+      '/workflow/runs/': { body: SUCCESS_RUN },
+    })
+    render(<WorkflowMonitorTabPanel apiBase="/api/v1" />)
+    await waitFor(() => expect(screen.getByTestId('wf-run-button')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('wf-run-button'))
+    await waitFor(() => expect(screen.getByTestId('wf-run-badge')).toHaveTextContent('SUCCESS'))
+    // SUCCESS_RUN carries no provenance → all scripted_demo → honest 0 agent-driven.
+    expect(screen.getByTestId('wf-coverage')).toHaveTextContent(
+      'Agent-driven: deterministic 0 · LLM 0 · scripted 3 (of 3 stages)',
+    )
   })
 
   it('surfaces a fault class when a stage fails', async () => {

@@ -28,8 +28,11 @@ import {
   fetchWorkflowRun,
   fetchWorkflowStages,
   isTerminal,
+  PROVENANCE_LABEL,
+  provenanceCoverage,
   triggerWorkflow,
   type StageCatalogEntry,
+  type StageProvenance,
   type StageState,
   type WorkflowRun,
   type WorkflowStatus,
@@ -73,6 +76,10 @@ export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: Workflow
   const [run, setRun] = useState<WorkflowRun | null>(null)
   const [selectedStage, setSelectedStage] = useState<string | null>(null)
   const [failAt, setFailAt] = useState('')
+  // ADR-028 P1.5 — optional NL analysis intent. When non-empty it is threaded to
+  // the backend as the genuine `userRequest`, so the wired project_intake agent
+  // node actually runs (provenance → deterministic_agent); empty = scripted_demo.
+  const [request, setRequest] = useState('')
   const [busy, setBusy] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
   // Realtime path state: which run path engaged, and the orchestrator
@@ -201,7 +208,10 @@ export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: Workflow
 
     // Poll-only path (no account needed).
     setLiveMode('poll')
-    const res = await triggerWorkflow(apiBase, { failAtStage })
+    const res = await triggerWorkflow(apiBase, {
+      failAtStage,
+      userRequest: request === '' ? null : request,
+    })
     if (!mountedRef.current || seq !== runSeqRef.current) return
     if (res.run === null) {
       setRunError(res.error ?? 'failed to start the workflow run')
@@ -279,8 +289,10 @@ export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: Workflow
       <div style={headerRowStyle}>
         <div>
           <div style={titleStyle}>FEA Workflow Monitor</div>
-          <div style={subtitleStyle}>
-            Mock pipeline · synthetic solver data, real StageState events · 13 stages
+          <div style={subtitleStyle} data-testid="wf-coverage">
+            {run !== null
+              ? coverageQualifier(run)
+              : 'Mock pipeline · synthetic solver data, real StageState events · 13 stages'}
           </div>
         </div>
         <div style={badgeGroupStyle}>
@@ -302,6 +314,17 @@ export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: Workflow
         >
           <Play size={14} /> {busy ? 'Running…' : 'Run pipeline'}
         </button>
+        <label style={controlLabelStyle}>
+          analysis request
+          <input
+            type="text"
+            value={request}
+            onChange={(e) => setRequest(e.target.value)}
+            placeholder="e.g. 支架模态分析，关注固有频率 (drives the real intake agent)"
+            style={textInputStyle}
+            data-testid="wf-request"
+          />
+        </label>
         <label style={controlLabelStyle}>
           fail at
           <select
@@ -400,6 +423,32 @@ export function WorkflowMonitorTabPanel({ apiBase, triggerServerBase }: Workflow
 function stageStateFor(run: WorkflowRun | null, stage: string): StageState | null {
   if (run === null) return null
   return run.stages.find((s) => s.stage === stage) ?? null
+}
+
+// ADR-028 D2 run-level coverage qualifier — deterministic and LLM kept DISTINCT
+// (never blurred into one "agent-driven" claim), scripted counted honestly. A run
+// with no genuine user_request shows 0 agent-driven, which is the truthful state.
+function coverageQualifier(run: WorkflowRun): string {
+  const c = provenanceCoverage(run.stages)
+  return `Agent-driven: deterministic ${c.deterministic} · LLM ${c.llm} · scripted ${c.scripted} (of ${c.total} stages)`
+}
+
+function provenanceTone(p: StageProvenance): string {
+  if (p === 'llm_agent') return 'var(--success-500)'
+  if (p === 'deterministic_agent') return 'var(--accent)'
+  return 'var(--text-muted)'
+}
+
+function ProvenanceBadge({ provenance }: { provenance: StageProvenance }) {
+  return (
+    <span
+      style={provBadgeStyle(provenanceTone(provenance))}
+      data-testid={`wf-prov-${provenance}`}
+      title="ADR-028 provenance of this stage's explanation (scripted demo = not agent output)"
+    >
+      {PROVENANCE_LABEL[provenance]}
+    </span>
+  )
 }
 
 function RunBadge({ run }: { run: WorkflowRun | null }) {
@@ -516,6 +565,12 @@ function MetricRows({ state }: { state: StageState | null }) {
         </span>
       </div>
       <div style={kvRowStyle}>
+        <span style={kvKeyStyle}>provenance</span>
+        <span style={kvValueStyle}>
+          <ProvenanceBadge provenance={state.provenance} />
+        </span>
+      </div>
+      <div style={kvRowStyle}>
         <span style={kvKeyStyle}>currentObject</span>
         <span style={kvValueStyle}>{state.currentObject ?? '—'}</span>
       </div>
@@ -547,6 +602,7 @@ function AgentLog({ run }: { run: WorkflowRun | null }) {
           <div style={logTopStyle}>
             <span aria-hidden="true" style={logDotStyle(STATUS_TOKEN[st.status])} />
             {st.description} · {st.status}
+            <ProvenanceBadge provenance={st.provenance} />
           </div>
           {st.agentExplanation !== null && <p style={logWhyStyle}>{st.agentExplanation}</p>}
           {st.warnings.map((w) => (
@@ -741,6 +797,15 @@ const selectStyle: CSSProperties = {
   padding: '5px 8px',
   maxWidth: 280,
 }
+const textInputStyle: CSSProperties = {
+  fontSize: 12.5,
+  color: 'var(--text-primary)',
+  background: 'var(--bg-surface)',
+  border: '1px solid var(--border)',
+  borderRadius: 7,
+  padding: '5px 8px',
+  minWidth: 240,
+}
 const runErrorStyle: CSSProperties = {
   fontSize: 13,
   color: 'var(--danger-400)',
@@ -870,6 +935,18 @@ function chipStyle(color: string): CSSProperties {
     borderRadius: 5,
     border: `1px solid ${color}`,
     color,
+  }
+}
+function provBadgeStyle(color: string): CSSProperties {
+  return {
+    marginLeft: 'auto',
+    fontFamily: 'var(--mono, ui-monospace, monospace)',
+    fontSize: 9.5,
+    padding: '1px 6px',
+    borderRadius: 5,
+    border: `1px solid ${color}`,
+    color,
+    whiteSpace: 'nowrap',
   }
 }
 
