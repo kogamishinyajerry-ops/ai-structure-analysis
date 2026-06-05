@@ -22,7 +22,32 @@ from schemas.workflow_state import StageState, StageStatus, WorkflowStage
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run_node"]
+__all__ = ["decide_route", "run_node"]
+
+
+def decide_route(
+    *,
+    verdict: str,
+    fault_class: str = "none",
+    retry_budgets: dict[str, int] | None = None,
+    verdict_source: str = "本阶段评审状态",
+) -> state_projection.RouteOutcome:
+    """Run the real router node (``agents.router.route_reviewer``) to choose which
+    agent handles the next step (ADR-028 P3).
+
+    ``fault_class`` is a plain wire string (e.g. ``"none"``, ``"mesh_jacobian"``);
+    the ``FaultClass`` enum lives entirely in the agent layer
+    (:func:`agents.state_projection.decide_route`), so this facade stays free of any
+    ``schemas.sim_state`` import (ADR-015 rule 3). Returns the agent layer's
+    :class:`~agents.state_projection.RouteOutcome`, whose ``provenance`` is
+    ``deterministic_agent`` — the routing decision is genuine orchestration logic.
+    """
+    return state_projection.decide_route(
+        verdict=verdict,
+        fault_class=fault_class,
+        retry_budgets=retry_budgets,
+        verdict_source=verdict_source,
+    )
 
 
 def _try_intake_llm(user_request: str, existing_case_id: str | None) -> dict | None:

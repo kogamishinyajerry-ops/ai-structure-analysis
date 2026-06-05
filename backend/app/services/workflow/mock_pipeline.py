@@ -33,6 +33,7 @@ from schemas.workflow_state import (
     StageArtifacts,
     StageError,
     StageMetrics,
+    StageProvenance,
     StageState,
     StageStatus,
     WorkflowStage,
@@ -434,6 +435,42 @@ def _build_stage_state(
     if stage is WorkflowStage.REPORT_GENERATION and status is StageStatus.SUCCESS:
         artifacts = {"report_file": f"/workflow/runs/{run_id}/report.md"}
 
+    # ADR-028 P3 (D4 facade seam): the reviewer gate's "next step" is a REAL routing
+    # decision, not a hardcoded string. At RESULT_ANALYSIS, on the mock-demo happy path
+    # (no injected failure, mock specs, stage completed), consult the real router node
+    # (agents.router.route_reviewer) via the facade for which agent runs next. Only this
+    # stage's provenance flips to deterministic_agent; the verdict it consumes is the
+    # (scripted) demo stage status, so the explanation attributes ONLY the routing — not
+    # the result — to the agent (ADR-028 D2; mirrors the PROJECT_INTAKE intake guard).
+    # The full re-run / human_fallback branches are proven by unit tests; the demo
+    # happy path only exercises accept -> viz.
+    provenance = StageProvenance.SCRIPTED_DEMO
+    agent_explanation = spec.agent_explanation
+    next_action = spec.next_action
+    if (
+        stage is WorkflowStage.RESULT_ANALYSIS
+        and error is None
+        and specs is STAGE_SPECS
+        and solve_ctx is None
+        and status in (StageStatus.SUCCESS, StageStatus.WARNING)
+    ):
+        from app.workbench.agent_facade import decide_route as _decide_route
+
+        verdict = "Accept" if status is StageStatus.SUCCESS else "Accept with Note"
+        # Be explicit that the verdict itself is scripted demo state — only the ROUTING
+        # decision is agent-authored — so the deterministic_agent provenance on this
+        # stage can never be misread as "the result was computed by an agent" (Codex
+        # ADR-028-P3 R0 P2).
+        route = _decide_route(
+            verdict=verdict,
+            fault_class="none",
+            verdict_source="本阶段 demo 评审状态（脚本化，非 agent 计算）",
+        )
+        provenance = route.provenance
+        agent_explanation = route.agent_explanation
+        next_action = route.next_action
+        metrics_src = {**metrics_src, "routedTo": route.next_node}
+
     warnings = list(spec.warnings) if status is StageStatus.WARNING else []
     return StageState(
         run_id=run_id,
@@ -446,8 +483,9 @@ def _build_stage_state(
         warnings=warnings,
         errors=[error] if error else [],
         artifacts=StageArtifacts.model_validate(artifacts),
-        agent_explanation=spec.agent_explanation,
-        next_action=spec.next_action,
+        agent_explanation=agent_explanation,
+        next_action=next_action,
+        provenance=provenance,
         updated_at=_now_iso(),
     )
 

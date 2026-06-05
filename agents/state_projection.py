@@ -28,7 +28,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from agents.architect import _canonical_case_id
+from agents.router import route_reviewer
 from schemas.sim_plan import AnalysisType, SimPlan
+from schemas.sim_state import FaultClass
 from schemas.workflow_state import (
     StageArtifacts,
     StageMetrics,
@@ -40,7 +42,9 @@ from schemas.workflow_state import (
 
 __all__ = [
     "IntakeOutcome",
+    "RouteOutcome",
     "analyze_intake",
+    "decide_route",
     "intake_outcome_to_stage_state",
     "sim_state_to_stage_state",
 ]
@@ -258,3 +262,78 @@ def sim_state_to_stage_state(
         provenance=StageProvenance.LLM_AGENT,
     )
     return intake_outcome_to_stage_state(run_id, outcome, status=status, progress=progress)
+
+
+# --- Router node projection (ADR-028 P3) -------------------------------------
+# The genuine orchestration-decision node: given a reviewer verdict + fault class
+# + retry budgets, agents.router.route_reviewer (FAULT_TO_NODE + MAX_RETRIES, pure
+# deterministic logic, no LLM/tools) chooses which agent handles the next step —
+# proceed to viz, re-run an upstream node, or escalate to human_fallback. Wiring it
+# replaces a hardcoded "next step" string with a real division-of-labor decision.
+
+# Friendly Chinese labels for the node route_reviewer selects. Purely for the
+# human-readable explanation; the routing token itself is the router's verbatim output.
+_ROUTE_LABEL_ZH: dict[str, str] = {
+    "viz": "可视化 / 报告生成（viz）",
+    "geometry": "重跑几何节点（geometry）",
+    "mesh": "重跑网格节点（mesh）",
+    "solver": "重跑求解节点（solver）",
+    "architect": "回到架构师重定方案（architect）",
+    "human_fallback": "转人工兜底复核（human_fallback）",
+}
+
+
+@dataclass(frozen=True)
+class RouteOutcome:
+    """The router node's decision: which agent runs next, plus how it was reached.
+
+    ``provenance`` is always ``DETERMINISTIC_AGENT`` — the routing is computed by the
+    real ``route_reviewer`` logic. It describes the *routing* only; the ``verdict`` it
+    consumed may itself be scripted demo state, and the caller's explanation says so.
+    """
+
+    next_node: str
+    verdict: str
+    fault_class: str
+    agent_explanation: str
+    next_action: str
+    provenance: StageProvenance
+
+
+def decide_route(
+    *,
+    verdict: str,
+    fault_class: FaultClass | str = FaultClass.NONE,
+    retry_budgets: Mapping[str, int] | None = None,
+    verdict_source: str = "本阶段评审状态",
+) -> RouteOutcome:
+    """Run the REAL ``agents.router.route_reviewer`` to pick the next agent.
+
+    This is genuine orchestration logic (the ADR-004 fault→node map + a 3-retry cap),
+    not a hardcoded transition. Deterministic; no LLM, no tools, no artifacts.
+
+    ``verdict_source`` names where the verdict came from so the explanation never
+    over-claims: in the mock demo the verdict is derived from a scripted stage status,
+    so only the *routing decision* — not the underlying result — is agent-authored.
+    """
+    fc = fault_class if isinstance(fault_class, FaultClass) else FaultClass(fault_class)
+    state = {
+        "verdict": verdict,
+        "fault_class": fc,
+        "retry_budgets": dict(retry_budgets or {}),
+    }
+    next_node = route_reviewer(state)  # real router; always returns a node token
+    node_label = _ROUTE_LABEL_ZH.get(next_node, next_node)
+    explanation = (
+        f"路由 agent（route_reviewer）依据{verdict_source}"
+        f"（verdict={verdict}，故障类={fc.value}）判定下一步 = {node_label}"
+        f"（ADR-004 故障→节点映射 + 最多 3 次重试上限，确定性逻辑，未调用 LLM）。"
+    )
+    return RouteOutcome(
+        next_node=next_node,
+        verdict=str(verdict),
+        fault_class=fc.value,
+        agent_explanation=explanation,
+        next_action=f"下一步 → {node_label}。",
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+    )

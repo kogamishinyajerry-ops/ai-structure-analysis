@@ -150,10 +150,20 @@ def test_sim_state_to_stage_state_projects_llm_plan() -> None:
 
 def test_pipeline_intake_agent_driven_on_genuine_request() -> None:
     run = MockWorkflowStore().run_sync(user_request="对支架做静力分析，关注应力与位移")
+    by_stage = {s.stage: s for s in run.stages}
     assert run.stages[0].stage is WorkflowStage.PROJECT_INTAKE
-    assert run.stages[0].provenance is StageProvenance.DETERMINISTIC_AGENT
-    # wiring one stage must NOT relabel the other twelve (ADR-028 D2)
-    assert all(s.provenance is StageProvenance.SCRIPTED_DEMO for s in run.stages[1:])
+    # TWO stages are genuinely agent-driven: the rule-based intake (architect node,
+    # ADR-028 P1) and the reviewer gate's real routing decision (route_reviewer,
+    # ADR-028 P3). Every OTHER stage stays scripted_demo — wiring these two must not
+    # relabel the remaining eleven (ADR-028 D2).
+    _AGENT_STAGES = {WorkflowStage.PROJECT_INTAKE, WorkflowStage.RESULT_ANALYSIS}
+    assert by_stage[WorkflowStage.PROJECT_INTAKE].provenance is StageProvenance.DETERMINISTIC_AGENT
+    assert by_stage[WorkflowStage.RESULT_ANALYSIS].provenance is StageProvenance.DETERMINISTIC_AGENT
+    assert all(
+        s.provenance is StageProvenance.SCRIPTED_DEMO
+        for s in run.stages
+        if s.stage not in _AGENT_STAGES
+    )
 
 
 def test_pipeline_display_label_alone_stays_scripted() -> None:
