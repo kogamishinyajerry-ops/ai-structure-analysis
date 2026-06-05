@@ -45,6 +45,11 @@ class WorkflowTriggerRequest(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="forbid")
 
     label: str | None = None
+    # ADR-028 P1: the genuine natural-language analysis intent, DISTINCT from the
+    # display `label` (the Monitor client defaults that to "monitor"). Only a real
+    # request drives the PROJECT_INTAKE agent node; absent it, intake stays
+    # scripted_demo (no false provenance=deterministic_agent claim).
+    user_request: str | None = None
     fail_at_stage: WorkflowStage | None = None
     # M2: 'self' = M1 behaviour (FastAPI advances all stages). 'external' = a
     # Trigger.dev orchestrator will drive each stage via POST /stage/run.
@@ -66,15 +71,21 @@ async def trigger_workflow(req: WorkflowTriggerRequest | None = None, sync: bool
     """
     req = req or WorkflowTriggerRequest()
     if req.trigger_mode == "external":
-        run = store.create_run(label=req.label, fail_at_stage=req.fail_at_stage)
+        run = store.create_run(
+            label=req.label, fail_at_stage=req.fail_at_stage, user_request=req.user_request
+        )
         payload = run.model_dump(by_alias=True)
         payload["orchRunId"] = run.run_id
         payload["publicAccessToken"] = None
         return payload
     if sync:
-        run = store.run_sync(label=req.label, fail_at_stage=req.fail_at_stage)
+        run = store.run_sync(
+            label=req.label, fail_at_stage=req.fail_at_stage, user_request=req.user_request
+        )
     else:
-        run = store.trigger(label=req.label, fail_at_stage=req.fail_at_stage)
+        run = store.trigger(
+            label=req.label, fail_at_stage=req.fail_at_stage, user_request=req.user_request
+        )
     return run.model_dump(by_alias=True)
 
 

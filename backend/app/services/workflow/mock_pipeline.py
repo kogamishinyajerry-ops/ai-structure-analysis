@@ -309,6 +309,12 @@ class MockRun(BaseModel):
 
     run_id: str
     label: str | None = None
+    # ADR-028 P1: the genuine natural-language analysis intent, DISTINCT from the
+    # display `label`. Only a real request drives the PROJECT_INTAKE agent node;
+    # a display label (the Monitor defaults it to "monitor") must NOT be treated
+    # as intake text, or the stage would falsely claim provenance=deterministic_agent
+    # for a run with no real user request (Codex ADR-028-P1 R0 P1).
+    user_request: str | None = None
     status: StageStatus = StageStatus.PENDING
     started_at: str
     finished_at: str | None = None
@@ -513,12 +519,18 @@ class MockWorkflowStore:
         self._solve_ctx[run_id] = ctx
         return ctx
 
-    def _new_run(self, label: str | None, fail_at_stage: WorkflowStage | None) -> MockRun:
+    def _new_run(
+        self,
+        label: str | None,
+        fail_at_stage: WorkflowStage | None,
+        user_request: str | None = None,
+    ) -> MockRun:
         seq = next(self._counter)
         run_id = f"mock_{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}_{seq:04d}"
         run = MockRun(
             run_id=run_id,
             label=label,
+            user_request=user_request,
             status=StageStatus.PENDING,
             started_at=_now_iso(),
             fail_at_stage=fail_at_stage,
@@ -546,14 +558,17 @@ class MockWorkflowStore:
     # --- M2: external (Trigger.dev) single-stage orchestration ---------------
 
     def create_run(
-        self, label: str | None = None, fail_at_stage: WorkflowStage | None = None
+        self,
+        label: str | None = None,
+        fail_at_stage: WorkflowStage | None = None,
+        user_request: str | None = None,
     ) -> MockRun:
         """M2: mint + store a PENDING run WITHOUT starting any execution.
 
         The external orchestrator (Trigger.dev) then drives each stage via
         :meth:`run_one_stage`. The M1 self-advancing path (``trigger`` /
         ``run_sync``) is unaffected."""
-        return self._new_run(label, fail_at_stage)
+        return self._new_run(label, fail_at_stage, user_request)
 
     def run_one_stage(
         self, run_id: str, stage: WorkflowStage, fail: bool = False
@@ -632,7 +647,7 @@ class MockWorkflowStore:
                     solve_ctx = self._solve_ctx.get(run.run_id)
                 st = _build_stage_state(
                     run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
                 )
             run.stages[idx] = st
             if fail or stage is CANONICAL_STAGE_ORDER[-1]:
@@ -640,11 +655,14 @@ class MockWorkflowStore:
             return st
 
     def run_sync(
-        self, label: str | None = None, fail_at_stage: WorkflowStage | None = None
+        self,
+        label: str | None = None,
+        fail_at_stage: WorkflowStage | None = None,
+        user_request: str | None = None,
     ) -> MockRun:
         """Run the whole pipeline with no sleeps (tests / ?sync). Returns the
         terminal run."""
-        run = self._new_run(label, fail_at_stage)
+        run = self._new_run(label, fail_at_stage, user_request)
         backend = MockFEABackend(
             force_fault=FaultClass.SOLVER_CONVERGENCE
             if fail_at_stage is WorkflowStage.SOLVER_RUN
@@ -678,7 +696,7 @@ class MockWorkflowStore:
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
+                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
             )
         self._finalize(run)
         return run
@@ -699,7 +717,7 @@ class MockWorkflowStore:
             for p in _PROGRESS_TICKS:
                 run.stages[idx] = _build_stage_state(
                     run.run_id, stage, StageStatus.RUNNING, p,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
+                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
                 )
                 await asyncio.sleep(tick_delay_s)
             if run.fail_at_stage is stage:
@@ -725,15 +743,18 @@ class MockWorkflowStore:
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.label,
+                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
             )
         self._finalize(run)
 
     def trigger(
-        self, label: str | None = None, fail_at_stage: WorkflowStage | None = None
+        self,
+        label: str | None = None,
+        fail_at_stage: WorkflowStage | None = None,
+        user_request: str | None = None,
     ) -> MockRun:
         """Create a run and schedule the async driver. Returns the initial run."""
-        run = self._new_run(label, fail_at_stage)
+        run = self._new_run(label, fail_at_stage, user_request)
         asyncio.create_task(self._advance(run.run_id))
         return run
 

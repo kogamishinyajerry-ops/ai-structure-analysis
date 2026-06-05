@@ -50,35 +50,43 @@ _INTAKE_CURRENT_OBJECT = "user_request"
 _INTAKE_NEXT_ACTION = "进入 CAD 几何导入并做缺陷校验。"
 _MAX_SNIPPET = 48
 
+
+def _ci(pattern: str) -> re.Pattern[str]:
+    """Compile a keyword rule case-insensitively so title-cased / uppercase English
+    requests ("Modal analysis", "THERMAL stress") classify correctly; Chinese is
+    unaffected (Codex ADR-028-P1 R0 P2)."""
+    return re.compile(pattern, re.IGNORECASE)
+
+
 # Physics keyword rules (Chinese + English). First match wins; ordered
 # most-specific first so "热-结构耦合" beats the bare "热"/"thermal" rule.
 _PHYSICS_RULES: tuple[tuple[re.Pattern[str], AnalysisType], ...] = (
     (
-        re.compile(r"热\s*[-－]?\s*结构|thermo[\s-]*structural|热应力|thermal\s+stress"),
+        _ci(r"热\s*[-－]?\s*结构|thermo[\s-]*structural|热应力|thermal\s+stress"),
         AnalysisType.THERMO_STRUCTURAL,
     ),
-    (re.compile(r"预应力\s*模态|prestress(?:ed)?\s*modal"), AnalysisType.PRESTRESS_MODAL),
+    (_ci(r"预应力\s*模态|prestress(?:ed)?\s*modal"), AnalysisType.PRESTRESS_MODAL),
     (
-        re.compile(r"模态|modal|固有频率|natural\s+freq|振动|vibration|频率|eigenfrequenc"),
+        _ci(r"模态|modal|固有频率|natural\s+freq|振动|vibration|频率|eigenfrequenc"),
         AnalysisType.MODAL,
     ),
-    (re.compile(r"循环对称|cyclic\s*symmetry"), AnalysisType.CYCLIC_SYMMETRY),
+    (_ci(r"循环对称|cyclic\s*symmetry"), AnalysisType.CYCLIC_SYMMETRY),
     (
-        re.compile(r"稳态热|steady[\s-]*thermal|传热|heat\s+transfer|温度场|thermal\b|温度"),
+        _ci(r"稳态热|steady[\s-]*thermal|传热|heat\s+transfer|温度场|thermal\b|温度"),
         AnalysisType.STEADY_THERMAL,
     ),
 )
-_NONLINEAR_RE = re.compile(
+_NONLINEAR_RE = _ci(
     r"非线性|nonlinear|塑性|plastic|大变形|large\s+deformation|接触|contact|超弹|hyperelastic"
 )
 
 # Objective keyword rules — all matches collected (deduped, in rule order).
 _OBJECTIVE_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"应力|stress|von\s*mises|屈服|yield"), "max_von_mises"),
-    (re.compile(r"位移|变形|deformation|displacement|挠度|deflection"), "max_displacement"),
-    (re.compile(r"安全系数|safety\s*factor|factor\s+of\s+safety|安全裕度"), "safety_factor"),
-    (re.compile(r"温度|temperature|thermal"), "max_temperature"),
-    (re.compile(r"频率|frequency|模态|modal|固有"), "natural_frequencies"),
+    (_ci(r"应力|stress|von\s*mises|屈服|yield"), "max_von_mises"),
+    (_ci(r"位移|变形|deformation|displacement|挠度|deflection"), "max_displacement"),
+    (_ci(r"安全系数|safety\s*factor|factor\s+of\s+safety|安全裕度"), "safety_factor"),
+    (_ci(r"温度|temperature|thermal"), "max_temperature"),
+    (_ci(r"频率|frequency|模态|modal|固有"), "natural_frequencies"),
 )
 # ObjectiveSpec's own default (schemas.sim_plan) — used when nothing matches.
 _DEFAULT_OBJECTIVES: tuple[str, ...] = ("max_displacement", "max_von_mises")

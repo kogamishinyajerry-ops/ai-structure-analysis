@@ -117,6 +117,18 @@ def test_analyze_intake_is_deterministic() -> None:
     assert a.nonlinear is True
 
 
+def test_analyze_intake_english_is_case_insensitive() -> None:
+    """Title-cased / uppercase English must classify correctly (Codex R0 P2)."""
+    assert analyze_intake("Modal analysis of a beam").analysis_type is AnalysisType.MODAL
+    assert analyze_intake("MODAL ANALYSIS").analysis_type is AnalysisType.MODAL
+    # "THERMAL stress" is the thermo-structural rule (most-specific first)
+    assert (
+        analyze_intake("THERMAL stress on bracket").analysis_type
+        is AnalysisType.THERMO_STRUCTURAL
+    )
+    assert "max_von_mises" in analyze_intake("Compute STRESS and Displacement").objectives
+
+
 def test_sim_state_to_stage_state_requires_plan() -> None:
     with pytest.raises(TypeError):
         sim_state_to_stage_state({"user_request": "x"}, run_id="r")
@@ -136,15 +148,23 @@ def test_sim_state_to_stage_state_projects_llm_plan() -> None:
 # --- pipeline delegation (the live seam) ------------------------------------
 
 
-def test_pipeline_intake_agent_driven_others_scripted() -> None:
-    run = MockWorkflowStore().run_sync(label="对支架做静力分析，关注应力与位移")
+def test_pipeline_intake_agent_driven_on_genuine_request() -> None:
+    run = MockWorkflowStore().run_sync(user_request="对支架做静力分析，关注应力与位移")
     assert run.stages[0].stage is WorkflowStage.PROJECT_INTAKE
     assert run.stages[0].provenance is StageProvenance.DETERMINISTIC_AGENT
     # wiring one stage must NOT relabel the other twelve (ADR-028 D2)
     assert all(s.provenance is StageProvenance.SCRIPTED_DEMO for s in run.stages[1:])
 
 
-def test_pipeline_no_label_intake_stays_scripted() -> None:
+def test_pipeline_display_label_alone_stays_scripted() -> None:
+    """The Monitor defaults `label` to "monitor"; a display label is NOT intake
+    text, so without a genuine user_request intake stays scripted_demo — never a
+    false provenance=deterministic_agent on a no-request run (Codex R0 P1)."""
+    run = MockWorkflowStore().run_sync(label="monitor")
+    assert run.stages[0].provenance is StageProvenance.SCRIPTED_DEMO
+
+
+def test_pipeline_no_request_intake_stays_scripted() -> None:
     run = MockWorkflowStore().run_sync(label=None)
     assert run.stages[0].provenance is StageProvenance.SCRIPTED_DEMO
 
@@ -152,7 +172,7 @@ def test_pipeline_no_label_intake_stays_scripted() -> None:
 def test_pipeline_intake_failure_injection_stays_scripted() -> None:
     """A demo failure injected at intake is NOT agent-authored prose → scripted."""
     run = MockWorkflowStore().run_sync(
-        label="支架静力分析", fail_at_stage=WorkflowStage.PROJECT_INTAKE
+        user_request="支架静力分析", fail_at_stage=WorkflowStage.PROJECT_INTAKE
     )
     assert run.stages[0].status is StageStatus.FAILED
     assert run.stages[0].provenance is StageProvenance.SCRIPTED_DEMO
