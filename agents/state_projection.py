@@ -17,12 +17,18 @@ architect's work, per ADR-028 D5 — all hermetic, no LLM/tool/artifact dependen
 * :func:`analyze_setup` (P-setup) — decides which material / boundary-condition topology
   / load to apply for the MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES stages,
   disclosing whether each was derived from a request hint or fell back to a default.
+* :func:`analyze_geometry_plan` (P-geomplan) — decides the geometry FAMILY/source for the
+  GEOMETRY_VALIDATION stage. This is geometry **planning, NOT validation**: no CAD kernel
+  runs, no STEP is generated, ``checkers.geometry_checker`` is NOT called. It explicitly
+  discloses this and pins ``cadKernelRan``/``defectCheckRun`` to ``False`` so the
+  ``deterministic_agent`` label can never be read as "the geometry was validated".
 * :func:`sim_state_to_stage_state` is the ADR-028 D4 LLM projector — it maps a
   **completed SimState** (the LLM architect's output) to the wire shape with
   ``provenance = llm_agent``.
 
-The tool/artifact-bound stages (CAD/geometry/mesh/solve/post/report) remain scripted in
-the demo until they can run hermetically; the facade raises for them rather than fake it.
+The remaining tool/artifact-bound stages (CAD import / mesh / solve / post / report — and
+the actual CAD-kernel geometry *validation* itself) remain scripted in the demo until they
+can run hermetically; the facade raises for them rather than fake it.
 """
 
 from __future__ import annotations
@@ -47,15 +53,18 @@ from schemas.workflow_state import (
 
 __all__ = [
     "SETUP_STAGES",
+    "GeometryPlanOutcome",
     "IntakeOutcome",
     "RecoveryOutcome",
     "RouteOutcome",
     "SetupDecision",
     "SetupOutcome",
+    "analyze_geometry_plan",
     "analyze_intake",
     "analyze_setup",
     "decide_recovery",
     "decide_route",
+    "geometry_plan_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
@@ -694,4 +703,118 @@ def decide_recovery(
         fault_class=fc.value,
         agent_explanation=explanation,
         next_action=f"恢复路由 → {label}（需人工确认是否重跑）。",
+    )
+
+
+# --- Geometry-PLANNING node (ADR-028 P-geomplan) -----------------------------
+# A deterministic rule-based agent for the GEOMETRY_VALIDATION stage: it decides the
+# geometry FAMILY/source from the actual request (mirroring analyze_setup) and flips the
+# stage's provenance scripted_demo -> deterministic_agent. CRITICAL honesty bound: this is
+# geometry PLANNING, NOT validation — no CAD kernel runs, no STEP is generated,
+# agents.geometry.run / tools.generate_geometry / checkers.check_geometry are NOT called.
+# The metrics carry planning-intent fields + explicit cadKernelRan/defectCheckRun=False
+# flags (machine-checkable disclosure), NEVER measurement-shaped keys (shortEdges/slivers)
+# — surfacing those would lie about a defect check having run. On the genuine-request path
+# this REPLACES the scripted spec's fabricated {shortEdges:2,...} metrics (a net honesty
+# improvement); the no-request scripted fallback is untouched (stays scripted_demo).
+
+# Geometry-family rules: (pattern, (family, ref_source, label_zh)). Specific first
+# ("悬臂梁"/cantilever before the bare "梁"/beam rule).
+_GEOMETRY_RULES: tuple[tuple[re.Pattern[str], tuple[str, str, str]], ...] = (
+    (_ci(r"机翼|翼型|wing|airfoil|naca"), ("naca_wing", "naca", "NACA 翼型机翼")),
+    (_ci(r"支架|托架|bracket"), ("bracket", "bracket_solid", "支架实体")),
+    (_ci(r"悬臂|悬臂梁|cantilever"), ("cantilever_beam", "beam", "悬臂梁")),
+    (_ci(r"平板|板材|plate"), ("plate", "plate", "平板")),
+    (_ci(r"圆柱|圆筒|管|tube|pipe|cylinder"), ("cylinder", "cylinder", "圆柱 / 管")),
+    (_ci(r"梁|beam"), ("beam", "beam", "梁")),
+)
+# No-hint default: a generic structural-solid placeholder (no specific family claimed).
+_GEOMETRY_DEFAULT: tuple[str, str, str] = ("structural_solid", "solid", "通用结构实体占位")
+_GEOMETRY_PLAN_CURRENT_OBJECT = "geometry_plan"
+
+
+@dataclass(frozen=True)
+class GeometryPlanOutcome:
+    """The geometry-PLANNING decision for the GEOMETRY_VALIDATION stage.
+
+    Honesty bound: this records a deterministic geometry-FAMILY plan derived from the
+    request — it is NOT a CAD validation. No CAD kernel runs and no defect check is
+    performed (``cadKernelRan``/``defectCheckRun`` are pinned ``False`` in ``metrics``);
+    ``provenance=deterministic_agent`` therefore labels ONLY the planning text.
+    """
+
+    description: str
+    metrics: dict[str, object]
+    agent_explanation: str
+    next_action: str
+    provenance: StageProvenance
+
+
+def analyze_geometry_plan(user_request: str) -> GeometryPlanOutcome:
+    """Deterministic rule-based geometry-PLANNING agent (no LLM, no CAD kernel).
+
+    Decides the geometry family/source from the **actual** request text and discloses
+    whether it was derived from a hint or fell back to a documented default. It does NOT
+    run FreeCAD, generate a STEP, or call ``checkers.geometry_checker`` — so this is
+    planning, not the defect VALIDATION the stage name might imply. The explanation says
+    so verbatim, and the metrics pin ``cadKernelRan``/``defectCheckRun`` to ``False``.
+    """
+    req = (user_request or "").strip()
+    matched: tuple[str, str, str] | None = None
+    for pattern, spec in _GEOMETRY_RULES:
+        if pattern.search(req):
+            matched = spec
+            break
+    family, ref_source, label = matched or _GEOMETRY_DEFAULT
+    from_hint = matched is not None
+    if from_hint:
+        plan_txt = f"基于用户输入「{_snippet(req)}」规划几何 = {label}（family={family}）"
+    else:
+        plan_txt = f"请求未给出几何提示 → 采用默认{label}（family={family}）"
+    explanation = (
+        f"{plan_txt}。注意：未运行 CAD 内核、未生成 STEP、未做缺陷校验 ——"
+        f"仅确定性几何规划（未调用 LLM）。"
+    )
+    return GeometryPlanOutcome(
+        description=f"规划几何方案（{label}）",
+        metrics={
+            "geometryFamily": family,
+            "refSource": ref_source,
+            "fromHint": from_hint,
+            # machine-checkable honesty flags: NO CAD kernel / defect check ran here, so
+            # deterministic_agent can never be misread as "the geometry was validated".
+            "cadKernelRan": False,
+            "defectCheckRun": False,
+        },
+        agent_explanation=explanation,
+        next_action="进入材料赋予。",
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+    )
+
+
+def geometry_plan_to_stage_state(
+    run_id: str,
+    outcome: GeometryPlanOutcome,
+    *,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project a :class:`GeometryPlanOutcome` into the GEOMETRY_VALIDATION wire state.
+
+    ``current_object`` is a planning-intent label (``geometry_plan``), NEVER the scripted
+    spec's ``bracket_solid`` (which would imply a real solid had been validated).
+    """
+    return StageState(
+        run_id=run_id,
+        stage=WorkflowStage.GEOMETRY_VALIDATION,
+        status=status,
+        progress=progress,
+        current_object=_GEOMETRY_PLAN_CURRENT_OBJECT,
+        description=outcome.description,
+        metrics=StageMetrics.model_validate(outcome.metrics),
+        artifacts=StageArtifacts(),
+        agent_explanation=outcome.agent_explanation,
+        next_action=outcome.next_action,
+        provenance=outcome.provenance,
+        updated_at=_now_iso(),
     )

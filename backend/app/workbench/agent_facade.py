@@ -98,16 +98,25 @@ def run_node(
     :class:`StageState` (ADR-028 D4).
 
     Wired stages: ``PROJECT_INTAKE`` (rule-based intake; ``allow_llm`` opts into the
-    real LLM architect, key-gated, falling back to deterministic on any failure) and
-    the three setup-planner stages (``MATERIAL_ASSIGNMENT`` / ``BOUNDARY_CONDITIONS``
-    / ``LOAD_CASES``) via the deterministic :func:`state_projection.analyze_setup`.
-    Every other (tool/artifact-bound) stage raises ``NotImplementedError`` — the
-    facade never silently fabricates agent output for an un-wired stage.
+    real LLM architect, key-gated, falling back to deterministic on any failure); the
+    three setup-planner stages (``MATERIAL_ASSIGNMENT`` / ``BOUNDARY_CONDITIONS`` /
+    ``LOAD_CASES``) via the deterministic :func:`state_projection.analyze_setup`; and
+    ``GEOMETRY_VALIDATION`` via :func:`state_projection.analyze_geometry_plan` — a
+    deterministic geometry **planner** (NOT a CAD-kernel validation: no FreeCAD/STEP/
+    defect-check runs; it discloses this and pins ``cadKernelRan``/``defectCheckRun``
+    ``False``). Every other (tool/artifact-bound) stage raises ``NotImplementedError`` —
+    the facade never silently fabricates agent output for an un-wired stage.
     """
     if stage in state_projection.SETUP_STAGES:
         outcome = state_projection.analyze_setup(user_request or "")
         return state_projection.setup_outcome_to_stage_state(
             run_id, stage, outcome, status=status, progress=progress
+        )
+
+    if stage is WorkflowStage.GEOMETRY_VALIDATION:
+        geom = state_projection.analyze_geometry_plan(user_request or "")
+        return state_projection.geometry_plan_to_stage_state(
+            run_id, geom, status=status, progress=progress
         )
 
     if stage is not WorkflowStage.PROJECT_INTAKE:

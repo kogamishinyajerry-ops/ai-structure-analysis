@@ -152,13 +152,15 @@ def test_pipeline_intake_agent_driven_on_genuine_request() -> None:
     run = MockWorkflowStore().run_sync(user_request="对支架做静力分析，关注应力与位移")
     by_stage = {s.stage: s for s in run.stages}
     assert run.stages[0].stage is WorkflowStage.PROJECT_INTAKE
-    # FIVE stages are genuinely agent-driven on a genuine-request run: the rule-based
-    # intake (P1), the three deterministic setup-planner stages (P-setup), and the
-    # reviewer gate's real routing decision (P3). Every OTHER stage stays scripted_demo
-    # — wiring these must not relabel the remaining eight (ADR-028 D2). This set is
-    # expanded ADDITIVELY as new agent stages are wired (NOT a threshold loosening).
+    # SIX stages are genuinely agent-driven on a genuine-request run: the rule-based
+    # intake (P1), the deterministic geometry PLANNER (P-geomplan — planning only, no CAD
+    # kernel), the three deterministic setup-planner stages (P-setup), and the reviewer
+    # gate's real routing decision (P3). Every OTHER stage stays scripted_demo — wiring
+    # these must not relabel the remaining seven (ADR-028 D2). This set is expanded
+    # ADDITIVELY as new agent stages are wired (NOT a threshold loosening).
     _AGENT_STAGES = {
         WorkflowStage.PROJECT_INTAKE,
+        WorkflowStage.GEOMETRY_VALIDATION,
         WorkflowStage.MATERIAL_ASSIGNMENT,
         WorkflowStage.BOUNDARY_CONDITIONS,
         WorkflowStage.LOAD_CASES,

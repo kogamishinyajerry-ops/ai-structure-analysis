@@ -52,12 +52,14 @@ class StageOrderError(Exception):
 _WARNING_STAGES = frozenset({WorkflowStage.MESH_QUALITY_CHECK, WorkflowStage.RESULT_ANALYSIS})
 
 # Stages routed through the real agent facade when a genuine user_request is present
-# (ADR-028): intake (P1) + the three deterministic setup-planner stages (P-setup).
+# (ADR-028): intake (P1) + the three deterministic setup-planner stages (P-setup) + the
+# deterministic geometry-PLANNER stage (P-geomplan; planning only — no CAD kernel runs).
 # Defined locally from schema enums — mock_pipeline must NOT import agents.* (ADR-015;
 # only agent_facade.py may). The facade raises NotImplementedError for any other stage.
 _AGENT_REQUEST_STAGES = frozenset(
     {
         WorkflowStage.PROJECT_INTAKE,
+        WorkflowStage.GEOMETRY_VALIDATION,
         WorkflowStage.MATERIAL_ASSIGNMENT,
         WorkflowStage.BOUNDARY_CONDITIONS,
         WorkflowStage.LOAD_CASES,
@@ -389,9 +391,12 @@ def _build_stage_state(
 ) -> StageState:
     # ADR-028 (D4 facade seam): route the genuinely agent-driven stages through the
     # real agent nodes when there is genuine user input to analyze and we are on the
-    # mock-demo specs path. Wired today: PROJECT_INTAKE (rule-based intake, P1) and the
+    # mock-demo specs path. Wired today: PROJECT_INTAKE (rule-based intake, P1); the
     # three setup-planner stages MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES
-    # (deterministic analyze_setup, P-setup). Delegation goes through the ADR-015 choke
+    # (deterministic analyze_setup, P-setup); and GEOMETRY_VALIDATION (deterministic
+    # geometry PLANNER, P-geomplan — planning only, no CAD kernel / STEP / defect check,
+    # so it replaces the scripted spec's fabricated shortEdges/slivers metrics here).
+    # Delegation goes through the ADR-015 choke
     # point backend/app/workbench/agent_facade.py. Guards keeping this surgical + honest:
     #   * error set       → demo failure injection is NOT agent-authored → scripted;
     #   * specs ≠ mock     → the LE10 real-benchmark path stays scripted until later;
