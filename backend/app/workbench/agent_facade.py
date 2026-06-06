@@ -66,9 +66,7 @@ def decide_recovery(
     ``scripted_demo``; the recovery is surfaced via ``metrics.recovery`` with its own
     ``agentDriven`` / ``faultInjected`` flags (it must never increment the N/13 count).
     """
-    return state_projection.decide_recovery(
-        fault_class=fault_class, retry_budgets=retry_budgets
-    )
+    return state_projection.decide_recovery(fault_class=fault_class, retry_budgets=retry_budgets)
 
 
 def _try_intake_llm(user_request: str, existing_case_id: str | None) -> dict | None:
@@ -115,8 +113,15 @@ def run_node(
         )
 
     if stage is WorkflowStage.GEOMETRY_VALIDATION:
+        # P-handoff: forward the upstream PROJECT_INTAKE case id so the geometry node consumes
+        # intake's decision (the first real inter-agent data dependency) instead of fabricating
+        # its own case number. Only the crossing (dummy-NACA) path uses it.
         return state_projection.geometry_stage_state(
-            run_id, user_request or "", status=status, progress=progress
+            run_id,
+            user_request or "",
+            upstream_case_id=existing_case_id,
+            status=status,
+            progress=progress,
         )
 
     if stage is not WorkflowStage.PROJECT_INTAKE:

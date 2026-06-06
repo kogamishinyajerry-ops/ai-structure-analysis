@@ -377,6 +377,22 @@ def _le10_real_metrics(stage: WorkflowStage, solve_ctx: dict) -> dict | None:
     return None
 
 
+def _intake_case_id(stages: list[StageState]) -> str | None:
+    """Read the PROJECT_INTAKE stage's request-derived ``caseId`` (a plain wire string) so a
+    downstream agent stage can CONSUME it (ADR-028 P-handoff — the first real
+    upstream→downstream inter-agent data dependency in the live pipeline).
+
+    Returns ``None`` when intake has not produced one yet — its stage is still PENDING while it
+    is itself being built, and a scripted / no-request run never emits a ``caseId`` — so the
+    geometry node falls back to its stand-in case id. Reads ONLY the already-projected wire
+    metrics; NO ``agents.*`` import (ADR-015 line-57 pin keeps this module facade-free)."""
+    idx = CANONICAL_STAGE_ORDER.index(WorkflowStage.PROJECT_INTAKE)
+    if idx >= len(stages):
+        return None
+    val = stages[idx].metrics.model_dump(by_alias=True).get("caseId")
+    return val if isinstance(val, str) and val.strip() else None
+
+
 def _build_stage_state(
     run_id: str,
     stage: WorkflowStage,
@@ -388,6 +404,7 @@ def _build_stage_state(
     solve_ctx: dict | None = None,
     error: StageError | None = None,
     user_request: str | None = None,
+    upstream_case_id: str | None = None,
 ) -> StageState:
     # ADR-028 (D4 facade seam): route the genuinely agent-driven stages through the
     # real agent nodes when there is genuine user input to analyze and we are on the
@@ -413,10 +430,15 @@ def _build_stage_state(
     ):
         from app.workbench.agent_facade import run_node as _run_agent_node
 
+        # ADR-028 P-handoff: forward the upstream PROJECT_INTAKE case id (a plain wire string
+        # read back from the already-projected intake stage — NO agents.* import here, ADR-015
+        # line-57 pin). Only the GEOMETRY_VALIDATION crossing path consumes it; intake itself
+        # sees None (its stage is still PENDING when it is built) and the setup stages ignore it.
         return _run_agent_node(
             stage,
             run_id=run_id,
             user_request=user_request,
+            existing_case_id=upstream_case_id,
             status=status,
             progress=progress,
             allow_llm=False,
@@ -652,9 +674,7 @@ class MockWorkflowStore:
         ``run_sync``) is unaffected."""
         return self._new_run(label, fail_at_stage, user_request)
 
-    def run_one_stage(
-        self, run_id: str, stage: WorkflowStage, fail: bool = False
-    ) -> StageState:
+    def run_one_stage(self, run_id: str, stage: WorkflowStage, fail: bool = False) -> StageState:
         """M2: execute exactly ONE stage for an existing run (sync, no sleeps).
 
         Idempotent + order-guarded so a Trigger.dev retry (same idempotency key)
@@ -704,8 +724,13 @@ class MockWorkflowStore:
             run.status = StageStatus.RUNNING
             if fail:
                 st = _build_stage_state(
-                    run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, specs=specs, error=self._fail_error(stage),
+                    run.run_id,
+                    stage,
+                    StageStatus.FAILED,
+                    1.0,
+                    backend=backend,
+                    specs=specs,
+                    error=self._fail_error(stage),
                 )
             else:
                 solve_ctx: dict | None = None
@@ -714,8 +739,12 @@ class MockWorkflowStore:
                         solve_ctx = self._run_real_le10(run.run_id)
                     except Exception as exc:  # honest failure, not a silent mock
                         st = _build_stage_state(
-                            run.run_id, stage, StageStatus.FAILED, 1.0,
-                            backend=backend, specs=specs,
+                            run.run_id,
+                            stage,
+                            StageStatus.FAILED,
+                            1.0,
+                            backend=backend,
+                            specs=specs,
                             error=StageError(
                                 fault_class=FaultClass.SOLVER_CONVERGENCE,
                                 message=str(exc),
@@ -728,8 +757,15 @@ class MockWorkflowStore:
                 elif real:
                     solve_ctx = self._solve_ctx.get(run.run_id)
                 st = _build_stage_state(
-                    run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
+                    run.run_id,
+                    stage,
+                    _terminal_status(stage, real, solve_ctx),
+                    1.0,
+                    backend=backend,
+                    specs=specs,
+                    solve_ctx=solve_ctx,
+                    user_request=run.user_request,
+                    upstream_case_id=_intake_case_id(run.stages),
                 )
             run.stages[idx] = st
             if fail or stage is CANONICAL_STAGE_ORDER[-1]:
@@ -758,8 +794,13 @@ class MockWorkflowStore:
             run.current_stage = stage
             if fail_at_stage is stage:
                 run.stages[idx] = _build_stage_state(
-                    run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, specs=specs, error=self._fail_error(stage),
+                    run.run_id,
+                    stage,
+                    StageStatus.FAILED,
+                    1.0,
+                    backend=backend,
+                    specs=specs,
+                    error=self._fail_error(stage),
                 )
                 break
             if real and stage is WorkflowStage.SOLVER_RUN:
@@ -767,8 +808,12 @@ class MockWorkflowStore:
                     solve_ctx = self._run_real_le10(run.run_id)
                 except Exception as exc:
                     run.stages[idx] = _build_stage_state(
-                        run.run_id, stage, StageStatus.FAILED, 1.0,
-                        backend=backend, specs=specs,
+                        run.run_id,
+                        stage,
+                        StageStatus.FAILED,
+                        1.0,
+                        backend=backend,
+                        specs=specs,
                         error=StageError(
                             fault_class=FaultClass.SOLVER_CONVERGENCE,
                             message=str(exc),
@@ -777,8 +822,15 @@ class MockWorkflowStore:
                     )
                     break
             run.stages[idx] = _build_stage_state(
-                run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
+                run.run_id,
+                stage,
+                _terminal_status(stage, real, solve_ctx),
+                1.0,
+                backend=backend,
+                specs=specs,
+                solve_ctx=solve_ctx,
+                user_request=run.user_request,
+                upstream_case_id=_intake_case_id(run.stages),
             )
         self._finalize(run)
         return run
@@ -798,14 +850,26 @@ class MockWorkflowStore:
             run.current_stage = stage
             for p in _PROGRESS_TICKS:
                 run.stages[idx] = _build_stage_state(
-                    run.run_id, stage, StageStatus.RUNNING, p,
-                    backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
+                    run.run_id,
+                    stage,
+                    StageStatus.RUNNING,
+                    p,
+                    backend=backend,
+                    specs=specs,
+                    solve_ctx=solve_ctx,
+                    user_request=run.user_request,
+                    upstream_case_id=_intake_case_id(run.stages),
                 )
                 await asyncio.sleep(tick_delay_s)
             if run.fail_at_stage is stage:
                 run.stages[idx] = _build_stage_state(
-                    run.run_id, stage, StageStatus.FAILED, 1.0,
-                    backend=backend, specs=specs, error=self._fail_error(stage),
+                    run.run_id,
+                    stage,
+                    StageStatus.FAILED,
+                    1.0,
+                    backend=backend,
+                    specs=specs,
+                    error=self._fail_error(stage),
                 )
                 break
             if real and stage is WorkflowStage.SOLVER_RUN:
@@ -814,8 +878,12 @@ class MockWorkflowStore:
                     solve_ctx = await asyncio.to_thread(self._run_real_le10, run.run_id)
                 except Exception as exc:
                     run.stages[idx] = _build_stage_state(
-                        run.run_id, stage, StageStatus.FAILED, 1.0,
-                        backend=backend, specs=specs,
+                        run.run_id,
+                        stage,
+                        StageStatus.FAILED,
+                        1.0,
+                        backend=backend,
+                        specs=specs,
                         error=StageError(
                             fault_class=FaultClass.SOLVER_CONVERGENCE,
                             message=str(exc),
@@ -824,8 +892,15 @@ class MockWorkflowStore:
                     )
                     break
             run.stages[idx] = _build_stage_state(
-                run.run_id, stage, _terminal_status(stage, real, solve_ctx), 1.0,
-                backend=backend, specs=specs, solve_ctx=solve_ctx, user_request=run.user_request,
+                run.run_id,
+                stage,
+                _terminal_status(stage, real, solve_ctx),
+                1.0,
+                backend=backend,
+                specs=specs,
+                solve_ctx=solve_ctx,
+                user_request=run.user_request,
+                upstream_case_id=_intake_case_id(run.stages),
             )
         self._finalize(run)
 

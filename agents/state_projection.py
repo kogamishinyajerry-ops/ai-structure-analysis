@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from agents.architect import _canonical_case_id
+from agents.architect import _canonical_case_id, _valid_case_id
 from agents.router import route_reviewer
 from schemas.sim_plan import AnalysisType, GeometrySpec, SimPlan
 from schemas.sim_state import FaultClass
@@ -915,13 +915,14 @@ def geometry_dummy_exec_to_stage_state(
     run_id: str,
     user_request: str,
     *,
+    upstream_case_id: str | None = None,
     status: StageStatus = StageStatus.SUCCESS,
     progress: float = 1.0,
 ) -> StageState:
     """Project a real-but-DUMMY ``agents.geometry.run`` execution into the
-    GEOMETRY_VALIDATION wire state (ADR-028 P-geomrun).
+    GEOMETRY_VALIDATION wire state (ADR-028 P-geomrun + P-handoff).
 
-    Honesty contract (the deliverable): the ONLY net-new claim over the planning
+    Honesty contract (the deliverable): the ONLY net-new *fidelity* claim over the planning
     stand-in is ``toolRan=True``. With no FreeCAD kernel (``FREECAD_AVAILABLE=False``) the
     driver writes a 10-byte placeholder STEP (NOT ISO-10303; ADR-008 N-3) and
     ``check_geometry``'s ``valid=True`` is a sidecar tautology — NOT a measured solid. So
@@ -929,6 +930,14 @@ def geometry_dummy_exec_to_stage_state(
     volume), ``cadKernelRan``/``defectCheckRun`` pinned ``False``, the disclosure stating
     all of it, and ``provenance=deterministic_agent`` (N/13 unchanged). Requires the dummy
     regime (raises otherwise) so a real-kernel result can never be mislabeled tier_0.
+
+    P-handoff: ``upstream_case_id`` is the PROJECT_INTAKE node's request-derived case id —
+    the FIRST real upstream→downstream inter-agent data dependency in the live pipeline. When
+    it is a valid case id the geometry node CONSUMES it (instead of fabricating the legacy
+    ``AI-FEA-P0-05`` stand-in); an absent/invalid handoff falls back to that stand-in. Only
+    the case *number* flows — the geometry itself is still a fixed NACA0012 placeholder and
+    ``analysis_type``/``objectives`` are NOT yet threaded (a partial, honest handoff). This
+    adds NO measurement and does NOT change provenance or the N/13 count.
     """
     from agents.geometry import run as run_geometry
     from tools.freecad_driver import FREECAD_AVAILABLE
@@ -943,11 +952,17 @@ def geometry_dummy_exec_to_stage_state(
         )
 
     outcome = analyze_geometry_plan(user_request)  # reuse family / refSource / fromHint
+    # P-handoff: consume the upstream intake node's case id when it handed off a valid one;
+    # only an absent/invalid handoff falls back to the legacy AI-FEA-P0-05 stand-in. This is
+    # the first real upstream→downstream inter-agent data dependency — the geometry node no
+    # longer fabricates its own case number.
+    case_id = upstream_case_id if _valid_case_id(upstream_case_id) else "AI-FEA-P0-05"
+    case_id_from_intake = case_id == upstream_case_id
     # The dummy geometry is a FIXED NACA0012 stand-in — NOT parsed from the request (the
     # 10-byte placeholder makes the specific profile cosmetic). Disclosed below so the stage
     # never reads as "the request's exact profile was executed" (Codex P-geomrun R0 P2).
     plan = SimPlan(
-        case_id="AI-FEA-P0-05",
+        case_id=case_id,
         geometry=GeometrySpec(kind="naca", parameters={"profile": "NACA0012"}),
     )
     with tempfile.TemporaryDirectory(prefix="geom_dummy_") as psd:
@@ -967,6 +982,15 @@ def geometry_dummy_exec_to_stage_state(
             "agents.geometry.run returned no geometry_path; refusing to claim toolRan=True."
         )
 
+    # P-handoff disclosure clause: state HOW the case id was obtained so the (real) handoff
+    # is never confused with a geometry capability, and a fallback is never read as a handoff.
+    handoff = (
+        f"案例号 {case_id} 系从上游 PROJECT_INTAKE 节点决策接力消费"
+        "（首个真实 upstream→downstream agent 数据依赖；仅案例号流动，"
+        "analysis_type/objectives 尚未接力 — partial honest handoff）。"
+        if case_id_from_intake
+        else f"案例号回退至占位 {case_id}（上游 intake 未提供有效案例号，非真实接力）。"
+    )
     disclosure = (
         "真实 agents/geometry.run 节点已在 live pipeline 中执行"
         "（toolRan=True，接线验证 / wiring proof）：但未检测到 FreeCAD 内核"
@@ -975,6 +999,7 @@ def geometry_dummy_exec_to_stage_state(
         " valid=True 系从硬编码 JSON sidecar 读回的 tautology、非真实测量"
         "（defectCheckRun=False，未做有效缺陷校验）；未验证任何真实几何（tier_0_dummy）。"
         "几何采用固定 NACA0012 占位 profile（非从请求逐字解析）。"
+        f"{handoff}"
         "唯一净增事实 = 真实节点已接线执行。"
     )
     family = outcome.metrics["geometryFamily"]
@@ -983,6 +1008,10 @@ def geometry_dummy_exec_to_stage_state(
         "geometryFamily": family,
         "refSource": outcome.metrics["refSource"],
         "fromHint": outcome.metrics["fromHint"],
+        # P-handoff: the case id actually consumed (intake's, or the stand-in fallback). A
+        # plain wire string — NOT a measurement — so a downstream consumer / the FE can prove
+        # the intake→geometry data dependency without inflating the fidelity tier or N/13.
+        "caseId": case_id,
         # no REAL kernel ran and the check was vacuous → both pinned False (carried from
         # the planning floor); the tier_0_dummy + disclosure carry the honest nuance.
         "cadKernelRan": False,
@@ -1009,6 +1038,7 @@ def geometry_stage_state(
     run_id: str,
     user_request: str,
     *,
+    upstream_case_id: str | None = None,
     status: StageStatus = StageStatus.SUCCESS,
     progress: float = 1.0,
 ) -> StageState:
@@ -1020,12 +1050,19 @@ def geometry_stage_state(
     would yield real geometry this tier_0 path must not mislabel) — stays on the planning
     stand-in (:func:`geometry_plan_to_stage_state`). Keeping the ``FREECAD_AVAILABLE``
     check here (agent layer) keeps the facade free of a ``tools.*`` import.
+
+    ``upstream_case_id`` (P-handoff) is the PROJECT_INTAKE node's request-derived case id,
+    consumed only on the crossing path (the planning stand-in has no SimPlan to feed it into).
     """
     from tools.freecad_driver import FREECAD_AVAILABLE
 
     outcome = analyze_geometry_plan(user_request)
     if outcome.metrics["geometryFamily"] == "naca_wing" and not FREECAD_AVAILABLE:
         return geometry_dummy_exec_to_stage_state(
-            run_id, user_request, status=status, progress=progress
+            run_id,
+            user_request,
+            upstream_case_id=upstream_case_id,
+            status=status,
+            progress=progress,
         )
     return geometry_plan_to_stage_state(run_id, outcome, status=status, progress=progress)
