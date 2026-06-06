@@ -72,3 +72,36 @@ describe('workflowClient — ADR-028 provenance surface', () => {
     expect(bodies[0]?.userRequest).toBeNull()
   })
 })
+
+describe('workflowClient — ADR-028 P-fidelity discriminator (never inflates N/13)', () => {
+  it('keeps the flat fidelityTier disclosure but drops the nested fidelity evidence', () => {
+    const st = parseStageState({
+      stage: 'geometry_validation',
+      status: 'success',
+      provenance: 'deterministic_agent',
+      metrics: {
+        fidelityTier: 'tier_0_dummy',
+        fidelity: { tier: 'tier_0_dummy', toolRan: true, dataReal: false, disclosure: 'x' },
+        someNumber: 3,
+      },
+    })
+    // flat string disclosure survives the parser -> auto-renders in the Monitor
+    expect(st.metrics.fidelityTier).toBe('tier_0_dummy')
+    // nested evidence object is dropped -> structurally cannot reach provenanceCoverage
+    expect(st.metrics.fidelity).toBeUndefined()
+  })
+
+  it('a SCRIPTED stage carrying a tier_0_dummy fidelity flag is still NOT agent-driven', () => {
+    const st = parseStageState({
+      stage: 'x',
+      status: 'success',
+      provenance: 'scripted_demo',
+      metrics: {
+        fidelityTier: 'tier_0_dummy',
+        fidelity: { tier: 'tier_0_dummy', toolRan: true, dataReal: false },
+      },
+    })
+    // the count is keyed PURELY on provenance — a fidelity flag never inflates agentDriven
+    expect(provenanceCoverage([st]).agentDriven).toBe(0)
+  })
+})

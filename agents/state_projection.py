@@ -37,6 +37,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from agents.architect import _canonical_case_id
 from agents.router import route_reviewer
@@ -59,11 +60,13 @@ __all__ = [
     "RouteOutcome",
     "SetupDecision",
     "SetupOutcome",
+    "StageFidelityTier",
     "analyze_geometry_plan",
     "analyze_intake",
     "analyze_setup",
     "decide_recovery",
     "decide_route",
+    "fidelity_metrics",
     "geometry_plan_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
@@ -818,3 +821,73 @@ def geometry_plan_to_stage_state(
         provenance=outcome.provenance,
         updated_at=_now_iso(),
     )
+
+
+# --- Tier-0/Tier-1 fidelity discriminator (ADR-028 P-fidelity) ---------------
+# A machine-checkable label distinguishing, for a TOOL-bound stage, whether the real tool
+# ran on REAL data (tier_1_real) or on DUMMY/sandbox data (tier_0_dummy). It is the
+# anti-over-claim primitive that UNBLOCKS honestly crossing the tool wall (the deferred
+# geometry.run dummy-mode): without it a vacuous dummy result could be read as a real
+# validation. It rides metrics (StageMetrics extra="allow") and is structurally incapable
+# of inflating the N/13 agent-driven count, which is keyed PURELY on StageProvenance:
+#   * the FLAT string ``metrics.fidelityTier`` survives the frontend metrics parser
+#     (which keeps number|string values) and auto-renders as the user-visible disclosure;
+#   * the NESTED ``metrics.fidelity`` dict is DROPPED by that parser (objects discarded),
+#     so it can never reach provenanceCoverage — it is the machine-checkable evidence
+#     channel asserted by the backend contract test (mirrors metrics.recovery exactly).
+# A planning-only / scripted (no-tool) stage emits NEITHER key (implicit not_applicable),
+# so existing runs are byte-unchanged (back-compat). This slice ships the vocabulary +
+# helper + its contract test; the live PRODUCER is the deferred geometry.run dummy crossing.
+
+
+class StageFidelityTier(StrEnum):
+    """Closed vocabulary for the tool-fidelity of a stage's underlying computation.
+
+    Deliberately NOT a 4th :class:`StageProvenance` value (provenance labels the TEXT
+    source; this labels the DATA fidelity of a real tool run — and a 4th provenance value
+    would be downgraded to ``scripted_demo`` by the frontend's defensive ``asProvenance``),
+    and NOT a :class:`StageState` schema field — it rides ``metrics`` (``extra="allow"``)
+    so it never expands the ADR-028 D2-sanctioned schema surface.
+    """
+
+    NOT_APPLICABLE = "not_applicable"  # no tool ran (planning-only / scripted stage)
+    TIER_0_DUMMY = "tier_0_dummy"  # real tool ran on DUMMY/sandbox data (NOT a validation)
+    TIER_1_REAL = "tier_1_real"  # real tool ran on REAL data
+
+
+def fidelity_metrics(*, tool_ran: bool, data_real: bool, disclosure: str) -> dict[str, object]:
+    """Build the fidelity-discriminator metrics for a stage, or ``{}`` if no tool ran.
+
+    Returns the two co-located keys a tool-bound producer merges into its ``metrics``: a
+    flat ``fidelityTier`` (user-visible disclosure, survives the FE parser) and a nested
+    ``fidelity`` dict (machine-checkable evidence, dropped by the FE parser so it can never
+    inflate N/13). The tier is DERIVED from ``data_real`` (``tier_0_dummy`` ⇔ not real), so
+    the closed vocabulary cannot drift. A no-tool stage (``tool_ran=False``) returns ``{}``
+    — the implicit ``not_applicable`` tier — keeping planning/scripted stages byte-unchanged.
+
+    Intentionally emits NO measurement-shaped keys (watertight/manifold/volume/shortEdges/…):
+    a dummy producer MUST suppress those so a vacuous pass can never read as a measured
+    validation (the anti-vacuous-pass invariant the next slice depends on).
+
+    A ``tier_0_dummy`` result MUST carry a non-empty ``disclosure`` caveat — this is
+    ENFORCED (raises ``ValueError``), not merely conventional, so a dummy/sandbox result
+    can never ship without an honesty hedge (ADR-028 anti-over-claim; Codex P-fidelity R0
+    P2). A genuine ``tier_1_real`` result may omit the caveat.
+    """
+    if not tool_ran:
+        return {}
+    tier = StageFidelityTier.TIER_1_REAL if data_real else StageFidelityTier.TIER_0_DUMMY
+    if tier is StageFidelityTier.TIER_0_DUMMY and not disclosure.strip():
+        raise ValueError(
+            "tier_0_dummy requires a non-empty disclosure caveat — a dummy/sandbox result "
+            "must never ship without an honesty hedge (ADR-028 anti-over-claim)."
+        )
+    return {
+        "fidelityTier": tier.value,
+        "fidelity": {
+            "tier": tier.value,
+            "toolRan": True,
+            "dataReal": data_real,
+            "disclosure": disclosure,
+        },
+    }
