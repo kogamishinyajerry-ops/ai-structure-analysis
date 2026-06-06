@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.workflow.mock_pipeline import MockWorkflowStore
-from schemas.workflow_state import StageMetrics, StageProvenance
+from schemas.workflow_state import StageMetrics, StageProvenance, WorkflowStage
 
 from agents.state_projection import StageFidelityTier, fidelity_metrics
 
@@ -131,9 +131,93 @@ def test_default_run_emits_no_fidelity_key() -> None:
         assert "fidelityTier" not in s.metrics.model_dump(by_alias=True, exclude_none=True)
 
 
-def test_genuine_request_run_stays_six_of_thirteen_and_emits_no_fidelity() -> None:
-    # No producer emits a non-na tier yet, so coverage is UNCHANGED by this slice.
+def test_non_naca_request_emits_no_fidelity_and_stays_six_of_thirteen() -> None:
+    # A NON-NACA family (bracket) stays on the planning stand-in — no tool runs, so no
+    # fidelity key is emitted (the P-geomrun crossing is NACA-gated). Coverage stays 6/13.
     run = MockWorkflowStore().run_sync(user_request="对支架做静力分析，关注应力与位移")
     assert _agent_driven(run) == 6  # intake + geometry-plan + material + BC + load + routing
     for s in run.stages:
         assert "fidelityTier" not in s.metrics.model_dump(by_alias=True, exclude_none=True)
+
+
+# --- the real geometry-node dummy crossing (P-geomrun) -----------------------
+
+_GEOM_MEASUREMENT_KEYS = (
+    "watertight",
+    "manifold",
+    "volume_m3",
+    "minFeatureSizeM",
+    "boundingBoxMm",
+    "valid",
+)
+
+
+def test_naca_request_crosses_to_real_geometry_node_as_tier_0_dummy(monkeypatch) -> None:
+    """A NACA/wing request crosses to the REAL agents.geometry.run node (dummy regime). The
+    ONLY net-new claim is toolRan=True (tier_0_dummy) — NOT a validation: NO measurement
+    keys, honesty flags pinned False, disclosure substrings present, N/13 still 6/13."""
+    # force the dummy regime so the test is deterministic regardless of a local FreeCAD
+    monkeypatch.setattr("tools.freecad_driver.FREECAD_AVAILABLE", False)
+    run = MockWorkflowStore().run_sync(user_request="分析这个机翼 NACA0012 的结构强度")
+    geom = next(s for s in run.stages if s.stage is WorkflowStage.GEOMETRY_VALIDATION)
+    assert geom.provenance is StageProvenance.DETERMINISTIC_AGENT
+    m = geom.metrics.model_dump(by_alias=True, exclude_none=True)
+    assert m["fidelityTier"] == "tier_0_dummy"  # the net-new fact: real node ran, dummy data
+    # anti-vacuous-pass: NO measurement / valid key is surfaced as a result
+    for k in _GEOM_MEASUREMENT_KEYS:
+        assert k not in m
+    assert m["cadKernelRan"] is False  # no real kernel ran (FREECAD_AVAILABLE=False)
+    assert m["defectCheckRun"] is False  # the check was vacuous (sidecar tautology)
+    # disclosure substrings machine-pinned so the claim cannot silently inflate (Codex
+    # P-geomrun R0 P2: pin the FULL contract, not just the FREECAD_AVAILABLE token)
+    expl = geom.agent_explanation or ""
+    assert "ADR-008 N-3" in expl
+    assert "FREECAD_AVAILABLE=False" in expl  # the no-kernel fact, not just the token
+    assert "10 字节" in expl  # the placeholder STEP size
+    assert "tautology" in expl  # the vacuous valid=True
+    assert "defectCheckRun=False" in expl  # no meaningful defect check
+    assert "未验证" in expl  # explicit "no geometry validated"
+    assert "固定 NACA0012" in expl and "非从请求" in expl  # fixed stand-in profile disclosed
+    # N/13 UNCHANGED: the crossing UPGRADES geometry's fidelity, it does not add a count
+    assert _agent_driven(run) == 6
+    # ONLY GEOMETRY_VALIDATION carries the fidelity flag
+    for s in run.stages:
+        if s.stage is not WorkflowStage.GEOMETRY_VALIDATION:
+            assert "fidelityTier" not in s.metrics.model_dump(by_alias=True, exclude_none=True)
+
+
+def test_geometry_stage_state_gates_naca_only(monkeypatch) -> None:
+    from agents.state_projection import geometry_stage_state
+
+    monkeypatch.setattr("tools.freecad_driver.FREECAD_AVAILABLE", False)
+    naca = geometry_stage_state("r", "分析机翼 NACA0012")
+    bracket = geometry_stage_state("r", "分析钢制支架")
+    nm = naca.metrics.model_dump(by_alias=True, exclude_none=True)
+    bm = bracket.metrics.model_dump(by_alias=True, exclude_none=True)
+    assert nm["fidelityTier"] == "tier_0_dummy"  # naca crosses to the real node
+    assert "fidelityTier" not in bm  # bracket stays on the planning stand-in
+    assert bm["cadKernelRan"] is False  # planning stand-in unchanged
+
+
+def test_missing_geometry_path_refuses_to_claim_tool_ran(monkeypatch) -> None:
+    """If agents.geometry.run returns without the geometry_path wiring fact, the projector
+    must REFUSE to build a success stage that hard-claims toolRan=True (Codex P-geomrun R0
+    P1) — it raises rather than fabricate the wiring claim."""
+    from agents import state_projection
+
+    monkeypatch.setattr("tools.freecad_driver.FREECAD_AVAILABLE", False)
+    monkeypatch.setattr("agents.geometry.run", lambda state: {"fault_class": None})
+    with pytest.raises(RuntimeError, match="no geometry_path"):
+        state_projection.geometry_dummy_exec_to_stage_state("r", "分析机翼 NACA0012")
+
+
+def test_freecad_present_falls_back_to_planning_not_mislabeled_tier_0(monkeypatch) -> None:
+    """Defense-in-depth: a host WITH a real FreeCAD kernel would produce real geometry — the
+    tier_0_dummy projector must never run against it, so the dispatcher falls back to the
+    planning stand-in (no fidelity flag) rather than mislabel a real result tier_0_dummy."""
+    from agents.state_projection import geometry_stage_state
+
+    monkeypatch.setattr("tools.freecad_driver.FREECAD_AVAILABLE", True)
+    naca = geometry_stage_state("r", "分析机翼 NACA0012")
+    nm = naca.metrics.model_dump(by_alias=True, exclude_none=True)
+    assert "fidelityTier" not in nm  # fell back to planning; no tier_0 mislabel

@@ -34,6 +34,7 @@ can run hermetically; the facade raises for them rather than fake it.
 from __future__ import annotations
 
 import re
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,7 +42,7 @@ from enum import StrEnum
 
 from agents.architect import _canonical_case_id
 from agents.router import route_reviewer
-from schemas.sim_plan import AnalysisType, SimPlan
+from schemas.sim_plan import AnalysisType, GeometrySpec, SimPlan
 from schemas.sim_state import FaultClass
 from schemas.workflow_state import (
     StageArtifacts,
@@ -67,7 +68,9 @@ __all__ = [
     "decide_recovery",
     "decide_route",
     "fidelity_metrics",
+    "geometry_dummy_exec_to_stage_state",
     "geometry_plan_to_stage_state",
+    "geometry_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
@@ -891,3 +894,138 @@ def fidelity_metrics(*, tool_ran: bool, data_real: bool, disclosure: str) -> dic
             "disclosure": disclosure,
         },
     }
+
+
+# --- Real geometry-node dummy crossing (ADR-028 P-geomrun) --------------------
+# The FIRST time a real tool-bound agent node executes in the live pipeline: for a
+# NACA/wing request, CALL the real agents.geometry.run under execution_mode=dummy.
+# CRUX (adjudicated by pre-flight wf_2cd96131-8f8, stance REFRAME): on dummy data
+# check_geometry's valid=True is a JSON round-trip tautology (read back from the
+# sidecars the dummy writer hardcoded), NOT a measurement — so the ONLY net-new honest
+# fact over the planning stand-in is toolRan=True (the real node + checker code ran).
+# It is therefore an ADDITIVE tier_0_dummy wiring-proof, NOT a validation: NO measurement
+# keys surfaced, cadKernelRan/defectCheckRun pinned False, the disclosure says all of it,
+# provenance stays deterministic_agent (N/13 UNCHANGED — architecture progress, not a
+# coverage increase). Gated to the dummy regime (FREECAD_AVAILABLE=False); a real kernel
+# would produce real geometry (tier_1_real) which this tier_0 projection must never
+# mislabel, so the dispatcher routes a real-kernel host back to the planning stand-in.
+
+
+def geometry_dummy_exec_to_stage_state(
+    run_id: str,
+    user_request: str,
+    *,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project a real-but-DUMMY ``agents.geometry.run`` execution into the
+    GEOMETRY_VALIDATION wire state (ADR-028 P-geomrun).
+
+    Honesty contract (the deliverable): the ONLY net-new claim over the planning
+    stand-in is ``toolRan=True``. With no FreeCAD kernel (``FREECAD_AVAILABLE=False``) the
+    driver writes a 10-byte placeholder STEP (NOT ISO-10303; ADR-008 N-3) and
+    ``check_geometry``'s ``valid=True`` is a sidecar tautology — NOT a measured solid. So
+    this rides ``fidelityTier=tier_0_dummy`` with NO measurement keys (watertight/manifold/
+    volume), ``cadKernelRan``/``defectCheckRun`` pinned ``False``, the disclosure stating
+    all of it, and ``provenance=deterministic_agent`` (N/13 unchanged). Requires the dummy
+    regime (raises otherwise) so a real-kernel result can never be mislabeled tier_0.
+    """
+    from agents.geometry import run as run_geometry
+    from tools.freecad_driver import FREECAD_AVAILABLE
+
+    if FREECAD_AVAILABLE:
+        # Defense-in-depth: a real kernel produces REAL geometry (tier_1_real). This
+        # tier_0_dummy projector must never run against it — the dispatcher gates on
+        # `not FREECAD_AVAILABLE`, but assert it here too so a direct call can't mislabel.
+        raise RuntimeError(
+            "geometry_dummy_exec_to_stage_state requires the dummy regime "
+            "(FREECAD_AVAILABLE=False); a real kernel must route to a tier_1_real path."
+        )
+
+    outcome = analyze_geometry_plan(user_request)  # reuse family / refSource / fromHint
+    # The dummy geometry is a FIXED NACA0012 stand-in — NOT parsed from the request (the
+    # 10-byte placeholder makes the specific profile cosmetic). Disclosed below so the stage
+    # never reads as "the request's exact profile was executed" (Codex P-geomrun R0 P2).
+    plan = SimPlan(
+        case_id="AI-FEA-P0-05",
+        geometry=GeometrySpec(kind="naca", parameters={"profile": "NACA0012"}),
+    )
+    with tempfile.TemporaryDirectory(prefix="geom_dummy_") as psd:
+        state = {
+            "plan": plan,
+            "project_state_dir": psd,
+            "execution_mode": {"geometry_source": "dummy"},
+        }
+        result = run_geometry(state)  # REAL node + checker execute; dummy data
+        # Retain NO path/artifact under psd; surface NO measurement from the (tautological)
+        # check report — a geometry_path is the wiring fact proving the node executed.
+        tool_ran = "geometry_path" in result
+    if not tool_ran:
+        # The wiring fact is absent → the node did NOT execute as claimed. Refuse to build a
+        # SUCCESS stage whose disclosure hard-claims toolRan=True (Codex P-geomrun R0 P1).
+        raise RuntimeError(
+            "agents.geometry.run returned no geometry_path; refusing to claim toolRan=True."
+        )
+
+    disclosure = (
+        "真实 agents/geometry.run 节点已在 live pipeline 中执行"
+        "（toolRan=True，接线验证 / wiring proof）：但未检测到 FreeCAD 内核"
+        "（FREECAD_AVAILABLE=False，cadKernelRan=False），仅写出 10 字节占位 STEP"
+        "（非 ISO-10303，ADR-008 N-3「NOT valid for Demo Gate」）；check_geometry 返回的"
+        " valid=True 系从硬编码 JSON sidecar 读回的 tautology、非真实测量"
+        "（defectCheckRun=False，未做有效缺陷校验）；未验证任何真实几何（tier_0_dummy）。"
+        "几何采用固定 NACA0012 占位 profile（非从请求逐字解析）。"
+        "唯一净增事实 = 真实节点已接线执行。"
+    )
+    family = outcome.metrics["geometryFamily"]
+    explanation = f"几何 family = {family}（源自请求确定性规划）。{disclosure}"
+    metrics: dict[str, object] = {
+        "geometryFamily": family,
+        "refSource": outcome.metrics["refSource"],
+        "fromHint": outcome.metrics["fromHint"],
+        # no REAL kernel ran and the check was vacuous → both pinned False (carried from
+        # the planning floor); the tier_0_dummy + disclosure carry the honest nuance.
+        "cadKernelRan": False,
+        "defectCheckRun": False,
+    }
+    metrics.update(fidelity_metrics(tool_ran=tool_ran, data_real=False, disclosure=disclosure))
+    return StageState(
+        run_id=run_id,
+        stage=WorkflowStage.GEOMETRY_VALIDATION,
+        status=status,
+        progress=progress,
+        current_object=_GEOMETRY_PLAN_CURRENT_OBJECT,
+        description=f"几何节点 dummy 执行（{family}）",
+        metrics=StageMetrics.model_validate(metrics),
+        artifacts=StageArtifacts(),  # the dummy STEP lived under the temp dir; nothing real
+        agent_explanation=explanation,
+        next_action=outcome.next_action,
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+        updated_at=_now_iso(),
+    )
+
+
+def geometry_stage_state(
+    run_id: str,
+    user_request: str,
+    *,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Route the GEOMETRY_VALIDATION stage (ADR-028).
+
+    A NACA/wing request **in the dummy regime** crosses to the real geometry node
+    (:func:`geometry_dummy_exec_to_stage_state`, tier_0_dummy wiring proof); every other
+    family — and any host with a real FreeCAD kernel (``FREECAD_AVAILABLE=True``, which
+    would yield real geometry this tier_0 path must not mislabel) — stays on the planning
+    stand-in (:func:`geometry_plan_to_stage_state`). Keeping the ``FREECAD_AVAILABLE``
+    check here (agent layer) keeps the facade free of a ``tools.*`` import.
+    """
+    from tools.freecad_driver import FREECAD_AVAILABLE
+
+    outcome = analyze_geometry_plan(user_request)
+    if outcome.metrics["geometryFamily"] == "naca_wing" and not FREECAD_AVAILABLE:
+        return geometry_dummy_exec_to_stage_state(
+            run_id, user_request, status=status, progress=progress
+        )
+    return geometry_plan_to_stage_state(run_id, outcome, status=status, progress=progress)
