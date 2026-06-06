@@ -7,17 +7,22 @@ The workbench facade (``backend/app/workbench/agent_facade.py``) calls into here
 ``StageState`` returned is the already-projected wire object the facade hands back, so
 the facade never touches ``SimState``.
 
-ADR-028 P1 scope (D6): the ``PROJECT_INTAKE`` stage only.
+Wired agent nodes (each a deterministic "rule-based agent" stand-in for the LLM
+architect's work, per ADR-028 D5 — all hermetic, no LLM/tool/artifact dependency):
 
-* :func:`analyze_intake` is the **deterministic** ("rule-based agent", per ADR-028 D5)
-  intake node — it derives physics type, objectives and a naming-compliant case id
-  from the **actual** request text with **no LLM call**, so its explanation varies
-  with input (the honest improvement over the former single hardcoded constant).
-* :func:`sim_state_to_stage_state` is the ADR-028 D4-named projector — it maps a
-  **completed SimState** (the LLM architect's output) into the same wire shape with
+* :func:`analyze_intake` (P1) — derives physics type, objectives and a naming-compliant
+  case id from the **actual** request text; its explanation varies with input.
+* :func:`decide_route` (P3) — runs the real :func:`agents.router.route_reviewer` to pick
+  the next agent at the reviewer gate (proceed / re-run / human_fallback).
+* :func:`analyze_setup` (P-setup) — decides which material / boundary-condition topology
+  / load to apply for the MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES stages,
+  disclosing whether each was derived from a request hint or fell back to a default.
+* :func:`sim_state_to_stage_state` is the ADR-028 D4 LLM projector — it maps a
+  **completed SimState** (the LLM architect's output) to the wire shape with
   ``provenance = llm_agent``.
 
-Remaining stages are wired in P3, which extends the projector beyond intake.
+The tool/artifact-bound stages (CAD/geometry/mesh/solve/post/report) remain scripted in
+the demo until they can run hermetically; the facade raises for them rather than fake it.
 """
 
 from __future__ import annotations
@@ -41,11 +46,16 @@ from schemas.workflow_state import (
 )
 
 __all__ = [
+    "SETUP_STAGES",
     "IntakeOutcome",
     "RouteOutcome",
+    "SetupDecision",
+    "SetupOutcome",
     "analyze_intake",
+    "analyze_setup",
     "decide_route",
     "intake_outcome_to_stage_state",
+    "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
 ]
 
@@ -336,4 +346,284 @@ def decide_route(
         agent_explanation=explanation,
         next_action=f"下一步 → {node_label}。",
         provenance=StageProvenance.DETERMINISTIC_AGENT,
+    )
+
+
+# --- Setup planner node (ADR-028 P-setup) ------------------------------------
+# A deterministic rule-based planner that decides WHICH material / boundary-
+# condition topology / load to apply from the request text — the same kind of
+# architect work the LLM does as part of a SimPlan, here as the honest rule-based
+# stand-in (mirrors analyze_intake). When the request gives no hint for a field
+# the planner falls back to a documented default AND the explanation discloses it,
+# so provenance=deterministic_agent describes ONLY the planning decision — never an
+# inference from real geometry (no FreeCAD/gmsh/ccx run here; mock numbers untouched).
+
+# Material rules: (pattern, (name, youngs_modulus_pa, poissons_ratio, density)).
+# Most specific first ("不锈钢"/stainless before the bare "钢"/steel rule).
+_MATERIAL_RULES: tuple[tuple[re.Pattern[str], tuple[str, float, float, float]], ...] = (
+    (_ci(r"不锈钢|stainless"), ("Stainless Steel", 1.93e11, 0.31, 8000.0)),
+    (_ci(r"碳钢|结构钢|钢|steel"), ("Structural Steel", 2.1e11, 0.30, 7850.0)),
+    (_ci(r"钛合金|钛|titanium|ti-?6al"), ("Ti-6Al-4V", 1.138e11, 0.342, 4430.0)),
+    (_ci(r"铝合金|铝|alumin"), ("Aluminum 7075", 7.17e10, 0.33, 2810.0)),
+)
+# No-hint default: structural steel (the most common structural-FEA material).
+_MATERIAL_DEFAULT: tuple[str, float, float, float] = (
+    "Structural Steel",
+    2.1e11,
+    0.30,
+    7850.0,
+)
+
+# BC rules: (pattern, (semantic, kind, target, label_zh)).
+_BC_RULES: tuple[tuple[re.Pattern[str], tuple[str, str, str, str]], ...] = (
+    (
+        _ci(r"简支|铰支|pinned|simply[\s-]*support"),
+        ("pinned_support", "pinned", "Nedge", "简支 / 铰支约束"),
+    ),
+    (_ci(r"对称|symmetr"), ("symmetry", "symmetry", "Nsym", "对称约束")),
+    (
+        _ci(r"固定|固支|嵌固|约束|安装面|fixed|clamp|constrain|mount"),
+        ("fixed_base", "fixed", "Nroot", "固定约束（固支底面）"),
+    ),
+)
+_BC_DEFAULT: tuple[str, str, str, str] = (
+    "fixed_base",
+    "fixed",
+    "Nroot",
+    "固定底面 (fixed_base/Nroot)",
+)
+
+# Load kind rules: (pattern, (semantic, kind, target, label_zh)).
+_LOAD_KIND_RULES: tuple[tuple[re.Pattern[str], tuple[str, str, str, str]], ...] = (
+    (_ci(r"压力|压强|pressure"), ("pressure_load", "pressure", "Sface", "压力")),
+    (
+        _ci(r"拉力|拉伸|tension|tensile|traction"),
+        ("tension_load", "traction", "Sface", "拉力"),
+    ),
+    (_ci(r"弯矩|扭矩|moment|torque"), ("moment_load", "moment", "Nref", "力矩")),
+    (
+        _ci(r"集中力|点载荷|tip|末端|端部|concentrated"),
+        ("tip_load", "concentrated_force", "Ntip", "集中力"),
+    ),
+)
+_LOAD_DEFAULT: tuple[str, str, str, str] = (
+    "tip_load",
+    "concentrated_force",
+    "Ntip",
+    "末端集中力",
+)
+_LOAD_MAG_RE = _ci(r"(\d+(?:\.\d+)?)\s*(kN|MN|N|MPa|kPa|GPa|Pa)\b")
+_UNIT_CANON = {
+    "kn": "kN",
+    "mn": "MN",
+    "n": "N",
+    "mpa": "MPa",
+    "kpa": "kPa",
+    "gpa": "GPa",
+    "pa": "Pa",
+}
+
+
+@dataclass(frozen=True)
+class SetupDecision:
+    """One setup stage's decision (material / BC / load) + how it was reached."""
+
+    description: str
+    metrics: dict[str, object]
+    agent_explanation: str
+    next_action: str
+    from_hint: bool
+
+
+@dataclass(frozen=True)
+class SetupOutcome:
+    """The setup planner's three decisions + their shared provenance."""
+
+    material: SetupDecision
+    bc: SetupDecision
+    load: SetupDecision
+    provenance: StageProvenance
+
+
+def _eng(value: float) -> str:
+    return f"{value:.3g}"
+
+
+def _decide_material(req: str) -> SetupDecision:
+    matched: tuple[str, float, float, float] | None = None
+    for pattern, spec in _MATERIAL_RULES:
+        if pattern.search(req):
+            matched = spec
+            break
+    name, e_pa, nu, rho = matched or _MATERIAL_DEFAULT
+    from_hint = matched is not None
+    if from_hint:
+        explanation = (
+            f"基于用户输入「{_snippet(req)}」识别材料 = {name}"
+            f"（E={_eng(e_pa)} Pa，ν={nu}）。确定性规则解析，未调用 LLM。"
+        )
+    else:
+        explanation = (
+            f"请求未指定材料 → 采用默认 {name}"
+            f"（E={_eng(e_pa)} Pa，ν={nu}）。确定性规则解析，未调用 LLM。"
+        )
+    return SetupDecision(
+        description=f"赋予各向同性材料（{name}）",
+        metrics={
+            "materialName": name,
+            "youngsModulusPa": e_pa,
+            "poissonsRatio": nu,
+            "densityKgM3": rho,
+            "fromHint": from_hint,
+        },
+        agent_explanation=explanation,
+        next_action="设置边界条件。",
+        from_hint=from_hint,
+    )
+
+
+def _decide_bc(req: str) -> SetupDecision:
+    matched: tuple[str, str, str, str] | None = None
+    for pattern, spec in _BC_RULES:
+        if pattern.search(req):
+            matched = spec
+            break
+    semantic, kind, target, label = matched or _BC_DEFAULT
+    from_hint = matched is not None
+    if from_hint:
+        explanation = (
+            f"基于用户输入「{_snippet(req)}」识别约束 = {label}"
+            f"（{semantic}/{target}）。确定性规则解析，未调用 LLM。"
+        )
+    else:
+        explanation = f"请求未给出约束提示 → 采用默认{label}。确定性规则解析，未调用 LLM。"
+    return SetupDecision(
+        description=f"设置约束（{label}）",
+        metrics={
+            "bcSemantic": semantic,
+            "bcKind": kind,
+            "target": target,
+            "fromHint": from_hint,
+        },
+        agent_explanation=explanation,
+        next_action="设置载荷工况。",
+        from_hint=from_hint,
+    )
+
+
+def _decide_load(req: str) -> SetupDecision:
+    matched: tuple[str, str, str, str] | None = None
+    for pattern, spec in _LOAD_KIND_RULES:
+        if pattern.search(req):
+            matched = spec
+            break
+    kind_from_hint = matched is not None
+    semantic, kind, target, label = matched or _LOAD_DEFAULT
+    mag_match = _LOAD_MAG_RE.search(req)
+    magnitude: float | None = None
+    unit: str | None = None
+    if mag_match:
+        magnitude = float(mag_match.group(1))
+        unit = _UNIT_CANON.get(mag_match.group(2).lower(), mag_match.group(2))
+    mag_from_hint = mag_match is not None
+    from_hint = kind_from_hint or mag_from_hint
+    mag_txt = f" {magnitude:g}{unit}" if magnitude is not None else ""
+    if kind_from_hint and mag_from_hint:
+        explanation = (
+            f"基于用户输入「{_snippet(req)}」识别载荷 = {label}{mag_txt}"
+            f"（{semantic}/{target}）。确定性规则解析，未调用 LLM。"
+        )
+    elif kind_from_hint:
+        explanation = (
+            f"基于用户输入「{_snippet(req)}」识别载荷类型 = {label}"
+            f"（{semantic}/{target}，未指定量级）。确定性规则解析，未调用 LLM。"
+        )
+    elif mag_from_hint:
+        # magnitude given but NO topology hint → disclose that the topology DEFAULTED,
+        # so deterministic_agent is never read as "the load topology was identified".
+        explanation = (
+            f"基于用户输入「{_snippet(req)}」识别载荷量级 ={mag_txt}；"
+            f"拓扑未指定 → 采用默认{label}（{semantic}/{target}）。"
+            f"确定性规则解析，未调用 LLM。"
+        )
+    else:
+        explanation = (
+            f"请求未给出载荷 → 采用默认末端集中力占位"
+            f"（{semantic}/{target}，未指定量级）。确定性规则解析，未调用 LLM。"
+        )
+    return SetupDecision(
+        description=f"设置载荷工况（{label}）",
+        metrics={
+            "loadSemantic": semantic,
+            "loadKind": kind,
+            "target": target,
+            "magnitude": magnitude,
+            "unit": unit,
+            "fromHint": from_hint,
+            # machine-checkable: was the load TOPOLOGY derived from a hint, or defaulted?
+            "kindFromHint": kind_from_hint,
+        },
+        agent_explanation=explanation,
+        next_action="生成网格。",
+        from_hint=from_hint,
+    )
+
+
+def analyze_setup(user_request: str) -> SetupOutcome:
+    """Deterministic rule-based setup planner (no LLM).
+
+    Decides which material, boundary-condition topology, and load to apply from the
+    **actual** request text. Each decision discloses whether it was derived from a
+    hint or fell back to a documented default, so provenance=deterministic_agent
+    describes ONLY the planning decision — never an inference from real geometry
+    (no FreeCAD/gmsh/ccx run here; the mock numeric metrics elsewhere are unchanged).
+    """
+    req = (user_request or "").strip()
+    return SetupOutcome(
+        material=_decide_material(req),
+        bc=_decide_bc(req),
+        load=_decide_load(req),
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+    )
+
+
+_SETUP_DECISION_ATTR: dict[WorkflowStage, str] = {
+    WorkflowStage.MATERIAL_ASSIGNMENT: "material",
+    WorkflowStage.BOUNDARY_CONDITIONS: "bc",
+    WorkflowStage.LOAD_CASES: "load",
+}
+_SETUP_CURRENT_OBJECT: dict[WorkflowStage, str] = {
+    WorkflowStage.MATERIAL_ASSIGNMENT: "bracket_solid",
+    WorkflowStage.BOUNDARY_CONDITIONS: "mount_face",
+    WorkflowStage.LOAD_CASES: "load_face",
+}
+SETUP_STAGES: frozenset[WorkflowStage] = frozenset(_SETUP_DECISION_ATTR)
+
+
+def setup_outcome_to_stage_state(
+    run_id: str,
+    stage: WorkflowStage,
+    outcome: SetupOutcome,
+    *,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project one setup stage of a :class:`SetupOutcome` into its wire ``StageState``."""
+    attr = _SETUP_DECISION_ATTR.get(stage)
+    if attr is None:
+        raise ValueError(f"{stage!r} is not a setup stage (expected {sorted(SETUP_STAGES)})")
+    decision: SetupDecision = getattr(outcome, attr)
+    return StageState(
+        run_id=run_id,
+        stage=stage,
+        status=status,
+        progress=progress,
+        current_object=_SETUP_CURRENT_OBJECT[stage],
+        description=decision.description,
+        metrics=StageMetrics.model_validate(decision.metrics),
+        artifacts=StageArtifacts(),
+        agent_explanation=decision.agent_explanation,
+        next_action=decision.next_action,
+        provenance=outcome.provenance,
+        updated_at=_now_iso(),
     )

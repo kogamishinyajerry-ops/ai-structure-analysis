@@ -51,6 +51,19 @@ class StageOrderError(Exception):
 # Stages that complete as WARNING (passing-with-caveats) in the canonical demo.
 _WARNING_STAGES = frozenset({WorkflowStage.MESH_QUALITY_CHECK, WorkflowStage.RESULT_ANALYSIS})
 
+# Stages routed through the real agent facade when a genuine user_request is present
+# (ADR-028): intake (P1) + the three deterministic setup-planner stages (P-setup).
+# Defined locally from schema enums — mock_pipeline must NOT import agents.* (ADR-015;
+# only agent_facade.py may). The facade raises NotImplementedError for any other stage.
+_AGENT_REQUEST_STAGES = frozenset(
+    {
+        WorkflowStage.PROJECT_INTAKE,
+        WorkflowStage.MATERIAL_ASSIGNMENT,
+        WorkflowStage.BOUNDARY_CONDITIONS,
+        WorkflowStage.LOAD_CASES,
+    }
+)
+
 # Default wall-clock per progress tick (3 ticks/stage). Small so a full run is
 # ~6-9s — watchable but not slow. Tests use run_sync (no sleeps).
 DEFAULT_TICK_DELAY_S = 0.45
@@ -374,27 +387,28 @@ def _build_stage_state(
     error: StageError | None = None,
     user_request: str | None = None,
 ) -> StageState:
-    # ADR-028 P1 (D4 facade seam): route the ONE PROJECT_INTAKE stage through the
-    # real agent node (deterministic by default) when there is genuine user input
-    # to analyze and we are on the mock-demo specs path. This delegates per-stage
-    # execution to backend/app/workbench/agent_facade.py — the ADR-015 choke point.
-    # Guards keeping this surgical + honest:
+    # ADR-028 (D4 facade seam): route the genuinely agent-driven stages through the
+    # real agent nodes when there is genuine user input to analyze and we are on the
+    # mock-demo specs path. Wired today: PROJECT_INTAKE (rule-based intake, P1) and the
+    # three setup-planner stages MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES
+    # (deterministic analyze_setup, P-setup). Delegation goes through the ADR-015 choke
+    # point backend/app/workbench/agent_facade.py. Guards keeping this surgical + honest:
     #   * error set       → demo failure injection is NOT agent-authored → scripted;
-    #   * specs ≠ mock     → the LE10 real-benchmark intake stays scripted until P3;
+    #   * specs ≠ mock     → the LE10 real-benchmark path stays scripted until later;
     #   * no user_request  → nothing for the agent to analyze → scripted_demo.
-    # The returned StageState carries provenance=deterministic_agent; every OTHER
-    # stage keeps the default scripted_demo, so wiring one stage cannot relabel the
-    # other twelve (ADR-028 D2).
+    # Each returned StageState carries provenance=deterministic_agent; every OTHER stage
+    # keeps the default scripted_demo, so wiring these cannot relabel the rest (ADR-028
+    # D2). The tool/artifact-bound stages stay scripted (the facade raises for them).
     if (
-        stage is WorkflowStage.PROJECT_INTAKE
+        stage in _AGENT_REQUEST_STAGES
         and error is None
         and specs is STAGE_SPECS
         and user_request
         and user_request.strip()
     ):
-        from app.workbench.agent_facade import run_node as _run_intake_node
+        from app.workbench.agent_facade import run_node as _run_agent_node
 
-        return _run_intake_node(
+        return _run_agent_node(
             stage,
             run_id=run_id,
             user_request=user_request,

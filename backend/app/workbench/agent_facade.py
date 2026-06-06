@@ -76,14 +76,24 @@ def run_node(
     """Execute ONE workbench-agent stage and return its already-projected wire
     :class:`StageState` (ADR-028 D4).
 
-    P1 supports ``PROJECT_INTAKE`` only. ``allow_llm`` opts into the real LLM
-    architect (key-gated; falls back to the deterministic node on any failure);
-    the default is the deterministic ("rule-based agent") path.
+    Wired stages: ``PROJECT_INTAKE`` (rule-based intake; ``allow_llm`` opts into the
+    real LLM architect, key-gated, falling back to deterministic on any failure) and
+    the three setup-planner stages (``MATERIAL_ASSIGNMENT`` / ``BOUNDARY_CONDITIONS``
+    / ``LOAD_CASES``) via the deterministic :func:`state_projection.analyze_setup`.
+    Every other (tool/artifact-bound) stage raises ``NotImplementedError`` — the
+    facade never silently fabricates agent output for an un-wired stage.
     """
+    if stage in state_projection.SETUP_STAGES:
+        outcome = state_projection.analyze_setup(user_request or "")
+        return state_projection.setup_outcome_to_stage_state(
+            run_id, stage, outcome, status=status, progress=progress
+        )
+
     if stage is not WorkflowStage.PROJECT_INTAKE:
         raise NotImplementedError(
             f"agent_facade.run_node: stage {stage.value!r} is not wired yet "
-            "(ADR-028 P1 covers project_intake; remaining stages land in P3)."
+            "(ADR-028 covers project_intake + the 3 setup stages; tool/artifact-bound "
+            "stages land later)."
         )
 
     req = (user_request or "").strip()
