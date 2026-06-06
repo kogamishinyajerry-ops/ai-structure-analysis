@@ -48,11 +48,13 @@ from schemas.workflow_state import (
 __all__ = [
     "SETUP_STAGES",
     "IntakeOutcome",
+    "RecoveryOutcome",
     "RouteOutcome",
     "SetupDecision",
     "SetupOutcome",
     "analyze_intake",
     "analyze_setup",
+    "decide_recovery",
     "decide_route",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
@@ -626,4 +628,70 @@ def setup_outcome_to_stage_state(
         next_action=decision.next_action,
         provenance=outcome.provenance,
         updated_at=_now_iso(),
+    )
+
+
+# --- Fault-recovery node (ADR-028 P-recover) ---------------------------------
+# A genuine TWO-agent decision on the failure path: the reviewer node DERIVES a
+# verdict from the actual fault, then the router picks the recovery node. Crucially
+# this carries NO provenance field — the demo failure itself is scripted, so the
+# failing stage stays scripted_demo (its agent_explanation/next_action text — what
+# StageProvenance labels — is the scripted failure prose). The recovery is surfaced
+# separately (via metrics.recovery, with its own agentDriven/faultInjected flags), so
+# wiring it never relabels the failing stage or inflates the N/13 count (ADR-028 D2).
+
+
+@dataclass(frozen=True)
+class RecoveryOutcome:
+    """The reviewer→router fault-recovery decision for an injected failure.
+
+    Has NO ``provenance`` field by design: the failure is scripted demo input (the agent
+    did NOT diagnose the fault), so the failing stage stays ``scripted_demo``; only the
+    verdict-derivation + node-routing here are agent-computed, surfaced via metrics.
+    """
+
+    next_node: str
+    verdict: str
+    fault_class: str
+    agent_explanation: str
+    next_action: str
+
+
+def decide_recovery(
+    *,
+    fault_class: FaultClass | str,
+    retry_budgets: Mapping[str, int] | None = None,
+) -> RecoveryOutcome:
+    """Derive a recovery decision for an injected fault via the REAL reviewer + router.
+
+    The verdict is NEVER hardcoded: :func:`agents.reviewer._review_upstream_fault`
+    (RERUN_FAULTS membership) classifies the actual fault, then
+    :func:`agents.router.route_reviewer` (ADR-004 fault→node map + a 3-retry cap) picks
+    the recovery node. Honest disclosure: the ``fault_class`` is an injected demo fault
+    (NOT an agent diagnosis); only the verdict-derivation + routing are agent-computed,
+    deterministically, with no LLM call.
+    """
+    fc = fault_class if isinstance(fault_class, FaultClass) else FaultClass(fault_class)
+    # Intentional cross-module reuse of the reviewer node's fault→verdict rule
+    # (RERUN_FAULTS membership) — derive the verdict from the REAL reviewer instead of
+    # duplicating the rule here. _review_upstream_fault reads only state["history"].
+    from agents.reviewer import _review_upstream_fault
+
+    verdict = str(_review_upstream_fault({"history": []}, fc)["verdict"])
+    next_node = route_reviewer(
+        {"verdict": verdict, "fault_class": fc, "retry_budgets": dict(retry_budgets or {})}
+    )
+    label = _ROUTE_LABEL_ZH.get(next_node, next_node)
+    explanation = (
+        f"故障复核 agent（reviewer._review_upstream_fault）将注入故障"
+        f"（{fc.value}，该故障类型为 demo 注入、非 agent 诊断）判定为 verdict={verdict}；"
+        f"路由 agent（route_reviewer）据此选择恢复节点 = {label}"
+        f"（ADR-004 故障→节点映射 + 最多 3 次重试上限，确定性逻辑，未调用 LLM）。"
+    )
+    return RecoveryOutcome(
+        next_node=next_node,
+        verdict=verdict,
+        fault_class=fc.value,
+        agent_explanation=explanation,
+        next_action=f"恢复路由 → {label}（需人工确认是否重跑）。",
     )

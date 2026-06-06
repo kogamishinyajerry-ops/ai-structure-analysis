@@ -22,7 +22,7 @@ from schemas.workflow_state import StageState, StageStatus, WorkflowStage
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["decide_route", "run_node"]
+__all__ = ["decide_recovery", "decide_route", "run_node"]
 
 
 def decide_route(
@@ -47,6 +47,27 @@ def decide_route(
         fault_class=fault_class,
         retry_budgets=retry_budgets,
         verdict_source=verdict_source,
+    )
+
+
+def decide_recovery(
+    *,
+    fault_class: str,
+    retry_budgets: dict[str, int] | None = None,
+) -> state_projection.RecoveryOutcome:
+    """Derive a two-agent fault-recovery decision for an injected failure (ADR-028
+    P-recover): the real reviewer node classifies the fault into a verdict, then the
+    real router picks the recovery node.
+
+    ``fault_class`` is a plain wire string (the ``FaultClass`` conversion lives in
+    :func:`agents.state_projection.decide_recovery`), so the facade imports no
+    ``schemas.sim_state`` (ADR-015 rule 3). This does NOT flip the failing stage's
+    provenance — the failure is scripted demo input, so the stage stays
+    ``scripted_demo``; the recovery is surfaced via ``metrics.recovery`` with its own
+    ``agentDriven`` / ``faultInjected`` flags (it must never increment the N/13 count).
+    """
+    return state_projection.decide_recovery(
+        fault_class=fault_class, retry_budgets=retry_budgets
     )
 
 

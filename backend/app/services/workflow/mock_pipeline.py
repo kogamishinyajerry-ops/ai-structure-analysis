@@ -485,6 +485,31 @@ def _build_stage_state(
         next_action = route.next_action
         metrics_src = {**metrics_src, "routedTo": route.next_node}
 
+    # ADR-028 P-recover (D4 facade seam): on an INJECTED demo failure (error set), surface a
+    # GENUINE reviewer→router recovery decision WITHOUT relabeling the stage. The failure
+    # prose stays scripted — provenance / agent_explanation / next_action are left UNTOUCHED,
+    # so the SCRIPTED_DEMO label stays true to the StageProvenance contract (which labels that
+    # text). The recovery rides metrics.recovery with its own agentDriven / faultInjected
+    # flags, so it never inflates the N/13 agent-driven count (ADR-028 D2). Mock-demo path
+    # only (specs is STAGE_SPECS) — a real-LE10 failure keeps its honest real-failure error,
+    # no overlay. Mutually exclusive with the P3 block above (which requires error is None).
+    if error is not None and specs is STAGE_SPECS:
+        from app.workbench.agent_facade import decide_recovery as _decide_recovery
+
+        recovery = _decide_recovery(fault_class=error.fault_class.value)
+        metrics_src = {
+            **metrics_src,
+            "recovery": {
+                "verdict": recovery.verdict,
+                "nextNode": recovery.next_node,
+                "faultClass": recovery.fault_class,
+                "explanation": recovery.agent_explanation,
+                "nextAction": recovery.next_action,
+                "agentDriven": True,
+                "faultInjected": True,
+            },
+        }
+
     warnings = list(spec.warnings) if status is StageStatus.WARNING else []
     return StageState(
         run_id=run_id,
