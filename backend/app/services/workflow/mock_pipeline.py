@@ -428,6 +428,24 @@ def _build_stage_state(
         and user_request
         and user_request.strip()
     ):
+        # ADR-029 P0 (graph-wiring north star): when the flag is on, drive PROJECT_INTAKE
+        # through the REAL LangGraph compiled-graph runtime (a dedicated truncated
+        # architect-only graph .invoke) instead of a direct architect.run() call. Flag-gated
+        # (default off) so the contract suite is byte-identical; lazy facade import keeps this
+        # module free of any agents.* import (ADR-015 line-57 pin). It returns an
+        # already-projected StageState whose provenance is unchanged, so N/13 is identical.
+        if stage is WorkflowStage.PROJECT_INTAKE and settings.workflow_graph_intake:
+            from app.workbench.agent_facade import run_node_via_graph as _run_graph_node
+
+            return _run_graph_node(
+                stage,
+                run_id=run_id,
+                user_request=user_request,
+                existing_case_id=upstream_case_id,
+                status=status,
+                progress=progress,
+            )
+
         from app.workbench.agent_facade import run_node as _run_agent_node
 
         # ADR-028 P-handoff: forward the upstream PROJECT_INTAKE case id (a plain wire string

@@ -71,6 +71,7 @@ __all__ = [
     "geometry_dummy_exec_to_stage_state",
     "geometry_plan_to_stage_state",
     "geometry_stage_state",
+    "graph_intake_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
@@ -289,6 +290,89 @@ def sim_state_to_stage_state(
         provenance=StageProvenance.LLM_AGENT,
     )
     return intake_outcome_to_stage_state(run_id, outcome, status=status, progress=progress)
+
+
+# --- LangGraph-runtime intake projection (ADR-029 P0) ------------------------
+# The graph-wiring north star: this projects a PROJECT_INTAKE StageState from the
+# accumulated final SimState of a REAL LangGraph compiled-graph .invoke() (a dedicated
+# truncated START->architect->END graph), as opposed to the direct architect.run() the
+# facade calls today. The decisive honesty rule (verified empirically: agents.architect
+# authors a SimPlan ONLY with an LLM key, else returns fault_class=unknown with no plan):
+# "the graph node EXECUTED" and "the graph node AUTHORED content" are DISTINCT facts and
+# are surfaced separately, never conflated. Provenance is NOT changed by the runtime swap
+# (it stays llm_agent when a plan was authored, deterministic_agent when the rule-based
+# projector supplied the text) so the N/13 count is identical to the direct path; the
+# graph-execution fact rides metrics (graphNodeRan / graphNodeProducedPlan / graphRunner)
+# plus an honest disclosure — mirroring how StageFidelityTier rides metrics off the
+# provenance axis. No 4th provenance value (the FE asProvenance() would downgrade an
+# unknown value to scripted_demo and DECREASE N/13).
+
+_GRAPH_RUNNER_TAG = "langgraph-truncated-architect"
+
+
+def graph_intake_to_stage_state(
+    final_sim_state: Mapping[str, object],
+    user_request: str,
+    *,
+    run_id: str,
+    existing_case_id: str | None = None,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project the final SimState of a truncated-graph ``.invoke()`` into PROJECT_INTAKE.
+
+    ``final_sim_state`` is the accumulated state returned by the dedicated
+    architect-only :class:`langgraph` compiled graph (see :mod:`agents.graph_runner`).
+    Branches on plan-presence so a keyless run (no SimPlan authored) can never be
+    mislabeled as agent-authored content:
+
+    * **plan present** (LLM key opted in): reuse :func:`sim_state_to_stage_state`
+      (provenance ``llm_agent``) and disclose that the architect node authored the plan;
+    * **plan absent** (hermetic default): reuse the deterministic
+      :func:`analyze_intake` + :func:`intake_outcome_to_stage_state` (provenance
+      ``deterministic_agent``) and disclose that the architect node executed but
+      authored nothing keyless, so the intake text is rule-based — NOT the graph node's.
+
+    Either way the runtime-execution fact is added to metrics
+    (``graphNodeRan`` / ``graphNodeProducedPlan`` / ``graphRunner``) WITHOUT changing
+    provenance, so the N/13 agent-driven count is identical to the direct-call path.
+    """
+    plan = final_sim_state.get("plan")
+    produced_plan = isinstance(plan, SimPlan)
+
+    if produced_plan:
+        base = sim_state_to_stage_state(
+            final_sim_state, run_id=run_id, status=status, progress=progress
+        )
+        disclosure = (
+            "LangGraph 运行时通过 compile(仅含 architect 的 truncated graph).invoke 驱动真实 "
+            "architect 节点产出 SimPlan，投影为 PROJECT_INTAKE；仅 START→architect 段执行，下游 "
+            "geometry/mesh/solver 节点未运行；无真实 FEA 计算（架构接线证明，非验证）。"
+        )
+    else:
+        outcome = analyze_intake(user_request, existing_case_id=existing_case_id)
+        base = intake_outcome_to_stage_state(run_id, outcome, status=status, progress=progress)
+        disclosure = (
+            "architect 节点经真实 LangGraph 运行时（compiled graph .invoke）执行，但无 LLM key "
+            "未产出 SimPlan（fault_class=unknown）；PROJECT_INTAKE 文本由确定性 analyze_intake "
+            "投影提供（非图节点计算）；下游节点未执行；无真实求解（架构接线证明，非验证）。"
+        )
+
+    merged_metrics = {
+        **base.metrics.model_dump(by_alias=True, exclude_none=True),
+        # architecture-wiring facts (NOT FEA measurements, NOT a provenance flip):
+        "graphNodeRan": True,
+        "graphNodeProducedPlan": produced_plan,
+        "graphRunner": _GRAPH_RUNNER_TAG,
+    }
+    explanation = f"{base.agent_explanation or ''}{disclosure}"
+    return base.model_copy(
+        update={
+            "metrics": StageMetrics.model_validate(merged_metrics),
+            "agent_explanation": explanation,
+            "updated_at": _now_iso(),
+        }
+    )
 
 
 # --- Router node projection (ADR-028 P3) -------------------------------------

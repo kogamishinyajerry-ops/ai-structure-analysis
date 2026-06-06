@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import logging
 
-from agents import architect, state_projection
+from agents import architect, graph_runner, state_projection
 from schemas.workflow_state import StageState, StageStatus, WorkflowStage
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["decide_recovery", "decide_route", "run_node"]
+__all__ = ["decide_recovery", "decide_route", "run_node", "run_node_via_graph"]
 
 
 def decide_route(
@@ -147,4 +147,39 @@ def run_node(
     outcome = state_projection.analyze_intake(req, existing_case_id=existing_case_id)
     return state_projection.intake_outcome_to_stage_state(
         run_id, outcome, status=status, progress=progress
+    )
+
+
+def run_node_via_graph(
+    stage: WorkflowStage,
+    *,
+    run_id: str,
+    user_request: str | None = None,
+    existing_case_id: str | None = None,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Drive a stage through the REAL LangGraph compiled-graph runtime (ADR-029 P0).
+
+    The facade choke point for the graph-wiring north star: it delegates to
+    :func:`agents.graph_runner.run_intake_via_graph`, which compiles a dedicated truncated
+    architect-only graph and ``.invoke()``s it — proving the orphaned ``agents/graph.py``
+    machinery can drive a live stage. The facade imports only ``agents.graph_runner`` (never
+    ``schemas.sim_state``; the ``SimState`` dict is built and invoked entirely inside the
+    runner), so ADR-015 rule 3 holds. Only ``PROJECT_INTAKE`` is wired in P0; every other
+    stage raises ``NotImplementedError`` (the downstream nodes need the ccx/Notion isolation
+    gates of the later ADR-029 phases).
+    """
+    if stage is not WorkflowStage.PROJECT_INTAKE:
+        raise NotImplementedError(
+            f"agent_facade.run_node_via_graph: stage {stage.value!r} is not graph-wired yet "
+            "(ADR-029 P0 wires only project_intake; geometry/mesh/solver land in later "
+            "phases behind the ccx + Notion isolation gates)."
+        )
+    return graph_runner.run_intake_via_graph(
+        user_request or "",
+        run_id=run_id,
+        existing_case_id=existing_case_id,
+        status=status,
+        progress=progress,
     )
