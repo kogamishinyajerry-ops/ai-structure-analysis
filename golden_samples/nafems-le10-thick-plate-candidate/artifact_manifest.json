@@ -2,7 +2,7 @@
   "schema": "le10-artifact-manifest/1.0",
   "case_id": "nafems-le10-thick-plate-candidate",
   "purpose": "ADR-027 G-2 evidence-packet item 5 (artifact manifest + hashes) for the NAFEMS LE10 thick-plate benchmark candidate. Seals the committed evidence set: any byte change to a sealed file must be a deliberate, reviewed event (tests/test_le10_artifact_manifest.py re-hashes on every PR).",
-  "claim_tier": "Tier 1 engineering candidate, public-benchmark cross-check (registry overlay: tier_2_validated). NOT signed validation - G-2 items 6 (reproduce-CLI audit log, ADR-027 V2-2) and 7 (independent signoff, owner-authorized per ADR-023) remain open.",
+  "claim_tier": "Tier 1 engineering candidate, public-benchmark cross-check (registry overlay: tier_2_validated). NOT signed validation - G-2 item 7 (independent signoff, owner-authorized per ADR-023) remains open. Item 6 (reproduce-CLI audit log, ADR-027 V2-2) closed by scripts/reproduce_case.py (real-ccx re-derivation + reports/reproduce_audit/ structured log); reproducibility evidence, not signoff.",
   "sealed_artifacts": {
     "NOTES.md": {
       "sha256": "57a16c25b1324fb7bc320fb7ca98f251c3b9ec6bcdd56ca7bb782bca5781bf6f",
@@ -90,7 +90,7 @@
     "3_residual_vs_target_with_tolerance": "covered (cross_check_verdict.yaml: -5.4379 vs -5.38 MPa, +1.08%, tol 3%)",
     "4_mesh_convergence_evidence": "covered (convergence_study.json, 5-rung monotone)",
     "5_artifact_manifest_hashes": "THIS FILE",
-    "6_reproduce_cli_audit_log": "OPEN - ADR-027 V2-2 dependency",
+    "6_reproduce_cli_audit_log": "CLOSED - scripts/reproduce_case.py re-derives result+verdict from sealed inputs (LE10: fresh real-ccx re-solve) + writes reports/reproduce_audit/<case>_<ts>.json structured log; sealed-hash integrity gated (ADR-027 V2-2)",
     "7_independent_review_signoff": "OPEN - owner-authorized signoff required (ADR-023); no AI self-sign"
   }
 }

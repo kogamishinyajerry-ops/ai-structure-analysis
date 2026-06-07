@@ -55,6 +55,10 @@ golden_samples/GS-001/gs001_result_static.figs/
 *.cvg
 spooles.out
 
+# Reproduce-CLI audit logs (ADR-027 V2-2): generated reproduction-event records,
+# regeneratable on demand (scripts/reproduce_case.py). Only inputs enter VC.
+reports/reproduce_audit/
+
 # Environment secrets
 .env
 

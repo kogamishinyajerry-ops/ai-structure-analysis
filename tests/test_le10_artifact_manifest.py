@@ -7,8 +7,9 @@ runs in the required ``lint-and-test`` job), so any byte change to sealed
 evidence is a loud, reviewable event instead of a silent drift.
 
 Honesty boundary: a green seal means the committed evidence is byte-stable.
-It is NOT signed validation — the manifest itself records G-2 items 6
-(reproduce-CLI, V2-2) and 7 (owner-authorized independent signoff) as OPEN.
+It is NOT signed validation — item 6 (reproduce-CLI audit log, V2-2) is now
+CLOSED (scripts/reproduce_case.py), but the manifest still records G-2 item 7
+(owner-authorized independent signoff) as OPEN.
 """
 
 from __future__ import annotations
@@ -32,7 +33,11 @@ def test_manifest_exists_and_declares_open_items() -> None:
     # The honesty banner is load-bearing: the packet must keep declaring what
     # it does NOT yet have, until those items genuinely close.
     coverage = m["g2_packet_coverage"]
-    assert coverage["6_reproduce_cli_audit_log"].startswith("OPEN")
+    # Item 6 closed by ADR-027 V2-2 (scripts/reproduce_case.py); the packet must
+    # name the closing mechanism, not silently flip to "covered".
+    assert coverage["6_reproduce_cli_audit_log"].startswith("CLOSED")
+    assert "reproduce_case.py" in coverage["6_reproduce_cli_audit_log"]
+    # Item 7 (independent signoff) genuinely remains open — no AI self-sign.
     assert coverage["7_independent_review_signoff"].startswith("OPEN")
     assert "NOT signed validation" in m["claim_tier"]
 
