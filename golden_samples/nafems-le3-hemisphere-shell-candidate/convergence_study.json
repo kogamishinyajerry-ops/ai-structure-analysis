@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.2.0",
+  "_schema_note": "Mirrors the LE10/LE11 convergence_study schema, BUT this case is NOT a tier_2_validated agreement. It is a documented SOLVER-LIMIT study: ccx (solid-shell) converges to ux@A = 0.2004 m, +8.3% above the NAFEMS thin-shell reference 0.185 m. The per-rung `within_case_tolerance` flags are computed against an HONEST 3% agreement band (the same band LE10/LE11 meet) and are FALSE for the converged rungs — recorded deliberately, not hidden.",
+  "case_id": "nafems-le3-hemisphere-shell-candidate",
+  "cross_check_kind": "nafems_le3_hemisphere_point_load_ux_a",
+  "refinement_param_name": "na_per_edge",
+  "refinement_units": "S8R quad shell elements per meridian / sweep edge (expands to C3D20R solid)",
+  "case_tolerance_pct": 3.0,
+  "canonical_refinement_param": 32,
+  "trend_monotone": true,
+  "generated_at_utc": "2026-06-07T00:00:00+00:00",
+  "analytical_value_m": 0.185,
+  "reference_kind": "published_benchmark_thin_shell",
+  "is_tier2_agreement": false,
+  "_trend_monotone_note": "ux@A increases monotonically with refinement toward a CONVERGED ccx value of ~0.2004 m. The residual vs the 0.185 thin-shell reference therefore GROWS with refinement (+5.74% -> +8.31%) and stabilises at +8.3% — refinement does NOT close the gap because the gap is a formulation difference, not a discretisation error.",
+  "notes": "NAFEMS LE3 hemispherical shell, x-displacement at the loaded equator point A=(10,0,0). Real ccx 2.23, quadratic S8R shell (-> solid C3D20R), quarter model (pi/2 about z), translational-only symmetry, 2 kN outward at A + 2 kN inward at C, uz=0 at apex E. ccx converges UP to 0.2004 m. ROOT CAUSE: ccx has no true thin-shell element; a point load on the expanded solid shell adds a local 3-D dimple absent from thin-shell theory. CROSS-CHECK: Altair OptiStruct CQUAD4 (true thin shell) converges DOWN to the reference (normalized 0.9865/1.0200/1.0076/1.0032/1.0016 at 4/8/16/32/64 per edge => ~0.1853 @64). The two element families bracket the answer; the +8.3% is the documented thin-shell-vs-solid-shell divergence under a concentrated load. This case is recorded as an honest solver-capability boundary, NOT a benchmark agreement, and is deliberately excluded from the validated cohort.",
+  "points": [
+    {"label": "na8",  "refinement_param": 8,  "shell_node_count": 209,  "element_count": 64,   "observed_value_m": 0.19562, "analytical_value_m": 0.185, "residual_pct": 5.74, "within_case_tolerance": false},
+    {"label": "na16", "refinement_param": 16, "shell_node_count": 801,  "element_count": 256,  "observed_value_m": 0.19976, "analytical_value_m": 0.185, "residual_pct": 7.98, "within_case_tolerance": false},
+    {"label": "na24", "refinement_param": 24, "shell_node_count": 1777, "element_count": 576,  "observed_value_m": 0.20020, "analytical_value_m": 0.185, "residual_pct": 8.22, "within_case_tolerance": false},
+    {"label": "na32", "refinement_param": 32, "shell_node_count": 3137, "element_count": 1024, "observed_value_m": 0.20033, "analytical_value_m": 0.185, "residual_pct": 8.29, "within_case_tolerance": false, "is_canonical": true},
+    {"label": "na40", "refinement_param": 40, "shell_node_count": 4881, "element_count": 1600, "observed_value_m": 0.20037, "analytical_value_m": 0.185, "residual_pct": 8.31, "within_case_tolerance": false}
+  ],
+  "optistruct_thin_shell_crosscheck": {
+    "source": "Altair OptiStruct OS-V:0030 (CQUAD4 first-order thin shell), normalized to 0.185 m",
+    "points": [
+      {"mesh_per_edge": 4,  "normalized": 0.9865, "value_m": 0.18250},
+      {"mesh_per_edge": 8,  "normalized": 1.0200, "value_m": 0.18870},
+      {"mesh_per_edge": 16, "normalized": 1.0076, "value_m": 0.18641},
+      {"mesh_per_edge": 32, "normalized": 1.0032, "value_m": 0.18559},
+      {"mesh_per_edge": 64, "normalized": 1.0016, "value_m": 0.18530}
+    ],
+    "interpretation": "Thin-shell elements converge DOWN to 0.185; ccx solid-shell converges UP to 0.2004. Bracketing confirms the +8.3% is a formulation difference, not an error."
+  }
+}
