@@ -1,11 +1,15 @@
 # ADR-029: Wire the LangGraph Compiled-Graph Runtime Behind the Live Pipeline (graph-driven execution)
 
-- **Status:** **Proposed** (drafted 2026-06-07 by Claude Opus 4.8 (1M) under the standing owner
-  directive "ultracode 全权授权你继续深度优化项目，记住它是多agent分工协作的智能体系统" + the
-  2026-06-07 owner decision, when offered the milestone fork, to take **path B — directly wire
-  `agents/graph.py` (the real north star)**. Pending a Codex relay governance review + human
-  ratification before flip to Accepted. The P0 slice it specifies is **additive + flag-gated OFF by
-  default**, so it is inert until both ratified and explicitly enabled.)
+- **Status:** **Accepted** (ratified 2026-06-07 by the human owner — "批准 ADR-029 + 继续 P1" — after
+  the Codex relay governance review of the P0 slice closed **R0 APPROVE** (no findings;
+  `reports/codex_tool_reports/adr029_p0_graph_runtime_review.md`). Drafted 2026-06-07 by Claude Opus
+  4.8 (1M) under the standing owner directive "ultracode 全权授权你继续深度优化项目，记住它是多agent
+  分工协作的智能体系统" + the 2026-06-07 owner decision, when offered the milestone fork, to take
+  **path B — directly wire `agents/graph.py` (the real north star)**. The P0 slice it specifies is
+  **additive + flag-gated OFF by default** (inert until explicitly enabled); P1 (architect→geometry
+  cross-node dependency) proceeds under this ratification. The five §Open-questions remain owner
+  decisions deferred to their phases (P3 solver gate, P4 Notion isolation, replace-vs-parallel
+  default); the "no 4th provenance value" semantic is ratified as the standing default.)
 - **Date:** 2026-06-07
 - **Decider:** Human owner (path-B selection, 2026-06-07). Drafted by Claude Opus 4.8.
 - **Extends (does not amend/reverse):** **ADR-028** (the product multi-agent repositioning). ADR-028
