@@ -4,7 +4,7 @@
   "record_kind": "published_benchmark_reference",
   "_record_kind_note": "Records the PUBLISHED NAFEMS LE11 target stress (the reference value). NOT the verdict. The real meshed ccx thermo-elastic solve + signed residual comparison is COMPLETE (2026-06-07) and lives in the sibling cross_check_verdict.yaml (verdict=PASS, observed -105.398 MPa, +0.38% vs this -105 MPa target). Keeps the filename published_reference.yaml (NOT cross_check_verdict.yaml) so it does not double-count in the verdict cohort glob.",
 
-  "solver_kind": "thermoelastic_linear_static",
+  "solver_kind": "linear_static",
   "cross_check_kind": "nafems_le11_solid_cyl_taper_sphere_temperature_point_a",
   "verdict": "REFERENCE_ONLY",
   "tier": "tier_1_candidate",

@@ -1,0 +1,45 @@
+{
+  "schema": "rotating-disk-artifact-manifest/1.0",
+  "case_id": "rotating-disk-centrifugal-candidate",
+  "purpose": "ADR-027 G-2 evidence-packet item 5 (artifact manifest + hashes) for the rotating-disk centrifugal benchmark candidate (the repo's THIRD public-benchmark agreement, first centrifugal load). Seals the committed evidence set: any byte change to a sealed file must be a deliberate, reviewed event.",
+  "claim_tier": "Registry baseline tier_1_candidate, overlay-promoted to tier_2_validated on the PASS verdict (real ccx 2.23). Public-benchmark agreement. NOT signed validation - G-2 item 7 (independent signoff) remains open.",
+  "sealed_artifacts": {
+    "NOTES.md": {
+      "sha256": "4b7ff3fb5a4cb777674f66ef8b0b559d912a59638501196c7245fae8ad6cfa96",
+      "bytes": 5119
+    },
+    "convergence_study.json": {
+      "sha256": "52955a604b925afcc262268e540ccaa051e660e8b74a3ca30538d88d5aba96be",
+      "bytes": 3692
+    },
+    "cross_check_verdict.yaml": {
+      "sha256": "335b7d4eb1c4f9a630f224b8b42a01bbad5310479e4026917d9ef2e406948873",
+      "bytes": 5158
+    },
+    "data/generator.py": {
+      "sha256": "f065c180c8ee7eb09c3a215268fd5a7efa5a5db4bf52cc484f1cebb759605721",
+      "bytes": 12458
+    },
+    "data/run_nr48_C3D20/solve.inp": {
+      "sha256": "2676432525b6e32b6a68f7104d0fadd2654d38e1b463fc5504cfec664147a71a",
+      "bytes": 1911142
+    },
+    "published_reference.yaml": {
+      "sha256": "b2167dae62e5794a45a01874337ea6a1c658c3cbd8bed0ddc26c88559831a9e3",
+      "bytes": 2431
+    }
+  },
+  "local_only_artifacts_not_sealed": {
+    "note": "Solver outputs (*.frd/*.dat/*.sta/*.cvg/*.12d) and gmsh intermediates (disk.inp/disk.geo) are NOT in version control. The committed deck data/run_nr48_C3D20/solve.inp is self-contained (no *INCLUDE); the live re-solve regenerates outputs (python data/generator.py)."
+  },
+  "g2_packet_coverage": {
+    "1_benchmark_source_and_sign": "covered (closed-form Timoshenko & Goodier plane-stress rotating disk; canonical formula reproduced across standard elasticity texts + FE verification manuals, so not gated by any single paywalled benchmark doc; exact ANSYS-VM/code_aster case IDs not pinned)",
+    "2_real_solver_run_with_provenance": "covered (committed deck + generator.py; real ccx 2.23 *DLOAD CENTRIF solve)",
+    "3_residual_vs_target_with_tolerance": "covered (cross_check_verdict.yaml: 65.353 vs 65.312 MPa, +0.063%, tol 1%)",
+    "4_mesh_convergence_evidence": "covered (convergence_study.json, 5-rung monotone nr 20->80, residual closes to ~0; +x radial-line profile +/-0.1%)",
+    "5_artifact_manifest_hashes": "THIS FILE",
+    "6_reproduce_cli_audit_log": "partial (generator.py reproduces deterministically; not yet registered in scripts/reproduce_case.py _REAL_SOLVERS)",
+    "7_independent_signoff": "OPEN (owner-authorized per ADR-023; AI never self-signs)"
+  },
+  "generated_at_utc": "2026-06-07T00:00:00+00:00"
+}

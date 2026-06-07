@@ -93,6 +93,17 @@ CLAIM_BOUNDARY_OVERRIDES: Final[dict[str, str]] = {
         "public_benchmark_agreement_nafems_le11; "
         "thermoelastic_imposed_temperature_field; sign_normalized_to_solver_convention"
     ),
+    # Rotating annular disk — the repo's THIRD public-benchmark agreement and FIRST
+    # centrifugal (rotational body-force) load. Agreement with the closed-form
+    # Timoshenko plane-stress rotating-disk hoop stress (a CONTINUUM plane-stress
+    # elasticity reference — a thin 3-D solid converges to it, vs the reduced-kinematic
+    # plate/shell-theory references in LE3/FV52). The analytical-cross-check default
+    # boundary would mis-state it.
+    "rotating-disk-centrifugal-candidate": (
+        "tier2_real_solver_validated; not_signed_validation; "
+        "public_benchmark_agreement_rotating_disk_timoshenko; "
+        "centrifugal_body_force_load; plane_stress_3d_elasticity_reference"
+    ),
 }
 """Per-case claim-boundary overrides applied ONLY at tier_2_validated. Keyed
 by case_id; the value replaces :data:`CLAIM_BOUNDARIES`'s tier_2 default. Used
@@ -240,6 +251,17 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # +0.38% (tol 3%), monotone convergence 88→5632 el. Promoted to
     # tier_2_validated by the overlay on cross_check_verdict.yaml verdict=PASS.
     "nafems-le11-solid-cyl-temperature-candidate": "tier_1_candidate",
+    # Rotating annular disk, centrifugal load (2026-06-07) — the project's THIRD
+    # public-benchmark agreement and first rotational-body-force (*DLOAD CENTRIF)
+    # load. Real ccx 2.23, C3D20 thin quarter annulus, bore hoop stress
+    # sigma_theta(a) observed +65.353 MPa vs the Timoshenko plane-stress closed form
+    # +65.312 MPa, +0.063% (tol 1%), monotone convergence (residual closes to ~0;
+    # the sigma_theta(r)/sigma_r(r) profile along the +x radial line matches to
+    # +/-0.1%). Chosen because a CONTINUUM (plane-stress) elasticity reference is what
+    # ccx reproduces cleanly (contrast the reduced-kinematic plate/shell-theory
+    # references in LE3/FV52). Promoted to tier_2_validated by
+    # the overlay on cross_check_verdict.yaml verdict=PASS. Baseline tier_1 here.
+    "rotating-disk-centrifugal-candidate": "tier_1_candidate",
 }
 
 

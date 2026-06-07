@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "solver_kind": "thermoelastic_linear_static",
+  "solver_kind": "linear_static",
   "case_id": "nafems-le11-solid-cyl-temperature-candidate",
   "verdict": "PASS",
 

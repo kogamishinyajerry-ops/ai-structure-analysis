@@ -13,8 +13,8 @@
       "bytes": 3037
     },
     "cross_check_verdict.yaml": {
-      "sha256": "b6effa8f3f46b8e05c89635c83c731502add63beeaaf4d94d06cb40e1739c3f5",
-      "bytes": 5705
+      "sha256": "8556dc45c1918da6aeec0ff83af9be1fb2eaf0fa2d512c224a43b7e2aaf0f567",
+      "bytes": 5691
     },
     "data/generator.py": {
       "sha256": "095b093e3c1b32869e53b5b904ae9b3899b3a407a038c1403fa1126fe669153c",
@@ -25,8 +25,8 @@
       "bytes": 3068239
     },
     "published_reference.yaml": {
-      "sha256": "39925c94ff94af607f3331000212811d4fd2a718b9ac6c0a7b2e6522b437f3af",
-      "bytes": 3521
+      "sha256": "9714fd5217ab927325c766e17a314a10af40a951bb2c2436ca7369acae9d97fd",
+      "bytes": 3507
     }
   },
   "local_only_artifacts_not_sealed": {

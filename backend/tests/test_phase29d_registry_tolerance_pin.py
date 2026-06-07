@@ -56,6 +56,11 @@ CANONICAL_TOLERANCES: dict[str, float] = {
     #                                       SECOND public-benchmark agreement
     #                                       (NAFEMS LE11 thermal stress); observed
     #                                       +0.38% within the 3% band
+    "rotating-disk-centrifugal-candidate": 1.0,  # FM-05 3rd benchmark — THIRD
+    #                                       public-benchmark agreement (rotating-disk
+    #                                       centrifugal hoop stress vs Timoshenko
+    #                                       plane-stress closed form); observed
+    #                                       +0.063% within a tight 1% band
 }
 
 
