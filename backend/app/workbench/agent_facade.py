@@ -162,24 +162,33 @@ def run_node_via_graph(
     """Drive a stage through the REAL LangGraph compiled-graph runtime (ADR-029 P0).
 
     The facade choke point for the graph-wiring north star: it delegates to
-    :func:`agents.graph_runner.run_intake_via_graph`, which compiles a dedicated truncated
-    architect-only graph and ``.invoke()``s it — proving the orphaned ``agents/graph.py``
-    machinery can drive a live stage. The facade imports only ``agents.graph_runner`` (never
-    ``schemas.sim_state``; the ``SimState`` dict is built and invoked entirely inside the
-    runner), so ADR-015 rule 3 holds. Only ``PROJECT_INTAKE`` is wired in P0; every other
-    stage raises ``NotImplementedError`` (the downstream nodes need the ccx/Notion isolation
-    gates of the later ADR-029 phases).
+    :mod:`agents.graph_runner`, which compiles a dedicated truncated graph and ``.invoke()``s
+    it — proving the orphaned ``agents/graph.py`` machinery can drive live stages. The facade
+    imports only ``agents.graph_runner`` (never ``schemas.sim_state``; the ``SimState`` dict is
+    built and invoked entirely inside the runner), so ADR-015 rule 3 holds. Wired:
+    ``PROJECT_INTAKE`` (P0, truncated architect-only graph) and ``GEOMETRY_VALIDATION`` (P1,
+    truncated architect→geometry graph — the first cross-node graph data dependency). Every
+    other stage raises ``NotImplementedError`` (mesh/solver need the ccx/Notion isolation gates
+    of the later ADR-029 phases).
     """
-    if stage is not WorkflowStage.PROJECT_INTAKE:
-        raise NotImplementedError(
-            f"agent_facade.run_node_via_graph: stage {stage.value!r} is not graph-wired yet "
-            "(ADR-029 P0 wires only project_intake; geometry/mesh/solver land in later "
-            "phases behind the ccx + Notion isolation gates)."
+    if stage is WorkflowStage.PROJECT_INTAKE:
+        return graph_runner.run_intake_via_graph(
+            user_request or "",
+            run_id=run_id,
+            existing_case_id=existing_case_id,
+            status=status,
+            progress=progress,
         )
-    return graph_runner.run_intake_via_graph(
-        user_request or "",
-        run_id=run_id,
-        existing_case_id=existing_case_id,
-        status=status,
-        progress=progress,
+    if stage is WorkflowStage.GEOMETRY_VALIDATION:
+        return graph_runner.run_geometry_via_graph(
+            user_request or "",
+            run_id=run_id,
+            existing_case_id=existing_case_id,
+            status=status,
+            progress=progress,
+        )
+    raise NotImplementedError(
+        f"agent_facade.run_node_via_graph: stage {stage.value!r} is not graph-wired yet "
+        "(ADR-029 P0/P1 wire project_intake + geometry_validation; mesh/solver land in later "
+        "phases behind the ccx + Notion isolation gates)."
     )

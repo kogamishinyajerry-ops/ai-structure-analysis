@@ -1,6 +1,5 @@
 """Application configuration using Pydantic Settings"""
 
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,15 +47,17 @@ class Settings(BaseSettings):
     # contract tests are unchanged. Tier 1 real-solver path; not signed validation.
     workflow_real_solver: bool = False
 
-    # ADR-029 P0 (graph-wiring north star): when True, the PROJECT_INTAKE stage is
-    # driven by the REAL LangGraph compiled-graph runtime — a dedicated truncated
-    # StateGraph (START -> architect -> END) compiled and .invoke()d — instead of a
-    # direct architect.run() call through the facade. This is an ARCHITECTURE-wiring
-    # proof that the orphaned agents/graph.py machinery can drive a live stage; it does
-    # NOT change the stage's provenance or the N/13 agent-driven count, runs no downstream
-    # node (no FreeCAD/gmsh/ccx, no Notion side-effect), and honestly discloses whether the
-    # architect node authored a SimPlan (LLM key present) or merely executed (keyless).
-    # Default False so CI + the contract suite are byte-identical (the branch is dead).
+    # ADR-029 P0/P1 (graph-wiring north star): when True, the graph-wired stages are
+    # driven by the REAL LangGraph compiled-graph runtime (a dedicated truncated StateGraph
+    # compiled and .invoke()d) instead of a direct node.run() call through the facade —
+    # PROJECT_INTAKE via START->architect->END (P0), and GEOMETRY_VALIDATION via
+    # START->architect->geometry->END (P1, the first cross-node graph data dependency). This
+    # is an ARCHITECTURE-wiring proof that the orphaned agents/graph.py machinery can drive
+    # live stages; it does NOT change provenance or the N/13 agent-driven count, runs no
+    # mesh/solver/human_fallback node (no gmsh/ccx, no Notion side-effect), and honestly
+    # discloses whether each plan was authored by the LLM architect node or a deterministic
+    # seed. Default False so CI + the contract suite are byte-identical (the branch is dead).
+    # (Name retained from P0 for flag stability; it now gates intake + geometry.)
     workflow_graph_intake: bool = False
 
     @property

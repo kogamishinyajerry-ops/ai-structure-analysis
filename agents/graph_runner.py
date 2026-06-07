@@ -28,16 +28,30 @@ never conflates them, and the stage provenance / N-13 count are unchanged by the
 from __future__ import annotations
 
 import logging
+import tempfile
 
 from langgraph.graph import END, START, StateGraph
 
-from agents import architect, state_projection
+from agents import architect, geometry, state_projection
+from schemas.sim_plan import GeometrySpec, SimPlan
 from schemas.sim_state import FaultClass, SimState
 from schemas.workflow_state import StageState, StageStatus
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["build_intake_graph", "run_intake_via_graph"]
+__all__ = [
+    "build_intake_geometry_graph",
+    "build_intake_graph",
+    "run_geometry_via_graph",
+    "run_intake_via_graph",
+]
+
+# A SimPlan.description sentinel: when the keyless architect node authors nothing, the
+# deterministically-seeded plan persists with this marker, so the projector can honestly
+# report planAuthoredBy="deterministic_seed". When an LLM key is present the architect node
+# returns its OWN plan (last-write on the `plan` key), erasing the sentinel → "architect_llm".
+# Runtime detection — no backend / env import needed in the agent layer (ADR-015).
+_SEED_SENTINEL = "__adr029_p1_deterministic_seed__"
 
 
 def build_intake_graph():
@@ -118,3 +132,100 @@ def run_intake_via_graph(
         status=status,
         progress=progress,
     )
+
+
+def build_intake_geometry_graph():
+    """Compile a DEDICATED truncated ``StateGraph(SimState)``: ``START→architect→geometry→END``.
+
+    Adds the architect AND geometry nodes by importing :mod:`agents.architect` /
+    :mod:`agents.geometry` DIRECTLY — never :func:`agents.graph.compile_graph` (whose closure
+    pulls backend ``app.well_harness.notion_sync``). Truncated BEFORE mesh/solver, so no ccx
+    subprocess and no human_fallback/Notion node is reachable. This is the first graph with a
+    cross-node EDGE (architect→geometry): the geometry node consumes the SimPlan the architect
+    step left in the shared SimState.
+    """
+    workflow: StateGraph = StateGraph(SimState)
+    workflow.add_node("architect", architect.run)
+    workflow.add_node("geometry", geometry.run)
+    workflow.add_edge(START, "architect")
+    workflow.add_edge("architect", "geometry")
+    workflow.add_edge("geometry", END)
+    return workflow.compile()
+
+
+def run_geometry_via_graph(
+    user_request: str,
+    *,
+    run_id: str,
+    existing_case_id: str | None = None,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Drive GEOMETRY_VALIDATION through the real 2-node ``architect→geometry`` LangGraph
+    runtime (ADR-029 P1 — the first cross-node graph data dependency).
+
+    Only the NACA dummy regime (``geometryFamily=="naca_wing"`` AND ``not FREECAD_AVAILABLE``)
+    crosses via the graph; every other family — and any host with a real FreeCAD kernel (which
+    would yield real geometry this tier_0 path must not mislabel) — falls back to the existing
+    :func:`agents.state_projection.geometry_stage_state` (P-geomrun/P-handoff path).
+
+    Because the keyless architect node authors NO SimPlan and ``agents.geometry.run`` REQUIRES
+    one, a DETERMINISTIC plan (rule-based intake case id + a fixed NACA geometry spec) is seeded
+    into the graph state so the geometry node has something to consume; the seed carries a
+    sentinel so the projection can honestly report whether the plan was seeded
+    (``deterministic_seed``) or authored by the LLM architect node (``architect_llm``, key
+    present — the genuine architect→geometry authorship dependency). On any runtime error the
+    call degrades gracefully to the deterministic ``geometry_stage_state`` projection.
+    """
+    from tools.freecad_driver import FREECAD_AVAILABLE
+
+    outcome = state_projection.analyze_geometry_plan(user_request)
+    if outcome.metrics["geometryFamily"] != "naca_wing" or FREECAD_AVAILABLE:
+        # not the dummy NACA regime → no graph crossing; use the existing projector
+        return state_projection.geometry_stage_state(
+            run_id,
+            user_request,
+            upstream_case_id=existing_case_id,
+            status=status,
+            progress=progress,
+        )
+
+    intake = state_projection.analyze_intake(user_request, existing_case_id=existing_case_id)
+    seed_plan = SimPlan(
+        case_id=intake.case_id,
+        description=_SEED_SENTINEL,
+        geometry=GeometrySpec(kind="naca", parameters={"profile": "NACA0012"}),
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="graph_geom_") as psd:
+            seed = _seed_state(user_request, run_id, existing_case_id)
+            seed["plan"] = seed_plan
+            seed["project_state_dir"] = psd
+            final_state = build_intake_geometry_graph().invoke(seed)
+            final_plan = final_state.get("plan")
+            plan_authored_by = (
+                "deterministic_seed"
+                if isinstance(final_plan, SimPlan) and final_plan.description == _SEED_SENTINEL
+                else "architect_llm"
+            )
+            if not final_state.get("geometry_path"):
+                raise RuntimeError("architect→geometry graph produced no geometry_path")
+            return state_projection.graph_geometry_to_stage_state(
+                final_state,
+                user_request,
+                run_id=run_id,
+                plan_authored_by=plan_authored_by,
+                status=status,
+                progress=progress,
+            )
+    except Exception as exc:  # never hard-crash the live pipeline on a graph-runtime hiccup
+        logger.warning(
+            "geometry graph runtime failed (%s); falling back to deterministic geometry", exc
+        )
+        return state_projection.geometry_stage_state(
+            run_id,
+            user_request,
+            upstream_case_id=existing_case_id,
+            status=status,
+            progress=progress,
+        )

@@ -71,6 +71,7 @@ __all__ = [
     "geometry_dummy_exec_to_stage_state",
     "geometry_plan_to_stage_state",
     "geometry_stage_state",
+    "graph_geometry_to_stage_state",
     "graph_intake_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
@@ -1150,3 +1151,113 @@ def geometry_stage_state(
             progress=progress,
         )
     return geometry_plan_to_stage_state(run_id, outcome, status=status, progress=progress)
+
+
+# --- LangGraph-runtime geometry projection (ADR-029 P1) ----------------------
+# P1 extends the dedicated truncated graph to architect→geometry: the geometry node CONSUMES
+# the SimPlan from the SHARED graph state that the (preceding) architect step left there —
+# the FIRST cross-node graph data dependency. This projector maps the graph's accumulated
+# final SimState (geometry has ALREADY run inside the graph; we do NOT re-run it) into the
+# GEOMETRY_VALIDATION wire state. It carries the SAME tier_0_dummy honesty pins as the
+# direct P-geomrun projector (no measurement key, cadKernelRan/defectCheckRun False,
+# disclosure of the 10-byte STEP + tautological valid), and additionally discloses WHO
+# authored the consumed plan (``plan_authored_by``): the deterministic rule-based seed
+# (keyless — the LLM architect node authored nothing) vs the LLM architect node (key
+# present — the real architect→geometry authorship dependency). Provenance stays
+# deterministic_agent → N/13 unchanged.
+
+_GRAPH_GEOM_RUNNER_TAG = "langgraph-architect-geometry"
+
+
+def graph_geometry_to_stage_state(
+    final_sim_state: Mapping[str, object],
+    user_request: str,
+    *,
+    run_id: str,
+    plan_authored_by: str,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project a 2-node ``architect→geometry`` graph's final SimState into GEOMETRY_VALIDATION.
+
+    ``final_sim_state`` is the accumulated state from
+    :func:`agents.graph_runner.run_geometry_via_graph` (the geometry node already executed
+    inside the graph under ``execution_mode=dummy``). ``plan_authored_by`` is
+    ``"deterministic_seed"`` (keyless — a rule-based plan was seeded so the geometry node had
+    something to consume) or ``"architect_llm"`` (the LLM architect node authored the plan the
+    geometry node then consumed — the genuine cross-node authorship dependency).
+
+    Refuses to claim ``toolRan=True`` without the ``geometry_path`` wiring fact (mirrors the
+    P-geomrun guard). Tier_0_dummy honesty pins are identical to the direct projector; the
+    ONLY net-new facts are the cross-node graph dependency + who authored the plan.
+    """
+    plan = final_sim_state.get("plan")
+    if not isinstance(plan, SimPlan):
+        raise RuntimeError(
+            "graph_geometry_to_stage_state: final SimState carries no SimPlan; the "
+            "architect→geometry graph did not produce a consumable plan."
+        )
+    geometry_path = final_sim_state.get("geometry_path")
+    tool_ran = bool(geometry_path)
+    if not tool_ran:
+        # The wiring fact is absent → the geometry node did NOT execute as claimed. Refuse to
+        # build a SUCCESS stage that hard-claims toolRan=True (Codex P-geomrun R0 P1).
+        raise RuntimeError(
+            "architect→geometry graph returned no geometry_path; refusing to claim toolRan=True."
+        )
+
+    case_id = plan.case_id
+    outcome = analyze_geometry_plan(user_request)  # reuse family / refSource / fromHint
+    family = outcome.metrics["geometryFamily"]
+
+    authored = (
+        (
+            "本阶段 SimPlan 由 LLM architect 节点产出，并经图状态传递给 geometry 节点消费"
+            "（真实 architect→geometry 作者依赖）。"
+        )
+        if plan_authored_by == "architect_llm"
+        else (
+            "本阶段 SimPlan 由确定性规则代理（analyze_intake + 固定 NACA 几何 spec）"
+            "构造并 seed 进图状态；keyless 的 LLM architect 节点未产出 plan（pass-through）。"
+        )
+    )
+    disclosure = (
+        "2-node 图 architect→geometry 经真实 LangGraph 运行时（compiled graph .invoke）执行；"
+        "geometry 节点从共享图状态消费 SimPlan（首个跨节点图数据依赖）。"
+        f"{authored}"
+        "但未检测到 FreeCAD 内核（FREECAD_AVAILABLE=False，cadKernelRan=False），"
+        "仅写出 10 字节占位 STEP（非 ISO-10303，ADR-008 N-3「NOT valid for Demo Gate」）；"
+        "check_geometry 返回的 valid=True 系从硬编码 JSON sidecar 读回的 tautology、非真实测量"
+        "（defectCheckRun=False，未做有效缺陷校验）；未验证任何真实几何（tier_0_dummy）。"
+        "几何采用固定 NACA0012 占位 profile（非从请求逐字解析）。"
+        f"案例号 {case_id} 经图状态由 intake 决策流入 geometry。"
+        "唯一净增事实 = 真实 2-node 图运行时执行 + 跨节点数据依赖接线。"
+    )
+    explanation = f"几何 family = {family}（源自请求确定性规划）。{disclosure}"
+    metrics: dict[str, object] = {
+        "geometryFamily": family,
+        "refSource": outcome.metrics["refSource"],
+        "fromHint": outcome.metrics["fromHint"],
+        "caseId": case_id,
+        "cadKernelRan": False,
+        "defectCheckRun": False,
+        # ADR-029 P1 architecture-wiring facts (NOT FEA measurements, NOT a provenance flip):
+        "graphNodeRan": True,
+        "graphRunner": _GRAPH_GEOM_RUNNER_TAG,
+        "planAuthoredBy": plan_authored_by,
+    }
+    metrics.update(fidelity_metrics(tool_ran=tool_ran, data_real=False, disclosure=disclosure))
+    return StageState(
+        run_id=run_id,
+        stage=WorkflowStage.GEOMETRY_VALIDATION,
+        status=status,
+        progress=progress,
+        current_object=_GEOMETRY_PLAN_CURRENT_OBJECT,
+        description=f"几何节点 dummy 执行（{family}，2-node 图驱动）",
+        metrics=StageMetrics.model_validate(metrics),
+        artifacts=StageArtifacts(),  # the dummy STEP lived under the temp dir; nothing real
+        agent_explanation=explanation,
+        next_action=outcome.next_action,
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+        updated_at=_now_iso(),
+    )
