@@ -52,6 +52,10 @@ CANONICAL_TOLERANCES: dict[str, float] = {
     "nafems-le10-thick-plate-candidate": 3.0,  # V2-1 / ADR-027 — first PUBLIC-
     #                                       benchmark agreement (NAFEMS LE10);
     #                                       observed +1.08% within the 3% hex band
+    "nafems-le11-solid-cyl-temperature-candidate": 3.0,  # FM-05 2nd benchmark —
+    #                                       SECOND public-benchmark agreement
+    #                                       (NAFEMS LE11 thermal stress); observed
+    #                                       +0.38% within the 3% band
 }
 
 

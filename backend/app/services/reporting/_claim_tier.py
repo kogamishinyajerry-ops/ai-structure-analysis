@@ -55,12 +55,10 @@ entry."""
 
 CLAIM_BOUNDARIES: Final[dict[ClaimTier, str]] = {
     "tier_1_candidate": (
-        "tier1_engineering_candidate; not_signed_validation; "
-        "not_benchmark_agreement"
+        "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"
     ),
     "tier_2_validated": (
-        "tier2_real_solver_validated; not_signed_validation; "
-        "cross_check_against_analytical"
+        "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
     ),
 }
 """Claim-boundary copy per tier. The tier_1_candidate boundary is
@@ -86,6 +84,14 @@ CLAIM_BOUNDARY_OVERRIDES: Final[dict[str, str]] = {
         "tier2_real_solver_validated; not_signed_validation; "
         "public_benchmark_agreement_nafems_le10; "
         "sign_normalized_to_solver_convention"
+    ),
+    # NAFEMS LE11 — the repo's SECOND public-benchmark agreement (thermal stress,
+    # solid of revolution). Different load type / physics / element geometry than
+    # LE10; the analytical-cross-check default boundary would mis-state it.
+    "nafems-le11-solid-cyl-temperature-candidate": (
+        "tier2_real_solver_validated; not_signed_validation; "
+        "public_benchmark_agreement_nafems_le11; "
+        "thermoelastic_imposed_temperature_field; sign_normalized_to_solver_convention"
     ),
 }
 """Per-case claim-boundary overrides applied ONLY at tier_2_validated. Keyed
@@ -227,6 +233,13 @@ CLAIM_TIER_REGISTRY: Final[dict[str, ClaimTier]] = {
     # monotone convergence. Promoted to tier_2_validated by the overlay on the
     # cross_check_verdict.yaml verdict=PASS. Baseline tier_1 here.
     "nafems-le10-thick-plate-candidate": "tier_1_candidate",
+    # FM-05 2nd benchmark (2026-06-07) — the project's SECOND PUBLIC-BENCHMARK
+    # AGREEMENT and first thermal-stress / solid-of-revolution one. Real ccx 2.23
+    # thermo-elastic solve (imposed temperature field T=√(x²+y²)+z, NO *DLOAD),
+    # C3D20 revolved quarter, σ_zz(A) observed −105.398 MPa vs published −105 MPa,
+    # +0.38% (tol 3%), monotone convergence 88→5632 el. Promoted to
+    # tier_2_validated by the overlay on cross_check_verdict.yaml verdict=PASS.
+    "nafems-le11-solid-cyl-temperature-candidate": "tier_1_candidate",
 }
 
 
@@ -390,10 +403,7 @@ def register_tier_2_validated(case_id: str) -> None:
     unknown case_ids (the registry is the SSOT of which cases exist).
     """
     if _SIGNED_REGISTRY_PATTERN.fullmatch(case_id):
-        raise ValueError(
-            f"refused to promote signed-registry case {case_id!r} "
-            f"(HF1.7a defense)"
-        )
+        raise ValueError(f"refused to promote signed-registry case {case_id!r} (HF1.7a defense)")
     if case_id not in CLAIM_TIER_REGISTRY:
         raise KeyError(
             f"refused to promote unknown case_id {case_id!r}; "

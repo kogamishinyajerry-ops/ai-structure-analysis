@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.2.0",
+  "_schema_note": "Mirrors the LE10 convergence_study schema 1.2.0: per-rung records carry an honest `within_case_tolerance` flag, NOT a per-rung verdict. The single case-level PASS verdict lives ONLY in cross_check_verdict.yaml (the canonical finest 5632-element solve, residual +0.38%).",
+  "case_id": "nafems-le11-solid-cyl-temperature-candidate",
+  "cross_check_kind": "nafems_le11_solid_cyl_taper_sphere_temperature_point_a",
+  "refinement_param_name": "element_count",
+  "refinement_units": "C3D20 hexahedra (revolved solid, quadratic, full-integration)",
+  "case_tolerance_pct": 3.0,
+  "canonical_refinement_param": 5632,
+  "trend_monotone": true,
+  "generated_at_utc": "2026-06-07T04:00:00+00:00",
+  "analytical_value_pa": -105000000.0,
+  "reference_kind": "published_benchmark",
+  "_trend_monotone_note": "trend_monotone refers to the stress MAGNITUDE |sigma_zz@A| (monotonically increasing with refinement). The SIGNED residual is NOT monotone: it changes sign as the magnitude crosses the target, so |residual| is down-then-up (2.39 -> 0.51 -> 0.11 -> 0.38).",
+  "notes": "NAFEMS LE11 sigma_zz at point A (1.0, 0, 0), inner-radius base corner, vs the published -105 MPa. Real ccx 2.23, full-integration C3D20, quarter solid-of-revolution (pi/2 about z), imposed temperature field T=sqrt(x^2+y^2)+z. The stress MAGNITUDE converges monotonically on the refined branch (88 -> 5632 elements): sigma_zz@A goes -102.49 -> -104.47 -> -105.12 -> -105.40 MPa. It CROSSES the -105 MPa target between the 704- and 2376-element rungs (|104.47| < 105 < |105.12|), so the signed residual changes sign (-2.39% -> -0.51% -> +0.11% -> +0.38%) and |residual| is NOT monotone. The mesh ladder uses a single integer refine factor r scaling all transfinite divisions + revolution layers (r=1..4); Richardson extrapolation is not reported (the corner-stress branch is still mildly climbing at r=4, consistent with a re-entrant inner-radius base corner). The finest 5632-element rung (+0.38%) is pinned canonical (converged value, not the +0.11% 2376-element rung nearest target). Point A landed on node 2 = (1.0,0,0) at every rung.",
+  "points": [
+    {"label": "r1", "refinement_param": 88,   "node_count": 613,   "element_count": 88,   "observed_value": -102491000.0, "analytical_value": -105000000.0, "residual_pct": -2.39, "within_case_tolerance": true},
+    {"label": "r2", "refinement_param": 704,  "node_count": 3777,  "element_count": 704,  "observed_value": -104469000.0, "analytical_value": -105000000.0, "residual_pct": -0.51, "within_case_tolerance": true},
+    {"label": "r3", "refinement_param": 2376, "node_count": 11609, "element_count": 2376, "observed_value": -105116000.0, "analytical_value": -105000000.0, "residual_pct": 0.11, "within_case_tolerance": true},
+    {"label": "r4", "refinement_param": 5632, "node_count": 26221, "element_count": 5632, "observed_value": -105398000.0, "analytical_value": -105000000.0, "residual_pct": 0.38, "within_case_tolerance": true, "is_canonical": true}
+  ]
+}
