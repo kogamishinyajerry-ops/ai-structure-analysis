@@ -85,9 +85,12 @@ class CalculiXFEABackend:
         if self._render_deck is not None:
             return self._render_deck
 
-        from agents.solver import _render_inp_deck
+        # ADR-015 layering: depend DOWNWARD on the tools/ driver layer, never UP into
+        # agents.* (the live path always passes render_deck explicitly, so this fallback
+        # is only hit when a caller constructs the backend with render_deck=None).
+        from tools.inp_writer import render_inp_deck
 
-        return _render_inp_deck
+        return render_inp_deck
 
     def solve(self, case: CasePackage, opts: SolveOptions) -> SolveOutcome:
         """Run CalculiX through the existing driver, or preflight only."""
