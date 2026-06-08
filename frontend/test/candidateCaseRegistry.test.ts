@@ -38,12 +38,15 @@ describe('candidate case registry', () => {
       'modal-cantilever-candidate',
       'modal-cantilever-stiff-candidate',
       'nafems-le10-thick-plate-candidate',
+      'nafems-le11-solid-cyl-temperature-candidate',
+      'nafems-le3-hemisphere-shell-candidate',
       'plate-simply-supported-candidate',
       'plate-ss-shell-candidate',
       'plate-with-hole-candidate',
       'rod-wave-impact-candidate',
       'rod-wave-impact-energy-leak-candidate',
       'rod-wave-impact-stiff-candidate',
+      'rotating-disk-centrifugal-candidate',
       'wedge-c3d6-candidate',
     ])
     // Anti-overclaim guard. The fallback cohort is a Tier 1 + Tier 2 mix
