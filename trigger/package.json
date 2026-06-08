@@ -1,0 +1,22 @@
+{
+  "name": "ai-fea-trigger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Trigger.dev v4 orchestration for the AI-FEA Workflow Runtime (M2)",
+  "scripts": {
+    "dev": "trigger.dev dev",
+    "deploy": "trigger.dev deploy",
+    "server": "tsx src/triggerServer.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trigger.dev/sdk": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "trigger.dev": "^4.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

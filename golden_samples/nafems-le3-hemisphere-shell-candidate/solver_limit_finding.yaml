@@ -1,0 +1,73 @@
+# NAFEMS LE3 — machine-readable SOLVER-LIMIT finding.
+#
+# Filename is deliberately NOT `cross_check_verdict.yaml`: that name is globbed by
+# tests/test_v2_0_residual_floor.py, which would (a) require verdict == "PASS" and
+# (b) demand a tier_2_validated registry entry. This case is NEITHER. Keeping a
+# distinct filename keeps LE3 honestly OUT of the validated cohort.
+schema_version: "1.0.0"
+case_id: "nafems-le3-hemisphere-shell-candidate"
+finding_kind: "solver_capability_limit"
+verdict: "DOCUMENTED_GAP"            # NOT "PASS" — intentionally not a benchmark agreement
+is_tier2_agreement: false
+claim_tier: "tier_0_software_path"   # software-path evidence + documented limitation; NOT registered
+
+benchmark: "NAFEMS LE3 — Hemispherical shell with point loads"
+benchmark_source: >-
+  NAFEMS Publication TNSB Rev.3 (Oct 1990), Test LE3. Target / loads / BCs triangulated
+  2026-06-07 from free reproductions: Altair OptiStruct OS-V:0030 (CQUAD4, normalized
+  convergence to ~0.1853 @ 64x64), the Abaqus Benchmarks Guide LE3, and the PrePoMax
+  (CalculiX) LE3 discussion. TNSB Rev.3 itself NOT purchased (same disclosed limitation
+  as LE10/LE11).
+
+target_quantity: "ux at point A=(10,0,0), the outward-loaded equator free-edge point"
+analytical_value_m: 0.185           # NAFEMS thin-shell reference
+observed_value_m: 0.20033           # ccx 2.23, canonical na=32 (converged)
+residual_pct_vs_thin_shell_ref: 8.29
+honest_agreement_band_pct: 3.0      # the band LE10 (+1.08%) and LE11 (+0.38%) meet; LE3 does NOT
+within_honest_band: false
+
+geometry_m:
+  radius_midsurface: 10.0
+  thickness: 0.04
+  R_over_t: 250.0
+  model: "quarter (pi/2 about z), pole-to-equator meridian revolved"
+material:
+  youngs_modulus_pa: 68.25e9
+  poisson_ratio: 0.30
+load:
+  description: "two pairs of 4 kN point loads on the equator free edge; quarter sees 2 kN/point (halved on symmetry planes)"
+  A_force_N: [2000.0, 0.0, 0.0]      # +X outward
+  C_force_N: [0.0, -2000.0, 0.0]     # -Y inward
+boundary_conditions:
+  - "uy=0 on the y=0 meridian edge (AE) — translational symmetry"
+  - "ux=0 on the x=0 meridian edge (CE) — translational symmetry"
+  - "uz=0 at apex E=(0,0,10)"
+  - "equator edge AC free"
+element_type: "S8R (quadratic shell; ccx expands to solid C3D20R) + S6 pole fan"
+ccx_version: "2.23"
+
+root_cause: >-
+  CalculiX has no true thin-shell (Kirchhoff/Mindlin) element — every shell is expanded
+  to a solid brick (S8R -> C3D20R). A concentrated load on a solid shell produces a
+  local through-thickness 3-D "dimple" that thin-shell theory does not contain. For this
+  very thin (R/t=250), bending-dominated, point-loaded shell that local flexibility adds
+  ~8% to the displacement read AT the loaded node. The gap is CONVERGED (stable na=16..40)
+  and formulation-independent (S8R and S8 both -> ~0.2004; S8 merely locks then climbs).
+
+cross_check:
+  optistruct_cquad4_thin_shell_converged_m: 0.1853   # converges DOWN to the reference
+  ccx_solid_shell_converged_m: 0.2004                # converges UP, +8.3%
+  conclusion: >-
+    Independent thin-shell (OptiStruct CQUAD4) and solid-shell (ccx C3D20R) results
+    bracket the answer from opposite sides. This corroborates the +8.3% as a real
+    thin-vs-solid-shell formulation divergence under a point load, not a model error.
+
+honest_conclusion: >-
+  LE3-as-a-point-load-displacement benchmark is outside ccx's clean-agreement envelope.
+  We record ccx's true converged number (0.2004 m) and its cause rather than cherry-pick
+  a coarse mesh reading ~0.185 on the way up, or distribute the load to soften the dimple
+  (either would be gaming). ccx's clean public-benchmark agreements live in solid stress
+  (LE10, +1.08%) and solid thermo-elastic (LE11, +0.38%); thin-shell benchmarks are not
+  ccx's strength. This file documents that capability boundary honestly.
+
+reproduce: "python golden_samples/nafems-le3-hemisphere-shell-candidate/data/generator.py [--ladder]"

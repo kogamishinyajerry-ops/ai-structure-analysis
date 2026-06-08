@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GS-102 · 真实弹道侵彻 150 帧回放 · Tier 1 工程候选</title>
+<style>
+  :root {
+    --bg: #0c0e14; --bg2: #11141d; --text: #EAF1FB; --muted: #93A4BC; --dim: #5F7088;
+    --cyan: #3BA8FF; --cyan2: #62C4FF; --gold: #FFCB5C; --coral: #FF7E69; --ok: #5BD6A8;
+    --glass: rgba(255,255,255,.04); --glass-line: rgba(110,160,215,.18);
+    --sans: "PingFang SC","微软雅黑","Microsoft YaHei",system-ui,sans-serif;
+    --mono: "SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 24px;height:52px;background:var(--bg2);
+    border-bottom:1px solid var(--glass-line);flex-shrink:0;
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600}
+  .topbar .brand b{color:var(--cyan2)}
+  .topbar .brand span{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .tier-pill{
+    display:inline-block;padding:.3em .8em;border-radius:999px;font-size:11px;font-family:var(--mono);
+    border:1px solid rgba(255,126,105,.4);background:rgba(255,126,105,.08);color:var(--coral);
+  }
+
+  .main{display:flex;flex-direction:column;height:calc(100% - 52px)}
+
+  .viewport-row{display:flex;flex:1;min-height:0}
+
+  .vp-main{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+  .vp-img-wrap{flex:1;min-height:0;position:relative;overflow:hidden}
+  .vp-img-wrap img{width:100%;height:100%;object-fit:contain;display:block}
+  .vp-img-wrap .erode-tag{
+    position:absolute;top:8px;right:8px;
+    background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.5);
+    color:#ffbbbb;font-family:var(--mono);font-size:11px;padding:.3em .7em;border-radius:8px;
+    display:none;
+  }
+  .vp-img-wrap .erode-tag.show{display:block}
+  .vp-img-wrap .frame-label{
+    position:absolute;bottom:10px;left:10px;
+    background:rgba(0,0,0,.6);color:var(--cyan2);font-family:var(--mono);font-size:12px;
+    padding:.35em .75em;border-radius:8px;letter-spacing:.04em;
+  }
+
+  .vp-right{width:260px;flex-shrink:0;border-left:1px solid var(--glass-line);display:flex;flex-direction:column;padding:12px;gap:10px;overflow-y:auto}
+  .track-label{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;flex-shrink:0}
+  .hud-card{background:var(--glass);border:1px solid var(--glass-line);border-radius:10px;padding:10px 12px;flex-shrink:0}
+  .hud-card .hv{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--cyan2);line-height:1}
+  .hud-card .hl{font-size:10px;color:var(--muted);margin-top:4px;font-family:var(--mono)}
+  .hud-card .hl b{color:var(--text)}
+  .erosion-card{
+    background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);
+    border-radius:10px;padding:10px 12px;color:var(--coral);font-family:var(--mono);
+    text-align:center;flex-shrink:0;display:none;
+  }
+  .erosion-card.show{display:block}
+  .erosion-card .big{font-size:20px;font-weight:700;line-height:1.2}
+  .erosion-card .small2{font-size:10px;color:var(--muted);display:block;margin-top:4px}
+  .spark-wrap{display:flex;flex-direction:column;gap:4px}
+  .spark-canvas{width:100%;height:56px;display:block;border-radius:6px;background:rgba(0,0,0,.2)}
+
+  .ctrl-row{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 16px;background:var(--bg2);
+    border-top:1px solid var(--glass-line);flex-shrink:0;
+  }
+  .btn{
+    background:rgba(255,255,255,.04);border:1px solid var(--glass-line);
+    color:var(--muted);padding:6px 14px;border-radius:8px;
+    font-family:var(--mono);font-size:12px;cursor:pointer;transition:.2s;flex-shrink:0;
+  }
+  .btn:hover{border-color:var(--cyan);color:var(--cyan2)}
+  .btn.active{background:rgba(59,168,255,.15);border-color:var(--cyan);color:var(--cyan2)}
+  .scrub-wrap{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0}
+  .scrub-label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--dim)}
+  input[type=range]{
+    -webkit-appearance:none;width:100%;height:4px;border-radius:2px;
+    background:rgba(110,160,215,.18);outline:none;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+    background:var(--cyan);cursor:pointer;box-shadow:0 0 6px rgba(59,168,255,.6);
+  }
+  .fps-row{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .fps-row label{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  select{
+    background:rgba(255,255,255,.04);border:1px solid var(--glass-line);
+    color:var(--text);padding:4px 8px;border-radius:6px;font-family:var(--mono);font-size:12px;cursor:pointer;
+  }
+  .clk{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:100px;text-align:right;flex-shrink:0}
+
+  #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);z-index:9999}
+  #loading .spinner{width:48px;height:48px;border:3px solid var(--glass-line);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #loading p{margin-top:16px;color:var(--muted);font-family:var(--mono);font-size:14px}
+  #loading.hidden{display:none}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p>正在加载 150 帧真实数据…</p>
+</div>
+
+<!-- top bar -->
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+      <path d="M12 2 4 6v6c0 4.4 3.2 8 8 10 4.8-2 8-5.6 8-10V6l-8-4z" stroke="var(--cyan)" stroke-width="1.5" fill="rgba(59,168,255,.08)"/>
+    </svg>
+    <b>甲盾 · AegisFEA</b>
+    <span>GS-102 · 弹道侵彻 · 150 帧 OpenRadioss 显式瞬态</span>
+  </div>
+  <div class="tier-pill">Tier 1 工程候选 · not signed validation · not benchmark agreement</div>
+</div>
+
+<!-- main -->
+<div class="main">
+
+  <div class="viewport-row">
+
+    <!-- left: main frame -->
+    <div class="vp-main">
+      <div class="vp-img-wrap">
+        <img id="mainImg" alt="frame" />
+        <div class="frame-label" id="frameLabel">frame 000/149 · t = 0.0000 ms</div>
+        <div class="erode-tag" id="erodeTag">
+          <span id="erodeCount">0</span> PLATE 单元已侵蚀
+        </div>
+      </div>
+    </div>
+
+    <!-- right: HUD strip -->
+    <div class="vp-right">
+      <div class="track-label">实时数据</div>
+
+      <div class="hud-card">
+        <div class="hv" id="hudPeak">0.00</div>
+        <div class="hl">峰值 von Mises · MPa</div>
+      </div>
+
+      <div class="hud-card">
+        <div class="hv" id="hudAlive">144</div>
+        <div class="hl">存活 plate 单元 · <b id="hudTotal">144</b> 总</div>
+      </div>
+
+      <div class="hud-card">
+        <div class="hv" id="hudDisp">0.00</div>
+        <div class="hl">最大位移 |u| · mm</div>
+      </div>
+
+      <div class="erosion-card" id="erosionCard">
+        <div class="big" id="erosionBig">EROSION</div>
+        <div class="small2" id="erosionSmall"></div>
+      </div>
+
+      <div class="spark-wrap">
+        <div class="track-label">peak σ_vm 历史</div>
+        <canvas class="spark-canvas" id="sparkPeak" width="236" height="56"></canvas>
+      </div>
+      <div class="spark-wrap">
+        <div class="track-label">存活单元历史</div>
+        <canvas class="spark-canvas" id="sparkAlive" width="236" height="56"></canvas>
+      </div>
+    </div>
+
+  </div><!-- /viewport row -->
+
+  <!-- controls -->
+  <div class="ctrl-row">
+    <button class="btn" id="btnPlay">▶ 播放</button>
+    <button class="btn" id="btnStepB">◀</button>
+    <button class="btn" id="btnStepF">▶</button>
+    <div class="scrub-wrap">
+      <div class="scrub-label">
+        <span id="scrubLeft">frame 0</span>
+        <span id="scrubRight">frame 149 · t = 0.149 ms</span>
+      </div>
+      <input type="range" id="scrubber" min="0" max="149" value="0" />
+    </div>
+    <div class="fps-row">
+      <label>fps</label>
+      <select id="fpsSel">
+        <option value="12">12</option>
+        <option value="6">6</option>
+        <option value="3">3</option>
+        <option value="1">1</option>
+      </select>
+    </div>
+    <div class="clk" id="clk">00:00.000 / 00:00.149</div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// REAL DATA  —  100% from on-disk result_mesh.json (22 MB GS-102 candidate)
+// Frames: 150  ·  t: 0 → 0.149 ms  ·  peak σ_vm = 731.49 MPa @ frame 93
+// Erosion: 8 plate elements die at frames 36 / 121 / 125
+// ═══════════════════════════════════════════════════════════════════
+const FRAME_DIR = "gs102-frames/";   // relative to this HTML file
+
+// ── Load frame_summary.json (lazy, from disk) ──────────────────
+let frames = [];
+let currentFrame = 0;
+let playing = false;
+let animId = null;
+let lastTs = null;
+let frameAccum = 0;
+let fps = 12;
+const TOTAL = 150;
+// Plate-element census (denominator for alive/dead). Overwritten from
+// frame_summary.json plateElementCount on load — aliveCount there is
+// plate-only (projectile quads never erode and are excluded at the source).
+let plateTotal = 120;
+
+// Pre-loaded Image objects
+const imgCache = {};
+let loadCount = 0;
+
+// ── DOM ──────────────────────────────────────────────────────
+const mainImg    = document.getElementById("mainImg");
+const frameLbl  = document.getElementById("frameLabel");
+const erodeTag   = document.getElementById("erodeTag");
+const erodeCnt  = document.getElementById("erodeCount");
+const hudPeak   = document.getElementById("hudPeak");
+const hudAlive  = document.getElementById("hudAlive");
+const hudTotal  = document.getElementById("hudTotal");
+const hudDisp   = document.getElementById("hudDisp");
+const erosionCard = document.getElementById("erosionCard");
+const erosionBig  = document.getElementById("erosionBig");
+const erosionSmall= document.getElementById("erosionSmall");
+const scrubber  = document.getElementById("scrubber");
+const scrubLeft = document.getElementById("scrubLeft");
+const scrubRight= document.getElementById("scrubRight");
+const clk       = document.getElementById("clk");
+const btnPlay   = document.getElementById("btnPlay");
+const btnStepB  = document.getElementById("btnStepB");
+const btnStepF  = document.getElementById("btnStepF");
+const fpsSel    = document.getElementById("fpsSel");
+const loading   = document.getElementById("loading");
+
+// ── Pre-load all 150 PNG frames ─────────────────────────────────
+// The PNG frame set is intentionally NOT committed (~24MB; regenerable from
+// project_state result_mesh.json) — so a clean checkout must fail LOUDLY
+// with regeneration instructions, never render a silent blank viewport.
+let failCount = 0;
+function preloadAll() {
+  return new Promise((resolve) => {
+    for (let i = 0; i < TOTAL; i++) {
+      const img = new Image();
+      const ii = i;
+      img.onload = () => {
+        imgCache[ii] = img;
+        loadCount++;
+        if (loadCount === TOTAL) resolve();
+      };
+      img.onerror = () => {
+        imgCache[ii] = null;
+        failCount++;
+        loadCount++;
+        if (loadCount === TOTAL) resolve();
+      };
+      img.src = `${FRAME_DIR}frame_${String(i).padStart(4, "0")}.png`;
+    }
+  });
+}
+
+function showMissingFrames() {
+  loading.classList.remove("hidden");
+  loading.innerHTML =
+    `<div style="max-width:560px;text-align:center;line-height:1.6">` +
+    `<b>${failCount}/${TOTAL} frame PNGs missing</b><br>` +
+    `The per-frame renders are not committed (~24MB). Regenerate them locally:<br>` +
+    `<code style="font-size:12px">PYVISTA_OFF_SCREEN=true .venv/bin/python ` +
+    `docs/demo/render_gs102_anim.py</code><br>` +
+    `<span style="opacity:.7;font-size:12px">run from the repo root (the documented ` +
+    `interpreter — pyvista lives in the repo venv); requires ` +
+    `project_state/&hellip;/result_mesh.json — then reload this page over HTTP.</span></div>`;
+}
+
+// ── HUD update ────────────────────────────────────────────────
+function updateHUD(idx) {
+  const fd = frames[idx];
+  if (!fd) return;
+  const dead = fd.aliveCount < plateTotal ? plateTotal - fd.aliveCount : 0;
+
+  hudPeak.textContent  = fd.peakVonMises.toFixed(1);
+  hudAlive.textContent = fd.aliveCount;
+  hudTotal.textContent = String(plateTotal);
+  hudDisp.textContent = fd.maxDisplacement.toFixed(2); // already mm in result_mesh.json
+
+  if (dead > 0) {
+    erodeTag.classList.add("show");
+    erodeCnt.textContent = dead;
+    erosionCard.classList.add("show");
+    erosionBig.textContent = `${dead} PLATE ELEMENTS ERODED`;
+    const evs = [];
+    if (idx >= 36) evs.push("f36");
+    if (idx >= 121) evs.push("f121");
+    if (idx >= 125) evs.push("f125");
+    erosionSmall.textContent = evs.join(" · ") + " · t=" + fd.timeMs.toFixed(4) + " ms";
+  } else {
+    erodeTag.classList.remove("show");
+    erosionCard.classList.remove("show");
+  }
+
+  frameLbl.textContent =
+    `frame ${String(idx).padStart(3,"0")}/${TOTAL-1}  ·  t = ${fd.timeMs.toFixed(4)} ms  ·  peak ${fd.peakVonMises.toFixed(1)} MPa`;
+
+  scrubLeft.textContent = `frame ${idx}`;
+  scrubRight.textContent = `frame ${TOTAL-1} · t = ${frames[TOTAL-1].timeMs.toFixed(3)} ms`;
+
+  // timeMs is fractional (whole run ≈ 0.149 ms) — flooring to integer ms
+  // collapsed the clock to 00:000 / 00:000 for every frame. Show the real
+  // sub-millisecond value instead.
+  const fmt2 = (ms) => `${ms.toFixed(4)} ms`;
+  clk.textContent = `${fmt2(fd.timeMs)} / ${fmt2(frames[TOTAL-1].timeMs)}`;
+}
+
+// ── Show frame ────────────────────────────────────────────────
+function showFrame(idx) {
+  currentFrame = idx;
+  const img = imgCache[idx];
+  if (img) mainImg.src = img.src;
+  scrubber.value = idx;
+  updateHUD(idx);
+  drawSparklines();
+}
+
+// ── Playback ──────────────────────────────────────────────────
+function tick(ts) {
+  if (!playing) return;
+  if (lastTs === null) lastTs = ts;
+  const dt = ts - lastTs;
+  lastTs = ts;
+  frameAccum += dt;
+  const interval = 1000 / fps;
+  if (frameAccum >= interval) {
+    frameAccum -= interval;
+    const next = currentFrame + 1;
+    if (next >= TOTAL) {
+      playing = false;
+      btnPlay.textContent = "▶ 播放";
+    } else {
+      showFrame(next);
+    }
+  }
+  animId = requestAnimationFrame(tick);
+}
+
+function setPlaying(v) {
+  playing = v;
+  btnPlay.textContent = v ? "⏸ 暂停" : "▶ 播放";
+  if (v) { lastTs = null; frameAccum = 0; animId = requestAnimationFrame(tick); }
+  else { if (animId) cancelAnimationFrame(animId); }
+}
+
+// ── Sparklines ────────────────────────────────────────────────
+function drawSparklines() {
+  const c1 = document.getElementById("sparkPeak");
+  const c2 = document.getElementById("sparkAlive");
+  const W = c1.width, H = c1.height;
+  const vmax = 731.493;  // locked global max from result_mesh.json
+  const n = TOTAL;
+
+  // peak sparkline
+  {
+    const ctx = c1.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "#3BA8FF";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * W;
+      const y = H - (frames[i].peakVonMises / vmax) * H;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // current dot
+    const x = currentFrame / (n - 1) * W;
+    const y = H - (frames[currentFrame].peakVonMises / vmax) * H;
+    ctx.fillStyle = "#62C4FF";
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // alive sparkline
+  {
+    const ctx = c2.getContext("2d");
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = "#5BD6A8";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * W;
+      const y = H - (frames[i].aliveCount / plateTotal) * H;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // erosion verticals
+    ctx.strokeStyle = "rgba(239,68,68,.5)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    [36, 121, 125].forEach(fi => {
+      const x = fi / 149 * W;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    });
+    ctx.setLineDash([]);
+    // current dot
+    const x = currentFrame / 149 * W;
+    const y = H - (frames[currentFrame].aliveCount / plateTotal) * H;
+    ctx.fillStyle = "#5BD6A8";
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ── Controls ──────────────────────────────────────────────────
+scrubber.addEventListener("input", () => {
+  setPlaying(false);
+  showFrame(Number(scrubber.value));
+});
+btnPlay.addEventListener("click", () => setPlaying(!playing));
+btnStepB.addEventListener("click", () => {
+  setPlaying(false);
+  showFrame(Math.max(0, currentFrame - 1));
+});
+btnStepF.addEventListener("click", () => {
+  setPlaying(false);
+  showFrame(Math.min(TOTAL - 1, currentFrame + 1));
+});
+fpsSel.addEventListener("change", () => { fps = Number(fpsSel.value); });
+
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+  else if (e.code === "ArrowRight") { setPlaying(false); showFrame(Math.min(TOTAL-1, currentFrame+1)); }
+  else if (e.code === "ArrowLeft") { setPlaying(false); showFrame(Math.max(0, currentFrame-1)); }
+});
+
+// ── Boot ─────────────────────────────────────────────────────
+(async () => {
+  try {
+    const r = await fetch(`${FRAME_DIR}frame_summary.json`);
+    const data = await r.json();
+    frames = data.frames;
+    if (Number.isFinite(data.plateElementCount)) plateTotal = data.plateElementCount;
+    scrubber.max = TOTAL - 1;
+    scrubRight.textContent = `frame ${TOTAL-1} · t = ${data.timeEnd.toFixed(3)} ms`;
+  } catch(e) {
+    console.warn("Could not load frame_summary.json:", e);
+    // embedded fallback with correct structure
+    frames = [];
+  }
+
+  await preloadAll();
+  if (failCount > 0) {
+    showMissingFrames();   // honest fail-fast: never a silent blank viewport
+    return;
+  }
+  loading.classList.add("hidden");
+  showFrame(0);
+})();
+</script>
+</body>
+</html>

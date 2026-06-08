@@ -1,0 +1,44 @@
+{
+  "schema": "le11-artifact-manifest/1.0",
+  "case_id": "nafems-le11-solid-cyl-temperature-candidate",
+  "purpose": "ADR-027 G-2 evidence-packet item 5 (artifact manifest + hashes) for the NAFEMS LE11 thermal-stress benchmark candidate (the repo's SECOND public-benchmark agreement). Seals the committed evidence set: any byte change to a sealed file must be a deliberate, reviewed event.",
+  "claim_tier": "Tier 1 engineering candidate, public-benchmark cross-check (registry overlay: tier_2_validated). NOT signed validation - G-2 item 7 (independent signoff, owner-authorized per ADR-023) remains open.",
+  "sealed_artifacts": {
+    "NOTES.md": {
+      "sha256": "74ced17d9aa281238c74196f5cec19a8b2f0407682cc0276eccaee51e234f942",
+      "bytes": 4031
+    },
+    "convergence_study.json": {
+      "sha256": "80ef862420b244a654abb666449a5d7785f58129265821aaac20700b3cf29624",
+      "bytes": 3037
+    },
+    "cross_check_verdict.yaml": {
+      "sha256": "8556dc45c1918da6aeec0ff83af9be1fb2eaf0fa2d512c224a43b7e2aaf0f567",
+      "bytes": 5691
+    },
+    "data/generator.py": {
+      "sha256": "095b093e3c1b32869e53b5b904ae9b3899b3a407a038c1403fa1126fe669153c",
+      "bytes": 11431
+    },
+    "data/run_r4_C3D20/solve.inp": {
+      "sha256": "28f760d6290c83cdb64c97f69dfed4bcc7e6632fec928309b8a55a01e0ac5614",
+      "bytes": 3068239
+    },
+    "published_reference.yaml": {
+      "sha256": "9714fd5217ab927325c766e17a314a10af40a951bb2c2436ca7369acae9d97fd",
+      "bytes": 3507
+    }
+  },
+  "local_only_artifacts_not_sealed": {
+    "note": "Solver outputs (*.frd/*.dat/*.sta/*.cvg/*.12d/spooles.out) and gmsh intermediates (le11.inp/le11.geo) are NOT in version control (.gitignore: only inputs enter VC). The committed deck data/run_r4_C3D20/solve.inp is self-contained (no *INCLUDE); the live re-solve regenerates the outputs (python data/generator.py)."
+  },
+  "g2_packet_coverage": {
+    "1_benchmark_source_and_sign": "covered-with-limitation (7 free reproductions triangulated; TNSB Rev.3 not purchased)",
+    "2_real_solver_run_with_provenance": "covered (committed deck + generator.py; real ccx 2.23 thermo-elastic solve)",
+    "3_residual_vs_target_with_tolerance": "covered (cross_check_verdict.yaml: -105.398 vs -105 MPa, +0.38%, tol 3%)",
+    "4_mesh_convergence_evidence": "covered (convergence_study.json, 4-rung monotone 88->5632 el)",
+    "5_artifact_manifest_hashes": "THIS FILE",
+    "6_reproduce_cli_audit_log": "covered - generator.py --ladder (real ccx re-derivation) + scripts/reproduce_case.py (sealed-hash integrity + recompute, ADR-027 V2-2). A real-ccx reproducer registration for LE11 in reproduce_case._REAL_SOLVERS is a noted follow-up (currently the LE11 path is recompute+integrity).",
+    "7_independent_review_signoff": "OPEN - owner-authorized signoff required (ADR-023); no AI self-sign"
+  }
+}

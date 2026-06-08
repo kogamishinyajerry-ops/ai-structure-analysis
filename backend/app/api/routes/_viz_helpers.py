@@ -16,6 +16,8 @@ from pathlib import Path
 # can't be coerced into reading arbitrary filesystem paths via the
 # candidate-probe in _resolve_frd_path.
 _CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_RESULT_MESH_VTU_RE = re.compile(r"^vtu/[A-Za-z0-9_.-]+\.vtu$")
+_RESULT_MESH_JSON_ARTIFACTS = {"result_mesh.json", "vtu_manifest.json"}
 
 
 def _validate_case_id(case_id: str) -> None:
@@ -27,13 +29,37 @@ def _validate_case_id(case_id: str) -> None:
         raise ValueError("case_id has invalid shape")
 
 
+def _repo_root() -> Path:
+    """Repo root, anchored to THIS file (cwd-independent).
+
+    FM-04a Phase 41.4: ``_resolve_result_mesh_artifact_path`` previously
+    anchored ``project_state`` to ``Path.cwd()``, so the result-mesh route
+    404'd whenever the backend was launched from anywhere but the repo root
+    (e.g. ``uvicorn app.main:app`` run from ``backend/``) even though the
+    payload was on disk. The sibling spine routes (acceptance_packet /
+    trust_score / reviewer_bundle / case_completeness / tier1_report) all
+    already anchor via ``Path(__file__).resolve().parents[4]``; mirror that
+    so artifact resolution is robust to launch cwd.
+
+    ``backend/app/api/routes/_viz_helpers.py`` → parents[4] == repo root.
+    """
+    return Path(__file__).resolve().parents[4]
+
+
 def _allowed_fs_roots() -> list[Path]:
-    """Allowed roots for FRD candidate resolution. Cwd-relative."""
-    cwd = Path.cwd().resolve()
+    """Allowed roots for FRD candidate resolution.
+
+    FM-04a Phase 41.4: file-anchored to the repo root via `_repo_root()` (was
+    `Path.cwd()`). Same launch-cwd robustness fix as
+    `_resolve_result_mesh_artifact_path` — the path-traversal allowlist no longer
+    shifts when the backend is started from a subdirectory (the security property
+    is unchanged: still confined to golden_samples/ project_state/ calculix_cases/).
+    """
+    root = _repo_root()
     return [
-        (cwd / "golden_samples").resolve(),
-        (cwd / "project_state").resolve(),
-        (cwd / "calculix_cases").resolve(),
+        (root / "golden_samples").resolve(),
+        (root / "project_state").resolve(),
+        (root / "calculix_cases").resolve(),
     ]
 
 
@@ -59,7 +85,15 @@ def _resolve_frd_path(case_id: str, db_frd_path: str | None) -> Path | None:
     allowed root.
     """
     cid_lower = case_id.lower().replace("-", "")
-    case_dir = Path(db_frd_path).parent if db_frd_path else Path(f"./golden_samples/{case_id}")
+    # FM-04a Phase 41.4 (Codex R0 P2): the db_frd_path=None fallback must be
+    # repo-anchored too — `_allowed_fs_roots()` now points at <repo>/golden_samples,
+    # so a cwd-relative `./golden_samples/...` candidate (launch from backend/)
+    # would be rejected as out-of-root and a valid FRD reported as missing.
+    case_dir = (
+        Path(db_frd_path).parent
+        if db_frd_path
+        else _repo_root() / "golden_samples" / case_id
+    )
     raw_candidates: list[Path | None] = [
         case_dir / f"{cid_lower}_result.frd",
         case_dir / f"{cid_lower}.frd",
@@ -85,6 +119,35 @@ def _resolve_frd_path(case_id: str, db_frd_path: str | None) -> Path | None:
             continue
         return resolved
     return None
+
+
+def _resolve_result_mesh_artifact_path(case_id: str, artifact_path: str) -> Path | None:
+    """Resolve a browser-playback result artifact under project_state only.
+
+    Supported artifacts are the dynamic ``result_mesh.json`` payload, the
+    optional ``vtu_manifest.json`` sidecar, and VTU frame files one level below
+    ``vtu/``. Returns None when a supported artifact is not present on disk.
+    """
+    _validate_case_id(case_id)
+    normalized = artifact_path.replace("\\", "/")
+    if normalized in _RESULT_MESH_JSON_ARTIFACTS:
+        relative = Path(normalized)
+    elif _RESULT_MESH_VTU_RE.fullmatch(normalized):
+        relative = Path("vtu") / Path(normalized).name
+    else:
+        raise ValueError("unsupported result-mesh artifact")
+
+    project_state_root = (_repo_root() / "project_state").resolve()
+    artifact_root = (project_state_root / "visualizations" / case_id).resolve()
+    resolved = (artifact_root / relative).resolve()
+    try:
+        resolved.relative_to(artifact_root)
+        resolved.relative_to(project_state_root)
+    except ValueError as exc:
+        raise ValueError("unsupported result-mesh artifact") from exc
+    if not resolved.is_file():
+        return None
+    return resolved
 
 
 def _apply_increment(parsed: object, increment_index: int) -> None:
@@ -113,10 +176,10 @@ def _fallback_html_unavailable_pyvista(case_name: str | None) -> str:
     error strings leak to the browser."""
     safe_name = html.escape(case_name or "(unnamed case)")
     return (
-        "<html><body style='background:#0d1117;color:#fff;padding:2rem;"
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
         "font-family:sans-serif'>"
         f"<h2>{safe_name}</h2>"
-        "<p style='color:#f88'>3D scene unavailable: PyVista not installed.</p>"
+        "<p style='color:#c5453b'>3D scene unavailable: PyVista not installed.</p>"
         "</body></html>"
     )
 
@@ -133,14 +196,40 @@ def _fallback_html_render_failed(
     the client (logged server-side instead)."""
     safe_name = html.escape(case_name or "(unnamed case)")
     safe_struct = html.escape(structure_type or "")
-    return f"""<html><body style='background:#0d1117;color:#fff;padding:2rem;font-family:system-ui,sans-serif;line-height:1.6'>
-<h2 style='color:#39d353'>{safe_name}</h2>
-<table style='border-collapse:collapse'>
-<tr><td style='padding:4px 12px;color:#7d8590'>structure</td><td>{safe_struct}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>nodes</td><td>{n_nodes}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>elements</td><td>{n_elements}</td></tr>
-<tr><td style='padding:4px 12px;color:#7d8590'>increments</td><td>{n_increments}</td></tr>
-</table>
-<p style='color:#f88;margin-top:2rem'>3D scene unavailable; rendering failed for all candidate fields.</p>
-<p style='color:#7d8590;font-size:0.875rem'>FRD parsed successfully; check server logs for details.</p>
-</body></html>"""
+    return (
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
+        "font-family:system-ui,sans-serif;line-height:1.6'>"
+        f"<h2 style='color:#2b2823'>{safe_name}</h2>"
+        "<table style='border-collapse:collapse'>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>structure</td><td>{safe_struct}</td></tr>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>nodes</td><td>{n_nodes}</td></tr>"
+        f"<tr><td style='padding:4px 12px;color:#6e6759'>elements</td><td>{n_elements}</td></tr>"
+        "<tr><td style='padding:4px 12px;color:#6e6759'>increments</td>"
+        f"<td>{n_increments}</td></tr>"
+        "</table>"
+        "<p style='color:#c5453b;margin-top:2rem'>3D scene unavailable; rendering failed for "
+        "all candidate fields.</p>"
+        "<p style='color:#6e6759;font-size:0.875rem'>FRD parsed successfully; check "
+        "server logs for details.</p>"
+        "</body></html>"
+    )
+
+
+def _fallback_html_no_frd(case_name: str | None) -> str:
+    """FM-04a Phase 41.4: a case with no FRD result on disk (e.g. an
+    explicit-dynamics candidate whose result IS the interactive WebGL playback,
+    not a static field plot) previously raised a raw 404 — the iframe then
+    rendered the browser's JSON error viewer right under the hero viewport.
+    Return a friendly HTML panel instead (mirrors the unavailable/render-failed
+    fallbacks). R2 XSS guard: case_name is html.escape'd; no internal paths leak."""
+    safe_name = html.escape(case_name or "(unnamed case)")
+    return (
+        "<html><body style='background:#faf9f5;color:#2b2823;padding:2rem;"
+        "font-family:system-ui,sans-serif;line-height:1.6'>"
+        f"<h2 style='color:#2b2823'>{safe_name}</h2>"
+        "<p style='color:#6e6759'>No server-rendered field plot for this case.</p>"
+        "<p style='color:#6e6759;font-size:0.875rem'>This case has no static FRD "
+        "result on disk — use the interactive 3D&nbsp;Scene viewport above for its "
+        "result.</p>"
+        "</body></html>"
+    )

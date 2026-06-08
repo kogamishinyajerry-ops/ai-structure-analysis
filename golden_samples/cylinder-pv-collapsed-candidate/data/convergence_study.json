@@ -1,0 +1,18 @@
+{
+  "case_id": "cylinder-pv-collapsed-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate DEEP-DEGRADATION synthetic convergence study; not signed validation; not benchmark agreement. Mesh sweep reports `candidate_observed_unstable` so the trust-score convergence axis falls to the 30/100 raw -> 6/20 weighted floor (linear_static path).",
+  "claim_tier": "Tier 1 engineering candidate",
+  "combined_verdict": "candidate_observed_unstable",
+  "convergence_kind": "linear_static",
+  "dt_sweep": {
+    "axis": "dt",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "Static analysis — no time discretization. Marked stable as a sentinel; convergence_kind=linear_static routes the trust scorer through the mesh-only path (this field is N/A for trust scoring)."
+  },
+  "mesh_sweep": {
+    "axis": "mesh",
+    "candidate_stability": "candidate_observed_unstable",
+    "rationale": "Deep-degradation synthetic: refined mesh (2x through-wall, 2x axial) still reports worst σ_t error > 13% vs Lame's analytical. The mesh refinement does not bring the worst per-element error below the 5% engineering tolerance; sweep verdict is `candidate_observed_unstable` for the Phase 13 C regressed-bucket trigger fixture."
+  }
+}

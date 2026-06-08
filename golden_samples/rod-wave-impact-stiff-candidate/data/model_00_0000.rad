@@ -1,0 +1,7 @@
+# rod-wave-impact-stiff-candidate starter deck (SYNTHETIC stub)
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+# This is NOT a runnable OpenRadioss deck — see the
+# canonical rod-wave-impact-candidate's deck for the
+# synthetic-fixture rationale.
+# L = 1.0 m, A = 0.0001 m^2, E = 210000000000.0 Pa (tool steel), rho = 7850.0 kg/m^3
+# Impact velocity 10.0 m/s at x=0; free end at x=L

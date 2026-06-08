@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "wedge-c3d6-candidate",
+  "cross_check_kind": "c3d6_wedge_uniaxial_hookes_law",
+  "element_class": "C3D6",
+  "verdict": "PASS",
+  "tolerance_pct": 1.0,
+  "residual_pct": -0.0,
+  "analytical_pa": -210000000.0,
+  "observed_pa": -210000000.0,
+  "youngs_modulus_pa": 210000000000.0,
+  "poisson_ratio": 0.3,
+  "applied_strain": 0.001,
+  "generated_at_utc": "2026-05-23T19:56:58.464913+00:00",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
+}

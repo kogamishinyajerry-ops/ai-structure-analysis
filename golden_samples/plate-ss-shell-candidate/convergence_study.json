@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "plate-ss-shell-candidate",
+  "refinement_param_name": "n_per_side",
+  "refinement_units": "elements_per_side",
+  "trend_monotone": false,
+  "generated_at_utc": "2026-05-17T18:03:33.320582+00:00",
+  "notes": "Phase 30 D PROOF-OF-PATTERN convergence study. Three structured-quad mesh refinements (10x10, 20x20, 40x40). Each entry produced by a live ccx 2.23 run (2026-05-18). S4 shell elements with Mindlin thick-shell kinematics. Analytical reference is Timoshenko's a^4 coefficient series (alpha~0.00406 at nu=0.3). Phase 31 C adds Richardson extrapolation (post-processing; no new live ccx run).",
+  "points": [
+    {
+      "label": "lo (10x10)",
+      "refinement_param": 10,
+      "node_count": 121,
+      "element_count": 100,
+      "observed_value": 0.000255193,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": -3.299355816597174,
+      "verdict": "PASS"
+    },
+    {
+      "label": "mid (20x20)",
+      "refinement_param": 20,
+      "node_count": 441,
+      "element_count": 400,
+      "observed_value": 0.000265188,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": 0.48806366047747624,
+      "verdict": "PASS"
+    },
+    {
+      "label": "hi (40x40)",
+      "refinement_param": 40,
+      "node_count": 1681,
+      "element_count": 1600,
+      "observed_value": 0.000266979,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": 1.1667298219022417,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": 0.00026736998988298384,
+    "observed_order_p": 2.4804412296460643,
+    "refinement_ratio_r": 2.0,
+    "refinement_ratio_constant": true,
+    "extrapolated_residual_pct": 1.3148881708920563,
+    "notes": "Phase 31 C: Richardson extrapolation on the 3-point sweep (h ratio = 2 over each step, constant). Observed order p~2.48 is the empirical convergence order — close to but distinct from S4's theoretical p=2 for bending; the +1.31% extrapolated residual CONFIRMS the Phase 30 D finding that the S4 + Mindlin thick-shell discretisation has a ~+1.2% ASYMPTOTIC bias against Timoshenko's analytical series. Under-refinement is NOT the cause of the +1.17% residual at n=40; the bias persists as h->0. Sign of the analytical reference was inverted to align with the observed convention (.frd uz > 0 vs Timoshenko series < 0) so the residual is computed in the same direction as the existing residual_pct field."
+  }
+}

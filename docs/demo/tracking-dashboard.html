@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GS-102 · 动图追踪可视化 · 真实数据仪表板</title>
+<style>
+  :root {
+    --bg: #0c0e14; --bg2: #11141d; --text: #EAF1FB; --muted: #93A4BC; --dim: #5F7088;
+    --cyan: #3BA8FF; --cyan2: #62C4FF; --gold: #FFCB5C; --coral: #FF7E69; --ok: #5BD6A8;
+    --glass: rgba(255,255,255,.04); --glass-line: rgba(110,160,215,.18);
+    --sans: "PingFang SC","微软雅黑","Microsoft YaHei",system-ui,sans-serif;
+    --mono: "SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:auto}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 24px;height:52px;background:var(--bg2);
+    border-bottom:1px solid var(--glass-line);position:sticky;top:0;z-index:10;
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600}
+  .topbar .brand b{color:var(--cyan2)}
+  .topbar .brand span{color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .tier-pill{
+    display:inline-block;padding:.3em .8em;border-radius:999px;font-size:11px;font-family:var(--mono);
+    border:1px solid rgba(255,126,105,.4);background:rgba(255,126,105,.08);color:var(--coral);
+  }
+
+  .page{padding:24px 32px;max-width:1200px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+
+  /* section heading */
+  .sec-head{display:flex;align-items:baseline;gap:16px}
+  .sec-head h2{font-size:22px;font-weight:700;color:var(--text)}
+  .sec-head .sub{font-size:13px;color:var(--muted);font-family:var(--mono)}
+
+  /* cards row */
+  .cards{display:flex;gap:16px;flex-wrap:wrap}
+  .card{
+    background:var(--glass);border:1px solid var(--glass-line);border-radius:14px;
+    padding:16px 20px;min-width:180px;
+  }
+  .card .val{font-family:var(--mono);font-size:32px;font-weight:700;color:var(--cyan2);line-height:1}
+  .card .val.coral{color:var(--coral)}
+  .card .val.gold{color:var(--gold)}
+  .card .lbl{font-size:12px;color:var(--muted);margin-top:6px;font-family:var(--mono)}
+
+  /* canvas panels */
+  .panel{
+    background:var(--bg2);border:1px solid var(--glass-line);border-radius:14px;
+    padding:20px;display:flex;flex-direction:column;gap:12px;
+  }
+  .panel-title{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.06em}
+  .panel canvas{display:block;width:100%;border-radius:8px;background:rgba(0,0,0,.2)}
+
+  /* 2-col for charts */
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+
+  /* bottom: key events table */
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13px}
+  th{text-align:left;padding:8px 12px;color:var(--dim);border-bottom:1px solid var(--glass-line);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+  td{padding:8px 12px;border-bottom:1px solid rgba(110,160,215,.08);color:var(--muted)}
+  td b{color:var(--text)}
+  td.coral{color:var(--coral)}
+  tr:hover td{background:rgba(59,168,255,.04)}
+
+  .tag{
+    display:inline-block;padding:.2em .6em;border-radius:6px;font-size:11px;
+    border:1px solid var(--glass-line);background:var(--glass);color:var(--muted);
+  }
+  .tag.ok{border-color:rgba(91,214,168,.4);background:rgba(91,214,168,.08);color:var(--ok)}
+  .tag.coral{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.1);color:var(--coral)}
+  .tag.gold{border-color:rgba(255,203,92,.4);background:rgba(255,203,92,.08);color:var(--gold)}
+
+  /* tracking narrative */
+  .narrative{
+    background:rgba(255,203,92,.06);border:1px solid rgba(255,203,92,.2);
+    border-radius:12px;padding:16px 20px;font-size:14px;line-height:1.7;color:var(--muted);
+  }
+  .narrative b{color:var(--gold)}
+  .narrative .coral2{color:var(--coral)}
+
+  .footer-note{font-family:var(--mono);font-size:11px;color:var(--dim);text-align:center;padding:12px;border-top:1px solid var(--glass-line)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+      <path d="M12 2 4 6v6c0 4.4 3.2 8 8 10 4.8-2 8-5.6 8-10V6l-8-4z" stroke="var(--cyan)" stroke-width="1.5" fill="rgba(59,168,255,.08)"/>
+    </svg>
+    <b>甲盾 · AegisFEA</b>
+    <span>GS-102 · 动图追踪可视化仪表板 · 真实 OpenRadioss 数据</span>
+  </div>
+  <div class="tier-pill">Tier 1 工程候选 · not signed validation · not benchmark agreement</div>
+</div>
+
+<div class="page">
+
+  <!-- key metrics -->
+  <div>
+    <div class="sec-head">
+      <h2>关键指标</h2>
+      <span class="sub">150 帧 / t 0 → 0.149 ms / 1 us per frame · 100% 真实 OpenRadioss 结果</span>
+    </div>
+    <div class="cards" style="margin-top:14px">
+      <div class="card">
+        <div class="val" id="vmax">731.49</div>
+        <div class="lbl">峰值 von Mises · MPa · frame 93</div>
+      </div>
+      <div class="card">
+        <div class="val coral" id="vmaxframe">93</div>
+        <div class="lbl">峰值出现帧 · t = 0.0932 ms</div>
+      </div>
+      <div class="card">
+        <div class="val gold" id="disp">133.45</div>
+        <div class="lbl">最大位移 |u| · mm · frame 149</div>
+      </div>
+      <div class="card">
+        <div class="val coral" id="dead">8</div>
+        <div class="lbl">侵蚀删除 plate 单元总数</div>
+      </div>
+      <div class="card">
+        <div class="val ok" id="status">embedded</div>
+        <div class="lbl">穿孔状态 · 背面未穿透</div>
+      </div>
+      <div class="card">
+        <div class="val" id="cycles">4872</div>
+        <div class="lbl">求解步数 · NORMAL TERMINATION</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- charts -->
+  <div>
+    <div class="sec-head">
+      <h2>真实物理量历史（result_mesh.json）</h2>
+      <span class="sub">所有数据来自 OpenRadioss 求解输出，非推算或插值</span>
+    </div>
+    <div class="charts" style="margin-top:14px">
+      <div class="panel">
+        <div class="panel-title">(a) peak von Mises · MPa · frame 0 → 149</div>
+        <canvas id="chartPeak" height="200"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-title">(b) 存活 plate 单元数 · frame 0 → 149</div>
+        <canvas id="chartAlive" height="200"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-title">(c) max |u| · mm · frame 0 → 149</div>
+        <canvas id="chartDisp" height="200"></canvas>
+      </div>
+      <div class="panel">
+        <div class="panel-title">(d) 侵蚀事件时间线</div>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">
+          <div class="event-row" id="ev36">
+            <span class="tag coral">frame 36</span>
+            <span style="color:var(--muted);font-size:13px">首删 4 单元 · t=0.0360 ms · σ_vm=431.85 MPa</span>
+          </div>
+          <div class="event-row" id="ev121">
+            <span class="tag coral">frame 121</span>
+            <span style="color:var(--muted);font-size:13px">再删 2 单元 · t=0.1212 ms · 累积 6 死</span>
+          </div>
+          <div class="event-row" id="ev125">
+            <span class="tag coral">frame 125</span>
+            <span style="color:var(--muted);font-size:13px">再删 2 单元 · t=0.1252 ms · 累积 8 死</span>
+          </div>
+          <div style="margin-top:8px;border-top:1px solid var(--glass-line);padding-top:8px">
+            <span class="tag ok">frame 93</span>
+            <span style="color:var(--muted);font-size:13px">峰值 σ_vm=731.49 MPa · t=0.0932 ms</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- narrative -->
+  <div>
+    <div class="sec-head"><h2>物理叙事（Ground Truth）</h2></div>
+    <div class="narrative" style="margin-top:14px">
+      <b>弹丸（Ø20mm 半球形弹头，V₀=600 m/s）</b>撞击 <b>Weldox 460E 靶板（12mm 厚）</b>，
+      经历 <span class="coral2">0 → 0.0360 ms</span> 内首轮接触应力（峰值 431.85 MPa），
+      在 <span class="coral2">frame 36</span> 达到材料的 JC 侵蚀准则，<b>首删 4 个 plate 壳单元</b>。
+      弹丸继续穿透，<span class="coral2">frame 93 (t=0.0932 ms)</span> 时 von Mises 应力达到 <b>731.49 MPa</b>———
+      这不是事后峰值，是实时求解的数值。后续 frame 121/125 各再删 2 个单元，
+      末态共 <b>8/120 plate 单元侵蚀</b>，但背面（back face）仍存活，状态为 <b>embedded_candidate</b>，
+      <b>不是"完成穿透"</b>。弹丸最大位移 133.45 mm。
+    </div>
+  </div>
+
+  <!-- per-frame table -->
+  <div>
+    <div class="sec-head"><h2>逐帧关键数据表（节选）</h2></div>
+    <div style="margin-top:14px;overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>frame</th><th>t (ms)</th><th>peak σ_vm (MPa)</th><th>alive plate</th><th>max |u| (mm)</th><th>event</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer-note">
+  数据来源：project_state/visualizations/GS-102-transient-refined-cfl085-v365-bracket-20260512/result_mesh.json<br>
+  claim_tier = Tier 1 engineering candidate · not signed validation · not benchmark agreement
+</div>
+
+<script>
+// ── Load real data ────────────────────────────────────────────
+const FRAME_DIR = "gs102-frames/";
+let frames = [];
+let vmax_overall = 731.493;
+// Plate-only denominator: frame_summary.json aliveCount excludes the 24
+// projectile quads (they never erode), plateElementCount carries the census.
+let plateTotal = 120;
+
+(async () => {
+  try {
+    const r = await fetch(`${FRAME_DIR}frame_summary.json`);
+    const d = await r.json();
+    frames = d.frames;
+    vmax_overall = d.valueMaxOverall || 731.493;
+    if (Number.isFinite(d.plateElementCount)) plateTotal = d.plateElementCount;
+  } catch(e) { console.warn(e); return; }
+
+  const n = frames.length;
+
+  // ── Key metrics ──────────────────────────────────────────
+  document.getElementById("vmax").textContent = vmax_overall.toFixed(2);
+  const peakFrameIdx = frames.reduce((best, f, i) => f.peakVonMises > frames[best].peakVonMises ? i : best, 0);
+  document.getElementById("vmaxframe").textContent = peakFrameIdx;
+  // maxDisplacement is already mm in result_mesh.json — no *1000.
+  document.getElementById("disp").textContent = frames[n-1].maxDisplacement.toFixed(2);
+  document.getElementById("dead").textContent = plateTotal - frames[n-1].aliveCount;
+  document.getElementById("cycles").textContent = "4872";
+
+  // ── Charts ────────────────────────────────────────────────
+  function drawLine(canvasId, series, color, vmax, ann_frames, ann_color) {
+    const c = document.getElementById(canvasId);
+    const ctx = c.getContext("2d");
+    const W = c.width = c.offsetWidth * window.devicePixelRatio;
+    const H = c.height = c.offsetHeight * window.devicePixelRatio;
+    c.style.width = "100%"; c.style.height = "200px";
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    const pw = c.offsetWidth, ph = c.offsetHeight;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.fillStyle = color;
+
+    // fill under curve
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1) * pw;
+      const y = ph - (series[i] / vmax) * ph * 0.9 - ph * 0.05;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // annotation verticals
+    if (ann_frames) {
+      ann_frames.forEach(fi => {
+        const x = fi / (n - 1) * pw;
+        ctx.strokeStyle = ann_color; ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke();
+        ctx.setLineDash([]);
+        // label
+        ctx.fillStyle = ann_color;
+        ctx.font = `bold 11px SF Mono, monospace`;
+        ctx.fillText(`f${fi}`, x + 3, 14);
+      });
+    }
+
+    // current-frame cursor line (last frame)
+    {
+      const x = (n - 1) / (n - 1) * pw;
+      const y = ph - (series[n - 1] / vmax) * ph * 0.9 - ph * 0.05;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // y-axis ticks
+    ctx.fillStyle = "#5F7088";
+    ctx.font = `11px SF Mono, monospace`;
+    for (let k = 0; k <= 4; k++) {
+      const yv = vmax * k / 4;
+      const py = ph - (yv / vmax) * ph * 0.9 - ph * 0.05;
+      ctx.fillText(yv.toFixed(0), 3, py - 2);
+    }
+  }
+
+  const peaks = frames.map(f => f.peakVonMises);
+  const alives = frames.map(f => f.aliveCount);
+  const disps = frames.map(f => f.maxDisplacement); // already mm
+
+  drawLine("chartPeak", peaks, "#3BA8FF", vmax_overall * 1.05, [36, 93, 121, 125], "rgba(255,126,105,.5)");
+  drawLine("chartAlive", alives, "#5BD6A8", plateTotal + 1, [36, 121, 125], "rgba(239,68,68,.5)");
+  drawLine("chartDisp", disps, "#FFCB5C", disps[n-1] * 1.1, [], null);
+
+  // ── Table (key frames) ────────────────────────────────────
+  const keyFrames = [0, 10, 20, 30, 36, 40, 50, 60, 70, 80, 90, 93, 100, 110, 120, 121, 125, 130, 140, 149];
+  const tb = document.getElementById("tableBody");
+  keyFrames.forEach(i => {
+    const f = frames[i];
+    if (!f) return;
+    const dead = plateTotal - f.aliveCount;
+    let ev = "";
+    if (i === 36) ev = '<span class="tag coral">首删 4 单元</span>';
+    else if (i === 121) ev = '<span class="tag coral">再删 2 单元</span>';
+    else if (i === 125) ev = '<span class="tag coral">再删 2 单元</span>';
+    else if (i === 93) ev = '<span class="tag ok">峰值 σ_vm</span>';
+    else if (dead > 0) ev = `<span class="tag">${dead} 单元已死</span>`;
+    tb.innerHTML += `<tr>
+      <td><b>${i}</b></td>
+      <td>${f.timeMs.toFixed(4)}</td>
+      <td>${f.peakVonMises.toFixed(2)}</td>
+      <td>${f.aliveCount}</td>
+      <td>${f.maxDisplacement.toFixed(3)}</td>
+      <td>${ev}</td>
+    </tr>`;
+  });
+
+})();
+</script>
+</body>
+</html>

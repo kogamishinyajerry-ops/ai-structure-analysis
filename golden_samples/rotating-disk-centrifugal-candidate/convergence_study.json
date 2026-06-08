@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.2.0",
+  "_schema_note": "Mirrors the LE10/LE11 convergence_study schema. Per-rung `within_case_tolerance` is computed against the 1.0% agreement band. UNLIKE LE3/FV52, the residual here CLOSES toward zero with refinement (a true discretisation residual, not a formulation gap).",
+  "case_id": "rotating-disk-centrifugal-candidate",
+  "cross_check_kind": "rotating_annular_disk_centrifugal_hoop_stress_bore",
+  "refinement_param_name": "nr_per_edge",
+  "refinement_units": "C3D20 radial=circumferential divisions (nz=2 through half-thickness)",
+  "case_tolerance_pct": 1.0,
+  "canonical_refinement_param": 48,
+  "trend_monotone": true,
+  "generated_at_utc": "2026-06-07T00:00:00+00:00",
+  "analytical_value_pa": 65312000.0,
+  "reference_kind": "published_analytical_benchmark",
+  "is_tier2_agreement": true,
+  "_trend_monotone_note": "sigma_theta(a) decreases monotonically toward the analytic 65.312 MPa as the mesh refines; the residual closes +0.43% -> -0.01% (nr 20 -> 80). Refinement REDUCES the residual to zero, confirming a genuine continuum (plane-stress) elasticity agreement (no reduced-kinematic plate/shell-theory gap).",
+  "notes": "Rotating annular disk (a=0.2 m, b=1.0 m, thin), steel E=200 GPa nu=0.3 rho=7850, omega=100 rad/s, ccx 2.23 *DLOAD CENTRIF, C3D20 quarter model with z=0 mid-plane symmetry (plane-stress state). Headline = hoop stress sigma_theta at the inner bore r=a, target 65.312 MPa (Timoshenko & Goodier plane-stress closed form). Canonical nr=48 rung observed 65.3533 MPa, +0.063%. The sigma_theta(r)/sigma_r(r) profile ALONG THE +x RADIAL LINE (see profile_crosscheck; one radial line at the top surface, not a circumferential or through-thickness sweep) matches the analytic field to within +/-0.1%, and sigma_r(a)=0.109 MPa ~ 0 confirms the free inner-edge boundary.",
+  "points": [
+    {"label": "nr20", "refinement_param": 20, "node_count": 4725,  "element_count": 800,   "observed_value_pa": 65590800.0, "analytical_value_pa": 65312000.0, "residual_pct": 0.43, "within_case_tolerance": true},
+    {"label": "nr32", "refinement_param": 32, "node_count": 11781, "element_count": 2048,  "observed_value_pa": 65428200.0, "analytical_value_pa": 65312000.0, "residual_pct": 0.18, "within_case_tolerance": true},
+    {"label": "nr48", "refinement_param": 48, "node_count": 26117, "element_count": 4608,  "observed_value_pa": 65353300.0, "analytical_value_pa": 65312000.0, "residual_pct": 0.063, "within_case_tolerance": true, "is_canonical": true},
+    {"label": "nr64", "refinement_param": 64, "node_count": 46085, "element_count": 8192,  "observed_value_pa": 65322900.0, "analytical_value_pa": 65312000.0, "residual_pct": 0.02, "within_case_tolerance": true},
+    {"label": "nr80", "refinement_param": 80, "node_count": 71685, "element_count": 12800, "observed_value_pa": 65307900.0, "analytical_value_pa": 65312000.0, "residual_pct": -0.01, "within_case_tolerance": true}
+  ],
+  "profile_crosscheck": {
+    "description": "sigma_theta(r) and sigma_r(r) along the +x radial line (top surface) at nr=64 vs the Timoshenko closed form (MPa). Sampled points along this one radial line show |error| <= 0.1%; this is a radial-line profile, not a circumferential or through-thickness sweep.",
+    "samples": [
+      {"r_m": 0.200, "sigma_theta_ccx_mpa": 65.323, "sigma_theta_anal_mpa": 65.312, "sigma_r_ccx_mpa": 0.109, "sigma_r_anal_mpa": 0.000},
+      {"r_m": 0.250, "sigma_theta_ccx_mpa": 53.228, "sigma_theta_anal_mpa": 53.235, "sigma_r_ccx_mpa": 10.948, "sigma_r_anal_mpa": 10.929},
+      {"r_m": 0.300, "sigma_theta_ccx_mpa": 46.369, "sigma_theta_anal_mpa": 46.390, "sigma_r_ccx_mpa": 16.359, "sigma_r_anal_mpa": 16.371}
+    ]
+  }
+}

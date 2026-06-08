@@ -23,6 +23,8 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKBENCH_DIR = _REPO_ROOT / "backend" / "app" / "workbench"
 _FACADE_FILENAME = "agent_facade.py"
+# The LOW driver layers: agents.* may depend on these, never the reverse (ADR-015).
+_LOW_LAYER_DIRS = (_REPO_ROOT / "aeron", _REPO_ROOT / "tools")
 
 
 def _workbench_py_files() -> list[Path]:
@@ -222,6 +224,42 @@ def test_no_workbench_file_imports_sim_state():
     assert not violations, (
         "ADR-015 violation — workbench code must not import schemas.sim_state "
         "(HF1.4); use schemas.sim_plan instead:\n  " + "\n  ".join(violations)
+    )
+
+
+def _low_layer_py_files() -> list[Path]:
+    files: list[Path] = []
+    for d in _LOW_LAYER_DIRS:
+        if d.is_dir():
+            files.extend(p for p in d.rglob("*.py") if p.is_file())
+    return sorted(files)
+
+
+def test_low_layers_do_not_import_agents():
+    """ADR-015 layering direction: the LOW driver layers (``aeron/``, ``tools/``) must
+    NOT import from ``agents.*``. The dependency points DOWN — the agent layer consumes
+    aeron/tools, never the reverse. The original discipline test scanned only
+    ``backend/app/workbench/``, so an aeron→agents inversion
+    (``aeron/drivers/calculix_backend.py`` importing the private
+    ``agents.solver._render_inp_deck``) slipped past it silently — audit Rank 7. This
+    closes that gap so the inversion cannot return.
+    """
+    violations: list[str] = []
+    for path in _low_layer_py_files():
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            pytest.fail(f"could not parse {path}: {exc}")
+        hits = _imports_from(tree, _is_agents_module)
+        if hits:
+            rel = path.relative_to(_REPO_ROOT)
+            for node in hits:
+                module = getattr(node, "module", None) or "<bare import>"
+                violations.append(f"{rel}:{node.lineno}: imports from `{module}`")
+    assert not violations, (
+        "ADR-015 layering violation — aeron/ and tools/ (low driver layers) must not "
+        "import from `agents.*` (the dependency points DOWN; deck rendering lives in "
+        "tools.inp_writer):\n  " + "\n  ".join(violations)
     )
 
 

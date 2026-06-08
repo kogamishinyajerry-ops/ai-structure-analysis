@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "nafems-le11-solid-cyl-temperature-candidate",
+  "record_kind": "published_benchmark_reference",
+  "_record_kind_note": "Records the PUBLISHED NAFEMS LE11 target stress (the reference value). NOT the verdict. The real meshed ccx thermo-elastic solve + signed residual comparison is COMPLETE (2026-06-07) and lives in the sibling cross_check_verdict.yaml (verdict=PASS, observed -105.398 MPa, +0.38% vs this -105 MPa target). Keeps the filename published_reference.yaml (NOT cross_check_verdict.yaml) so it does not double-count in the verdict cohort glob.",
+
+  "solver_kind": "linear_static",
+  "cross_check_kind": "nafems_le11_solid_cyl_taper_sphere_temperature_point_a",
+  "verdict": "REFERENCE_ONLY",
+  "tier": "tier_1_candidate",
+  "_tier_note": "This file does not itself drive tier promotion; the case is promoted to tier_2_validated by the _claim_tier overlay reading the sibling cross_check_verdict.yaml (verdict=PASS), and the case_id is registered in _claim_tier.py CLAIM_TIER_REGISTRY.",
+
+  "published_reference": {
+    "benchmark": "NAFEMS LE11 - Solid Cylinder/Taper/Sphere, Temperature",
+    "source": "NAFEMS Publication TNSB Rev.3, 'The Standard NAFEMS Benchmarks', October 1990, ISBN 1-874376-04-0, Test LE11",
+    "target_stress_component": "sigma_zz (direct/axial stress)",
+    "target_value_pa": -105000000.0,
+    "target_sign_convention": "COMPRESSIVE (negative) at point A in the ccx/FeenoX/Code_Aster tension-positive convention. The magnitude 105 MPa AND the negative sign are unanimous across 7 independent free reproductions. The real ccx solve reproduced -105.398 MPa, confirming sign and magnitude.",
+    "target_location": "point A = (1.0, 0, 0) m: the inner-radius base corner (x = inner radius 1.0) on the y=0 meridian symmetry plane at z=0."
+  },
+
+  "benchmark_context": {
+    "_provenance": "Geometry / temperature field / BC / target stress AND SIGN triangulated 2026-06-07 across SEVEN independent FREE reproductions (FeenoX runnable .geo/.fee = the gmsh byte-oracle the geometry was ported from; Abaqus Benchmarks Guide MIT mirror; bConverged; FEATool; Altair OS-V:0070; OnScale; DIANA). The primary TNSB Rev.3 document was NOT directly fetched; geometry/sign rest on these authoritative secondary reproductions (disclosed in NOTES.md).",
+    "material": {"youngs_modulus_pa": 210000000000.0, "poisson_ratio": 0.30, "thermal_expansion_per_degc": 2.3e-4},
+    "loading": {"type": "imposed_steady_temperature_field", "temperature_field": "T = sqrt(x^2+y^2) + z", "stress_free_reference_temp": 0.0, "mechanical_load": "none"},
+    "geometry_standard_parametrization": "solid of revolution about z: inner sphere radius 1.0, outer sphere radius 1.4, taper to cylinder, top at z = sin(pi/4)+0.69+0.40 = 1.7971; quarter model swept pi/2 from the y=0 meridian to the x=0 plane",
+    "boundary_conditions": [
+      "ux=0 on x=0 symmetry plane (yz)",
+      "uy=0 on y=0 symmetry plane (xz, meridian, contains A)",
+      "uz=0 on z=0 base face (xy)",
+      "uz=0 on the top face HIH'I'"
+    ]
+  },
+
+  "solved": "FM-05 2nd-benchmark (2026-06-07): real ccx 2.23, C3D20, quarter revolved solid, 5632 el (refine=4), sigma_zz(A) = -105.398 MPa, residual +0.38% vs -105 MPa, PASS (tol 3%), monotone mesh convergence (88->5632 el). See cross_check_verdict.yaml + convergence_study.json.",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_nafems_le11; thermoelastic_imposed_temperature_field"
+}

@@ -6,18 +6,22 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 # RFC-001 §6.1 Bucket B: services.visualization frozen → _frozen.sprint2.visualization.
 # HTML-scene endpoints stay live until rebuilt on Layer-2 ReaderHandle (W2-W3).
 from ..._frozen.sprint2.visualization import get_visualization_service
+from ._signed_registry_refusal import assert_not_signed_registry
 from ._viz_helpers import (
     _allowed_fs_roots,
     _apply_increment,
+    _fallback_html_no_frd,
     _fallback_html_render_failed,
     _fallback_html_unavailable_pyvista,
     _is_under_allowed_root,
     _resolve_frd_path,
+    _resolve_result_mesh_artifact_path,
     _validate_case_id,
 )
 
@@ -30,10 +34,12 @@ router = APIRouter(prefix="/visualize", tags=["可视化"])
 __all__ = [
     "_allowed_fs_roots",
     "_apply_increment",
+    "_fallback_html_no_frd",
     "_fallback_html_render_failed",
     "_fallback_html_unavailable_pyvista",
     "_is_under_allowed_root",
     "_resolve_frd_path",
+    "_resolve_result_mesh_artifact_path",
     "_validate_case_id",
 ]
 
@@ -84,6 +90,42 @@ def get_viz_service():
     return _viz_service
 
 
+@router.get("/result-mesh/{case_id}")
+async def get_result_mesh_payload(case_id: str):
+    """Serve the Text-to-CAE-style dynamic result payload for one case."""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    # MUST fire BEFORE _resolve_result_mesh_artifact_path (which does
+    # `.resolve()` + `.is_file()` on a case_id-derived path) so a
+    # planted artifact under a signed-registry case_id cannot be
+    # stat'd before the refusal (A:-7 defense in depth).
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
+    try:
+        artifact = _resolve_result_mesh_artifact_path(case_id, "result_mesh.json")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not artifact:
+        raise HTTPException(status_code=404, detail="result_mesh.json not found")
+    return FileResponse(artifact, media_type="application/json")
+
+
+@router.get("/result-mesh/{case_id}/{artifact_path:path}")
+async def get_result_mesh_artifact(case_id: str, artifact_path: str):
+    """Serve whitelisted dynamic result sidecars for one case."""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    # MUST fire BEFORE _resolve_result_mesh_artifact_path (which does
+    # `.resolve()` + `.is_file()` on a case_id-derived path); see the
+    # parent route above for the A:-7 rationale.
+    assert_not_signed_registry(case_id, "visualize-result-mesh")
+    try:
+        artifact = _resolve_result_mesh_artifact_path(case_id, artifact_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not artifact:
+        raise HTTPException(status_code=404, detail="result-mesh artifact not found")
+    media_type = "application/xml" if artifact.suffix == ".vtu" else "application/json"
+    return FileResponse(artifact, media_type=media_type)
+
+
 @router.get("/plot")
 async def visualize_by_case_id(
     case_id: str,
@@ -121,9 +163,13 @@ async def visualize_by_case_id(
 
     frd_path = _resolve_frd_path(case_id, case.frd_path)
     if not frd_path:
-        # Don't echo server-internal paths in the response.
+        # FM-04a Phase 41.4: friendly HTML instead of a raw 404 JSON body, which
+        # the frontend iframe rendered as the browser's JSON error viewer right
+        # under the hero 3D viewport (e.g. explicit-dynamics candidates have no
+        # FRD — their result is the WebGL playback). Server-internal paths are
+        # still NOT echoed; logged server-side only. (Mirrors the other fallbacks.)
         logger.warning("no FRD result on disk for case_id=%s", case_id)
-        raise HTTPException(status_code=404, detail="no FRD result on disk for this case")
+        return HTMLResponse(content=_fallback_html_no_frd(case.name))
 
     parser = FRDParser()
     parsed = parser.parse(str(frd_path))
@@ -188,7 +234,7 @@ async def create_visualization(request: VisualizeRequest):
         output_path = Path(f"/tmp/visualization_{result.file_name}.{request.output_format}")
 
         if request.output_format == "html":
-             # We generate HTML by skipping the usual image builders and calling export_scene_as_html
+             # Generate HTML by skipping image builders and exporting the scene directly.
              html_str = viz.export_scene_as_html(
                  parse_result=result,
                  field=request.component if request.plot_type == "stress" else "VonMises"
@@ -255,7 +301,7 @@ async def create_visualization(request: VisualizeRequest):
         raise
     except Exception as e:
         logger.error(f"Visualization error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 @router.get("/delta")
 async def get_delta_visualization(file1: str, file2: str, component: str = "VonMises"):
@@ -305,7 +351,7 @@ async def get_delta_visualization(file1: str, file2: str, component: str = "VonM
         # Preserve intentional 4xx codes raised above (Codex R1 MEDIUM-1).
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 

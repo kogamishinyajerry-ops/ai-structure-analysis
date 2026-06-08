@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "cantilever-beam-modal-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-17T18:06:19.383713+00:00",
+  "notes": "Phase 30 D PROOF-OF-PATTERN convergence study. Three gmsh C3D10 quadratic-tet mesh refinements (-clmax = 0.012/0.008/0.005 m). NOTE: gmsh only takes -clmax (upper bound) and the .geo file's Points fix the floor at cl=0.012; values larger than 0.012 produce identical meshes, so the lo refinement equals the canonical Phase 26 A mesh and the study refines FROM there. Each entry produced by a live ccx 2.23 + gmsh run (2026-05-18). Analytical reference is Euler-Bernoulli first natural frequency for a clamped-free uniform beam. Phase 31 C adds Richardson extrapolation (post-processing; no new live ccx run).",
+  "points": [
+    {
+      "label": "lo (cl=12mm)",
+      "refinement_param": 0.012,
+      "node_count": 1895,
+      "element_count": 814,
+      "observed_value": 66.92993,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.13255638048176335,
+      "verdict": "PASS"
+    },
+    {
+      "label": "mid (cl=8mm)",
+      "refinement_param": 0.008,
+      "node_count": 4731,
+      "element_count": 2233,
+      "observed_value": 66.91101,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.10425053933239802,
+      "verdict": "PASS"
+    },
+    {
+      "label": "hi (cl=5mm)",
+      "refinement_param": 0.005,
+      "node_count": 16125,
+      "element_count": 8802,
+      "observed_value": 66.89732,
+      "analytical_value": 66.84132755552643,
+      "residual_pct": 0.08376919866985877,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": 66.86148518164418,
+    "observed_order_p": 0.6884072891979658,
+    "refinement_ratio_r": 1.6,
+    "refinement_ratio_constant": false,
+    "extrapolated_residual_pct": 0.030157429325450475,
+    "notes": "Phase 31 C: Richardson extrapolation on the 3-point sweep. Refinement ratio non-constant: r_12=1.5000, r_23=1.6000. Generalized Richardson applied with r=r_23; treat p estimate with caution. Observed order p~0.69 is low (theoretical p=2 for C3D10 modal); this is consistent with the non-constant refinement ratio fudging the estimate, NOT a physical anomaly. The extrapolated residual of +0.030% indicates the C3D10 mesh converges to essentially the Euler-Bernoulli analytical (within noise floor); the +0.084% residual at the finest mesh is dominated by remaining discretization, not asymptotic bias."
+  }
+}

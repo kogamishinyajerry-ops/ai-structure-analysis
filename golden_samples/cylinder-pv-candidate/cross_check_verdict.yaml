@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "cylinder-pv-candidate",
+  "verdict": "PASS",
+  "tolerance_pct": 5.0,
+  "residual_pct": -0.003902439024390244,
+  "analytical_pa": 102500000.0,
+  "observed_pa": 102496000.0,
+  "material_id": "steel-s355",
+  "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature)",
+  "pressure_pa": 5000000.0,
+  "inner_radius_m": 1.0,
+  "wall_thickness_m": 0.05,
+  "generated_at_utc": "2026-05-17T07:08:37.555296+00:00",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
+}

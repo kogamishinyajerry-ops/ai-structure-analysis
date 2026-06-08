@@ -1,5 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Folder, FolderPlus, Clock, Layout } from 'lucide-react';
+// FM-04a Phase 41.2 — ProjectManager restyle. The pre-41 markup used
+// Tailwind utility classes (bg-slate-*/text-indigo-*/w-64/space-y-*), but
+// this project has NO Tailwind pipeline, so every one of those classes was
+// DEAD — the left rail rendered as unstyled browser defaults (the "empty
+// broken rail" the demo audit flagged). This rewrite swaps the dead Tailwind
+// for the real 41.1 token system + the existing .glass-sidebar / .case-item /
+// .glass-panel shared classes. Behavior (fetch, create, select, modal) is
+// unchanged.
+import { useState, useEffect, type CSSProperties } from 'react';
+import { Folder, FolderPlus, Clock } from 'lucide-react';
 
 interface Project {
   id: number;
@@ -15,19 +23,23 @@ interface ProjectManagerProps {
 
 export function ProjectManager({ onSelectProject, selectedProjectId }: ProjectManagerProps) {
   const [projects, setProjects] = useState<Project[]>([]);
+  // Codex R0 P2: gate the empty-state hint on load completion so a slow or
+  // unavailable backend never flashes a misleading "No projects yet" during
+  // the in-flight / error window.
+  const [loadStatus, setLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newProject, setNewProject] = useState({ name: '', description: '' });
 
   useEffect(() => {
     fetch('http://localhost:8000/api/v1/projects')
       .then(res => res.json())
-      .then(data => setProjects(data))
-      .catch(err => console.error("Failed to fetch projects", err));
+      .then(data => { setProjects(data); setLoadStatus('ready'); })
+      .catch(err => { console.error("Failed to fetch projects", err); setLoadStatus('error'); });
   }, []);
 
   const handleCreateProject = async () => {
     if (!newProject.name) return;
-    
+
     try {
       const resp = await fetch('http://localhost:8000/api/v1/projects', {
         method: 'POST',
@@ -46,79 +58,78 @@ export function ProjectManager({ onSelectProject, selectedProjectId }: ProjectMa
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-900/50 border-r border-slate-800 w-64">
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Layout className="w-5 h-5 text-indigo-400" />
-          <h2 className="font-semibold text-slate-200">Projects</h2>
-        </div>
-        <button 
+    <div className="glass-sidebar" style={rootStyle} data-testid="project-rail">
+      <div style={headerStyle}>
+        <span className="eyebrow">Projects</span>
+        <button
+          type="button"
           onClick={() => setIsModalOpen(true)}
-          className="p-1 hover:bg-slate-800 rounded-md transition-colors text-slate-400 hover:text-indigo-400"
+          aria-label="Create new project"
+          style={addButtonStyle}
         >
-          <FolderPlus className="w-5 h-5" />
+          <FolderPlus size={16} />
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {projects.map(project => (
-          <button
-            key={project.id}
-            onClick={() => onSelectProject(project.id)}
-            className={`w-full text-left p-3 rounded-lg flex items-center group transition-all ${
-              selectedProjectId === project.id 
-                ? 'bg-indigo-600/20 border border-indigo-500/50' 
-                : 'hover:bg-slate-800 border border-transparent'
-            }`}
-          >
-            <Folder className={`w-4 h-4 mr-3 ${selectedProjectId === project.id ? 'text-indigo-400' : 'text-slate-500'}`} />
-            <div className="flex-1 overflow-hidden">
-              <div className={`text-sm font-medium truncate ${selectedProjectId === project.id ? 'text-white' : 'text-slate-300'}`}>
-                {project.name}
-              </div>
-              <div className="text-[10px] text-slate-500 truncate flex items-center mt-0.5">
-                <Clock className="w-3 h-3 mr-1" />
-                {new Date(project.created_at).toLocaleDateString()}
-              </div>
-            </div>
-          </button>
-        ))}
+      <div style={listStyle}>
+        {projects.map(project => {
+          const active = selectedProjectId === project.id;
+          return (
+            <button
+              key={project.id}
+              onClick={() => onSelectProject(project.id)}
+              className={`case-item${active ? ' active' : ''}`}
+              style={{ ...projectButtonStyle, ...(active ? projectButtonActiveStyle : null) }}
+            >
+              <Folder size={15} style={{ color: active ? 'var(--accent)' : 'var(--text-muted)', flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: 'hidden' }}>
+                <span style={{ ...projectNameStyle, color: active ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                  {project.name}
+                </span>
+                <span style={projectDateStyle}>
+                  <Clock size={11} />
+                  {new Date(project.created_at).toLocaleDateString()}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+        {loadStatus === 'ready' && projects.length === 0 && (
+          <p style={emptyHintStyle}>No projects yet. Create one to organize your analyses.</p>
+        )}
+        {loadStatus === 'error' && (
+          <p style={emptyHintStyle}>Couldn&rsquo;t load projects — is the backend running?</p>
+        )}
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl w-full max-w-md p-6 shadow-2xl">
-            <h3 className="text-xl font-bold text-white mb-4">Create New Project</h3>
-            <div className="space-y-4">
+        <div style={modalOverlayStyle}>
+          <div className="glass-panel" style={modalCardStyle}>
+            <h3 style={modalTitleStyle}>Create new project</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Project Name</label>
-                <input 
+                <label style={fieldLabelStyle}>Project name</label>
+                <input
                   value={newProject.name}
-                  onChange={e => setNewProject({...newProject, name: e.target.value})}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Truss Bridge Design"
+                  onChange={e => setNewProject({ ...newProject, name: e.target.value })}
+                  style={fieldInputStyle}
+                  placeholder="e.g. Truss bridge design"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">Description</label>
-                <textarea 
+                <label style={fieldLabelStyle}>Description</label>
+                <textarea
                   value={newProject.description}
-                  onChange={e => setNewProject({...newProject, description: e.target.value})}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 text-white h-24 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Analyze the structural stability of..."
+                  onChange={e => setNewProject({ ...newProject, description: e.target.value })}
+                  style={{ ...fieldInputStyle, height: 96, resize: 'vertical' }}
+                  placeholder="Analyze the structural stability of…"
                 />
               </div>
-              <div className="flex space-x-3 pt-2">
-                <button 
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
-                >
+              <div style={{ display: 'flex', gap: 'var(--sp-3)', paddingTop: 'var(--sp-1)' }}>
+                <button type="button" onClick={() => setIsModalOpen(false)} style={cancelButtonStyle}>
                   Cancel
                 </button>
-                <button 
-                  onClick={handleCreateProject}
-                  className="flex-1 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-colors font-semibold"
-                >
+                <button type="button" onClick={handleCreateProject} style={createButtonStyle}>
                   Create
                 </button>
               </div>
@@ -129,3 +140,140 @@ export function ProjectManager({ onSelectProject, selectedProjectId }: ProjectMa
     </div>
   );
 }
+
+const rootStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  overflow: 'hidden',
+};
+const headerStyle: CSSProperties = {
+  padding: 'var(--sp-4)',
+  borderBottom: '1px solid var(--border)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+};
+const addButtonStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 'var(--sp-1)',
+  borderRadius: 'var(--r-sm)',
+  border: '1px solid var(--border)',
+  background: 'transparent',
+  color: 'var(--text-secondary)',
+  cursor: 'pointer',
+};
+const listStyle: CSSProperties = {
+  flex: 1,
+  overflowY: 'auto',
+  padding: 'var(--sp-2)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 'var(--sp-1)',
+};
+const projectButtonStyle: CSSProperties = {
+  width: '100%',
+  textAlign: 'left',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 'var(--sp-3)',
+  padding: 'var(--sp-3)',
+  borderRadius: 'var(--r-md)',
+  border: '1px solid transparent',
+  background: 'transparent',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+};
+const projectButtonActiveStyle: CSSProperties = {
+  background: 'var(--accent-glow)',
+  border: '1px solid var(--border-focus)',
+};
+const projectNameStyle: CSSProperties = {
+  display: 'block',
+  fontSize: 'var(--fs-sm)',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+};
+const projectDateStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  marginTop: 2,
+  fontSize: 'var(--fs-xs)',
+  color: 'var(--text-muted)',
+};
+const emptyHintStyle: CSSProperties = {
+  margin: 0,
+  padding: 'var(--sp-3)',
+  fontSize: 'var(--fs-xs)',
+  color: 'var(--text-muted)',
+  lineHeight: 1.5,
+};
+const modalOverlayStyle: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0, 0, 0, 0.6)',
+  backdropFilter: 'blur(4px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 50,
+  padding: 'var(--sp-4)',
+};
+const modalCardStyle: CSSProperties = {
+  width: '100%',
+  maxWidth: 420,
+  padding: 'var(--sp-6)',
+  boxShadow: 'var(--elev-3)',
+};
+const modalTitleStyle: CSSProperties = {
+  margin: '0 0 var(--sp-4)',
+  fontSize: 'var(--fs-lg)',
+  fontWeight: 700,
+  letterSpacing: 'var(--tracking-tight)',
+  color: 'var(--text-primary)',
+};
+const fieldLabelStyle: CSSProperties = {
+  display: 'block',
+  marginBottom: 'var(--sp-1)',
+  fontSize: 'var(--fs-sm)',
+  fontWeight: 500,
+  color: 'var(--text-secondary)',
+};
+const fieldInputStyle: CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  background: 'var(--c-100)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--r-sm)',
+  padding: 'var(--sp-2) var(--sp-3)',
+  color: 'var(--text-primary)',
+  fontFamily: 'inherit',
+  fontSize: 'var(--fs-sm)',
+};
+const cancelButtonStyle: CSSProperties = {
+  flex: 1,
+  padding: 'var(--sp-2)',
+  background: 'transparent',
+  border: '1px solid var(--border)',
+  color: 'var(--text-secondary)',
+  borderRadius: 'var(--r-sm)',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontWeight: 600,
+};
+const createButtonStyle: CSSProperties = {
+  flex: 1,
+  padding: 'var(--sp-2)',
+  background: 'var(--accent)',
+  border: '1px solid var(--accent)',
+  color: '#fff',
+  borderRadius: 'var(--r-sm)',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontWeight: 700,
+};

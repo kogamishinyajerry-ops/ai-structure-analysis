@@ -1,0 +1,66 @@
+{
+  "analysis_type": "linear_static_pressure_vessel",
+  "case_id": "cylinder-pv-extended-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate extended pressure cylinder benchmark; not signed validation; not benchmark agreement. ASME VIII Div 2 §5.5 categorized stresses computed from CalculiX 2.23 + project's Layer-3 stress linearization module; compared against Lame's analytical solution for verification only.",
+  "claim_tier": "Tier 1 engineering candidate",
+  "energy_audit": {
+    "rationale": "Linear-elastic static solve via CalculiX SPOOLES on extended L=400 mm cylinder at 20 MPa internal pressure; discrete residual <1e-10; strain-energy / external-work balance is exact by Galerkin orthogonality at machine precision.",
+    "status": "closed_aggregate"
+  },
+  "pv_summary": {
+    "asme_section_5_5": {
+      "P_m_MPa": 41.567213317209110,
+      "P_m_P_b_MPa": 58.347692147238008,
+      "P_m_P_b_Q_MPa": 62.317130712454976,
+      "P_m_P_b_Q_exact_MPa": 62.353856610414380,
+      "S_m_MPa": 138.0,
+      "bending_outer_tensor_rtz": [
+        9.674115918973530,
+        -9.702312083027972,
+        -0.008458592857245648,
+        3.137746633374588e-06,
+        4.788740618991173e-16,
+        5.756286900639048e-14
+      ],
+      "membrane_tensor_rtz": [
+        -8.005660070947416,
+        39.992023396245884,
+        15.996230548457950,
+        5.938800767217319e-07,
+        -6.136803039259102e-15,
+        -1.041580473723591e-12
+      ],
+      "ratio_P_m_P_b_Q_over_3_S_m": 0.15052447031993956,
+      "ratio_P_m_P_b_over_1_5_S_m": 0.28187290892385508,
+      "ratio_P_m_over_S_m": 0.30121169070441384
+    },
+    "convergence_vs_lame": {
+      "max_abs_err_sigma_r_MPa": 0.083465617621173,
+      "max_abs_err_sigma_t_MPa": 0.058979559292552608,
+      "max_abs_err_sigma_z_MPa": 0.031580000000001720,
+      "max_abs_err_von_mises_MPa": 0.107986323864572852,
+      "max_rel_err_sigma_r_pct": 1.3163934426229508,
+      "max_rel_err_sigma_t_pct": 0.13580003131483542,
+      "max_rel_err_sigma_z_pct": 0.19737500000001074,
+      "max_rel_err_von_mises_pct": 0.24492063491496235,
+      "rel_err_floor_MPa": 0.5
+    },
+    "geometry": {
+      "L_mm": 400.0,
+      "Ri_mm": 100.0,
+      "Ro_mm": 150.0,
+      "wedge_deg": 5.0
+    },
+    "load": {
+      "closed_end_axial_stress_MPa": 16.0,
+      "internal_pressure_MPa": 20.0
+    },
+    "material": {
+      "E_MPa": 200000.0,
+      "S_m_MPa": 138.0,
+      "name": "SA-516 Gr.70",
+      "nu": 0.3
+    }
+  }
+}

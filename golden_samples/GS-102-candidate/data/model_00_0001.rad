@@ -1,0 +1,25 @@
+#RADIOSS ENGINE
+#--------------------------------------------------------------------------------------------------|
+# GS-102-candidate / FM-04a Tier 1 ballistic candidate engine deck
+#
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+# Mesh is intentionally coarse (1 + 1 hex elements). This deck demonstrates
+# OpenRadioss starter+engine + the FM-04a P4 adapter syntactic plumbing.
+# Real refinement is reserved for FM-04b under ADR-024 (full).
+#--------------------------------------------------------------------------------------------------|
+/RUN/gs102_candidate/1/
+  80.0
+#
+/PRINT/-1000
+#
+# Animation frame cadence — projectile traverses 20 mm gap at V0=0.285 mm/ms
+# in ~70 ms; capture frame every 0.5 ms → ~160 frames over full ballistic arc.
+/ANIM/DT
+0.0  0.5
+/ANIM/BRICK/EPSP
+/ANIM/BRICK/TENS/STRESS
+/ANIM/VECT/VEL
+#
+# Time-step controls — Tier 1 candidate values; tighten in FM-04b
+/DT/NODA/CST/0
+0.9 0.0

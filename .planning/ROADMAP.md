@@ -1,7 +1,24 @@
 # AI-Structure-FEA · Feature Roadmap
 
-> **Status:** Active planning surface.
-> **Last updated:** 2026-05-07.
+> ## ⛔ SUPERSEDED by ADR-027 (2026-06-03, Accepted)
+> This FM-01..05 **Linear / Codex-primary** milestone model is **no longer operative**. Its role
+> assignment ("Codex as primary executor, Opus read-only reviewer") was reversed by **ADR-026**
+> (Opus 主驱动 + Codex review), and the project actually ran the **FM-04a Opus-primary** track.
+> The current goal model is **ADR-027**: FM-04a v1.0 = honest engineering-candidate (complete);
+> the 6-dim rubric is a health dashboard (not a 99-gate); v2 = FM-05 "Outward-Credible Validation
+> & Reproducibility" (NAFEMS real benchmark + reproduce-CLI). The **FM-02 "AERON-Backed Solve
+> Path"** milestone below is **dead framing** — the `aeron/` code itself is a live, tested seam
+> (see `aeron/README.md`), but it is not pursued as an active milestone. Text below retained for
+> historical context only.
+>
+> **As of ADR-028 (2026-06-04, Accepted)** the active **product** direction is **agentic wiring**:
+> wire the real `agents/graph.py` 7-node workbench agents behind the live runtime (replacing the
+> `mock_pipeline.py` scripted Tier-0 surface). FM-05 NAFEMS-benchmark agreement is **deferred, not
+> cancelled**; the `aeron/` seam is now **pursued** (reverses ADR-027 D4's "not wired"). SSOT =
+> `docs/adr/ADR-028-product-multi-agent-repositioning.md`.
+>
+> **Status:** SUPERSEDED (was: Active planning surface).
+> **Last updated:** 2026-05-07 (superseded 2026-06-03).
 > **Control truth:** Linear `Engineering` issues own scoped work; this file
 > defines the repo-side feature milestone map.
 

@@ -1,0 +1,26 @@
+#RADIOSS ENGINE
+#--------------------------------------------------------------------------------------------------|
+# GS-102-refined-candidate / FM-04a Tier 1 perforation demo engine deck
+#
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+#--------------------------------------------------------------------------------------------------|
+/RUN/gs102_refined_candidate/1/
+  0.15
+#
+/PRINT/-1000
+#
+# Frame cadence: 150 frames over 0.15 ms run (frame every 0.001 ms).
+# At V0=150 m/s the impact + perforation + plug-ejection is captured
+# in this window. We deliberately stop before late-time numerical
+# spall (1-pt integration hourglass amplification on 36-element coarse
+# plate) blows the bounding box out.
+/ANIM/DT
+0.0  0.001
+/ANIM/BRICK/EPSP
+/ANIM/BRICK/TENS/STRESS
+/ANIM/VECT/VEL
+#
+# CFL 0.9 with no mass scaling (dt_min=0). Element CFL ~5.4e-4 ms
+# (3 mm plate cell at c=5048 mm/ms) -> ~5000 cycles for 2.5 ms.
+/DT/NODA/CST/0
+0.9 0.0

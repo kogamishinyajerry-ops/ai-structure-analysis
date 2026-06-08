@@ -1,0 +1,23 @@
+{
+  "analysis_type": "explicit_dynamics",
+  "case_id": "rod-wave-impact-energy-leak-candidate",
+  "case_name": "1D rod axial-impact wave propagation with synthetic energy injection at frame 30, L=1.0m, 10mm x 10mm SA-516 Gr.70 steel (synthetic Hopkinson-bar with ENERGY-LEAK injection)",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "status": "engineering_candidate_regressed",
+  "status_reason": "Tier 1 engineering candidate; not signed validation; not benchmark agreement. ENERGY-LEAK variant: synthetic 50% non-physical energy injected at frame 30 trips the per-frame energy_partition_audit (rel_drift ~= 0.50 vs ENERGY_PARTITION_DRIFT_FRACTION=0.01). The audit deviation propagates to energy_audit.status=open_residual; the case_completeness scorecard lands below the healthy 80-pt floor by construction. No real OpenRadioss invocation; Tier 2 promotion is explicitly deferred.",
+  "fixture_authoring_notes": {
+    "wave_speed_m_per_s_analytical": 5047.544651250688,
+    "first_reflection_s_analytical": 0.0001981161275615895,
+    "first_reflection_frame_index_observed": 20,
+    "cross_check_tolerance_pct": 5.0,
+    "leak_injection_frame": 30,
+    "leak_injection_scale": 1.5,
+    "expected_flagged_frame_indices": [
+      30
+    ],
+    "expected_max_rel_drift_fraction_approx": 0.5,
+    "delta_from_canonical_case": "Geometry + material + velocity + frame_dt all identical to canonical. ONLY the animation manifest's per_frame_kinetic_energy_j[30] and per_frame_internal_energy_j[30] are scaled by 1.5 to inject 50% non-physical energy."
+  },
+  "expected_first_reflection_s": 0.0001981161275615895
+}

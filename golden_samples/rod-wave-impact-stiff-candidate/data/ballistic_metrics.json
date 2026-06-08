@@ -1,0 +1,24 @@
+{
+  "analysis_type": "explicit_dynamics_transient",
+  "case_id": "rod-wave-impact-stiff-candidate",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate 1D-bar wave-propagation case (STIFF variant); not signed validation; not benchmark agreement. Synthetic explicit_dynamics_transient response cross-checked against the closed-form 1D elastic-rod axial wave (c=sqrt(E/rho), t_refl=L/c) with E=210 GPa (tool steel). Energy partition closed by construction; no real OpenRadioss invocation. Does not authorize Tier 2 promotion.",
+  "energy_audit": {
+    "status": "closed_aggregate",
+    "rationale": "Per-frame kinetic + internal energy sum to external work at machine epsilon at every frame. Hopkinson-style idealization with no plasticity / contact / hourglass leakage; analytical balance preserved across the 100-frame synthetic animation. STIFF variant carries the same closed-aggregate posture as the canonical case."
+  },
+  "explicit_dynamics_summary": {
+    "rod_length_m": 1.0,
+    "cross_section_area_m2": 0.0001,
+    "E_Pa": 210000000000.0,
+    "rho_kg_per_m3": 7850.0,
+    "impact_velocity_m_per_s": 10.0,
+    "analytical_wave_speed_m_per_s": 5172.194153034851,
+    "analytical_first_reflection_s": 0.00019334154333963606,
+    "observed_first_reflection_frame_index": 19,
+    "observed_first_reflection_s": 0.00019,
+    "frame_count": 100,
+    "frame_dt_s": 1e-05
+  }
+}

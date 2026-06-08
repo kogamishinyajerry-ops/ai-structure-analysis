@@ -1,0 +1,27 @@
+{
+  "case_id": "GS-102-candidate",
+  "case_name": "Tier 1 ballistic candidate fixture (Børvik 2002 hemispherical Ø20mm projectile vs 12mm Weldox 460E plate, parameters only)",
+  "analysis_type": "explicit_dynamics_ballistic_candidate",
+  "status": "insufficient_evidence",
+  "status_reason": "Tier 1 engineering candidate; benchmark agreement and signed validation are explicitly deferred to FM-04b under a future ADR-024 (full) revision. Wording per ADR-023.",
+  "benchmark_source_ref": "ADR-024 (lite) — parameters only; cites Børvik 2002 Part I/II without republishing experimental tables",
+  "failure_pattern_ref": "FP-pending-FM-04a",
+  "claim_tier": "Tier 1 engineering candidate",
+  "tier2_promotion_blockers": [
+    "public benchmark case is not locked (FM-04b ADR-024 full)",
+    "tolerance specification for residual velocity is not locked",
+    "uncertainty interval and measurement traceability are not attached",
+    "citation compliance review for experimental data republication is not done",
+    "independent reviewer/signoff packet is not assembled",
+    "this fixture is explicitly not signed validation and not benchmark agreement"
+  ],
+  "ballistic": {
+    "projectile_initial_velocity_m_per_s": 285.0,
+    "projectile_geometry": "20 mm diameter, hemispherical nose, single rigid projectile",
+    "plate_geometry": "12 mm thick Weldox 460E mild steel, fully clamped at outer rim",
+    "material_model": "Johnson-Cook plasticity + JC damage; parameter values cited from Børvik 2002 Part II Table 2 (parameters only)",
+    "initial_condition_source": "Børvik 2002 Part I hemispherical-nose Ø20mm test set (parameters only)",
+    "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+    "fm04b_reservation": "Tier 2 signed validation, benchmark locking, tolerance specification, citation compliance for experimental data republication, and independent reviewer/signoff are reserved for FM-04b ADR-024 (full)."
+  }
+}

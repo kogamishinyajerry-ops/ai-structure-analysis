@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "cantilever-beam-candidate",
+  "verdict": "PASS",
+  "tolerance_pct": 15.0,
+  "residual_pct": -6.8745549999999875,
+  "analytical_m": -0.00019047619047619045,
+  "observed_m": -0.0001773818,
+  "material_id": "steel-s355",
+  "material_reference": "EN 10025-2:2019 \u00a77.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C \u00a7C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+  "length_m": 1.0,
+  "section_depth_m": 0.1,
+  "section_width_m": 0.1,
+  "second_moment_m4": 8.333333333333335e-06,
+  "tip_load_n": -1000.0,
+  "node_count": 3611,
+  "element_count": 14787,
+  "generated_at_utc": "2026-05-17T09:17:43.549140+00:00",
+  "cross_check_kind": "cantilever_tip_deflection_euler_bernoulli",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; cross_check_against_analytical"
+}

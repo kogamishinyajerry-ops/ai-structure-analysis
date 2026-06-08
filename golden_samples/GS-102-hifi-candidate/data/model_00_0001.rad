@@ -1,0 +1,29 @@
+#RADIOSS ENGINE
+#--------------------------------------------------------------------------------------------------|
+# GS-102-hifi-candidate / FM-04a Tier 1 hi-fi perforation engine deck
+#
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+#--------------------------------------------------------------------------------------------------|
+/RUN/gs102_hifi_candidate/1/
+  0.40
+#
+/PRINT/-1000
+#
+# 100 frames over 0.40 ms run (frame every 0.004 ms). At V0=200 m/s
+# the slower impact + softer aluminium plate -> dishing develops over
+# tens of microseconds before perforation; need longer T_end.
+/ANIM/DT
+0.0  0.004
+/ANIM/BRICK/EPSP
+/ANIM/BRICK/TENS/STRESS
+/ANIM/VECT/VEL
+#
+# CFL-driven dt with no mass scaling.
+/DT/NODA/CST/0
+0.9 0.0
+#
+# Brick deletion safety net at 1e-6 ms — catches only truly degenerate
+# hexes (volume going to zero), not normal ogive tip cells which sit
+# at dt ~1.6e-4 ms (1.5 mm chord / c=5048 mm/ms).
+/DT/BRICK/DEL
+0.0 1.0E-6

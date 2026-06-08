@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "plate-simply-supported-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-18T04:24:53.142324+00:00",
+  "notes": "Phase 32 A convergence sweep on the Phase 25 A simply-supported plate (1m × 1m × 20mm steel-s355, q=1e4 Pa uniform pressure). 3 live ccx 2.23 + gmsh runs at -clmax = 0.060 / 0.040 / 0.025 m (refining DOWNWARD from the .geo's Points-fixed floor of 0.060; values larger collapse to the same mesh, same gotcha Phase 30 D documented for cantilever-modal). Refinement ratio: 1.50 / 1.60 (non-constant by the 5% rule; Richardson notes flag it). Analytical reference is Timoshenko α·q·a⁴/D with α=0.00406 at ν=0.3. C3D10 quadratic-tet mesh (NOT the S4 shell variant of plate-ss-shell-candidate). Phase 32 adds Richardson extrapolation.",
+  "points": [
+    {
+      "label": "cl=60mm",
+      "refinement_param": 0.06,
+      "node_count": 4420,
+      "element_count": 2125,
+      "observed_value": -0.000248628,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": -5.78704054566123,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=40mm",
+      "refinement_param": 0.04,
+      "node_count": 9865,
+      "element_count": 4802,
+      "observed_value": -0.000254377,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": -3.6085638499431387,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=25mm",
+      "refinement_param": 0.025,
+      "node_count": 24048,
+      "element_count": 11849,
+      "observed_value": -0.000260974,
+      "analytical_value": -0.00026389999999999996,
+      "residual_pct": -1.108753315649844,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": null,
+    "observed_order_p": -0.2927404493032893,
+    "refinement_ratio_r": 1.5999999999999999,
+    "refinement_ratio_constant": false,
+    "extrapolated_residual_pct": null,
+    "notes": "Richardson failed: observed order p = -0.2927 ≤ 0 (non-physical for a converging sequence; the triple is not yet in the asymptotic regime — successive differences |f_i - f_{i+1}| are growing, not shrinking, as the mesh refines). Reported triple is the data; no extrapolation attempted. Refinement ratio non-constant: r_12=1.5000, r_23=1.6000. Generalized Richardson applied with r=r_23; treat p estimate with caution."
+  }
+}

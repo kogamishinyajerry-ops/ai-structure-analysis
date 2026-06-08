@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "plate-with-hole-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-18T04:24:55.438500+00:00",
+  "notes": "Phase 32 A convergence sweep on the Phase 21 A Kirsch plate-with-hole (100mm × 50mm × 5mm steel-s355, F=250N tension, hole radius 10mm, K=3.74 from Howland table). 3 live ccx 2.23 + gmsh runs at -clmax = 0.005 / 0.003 / 0.002 m. Refinement ratios: 1.67 / 1.50 (non-constant — flagged in Richardson notes). Analytical reference: σ_max = K·σ_∞ at hole edge. C3D4 linear-tet mesh (element_order=1 default for this runner). Phase 32 adds Richardson extrapolation. Stress concentration is the most mesh-sensitive case in the cohort — expect non-trivial convergence trend.",
+  "points": [
+    {
+      "label": "cl=5mm",
+      "refinement_param": 0.005,
+      "node_count": 688,
+      "element_count": 1898,
+      "observed_value": 3006580.0,
+      "analytical_value": 3740000.0,
+      "residual_pct": -19.610160427807486,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=3mm",
+      "refinement_param": 0.003,
+      "node_count": 1841,
+      "element_count": 5745,
+      "observed_value": 3339490.0,
+      "analytical_value": 3740000.0,
+      "residual_pct": -10.708823529411765,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=2mm",
+      "refinement_param": 0.002,
+      "node_count": 4247,
+      "element_count": 15010,
+      "observed_value": 3408790.0,
+      "analytical_value": 3740000.0,
+      "residual_pct": -8.855882352941176,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": 3427008.16319563,
+    "observed_order_p": 3.870683927175441,
+    "refinement_ratio_r": 1.5,
+    "refinement_ratio_constant": false,
+    "extrapolated_residual_pct": -8.368765689956415,
+    "notes": "Refinement ratio non-constant: r_12=1.6667, r_23=1.5000. Generalized Richardson applied with r=r_23; treat p estimate with caution."
+  }
+}

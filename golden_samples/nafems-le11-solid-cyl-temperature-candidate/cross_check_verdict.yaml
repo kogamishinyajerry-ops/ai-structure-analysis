@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "nafems-le11-solid-cyl-temperature-candidate",
+  "verdict": "PASS",
+
+  "_what_this_is": "Real CalculiX (ccx 2.23) thermo-elastic solve of the NAFEMS LE11 'Solid Cylinder/Taper/Sphere - Temperature' benchmark, with sigma_zz at point A compared to the PUBLISHED NAFEMS reference value. This is the project's SECOND public-benchmark agreement (after LE10) and the FIRST thermal-stress / solid-of-revolution one: a different load type (imposed temperature field, NO mechanical load / NO *DLOAD), a different ccx keyword path (*INITIAL CONDITIONS,TYPE=TEMPERATURE + *EXPANSION + *TEMPERATURE in a purely-mechanical *STATIC step), a different element geometry (revolved solid), and a different stress component/location than LE10. Real-solver validated but NOT signed validation (no independent reviewer signoff per ADR-023 Tier-2-signed / ADR-027 G-2).",
+
+  "tolerance_pct": 3.0,
+  "residual_pct": 0.379,
+  "analytical_pa": -105000000.0,
+  "observed_pa": -105398000.0,
+  "reference_kind": "published_benchmark",
+  "cross_check_kind": "nafems_le11_solid_cyl_taper_sphere_temperature_point_a",
+
+  "benchmark": "NAFEMS LE11 - Solid Cylinder/Taper/Sphere, Temperature",
+  "benchmark_source": "NAFEMS Publication TNSB Rev.3 (Oct 1990, ISBN 1-874376-04-0), Test LE11. Geometry / temperature field / BCs / evaluation point / sign triangulated 2026-06-07 across seven independent FREE reproductions: the FeenoX nafems-le11 runnable .geo/.fee (sigma_z(A) = -105.04 MPa, the authoritative gmsh geometry byte-oracle), the Abaqus Benchmarks Guide LE11 (MIT mirror: 'Direct stress, sigma_zz = -105 MPa at point A'), bConverged LE11, FEATool (sigma_z = -105e6 Pa), Altair OS-V:0070, OnScale Solve, and DIANA FEA (-1.05e8 Pa). The primary TNSB Rev.3 document was NOT purchased; geometry/sign rest on these authoritative secondary reproductions (same disclosed Tier-1/2 limitation as the LE10 candidate).",
+
+  "target_stress_component": "sigma_zz (direct stress, axial)",
+  "target_value_pa": -105000000.0,
+  "target_sign_convention": "Compressive (negative) sigma_zz at point A in the ccx/FeenoX/Code_Aster (tension-positive) convention. ccx reproduced -105.398 MPa (negative), matching FeenoX's -105.04 MPa and the -105 MPa target. The magnitude 105 MPa and the NEGATIVE (compressive) sign are unanimous across all 7 independent free reproductions.",
+
+  "point_a_m": [1.0, 0.0, 0.0],
+  "point_a_note": "Point A = the inner-radius base corner: x=1.0 (inner radius) on the y=0 meridian symmetry plane at z=0 (base). In the FeenoX frame A=(1,0,0); FEATool models the mirrored quarter and reports (-1,0,0) (same physical corner, axis-placement artifact). The solve locates A as the node nearest (1,0,0); it landed exactly on node 2 = (1.0, 0.0, 0.0) at every mesh refinement.",
+
+  "geometry_m": {
+    "axis_of_revolution": "z",
+    "inner_sphere_radius": 1.0,
+    "outer_sphere_radius": 1.4,
+    "meridian_profile": "FeenoX nafems-le11.geo meridian (x-z plane, y=0): inner sphere arc r=1.0 (P2=(1,0,0) -> P4=(0.7071,0,0.7071)) + outer sphere arc r=1.4 (P3=(1.4,0,0) -> P5=(1.2083,0,0.7071)), taper to cylinder (P6=(0.7071,0,1.3971), P7=(1.0,0,1.3971)), top (P8=(0.7071,0,1.7971), P9=(1.0,0,1.7971))",
+    "quarter_model": true,
+    "revolution_angle_rad": 1.5707963267948966,
+    "frame": "base at z=0, axis=z; quarter swept y=0 plane -> x=0 plane"
+  },
+  "boundary_conditions": [
+    "x=0 symmetry plane (yz, swept-to face): ux=0",
+    "y=0 symmetry plane (xz, meridian face, contains A): uy=0",
+    "z=0 base face (xy): uz=0",
+    "z=top face (HIH'I'): uz=0"
+  ],
+  "load": {
+    "type": "imposed_steady_temperature_field_thermal_stress",
+    "temperature_field": "T(x,y,z) = sqrt(x^2 + y^2) + z  (cylindrical radius + height; stress-free reference T_ref = 0)",
+    "mechanical_load": "none (NO *DLOAD; thermo-elastic only)"
+  },
+
+  "material_id": "nafems-le11-isotropic-steel",
+  "material_reference": "E = 210 GPa, nu = 0.30, alpha = 2.3e-4 /degC (NAFEMS canonical; the FeenoX .fee uses E=2.11e11 Pa, a 0.5% deviation noted in NOTES.md; the 3% tolerance absorbs it).",
+  "element_type": "C3D20",
+  "mesh_refine_canonical": 4,
+  "node_count": 26221,
+  "element_count": 5632,
+  "convergence_monotone": true,
+  "_convergence_monotone_note": "Monotone refers to the stress MAGNITUDE |sigma_zz@A|, which increases monotonically with refinement (102.49 -> 104.47 -> 105.12 -> 105.40 MPa). The SIGNED residual is NOT monotone: it changes sign as the magnitude crosses the 105 MPa target, so |residual| goes 2.39% -> 0.51% -> 0.11% -> 0.38% (down then up).",
+  "convergence_note": "sigma_zz@A magnitude converges monotonically with the revolved-hex mesh: -102.49 -> -104.47 -> -105.12 -> -105.40 MPa across 88 -> 704 -> 2376 -> 5632 elements. The magnitude CROSSES the 105 MPa target between the 704- and 2376-element rungs (|104.47| < 105 < |105.12|); the signed residual therefore changes sign (-2.39% -> -0.51% -> +0.11% -> +0.38%) and |residual| is NOT monotone. See convergence_study.json. Point A is a re-entrant inner-radius base corner (mesh-sensitive); the CONVERGED (finest, 5632-element) value -105.398 MPa (+0.38%) is pinned canonical rather than cherry-picking the +0.11% (2376-element) rung nearest -105.",
+  "ccx_version": "2.23",
+  "generated_at_utc": "2026-06-07T04:00:00+00:00",
+  "reproduce": "python golden_samples/nafems-le11-solid-cyl-temperature-candidate/data/generator.py [--ladder]",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_nafems_le11; thermoelastic_imposed_temperature_field; sign_normalized_to_solver_convention"
+}

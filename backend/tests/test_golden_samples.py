@@ -60,38 +60,54 @@ class TestGS001Cantilever:
         actual_elements = len(frd_result.elements)
         assert actual_elements == expected_elements, f"单元数不匹配: 期望={expected_elements}, 实际={actual_elements}"
 
+    @pytest.mark.xfail(
+        reason=(
+            "GS-001 是 insufficient_evidence / FP-001 案例：registry 自身单位声明不自洽，"
+            "本断言无法构成有效物理验证。case_description.units.displacement 与 "
+            "fea_result.displacement.unit 均声明 'mm'，但 expected node_11_UY=-493.56 与 "
+            "FRD 解析值 -0.49356 相差 1000×——CalculiX 按 INP 坐标单位输出（节点11 x=100.0 "
+            "= 100mm 钢梁、E=210000 MPa，唯一自洽读法是 mm-N-MPa），故 FRD 原生即 mm；"
+            "registry 的 -493.56 'mm' 是把 -0.49356 误当米后 ×1000 的产物（README.md 的 "
+            "'UY (m)' 列同源误标），其 648× '重大偏差' 亦由此 1000× 错误产生"
+            "（真实 0.49356mm vs 欧拉-伯努利理论 0.762mm ≈ 0.65×，属正常 3D 实体 vs 梁理论差异）。"
+            "signed registry 只读（ADR-011），无法就地改正；此处按 registry 声明的 mm-vs-mm "
+            "直接比较并标 xfail——既不背书错误的 registry 值，也不用私自换算伪造一致。"
+            "strict=True：若 registry 日后修正使两值一致，本用例 XPASS 会让 CI 失败，"
+            "强制移除此 xfail 并对 GS-001 重新定级（不容许静默通过）。详见 .planning/audits/phase43_FINAL.md。"
+        ),
+        strict=True,
+    )
     def test_gs001_displacement_uy(self, frd_result, expected_results):
-        """测试GS-001 Y方向位移"""
-        # 获取节点11的UY位移 (自由端)
-        # 节点11对应 node_id = 11
+        """测试GS-001 Y方向位移（xfail：registry 单位声明不自洽，见装饰器 reason）"""
         fea_benchmark = expected_results["theoretical_solutions"]["fea_result"]["displacement"]
 
-        # 节点11在FRD中是自由端节点
+        # registry 两侧均声明 mm（case_description.units / fea_result.unit），按该声明直接比较：
+        # 解析值（FRD 原生 mm）vs expected（registry 标注 mm，实为 1000× 误值）。
         node_11_uy = frd_result.displacements.get(11, (0, 0, 0))[1]
-
-        # 由于理论与FEA差异巨大，我们使用FEA基准值验证
-        expected_uy = fea_benchmark["node_11_UY"]  # -0.49356 m
+        expected_uy = fea_benchmark["node_11_UY"]  # registry 标 mm（-493.56），实为误值
 
         # 允许10%误差
         tolerance = 0.10
         relative_error = abs(node_11_uy - expected_uy) / abs(expected_uy)
 
         assert relative_error <= tolerance, (
-            f"UY位移误差过大: 实际={node_11_uy:.6f}m, "
-            f"期望={expected_uy:.6f}m, "
+            f"UY位移误差过大: 实际={node_11_uy:.6f}mm, "
+            f"期望={expected_uy:.6f}mm, "
             f"相对误差={relative_error*100:.2f}%"
         )
 
     def test_gs001_stress_sxx(self, frd_result, expected_results):
-        """测试GS-001 X方向应力"""
+        """测试GS-001 X方向应力（解析器↔registry 单位一致，无需换算）"""
         # 获取节点1的SXX应力 (固定端)
         fea_benchmark = expected_results["theoretical_solutions"]["fea_result"]["stress"]
-        expected_sxx = fea_benchmark["node_1_SXX"]  # -190.08 MPa = -1.9008e8 Pa
+        # 解析器 S11 与 expected 均为 MPa（见同节点 "unit": "MPa"），单位已对齐，直接比较。
+        # 早前注释/格式串误标 "Pa"（-1.9008e8 Pa），但实际两侧都是 MPa（解析值 ≈ -190.08）。
+        expected_sxx = fea_benchmark["node_1_SXX"]  # -190.08 MPa
 
         # 获取节点1的应力
         node_1_stress = frd_result.stresses.get(1)
         if node_1_stress:
-            actual_sxx = node_1_stress.S11
+            actual_sxx = node_1_stress.S11  # MPa（FRD 原生）
         else:
             pytest.fail("节点1的应力数据不存在")
 
@@ -100,8 +116,8 @@ class TestGS001Cantilever:
         relative_error = abs(actual_sxx - expected_sxx) / abs(expected_sxx)
 
         assert relative_error <= tolerance, (
-            f"SXX应力误差过大: 实际={actual_sxx:.6e}Pa, "
-            f"期望={expected_sxx:.6e}Pa, "
+            f"SXX应力误差过大: 实际={actual_sxx:.6e}MPa, "
+            f"期望={expected_sxx:.6e}MPa, "
             f"相对误差={relative_error*100:.2f}%"
         )
 

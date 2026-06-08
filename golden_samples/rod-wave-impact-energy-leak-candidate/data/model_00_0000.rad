@@ -1,0 +1,5 @@
+# rod-wave-impact-energy-leak-candidate starter deck (SYNTHETIC stub)
+# Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+# Identical to canonical rod-wave-impact-candidate; the
+# leak is in the animation manifest only.
+# L = 1.0 m, A = 0.0001 m^2, E = 200000000000.0 Pa, rho = 7850.0 kg/m^3

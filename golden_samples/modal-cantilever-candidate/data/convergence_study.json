@@ -1,0 +1,12 @@
+{
+  "case_id": "modal-cantilever-candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_tier": "Tier 1 engineering candidate",
+  "combined_verdict": "candidate_observed_stable",
+  "convergence_kind": "modal",
+  "mode_count_sweep": {
+    "axis": "mode_count",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "10 modes extracted via CalculiX 2.23 Lanczos *FREQUENCY. Dominant-mode (mode 1, 1st bending) frequency converged to 0.14% vs Euler-Bernoulli analytical across the structured 40x2x2 C3D20 hex mesh family. Cumulative effective mass participation 92.4% in each significant direction (>= 80% ASCE 7 / Eurocode 8 engineering-practice floor)."
+  }
+}

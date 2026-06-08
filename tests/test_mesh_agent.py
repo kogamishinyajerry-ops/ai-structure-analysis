@@ -144,3 +144,52 @@ def test_mesh_agent_escalates_mesh_level_on_retry(tmp_path, monkeypatch):
     assert seen_params["mesh_level"] == "very_fine"
     assert result["fault_class"] == FaultClass.NONE
     assert any(path.endswith("mesh_meta.json") for path in result["artifacts"])
+
+
+def test_mesh_agent_writes_quality_sidecar_on_success(tmp_path, monkeypatch):
+    def fake_generate_mesh(step_path, params, output_dir):
+        output_dir.mkdir(parents=True, exist_ok=True)
+        mesh_path = output_dir / "model.inp"
+        mesh_path.write_text("*mesh*", encoding="utf-8")
+        (output_dir / "mesh_meta.json").write_text(
+            json.dumps({"field_config": {"mesh_level": params["mesh_level"]}}),
+            encoding="utf-8",
+        )
+        return mesh_path
+
+    monkeypatch.setattr("agents.mesh.generate_mesh", fake_generate_mesh)
+    monkeypatch.setattr(
+        "agents.mesh.check_mesh_quality",
+        lambda path, thresholds=None: {
+            "ok": True,
+            "passed": True,
+            "bad_element_ids": [],
+            "resolution_element_ids": [],
+            "min_scaled_jacobian": 0.82,
+            "max_aspect_ratio": 3.4,
+            "degenerate_pct": 0.0,
+            "findings": [],
+        },
+    )
+
+    result = run(
+        {
+            "plan": _build_plan(mesh_level="medium"),
+            "project_state_dir": str(tmp_path),
+            "artifacts": _geometry_artifacts(tmp_path),
+            "history": [],
+            "retry_budgets": {},
+        }
+    )
+
+    quality_path = tmp_path / "mesh" / "mesh_quality.json"
+    assert quality_path.exists()
+    quality_payload = json.loads(quality_path.read_text(encoding="utf-8"))
+    assert quality_payload["status"] == "available"
+    assert quality_payload["metrics"]["min_scaled_jacobian"] == 0.82
+    assert quality_payload["thresholds"] == {
+        "min_scaled_jacobian": 0.2,
+        "max_aspect_ratio": 10.0,
+    }
+    assert "not_signed_validation" in quality_payload["claim_boundary"]
+    assert any(path.endswith("mesh_quality.json") for path in result["artifacts"])

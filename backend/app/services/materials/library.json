@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0.0",
+  "materials": [
+    {
+      "id": "steel-s355",
+      "name": "Structural Steel S355",
+      "youngs_modulus_pa": 210000000000.0,
+      "poisson_ratio": 0.3,
+      "density_kg_m3": 7850.0,
+      "yield_stress_pa": 355000000.0,
+      "ultimate_stress_pa": 510000000.0,
+      "reference": "EN 10025-2:2019 §7.3 (S355 grade, room temperature); plastic_hardening_curve per EN 1993-1-5 Annex C §C.6 bilinear approximation (yield 355 MPa, ultimate 510 MPa at 20% plastic strain)",
+      "plastic_hardening_curve": [
+        [0.0, 355000000.0],
+        [0.2, 510000000.0]
+      ]
+    },
+    {
+      "id": "aluminium-6061-t6",
+      "name": "Aluminium 6061-T6",
+      "youngs_modulus_pa": 68900000000.0,
+      "poisson_ratio": 0.33,
+      "density_kg_m3": 2700.0,
+      "yield_stress_pa": 276000000.0,
+      "ultimate_stress_pa": 310000000.0,
+      "reference": "MMPDS-2023 §3.6.1.0 (6061-T6 wrought, sheet, longitudinal, room temperature); plastic_hardening_curve bilinear approximation per MMPDS-2023 §9.2 stress-strain method (yield 276 MPa, ultimate 310 MPa at 12% plastic strain)",
+      "plastic_hardening_curve": [
+        [0.0, 276000000.0],
+        [0.12, 310000000.0]
+      ]
+    },
+    {
+      "id": "titanium-ti-6al-4v",
+      "name": "Titanium Ti-6Al-4V",
+      "youngs_modulus_pa": 113800000000.0,
+      "poisson_ratio": 0.342,
+      "density_kg_m3": 4430.0,
+      "yield_stress_pa": 880000000.0,
+      "ultimate_stress_pa": 950000000.0,
+      "reference": "MMPDS-2023 §5.4.1.0 (Ti-6Al-4V annealed bar, room temperature)"
+    },
+    {
+      "id": "steel-s275",
+      "name": "Structural Steel S275",
+      "youngs_modulus_pa": 210000000000.0,
+      "poisson_ratio": 0.3,
+      "density_kg_m3": 7850.0,
+      "yield_stress_pa": 275000000.0,
+      "ultimate_stress_pa": 430000000.0,
+      "reference": "EN 10025-2:2019 §7.3 (S275 grade, room temperature)"
+    },
+    {
+      "id": "stainless-304",
+      "name": "Stainless Steel AISI 304",
+      "youngs_modulus_pa": 193000000000.0,
+      "poisson_ratio": 0.29,
+      "density_kg_m3": 8000.0,
+      "yield_stress_pa": 215000000.0,
+      "ultimate_stress_pa": 505000000.0,
+      "reference": "ASM Specialty Handbook: Stainless Steels (1994) §1, Table 1.3 (304 annealed, room temperature)"
+    },
+    {
+      "id": "cast-iron-grade-250",
+      "name": "Cast Iron ASTM A48 Grade 250",
+      "youngs_modulus_pa": 100000000000.0,
+      "poisson_ratio": 0.26,
+      "density_kg_m3": 7200.0,
+      "yield_stress_pa": 165000000.0,
+      "ultimate_stress_pa": 250000000.0,
+      "reference": "ASTM A48/A48M-22 Class 35 (250 MPa tensile, gray cast iron, room temperature)"
+    },
+    {
+      "id": "bronze-c93200",
+      "name": "Bearing Bronze SAE 660 (C93200)",
+      "youngs_modulus_pa": 100000000000.0,
+      "poisson_ratio": 0.34,
+      "density_kg_m3": 8930.0,
+      "yield_stress_pa": 125000000.0,
+      "ultimate_stress_pa": 240000000.0,
+      "reference": "SAE J462 (C93200 sand-cast, room temperature) cross-referenced with ASTM B505"
+    },
+    {
+      "id": "inconel-718",
+      "name": "Inconel 718 (UNS N07718)",
+      "youngs_modulus_pa": 200000000000.0,
+      "poisson_ratio": 0.294,
+      "density_kg_m3": 8190.0,
+      "yield_stress_pa": 1034000000.0,
+      "ultimate_stress_pa": 1241000000.0,
+      "reference": "AMS 5662 (Inconel 718, age-hardened bar, room temperature)"
+    }
+  ]
+}

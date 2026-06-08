@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>AI-FEA · NAFEMS LE10 Benchmark-Agreement Demo</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --panel2:#0e141c; --line:#1e2a38;
+    --ink:#e6edf3; --muted:#8b9bb0; --dim:#5d6b7e;
+    --accent:#4ea1ff; --good:#3ad29f; --warn:#ffb454; --bad:#ff6b6b;
+    --grid:#16202c; --target:#ff8fb0;
+    --mono:'SF Mono',ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 700px at 70% -10%,#13202e 0%,var(--bg) 55%);
+       color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 22px 60px}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px}
+  .logo{font-weight:700;letter-spacing:.3px;font-size:16px}
+  .logo b{color:var(--accent)}
+  .sub{color:var(--muted);font-size:12.5px}
+  .badge{font-family:var(--mono);font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
+  .badge.t2{color:var(--good);border-color:#1f4d3e;background:#0e1c18}
+  .badge.unsigned{color:var(--warn);border-color:#5a431f;background:#1d160a}
+  .spacer{flex:1}
+  /* stepper */
+  .steps{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 8px}
+  .step{flex:1 1 150px;min-width:130px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+        padding:10px 12px;cursor:pointer;transition:.15s;position:relative}
+  .step:hover{border-color:#2c4156}
+  .step.active{border-color:var(--accent);background:#101b29;box-shadow:0 0 0 1px rgba(78,161,255,.25)}
+  .step .n{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .step.active .n{color:var(--accent)}
+  .step .t{font-weight:600;font-size:13px;margin-top:2px}
+  .step .d{color:var(--muted);font-size:11.5px}
+  /* layout */
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:16px;margin-top:14px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .stage{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:20px 22px;min-height:430px}
+  .side{display:flex;flex-direction:column;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 15px}
+  .card h4{margin:0 0 10px;font-size:12px;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);font-weight:600}
+  h2{margin:0 0 4px;font-size:21px}
+  .lede{color:var(--muted);margin:0 0 18px;max-width:60ch}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed var(--grid);font-size:13px}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--muted)} .kv .v{font-family:var(--mono)}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--muted);
+        border:1px solid var(--line);border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0}
+  .ok{color:var(--good)} .no{color:var(--bad)} .mid{color:var(--warn)}
+  .big{font-family:var(--mono);font-size:30px;font-weight:700}
+  .big.good{color:var(--good)}
+  .note{font-size:12px;color:var(--muted);border-left:2px solid var(--line);padding:4px 0 4px 11px;margin:10px 0}
+  .note.warn{border-color:var(--warn)} .note.good{border-color:var(--good)}
+  code,.code{font-family:var(--mono);font-size:12px;background:#0a0f15;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .codeblock{font-family:var(--mono);font-size:12px;background:#0a0f15;border:1px solid var(--line);border-radius:8px;padding:11px 13px;color:#cdd9e5;overflow:auto;white-space:pre}
+  .nav{display:flex;gap:10px;margin-top:18px}
+  button{font-family:var(--sans);font-size:13px;color:var(--ink);background:var(--panel);border:1px solid var(--line);
+         border-radius:8px;padding:8px 16px;cursor:pointer;transition:.15s}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:#143049;border-color:#27557e;color:#cfe6ff}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  svg{display:block;width:100%;height:auto}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .bcrow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:12.5px}
+  .bcrow:hover,.bcrow.hl{background:#0f1a26}
+  .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  table.ladder{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  table.ladder th,table.ladder td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--grid)}
+  table.ladder th{color:var(--muted);font-weight:600;text-align:right}
+  table.ladder tr.sel td{background:#101d29;color:var(--ink)}
+  table.ladder td:first-child,table.ladder th:first-child{text-align:left}
+  .gate{display:flex;flex-direction:column;gap:7px}
+  .gate .row{display:flex;align-items:center;gap:9px;font-size:12.5px}
+  .verdict{font-family:var(--mono);font-weight:700;font-size:15px;padding:8px 12px;border-radius:8px;text-align:center;margin-top:6px}
+  .verdict.pass{color:#062019;background:linear-gradient(90deg,#3ad29f,#2bb98a)}
+  .foot{color:var(--dim);font-size:11.5px;margin-top:26px;border-top:1px solid var(--line);padding-top:14px;line-height:1.7}
+  .mark{color:var(--accent)}
+  .slabel{font-size:11px;fill:var(--muted);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="logo"><b>AI-FEA</b> · NAFEMS LE10 — Benchmark-Agreement demo flow</div>
+      <div class="sub">Real CalculiX (ccx 2.23) thick-plate-pressure solve vs the published NAFEMS reference · honest truth-chain</div>
+    </div>
+    <div class="spacer"></div>
+    <span class="badge t2">tier_2_validated</span>
+    <span class="badge unsigned">NOT signed validation</span>
+  </header>
+
+  <div class="steps" id="steps"></div>
+
+  <div class="grid">
+    <div class="stage" id="stage"></div>
+    <div class="side">
+      <div class="card">
+        <h4>Truth chain — why this PASSes</h4>
+        <div class="gate" id="gate"></div>
+      </div>
+      <div class="card">
+        <h4>Headline</h4>
+        <div style="text-align:center;margin:6px 0 2px">
+          <div class="big good" id="hl-val">−5.4379 MPa</div>
+          <div style="color:var(--muted);font-size:12px">σ<sub>yy</sub> at point D &nbsp;·&nbsp; target <span class="code">−5.38 MPa</span></div>
+          <div style="margin-top:8px"><span class="pill ok">residual +1.08%</span><span class="pill ok">sign ✓ compressive</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button id="prev">← Back</button>
+    <button id="next" class="primary">Next →</button>
+    <div class="spacer"></div>
+    <button id="auto">▶ Auto-play flow</button>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+// ---- REAL data (from the committed verdict + convergence artifacts) ----
+const TARGET = -5.38;                 // MPa, published NAFEMS LE10 sigma_yy(D), TNSB Rev.3
+const LADDER = [                      // real ccx 2.23, C3D20, mid-plane frame
+  {mesh:"12×6×3", el:216,  nd:1287,  sigma:-5.5669, resid:3.47},
+  {mesh:"16×8×4", el:512,  nd:2779,  sigma:-5.5261, resid:2.72},
+  {mesh:"24×12×4",el:1152, nd:5987,  sigma:-5.5107, resid:2.43},
+  {mesh:"32×16×5",el:2560, nd:12605, sigma:-5.4789, resid:1.84},
+  {mesh:"40×20×6",el:4800, nd:22815, sigma:-5.4379, resid:1.08},
+];
+const CANON = LADDER[LADDER.length-1];
+const GEO = {outer:[3.25,2.75], inner:[2.0,1.0], t:0.6, D:[2.0,0.0,0.30]};
+
+// world->screen mapping for the geometry sketch
+const SC=100, OX=46, OY=320, W=470, H=372;
+const sx = wx => OX + wx*SC;
+const sy = wy => OY - wy*SC;
+function ellipsePts(a,b,t0,t1,n=40){let p=[];for(let i=0;i<=n;i++){const t=t0+(t1-t0)*i/n;p.push([sx(a*Math.cos(t)),sy(b*Math.sin(t))]);}return p;}
+function poly(pts){return pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');}
+
+function geometrySVG(hl){
+  const [ao,bo]=GEO.outer,[ai,bi]=GEO.inner;
+  const outer=ellipsePts(ao,bo,0,Math.PI/2);
+  const inner=ellipsePts(ai,bi,Math.PI/2,0);
+  // annulus = outer arc (D->C? we go C..B) then down to A then inner arc back
+  const path = 'M '+sx(ao)+' '+sy(0)+' '
+      + poly(outer).slice(1) + ' '          // C(3.25,0)->B(0,2.75)
+      + 'L '+sx(0)+' '+sy(bi)+' '           // B-> A(0,1)
+      + poly(inner).slice(1) + ' Z';        // A-> D(2,0)
+  const Dx=sx(GEO.D[0]),Dy=sy(0);
+  const col=k=>hl===k?'#4ea1ff':'#34465a';
+  const wid=k=>hl===k?'3.4':'2';
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="LE10 quarter geometry">
+    <defs><linearGradient id="mat" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16344a"/><stop offset="1" stop-color="#0f1a26"/></linearGradient></defs>
+    <!-- axes -->
+    <line x1="${OX}" y1="${OY}" x2="${OX+360}" y2="${OY}" stroke="#26384a"/>
+    <line x1="${OX}" y1="${OY}" x2="${OX}" y2="${OY-300}" stroke="#26384a"/>
+    <text x="${OX+364}" y="${OY+4}" class="slabel">x</text>
+    <text x="${OX-4}" y="${OY-306}" class="slabel">y</text>
+    <!-- material -->
+    <path d="${path}" fill="url(#mat)" stroke="#2c4156" stroke-width="1"/>
+    <!-- inner (hole) edge -->
+    <path d="${'M '+sx(ai)+' '+sy(0)+' '+poly(ellipsePts(ai,bi,0,Math.PI/2)).slice(1)}" fill="none" stroke="${col('inner')}" stroke-width="${wid('inner')}" stroke-dasharray="${hl==='inner'?'0':'5 4'}"/>
+    <!-- outer rim BC -->
+    <path d="${'M '+sx(ao)+' '+sy(0)+' '+poly(outer).slice(1)}" fill="none" stroke="${col('outer')}" stroke-width="${wid('outer')}"/>
+    <!-- x=0 symmetry (left edge B->A) -->
+    <line x1="${sx(0)}" y1="${sy(bo)}" x2="${sx(0)}" y2="${sy(bi)}" stroke="${col('xsym')}" stroke-width="${wid('xsym')}"/>
+    <!-- y=0 symmetry (bottom edge D->C) -->
+    <line x1="${sx(ai)}" y1="${sy(0)}" x2="${sx(ao)}" y2="${sy(0)}" stroke="${col('ysym')}" stroke-width="${wid('ysym')}"/>
+    <!-- point D -->
+    <circle cx="${Dx}" cy="${Dy}" r="${hl==='D'?7:5}" fill="#ff8fb0" stroke="#0b0f14" stroke-width="1.5"/>
+    <text x="${Dx+9}" y="${Dy-7}" class="slabel" fill="#ff8fb0">D = (2.0, 0, +0.3) · upper</text>
+    <!-- corner labels -->
+    <text x="${sx(ao)-2}" y="${sy(0)+15}" class="slabel">C</text>
+    <text x="${sx(0)-12}" y="${sy(bo)+4}" class="slabel">B</text>
+    <text x="${sx(0)-12}" y="${sy(bi)+4}" class="slabel">A</text>
+  </svg>`;
+}
+
+function convSVG(selIdx){
+  const w=560,h=300,ml=58,mr=18,mt=18,mb=42;
+  const iw=w-ml-mr, ih=h-mt-mb;
+  const ys=[-5.62,-5.34]; // MPa window
+  const X=i=>ml+iw*i/(LADDER.length-1);
+  const Y=v=>mt+ih*(v-ys[0])/(ys[1]-ys[0]);
+  const tY=Y(TARGET);
+  let grid='';
+  for(let g=-5.60;g<=-5.34;g+=0.04){const gy=Y(g);grid+=`<line x1="${ml}" y1="${gy}" x2="${w-mr}" y2="${gy}" stroke="#16202c"/><text x="${ml-8}" y="${gy+3}" text-anchor="end" class="slabel">${g.toFixed(2)}</text>`;}
+  const line=LADDER.map((d,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(d.sigma).toFixed(1)).join(' ');
+  let pts='';
+  LADDER.forEach((d,i)=>{const cx=X(i),cy=Y(d.sigma);const on=i===selIdx;
+    pts+=`<circle cx="${cx}" cy="${cy}" r="${on?7:4.5}" fill="${on?'#4ea1ff':'#7fb6ff'}" stroke="#0b0f14" stroke-width="1.5"/>`
+       +`<text x="${cx}" y="${h-mb+16}" text-anchor="middle" class="slabel">${d.el}</text>`;
+    if(on) pts+=`<text x="${cx}" y="${cy-12}" text-anchor="middle" class="slabel" fill="#4ea1ff">${d.sigma} (${'+'+d.resid}%)</text>`;});
+  return `<svg viewBox="0 0 ${w} ${h}">
+    ${grid}
+    <line x1="${ml}" y1="${tY}" x2="${w-mr}" y2="${tY}" stroke="#ff8fb0" stroke-width="1.6" stroke-dasharray="6 4"/>
+    <text x="${w-mr}" y="${tY-6}" text-anchor="end" class="slabel" fill="#ff8fb0">NAFEMS target −5.38 MPa</text>
+    <path d="${line}" fill="none" stroke="#7fb6ff" stroke-width="2"/>
+    ${pts}
+    <text x="${ml+iw/2}" y="${h-6}" text-anchor="middle" class="slabel">element count  →  refinement</text>
+    <text transform="translate(14 ${mt+ih/2}) rotate(-90)" text-anchor="middle" class="slabel">σ_yy at D (MPa)</text>
+  </svg>`;
+}
+
+// ---- steps ----
+let convSel = LADDER.length-1;
+let bcHL = null;
+const STEPS = [
+  {n:'01',t:'The benchmark',d:'NAFEMS LE10',render:()=>`
+    <h2>NAFEMS LE10 — Thick Plate Pressure</h2>
+    <p class="lede">A canonical public linear-elastic benchmark. A thick elliptic annular plate under
+      uniform top pressure; the reference quantity is the direct stress <span class="code">σ_yy</span>
+      at point <b style="color:#ff8fb0">D</b>, with the published value <span class="code">−5.38 MPa</span>.
+      This is the project's <span class="mark">first public-benchmark agreement</span> — every other
+      validated case cross-checks an <i>analytical closed form</i>; this one agrees with an external
+      published reference.</p>
+    <div class="card" style="background:#0e141c">
+      <div class="kv"><span class="k">Benchmark</span><span class="v">NAFEMS LE10 · TNSB Rev.3 (1990)</span></div>
+      <div class="kv"><span class="k">Reference σ_yy(D)</span><span class="v" style="color:#ff8fb0">−5.38 MPa</span></div>
+      <div class="kv"><span class="k">Solver</span><span class="v">CalculiX (ccx) 2.23 — real subprocess</span></div>
+      <div class="kv"><span class="k">Result</span><span class="v" style="color:#3ad29f">−5.4379 MPa &nbsp;(+1.08%)</span></div>
+    </div>
+    <div class="note warn">Honest scope: tier_2 here = <b>real solver + public-benchmark agreement</b>, NOT
+      signed validation (no independent reviewer signoff). The magnitude 5.38 MPa is the canonical
+      acceptance metric; the sign is normalized to the solver's convention (see step 6).</div>`},
+
+  {n:'02',t:'Setup',d:'geometry · BC · load',render:()=>`
+    <h2>Geometry, boundary conditions & load</h2>
+    <p class="lede">Quarter model (double symmetry). Hover a condition to highlight where it acts.</p>
+    <div style="display:grid;grid-template-columns:1.15fr .85fr;gap:16px;align-items:start">
+      <div>${geometrySVG(bcHL)}
+        <div class="legend">
+          <span><i style="background:#34465a"></i>outer rim</span>
+          <span><i style="background:#ff8fb0"></i>point D (upper surface)</span>
+          <span><i style="background:#34465a"></i>inner hole edge</span>
+        </div></div>
+      <div>
+        <div class="card" style="padding:9px 10px">
+          ${bcRow('xsym','x = 0 plane','u_x = 0 (symmetry)')}
+          ${bcRow('ysym','y = 0 plane (holds D)','u_y = 0 (symmetry)')}
+          ${bcRow('outer','outer elliptic rim','u_x = u_y = 0 (in-plane pin)')}
+          ${bcRow('outer','outer rim mid-plane','u_z = 0 (line EE′, removes z RBM)')}
+        </div>
+        <div class="card" style="margin-top:12px">
+          <div class="kv"><span class="k">Outer ellipse</span><span class="v">3.25 × 2.75 m</span></div>
+          <div class="kv"><span class="k">Inner ellipse</span><span class="v">2.0 × 1.0 m</span></div>
+          <div class="kv"><span class="k">Thickness</span><span class="v">0.6 m</span></div>
+          <div class="kv"><span class="k">Material</span><span class="v">E=210 GPa · ν=0.30</span></div>
+          <div class="kv"><span class="k">Load</span><span class="v">1.0 MPa ↓ on top face</span></div>
+        </div>
+      </div>
+    </div>`},
+
+  {n:'03',t:'Mesh',d:'structured C3D20 hex',render:()=>`
+    <h2>Mesh — quadratic structured hexahedra (C3D20)</h2>
+    <p class="lede">Transfinite quarter-annulus → recombine → extrude through thickness → 20-node hex.
+      Quadratic elements are mandatory for this bending / sharp-edge stress; a convergence ladder is run.</p>
+    <table class="ladder">
+      <tr><th>mesh nc×nr×nt</th><th>elements</th><th>nodes</th><th>σ_yy(D) MPa</th><th>residual</th></tr>
+      ${LADDER.map((d,i)=>`<tr class="${i===convSel?'sel':''}"><td>${d.mesh}</td><td>${d.el}</td><td>${d.nd}</td><td>${d.sigma}</td><td>+${d.resid}%</td></tr>`).join('')}
+    </table>
+    <div class="note good">Full-integration C3D20 chosen — reduced-integration C3D20R was noisier at this
+      sharp inner-edge stress. gmsh emits Abaqus C3D20 ordering that ccx ingests directly.</div>`},
+
+  {n:'04',t:'Solve',d:'real ccx 2.23',render:()=>`
+    <h2>Solve — real CalculiX run</h2>
+    <p class="lede">No surrogate, no stub: a real <span class="code">ccx -i</span> subprocess on the
+      canonical 40×20×6 mesh (4800 elements, 22 815 nodes). σ_yy recovered at the exact upper-surface
+      node D = (2.0, 0, +0.3).</p>
+    <div class="codeblock">$ python golden_samples/nafems-le10-thick-plate-candidate/data/generator.py
+
+NAFEMS LE10 sigma_yy@D (target −5.38 MPa), C3D20:
+  40×20×6 | el=4800 nd=22815 | sigma_yy@D=<span style="color:#3ad29f">−5.4379 MPa</span> | resid=<span style="color:#3ad29f">+1.08%</span> | converged=True</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">
+      <div class="card" style="text-align:center"><div class="big">4800</div><div style="color:var(--muted);font-size:12px">C3D20 elements</div></div>
+      <div class="card" style="text-align:center"><div class="big">22 815</div><div style="color:var(--muted);font-size:12px">nodes</div></div>
+      <div class="card" style="text-align:center"><div class="big good">✓</div><div style="color:var(--muted);font-size:12px">ccx 2.23 converged</div></div>
+    </div>`},
+
+  {n:'05',t:'Agreement',d:'vs −5.38 MPa',render:()=>`
+    <h2>Benchmark agreement & convergence</h2>
+    <p class="lede">Click a point: the solve converges <b>monotonically</b> toward the NAFEMS target as the
+      mesh refines — +3.47% → <b style="color:#3ad29f">+1.08%</b>. Convergence <i>toward</i> the published
+      value, with the correct (compressive) sign, is the agreement evidence.</p>
+    <div id="convwrap">${convSVG(convSel)}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" id="convbtns"></div>`},
+
+  {n:'06',t:'Provenance',d:'honesty & reproduce',render:()=>`
+    <h2>Provenance, honesty & reproduce</h2>
+    <p class="lede">What this claim is — and is not.</p>
+    <div class="card" style="background:#0e141c">
+      <div class="kv"><span class="k">Claim tier</span><span class="v" style="color:#3ad29f">tier_2_validated · public-benchmark agreement</span></div>
+      <div class="kv"><span class="k">NOT</span><span class="v" style="color:#ffb454">signed validation (no independent signoff)</span></div>
+      <div class="kv"><span class="k">Tolerance</span><span class="v">3.0% (community hex band) · observed +1.08%</span></div>
+      <div class="kv"><span class="k">Sources</span><span class="v">FeenoX/Code_Aster · ESRD · Abaqus/Altair</span></div>
+    </div>
+    <div class="note warn"><b>Sign caveat (disclosed):</b> magnitude 5.38 MPa is unanimous; the sign is
+      convention-split in the literature. ccx (tension-positive) reproduced −5.4379 MPa, matching the
+      FeenoX/Code_Aster −5.38 convention. Sign normalized to the solver's own output convention.</div>
+    <div class="note good"><b>Error corrected:</b> the case's own prior records said point D was on the
+      "lower surface, minor axis" — <b>both wrong</b>. A 3-source triangulation established D is the
+      <b>upper</b> surface, inner-ellipse <b>major</b>-axis tip on the y=0 plane (FeenoX evaluates
+      <code>sigmay(2000,0,+300)</code>). The benchmark was built on the corrected point.</div>
+    <div class="codeblock"># reproduce the full convergence ladder
+python golden_samples/nafems-le10-thick-plate-candidate/data/generator.py --ladder</div>`},
+];
+
+function bcRow(key,name,cond){
+  return `<div class="bcrow ${bcHL===key?'hl':''}" data-bc="${key}">
+    <span class="dot" style="background:${key==='outer'?'#4ea1ff':key==='xsym'?'#5d9bff':'#5d9bff'}"></span>
+    <span style="flex:1"><b>${name}</b></span><span class="code">${cond}</span></div>`;
+}
+
+// ---- gate (truth chain) ----
+const GATE=[
+  ['Real solver ran','ccx 2.23 subprocess, converged','ok'],
+  ['Within tolerance','+1.08% ≤ 3.0%','ok'],
+  ['Monotone convergence','216→4800 el, →target','ok'],
+  ['Correct sign','compressive, both −','ok'],
+  ['Point D verified','upper surface, (2,0,+0.3)','ok'],
+  ['Signed validation','no independent signoff','mid'],
+];
+function renderGate(){
+  document.getElementById('gate').innerHTML =
+    GATE.map(([t,d,s])=>`<div class="row"><span class="${s==='ok'?'ok':'mid'}">${s==='ok'?'✓':'○'}</span>
+      <span style="flex:1">${t}<div style="color:var(--dim);font-size:11px">${d}</div></span></div>`).join('')
+    + `<div class="verdict pass">VERDICT: PASS · tier_2_validated</div>`;
+}
+
+// ---- render / nav ----
+let cur=0, autoTimer=null;
+function renderSteps(){
+  document.getElementById('steps').innerHTML = STEPS.map((s,i)=>
+    `<div class="step ${i===cur?'active':''}" data-i="${i}"><div class="n">STEP ${s.n}</div><div class="t">${s.t}</div><div class="d">${s.d}</div></div>`).join('');
+}
+function renderStage(){
+  document.getElementById('stage').innerHTML = STEPS[cur].render();
+  // wire BC hover (step 2)
+  document.querySelectorAll('.bcrow').forEach(r=>{
+    r.onmouseenter=()=>{bcHL=r.dataset.bc;document.querySelector('#stage svg')&&renderStage();};
+    r.onmouseleave=()=>{bcHL=null;renderStage();};
+  });
+  // wire convergence buttons (step 5)
+  const cb=document.getElementById('convbtns');
+  if(cb){cb.innerHTML=LADDER.map((d,i)=>`<button data-ci="${i}" ${i===convSel?'class="primary"':''}>${d.el} el</button>`).join('');
+    cb.querySelectorAll('button').forEach(b=>b.onclick=()=>{convSel=+b.dataset.ci;
+      document.getElementById('convwrap').innerHTML=convSVG(convSel);
+      cb.querySelectorAll('button').forEach(x=>x.className=(+x.dataset.ci===convSel)?'primary':'');});}
+  document.getElementById('prev').disabled = cur===0;
+  document.getElementById('next').textContent = cur===STEPS.length-1?'↺ Restart':'Next →';
+}
+function go(i){cur=(i+STEPS.length)%STEPS.length;renderSteps();renderStage();}
+document.getElementById('steps').onclick=e=>{const s=e.target.closest('.step');if(s)go(+s.dataset.i);};
+document.getElementById('next').onclick=()=>go(cur+1);
+document.getElementById('prev').onclick=()=>go(cur-1);
+document.getElementById('auto').onclick=function(){
+  if(autoTimer){clearInterval(autoTimer);autoTimer=null;this.textContent='▶ Auto-play flow';return;}
+  this.textContent='⏸ Pause';autoTimer=setInterval(()=>{if(cur===STEPS.length-1){go(0);}else go(cur+1);},2600);
+};
+document.getElementById('foot').innerHTML =
+  `AI-FEA · V2-1 / ADR-027 · 2026-06-03 — self-contained demo; every number above is read from the committed `
+  +`<code>cross_check_verdict.yaml</code> + <code>convergence_study.json</code> (real ccx 2.23). `
+  +`This is a Tier-0 demo <i>presentation</i> of a tier_2_validated result; it asserts no claim beyond the artifacts.`;
+
+// deep-link: ?step=N (1-based) jumps to a step on load (also used for headless capture)
+const _qs=new URLSearchParams(location.search), _sp=parseInt(_qs.get('step'),10);
+if(Number.isFinite(_sp)&&_sp>=1&&_sp<=STEPS.length) cur=_sp-1;
+renderSteps();renderStage();renderGate();
+</script>
+</body>
+</html>

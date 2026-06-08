@@ -1,0 +1,178 @@
+{
+  "asme_section_5_5": {
+    "P_m_MPa": 20.783606658604555,
+    "P_m_P_b_MPa": 29.173846073619004,
+    "P_m_P_b_Q_MPa": 31.158565356227488,
+    "P_m_P_b_Q_exact_MPa": 31.17692830520719,
+    "S_m_MPa": 138.0,
+    "bending_outer_tensor_rtz": [
+      4.837057959486765,
+      -4.851156041513986,
+      -0.004229296428622824,
+      1.568873316687294e-06,
+      2.3943703094955867e-16,
+      2.878143450319524e-14
+    ],
+    "membrane_tensor_rtz": [
+      -4.002830035473708,
+      19.996011698122942,
+      7.998115274228975,
+      2.9694003836086594e-07,
+      -3.068401519629551e-15,
+      -5.207902368617957e-13
+    ],
+    "ratio_P_m_P_b_Q_over_3_S_m": 0.07526223515996978,
+    "ratio_P_m_P_b_over_1_5_S_m": 0.14093645446192754,
+    "ratio_P_m_over_S_m": 0.15060584535220692
+  },
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "claim_impact": "Tier 1 candidate thick-walled-cylinder benchmark; not signed validation; not benchmark agreement. ASME VIII Div 2 \u00a75.5 categorized stresses computed from CalculiX 2.23 + project's Layer-3 stress linearization module; compared against Lame's analytical solution for verification only. Does not authorize Tier 2 promotion.",
+  "claim_tier": "Tier 1 engineering candidate",
+  "convergence": {
+    "max_abs_err_sigma_r_MPa": 0.03665282881058651,
+    "max_abs_err_sigma_t_MPa": 0.029489779646276304,
+    "max_abs_err_sigma_z_MPa": 0.01579000000000086,
+    "max_abs_err_von_mises_MPa": 0.053993161932286426,
+    "max_rel_err_sigma_r_pct": 1.1561634410990558,
+    "max_rel_err_sigma_t_pct": 0.13580003131483542,
+    "max_rel_err_sigma_z_pct": 0.19737500000001074,
+    "max_rel_err_von_mises_pct": 0.1951361308030697,
+    "rel_err_floor_MPa": 0.5
+  },
+  "geometry": {
+    "L_mm": 100.0,
+    "Ri_mm": 100.0,
+    "Ro_mm": 150.0,
+    "wedge_deg": 5.0
+  },
+  "load": {
+    "closed_end_axial_stress_MPa": 8.0,
+    "internal_pressure_MPa": 10.0
+  },
+  "material": {
+    "E_MPa": 200000.0,
+    "S_m_MPa": 138.0,
+    "name": "SA-516 Gr.70",
+    "nu": 0.3
+  },
+  "scl": {
+    "pointwise": [
+      {
+        "r_mm": 99.99997791801556,
+        "sigma_r_FEA": -9.963355120706447,
+        "sigma_r_exact": -10.000007949517034,
+        "sigma_theta_FEA": 26.01545512070645,
+        "sigma_theta_exact": 26.000007949517034,
+        "sigma_z_FEA": 8.01579,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 31.158565356227488,
+        "von_mises_exact": 31.17692830520719
+      },
+      {
+        "r_mm": 106.14903010872261,
+        "sigma_r_FEA": -7.940051477170417,
+        "sigma_r_exact": -7.9749844622389325,
+        "sigma_theta_FEA": 23.947571477170417,
+        "sigma_theta_exact": 23.974984462238933,
+        "sigma_z_FEA": 8.00243,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 27.615491576788923,
+        "von_mises_exact": 27.66948473872121
+      },
+      {
+        "r_mm": 112.39297309129294,
+        "sigma_r_FEA": -6.2308317385711,
+        "sigma_r_exact": -6.249321518217375,
+        "sigma_theta_FEA": 22.2198317385711,
+        "sigma_theta_exact": 22.249321518217375,
+        "sigma_z_FEA": 7.99686,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 24.63899743875144,
+        "von_mises_exact": 24.680548842936986
+      },
+      {
+        "r_mm": 118.63691607386336,
+        "sigma_r_FEA": -4.776157394095988,
+        "sigma_r_exact": -4.788888690187489,
+        "sigma_theta_FEA": 20.76078739409599,
+        "sigma_theta_exact": 20.78888869018749,
+        "sigma_z_FEA": 7.99554,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 22.115643156758974,
+        "von_mises_exact": 22.151004983747725
+      },
+      {
+        "r_mm": 124.88085905643386,
+        "sigma_r_FEA": -3.53318346420098,
+        "sigma_r_exact": -3.541991494770423,
+        "sigma_theta_FEA": 19.51545346420098,
+        "sigma_theta_exact": 19.54199149477042,
+        "sigma_z_FEA": 7.99483,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 19.960705444597895,
+        "von_mises_exact": 19.991315689470223
+      },
+      {
+        "r_mm": 131.12480247519917,
+        "sigma_r_FEA": -2.4630086116961794,
+        "sigma_r_exact": -2.468942419355052,
+        "sigma_theta_FEA": 18.443978611696178,
+        "sigma_theta_exact": 18.468942419355052,
+        "sigma_z_FEA": 7.99445,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 18.10598248620005,
+        "von_mises_exact": 18.132740171835994
+      },
+      {
+        "r_mm": 137.36874545777,
+        "sigma_r_FEA": -1.534285576811079,
+        "sigma_r_exact": -1.5388636531250963,
+        "sigma_theta_FEA": 17.515745576811078,
+        "sigma_theta_exact": 17.538863653125098,
+        "sigma_z_FEA": 7.9946,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 16.497811375828007,
+        "von_mises_exact": 16.521796493684736
+      },
+      {
+        "r_mm": 143.6136874885622,
+        "sigma_r_FEA": -0.7189097572913284,
+        "sigma_r_exact": -0.7273187507882,
+        "sigma_theta_FEA": 16.70815775729133,
+        "sigma_theta_exact": 16.7273187507882,
+        "sigma_z_FEA": 7.99695,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 15.092283360336566,
+        "von_mises_exact": 15.116159490213708
+      },
+      {
+        "r_mm": 149.99976706737948,
+        "sigma_r_FEA": 0.005456112648875137,
+        "sigma_r_exact": -2.4846204063067034e-05,
+        "sigma_theta_FEA": 16.003438487351126,
+        "sigma_theta_exact": 16.000024846204063,
+        "sigma_z_FEA": 8.00282,
+        "sigma_z_exact": 8.0,
+        "von_mises_FEA": 13.854659241355748,
+        "von_mises_exact": 13.85644949543883
+      }
+    ],
+    "r_mm": [
+      99.99997791801556,
+      106.14903010872261,
+      112.39297309129294,
+      118.63691607386336,
+      124.88085905643386,
+      131.12480247519917,
+      137.36874545777,
+      143.6136874885622,
+      149.99976706737948
+    ]
+  },
+  "solver": {
+    "n_C3D20_elements": 32,
+    "n_nodes": 287,
+    "name": "calculix",
+    "version": "2.23"
+  }
+}

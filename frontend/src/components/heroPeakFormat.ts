@@ -1,0 +1,106 @@
+// FM-04a Phase 43 — hero peak-readout formatting (pure helpers).
+//
+// Extracted from HeroPeakReadout.tsx so the .tsx file only exports a
+// component (Vite Fast-Refresh hygiene) and the formatting logic is
+// unit-testable in isolation, shared with the component.
+
+import { componentValue, type StressComponent } from '../stressDerivatives';
+import type { ResultMeshElement } from '../resultMeshPlayback';
+import { applyValueFilter, type ValueFilterState } from './viewportRaycaster';
+
+// Largest sensible heading token for the value. The MetricGrid cells
+// render their value at 0.9rem; --fs-xl (1.6rem) is unambiguously larger
+// so the peak reads as the headline.
+export const HERO_VALUE_FONT_SIZE_TOKEN = 'var(--fs-xl)';
+
+const numberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 3 });
+
+// Mirrors ResultMeshPlaybackPanel.formatNumber so the hero value matches
+// the MetricGrid formatting (small magnitudes => exponential).
+export function formatHeroValue(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '0';
+  const magnitude = Math.abs(value);
+  if (magnitude > 0 && magnitude < 0.001) return value.toExponential(2);
+  return numberFormat.format(value);
+}
+
+// Human labels for the stress-tensor field components (mirrors the legend
+// dropdown options) so the hero headline NAMES the field the viewport is
+// actually coloring by — not always "von Mises".
+export const FIELD_COMPONENT_LABELS: Record<StressComponent, string> = {
+  mises: 'Von Mises stress',
+  sxx: 'σxx · normal X',
+  syy: 'σyy · normal Y',
+  szz: 'σzz · normal Z',
+  sxy: 'τxy · shear',
+  syz: 'τyz · shear',
+  sxz: 'τxz · shear',
+  max_principal: 'σ1 · max principal',
+  min_principal: 'σ3 · min principal',
+};
+
+export interface HeroFieldInput {
+  fieldLabel: string;
+  valueMax: number;
+  elements: readonly ResultMeshElement[];
+}
+
+export interface HeroFieldSelection {
+  label: string;
+  value: number;
+}
+
+/**
+ * FM-04a Phase 43 (Codex R0 P2) — pick the hero-readout field that MATCHES
+ * what the viewport is currently coloring by. For the scalar/Mises default the
+ * summary's pre-computed valueMax is authoritative; for an explicitly selected
+ * tensor component we recompute the peak over the frame's tensor-bearing
+ * elements with the SAME `componentValue` path the viewport / pick-HUD /
+ * geometry builder use (viewportGeometry.ts), so the headline can never report
+ * von Mises while the plot shows σxx. Falls back to the scalar summary when no
+ * tensor data is reachable (defensive — the switcher is gated on tensor
+ * presence).
+ */
+export function selectActiveFieldPeak(
+  input: HeroFieldInput,
+  fieldComponent: StressComponent,
+  viewportMode: 'webgl' | 'svg' = 'webgl',
+  valueFilter: ValueFilterState | null = null,
+): HeroFieldSelection {
+  // The scalar summary peak is authoritative whenever the displayed field IS
+  // the scalar `value` path:
+  //   • the Mises default; OR
+  //   • the SVG renderer — it colors by element.value (colorForElement) and
+  //     ignores tensor-component switching, so the headline must NOT advertise
+  //     a σ-component there (Codex R1 P2); OR
+  //   • a frame with no tensor data at all — the switcher is gated on tensor
+  //     presence, so naming a σ-component would mislabel scalar data (Codex R0
+  //     P2 defensive fallback).
+  const tensorActive =
+    viewportMode === 'webgl' &&
+    fieldComponent !== 'mises' &&
+    input.elements.some((el) => Boolean(el.stressTensor));
+  if (!tensorActive) {
+    return { label: input.fieldLabel, value: input.valueMax };
+  }
+  // Recompute the component peak over ONLY the elements the WebGL renderer
+  // actually field-colors, mirroring ResultMeshWebGLViewport / viewportGeometry
+  // (Codex R1 P2 — otherwise the banner can headline a value not present in the
+  // visible contour): skip deleted cells (alive===false render as the delete
+  // hue), projectile parts (drawn a fixed gray, not field-colored), and
+  // value-filtered-out elements. Per element use the SAME componentValue path
+  // (tensor → component; scalar-only → `value` fallback) so the headline equals
+  // the maximum actually visible.
+  let peak = -Infinity;
+  for (const el of input.elements) {
+    if (el.alive === false) continue;
+    if (el.partRole === 'projectile') continue;
+    if (valueFilter && !applyValueFilter(el, valueFilter, fieldComponent)) continue;
+    const v = componentValue(el.stressTensor, fieldComponent, el.value ?? Number.NaN);
+    if (Number.isFinite(v) && v > peak) peak = v;
+  }
+  if (!Number.isFinite(peak)) {
+    return { label: input.fieldLabel, value: input.valueMax };
+  }
+  return { label: FIELD_COMPONENT_LABELS[fieldComponent], value: peak };
+}

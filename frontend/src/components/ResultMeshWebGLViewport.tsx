@@ -1,0 +1,966 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as THREE from 'three';
+import type { ResultMeshFrame } from '../resultMeshPlayback';
+import { componentValue, type StressComponent } from '../stressDerivatives';
+
+// FM-04a Phase 21 C — minimal three.js WebGL viewport for the
+// dynamic result-mesh playback. Reads the SAME `selectedFrame` shape
+// that `ResultMeshPlaybackPanel`'s SVG body consumes (so the WebGL +
+// SVG paths share the upstream data contract) and renders the
+// elements as a THREE.Mesh with per-vertex stress coloring.
+//
+// FM-04a Phase 24 C — pure-function helpers extracted to:
+//   - viewportGeometry.ts  (gradient, triangulation, BufferGeometry)
+//   - viewportRaycaster.ts (node pick + Phase 23 D threshold filter)
+//   - viewportAnimation.ts (WebGL feature detection)
+// This file is now the React orchestrator only.
+//
+// Honest scope (Phase 21 C):
+// * Single-frame static render. Frame changes rebuild the geometry
+//   (no animation tweening between frames).
+// * Color gradient matches the SVG legend (blue → green → orange).
+// * Orbit (mouse drag) / pan (right-button drag) / zoom (wheel) via
+//   a minimal hand-rolled camera controller. OrbitControls is in
+//   three/examples but pulling that path adds bundle weight and
+//   doesn't pay off for the Phase 21 C deliverable.
+// * Volume elements (4-node tet / 8-node hex) are exploded into
+//   their face triangles. 3-node faces render directly.
+// * Falls back to a "WebGL unavailable" surface if context creation
+//   fails (jsdom test env, browsers with WebGL disabled).
+//
+// Tier 1 / Tier 2 engineering candidate; not signed validation; not
+// benchmark agreement.
+
+import {
+  buildBufferGeometry,
+  buildNodeCoords,
+  colorForValueFraction,
+  type SectionCutState,
+} from './viewportGeometry';
+import {
+  applyValueFilter,
+  fieldValueAtNode,
+  findClosestNode,
+  type PickedNodeInfo,
+  type ValueFilterState,
+} from './viewportRaycaster';
+import { detectWebGLSupport } from './viewportAnimation';
+// FM-04a Phase 43 — viewport navigation gizmo (standard-view presets +
+// orientation triad). The gizmo is a dark-glass overlay; this viewport
+// owns the camera seam that maps each preset onto azimuth/elevation
+// (and, for fit, a bounds-framing radius recompute).
+import { ViewportNavGizmo } from './ViewportNavGizmo';
+import { ScaleBar } from './ScaleBar';
+import { DEFAULT_COLORMAP, type ColormapId } from './colormaps';
+import { VIEW_PRESET_ANGLES, type ViewPreset } from './viewportNavPresets';
+// FM-04a Phase 40 A — iso-surface overlay. The extraction is a SMOOTHED
+// Tier-0 viz approximation (cell→point averaging of the genuinely
+// discontinuous per-element field, tet-only); the per-element coloring
+// above remains the default TRUTH view. See isoSurface.ts header.
+import { extractIsoSurface, type ElementScalarAccessor } from './isoSurface';
+
+// Phase 24 C — re-export the extracted pure-function helpers and
+// types so existing imports (Phase 21-23 tests, sibling components)
+// continue to resolve from this module. ZERO behavior change.
+export {
+  applyValueFilter,
+  buildBufferGeometry,
+  buildNodeCoords,
+  colorForValueFraction,
+  detectWebGLSupport,
+  fieldValueAtNode,
+  findClosestNode,
+};
+export type { PickedNodeInfo, SectionCutState, ValueFilterState };
+
+interface ResultMeshWebGLViewportProps {
+  frame: ResultMeshFrame | null;
+  valueMin: number;
+  valueMax: number;
+  /** FM-04a Phase 22 B — frame-to-frame animation. When defined +
+   * playing=true, the viewport interpolates node positions between
+   * `frame` and `nextFrame` at 60fps via requestAnimationFrame. When
+   * undefined, falls back to Phase 21 C single-frame static render. */
+  nextFrame?: ResultMeshFrame | null;
+  playing?: boolean;
+  /** FM-04a Phase 22 B — deformation magnification (1× default). */
+  deformationScale?: number;
+  /** FM-04a Phase 22 B — section-cut clipping plane. When defined,
+   * one half of the mesh is hidden. */
+  sectionCut?: SectionCutState | null;
+  /** FM-04a Phase 23 B — stress-tensor component switcher. When the
+   * frame elements carry `stressTensor`, this prop selects which
+   * scalar derives the per-element color. Defaults to 'mises'.
+   * Elements without a tensor fall back to the `value` field. */
+  fieldComponent?: StressComponent;
+  /** FM-04a Phase 43 — engineering units suffix for the in-canvas color
+   * legend (ScaleBar), e.g. 'Pa' / 'MPa'. Omitted → the legend shows no
+   * unit suffix (never fabricated). */
+  fieldUnits?: string;
+  /** FM-04a Phase 43 Slice 4 — active colormap for the per-element coloring
+   * AND the legend ramp. Defaults to 'spectral' (the legacy blue→green→orange
+   * ramp), so omitting it preserves the pre-Slice-4 rendering exactly. */
+  colormap?: ColormapId;
+  /** FM-04a Phase 23 C — node-pick callback. Fires when the reviewer
+   * left-clicks the canvas (without dragging) and the raycaster
+   * finds a node within hit tolerance. Forwards a `PickedNodeInfo`
+   * to the parent so the panel can surface the probe in its info
+   * pane. Passing `null` indicates "no pick" (Escape pressed or
+   * click missed all geometry). */
+  onNodePicked?: (info: PickedNodeInfo | null) => void;
+  /** FM-04a Phase 23 D — element-value threshold filter. When set,
+   * elements outside (inside, with mode='outside') the [minValue,
+   * maxValue] range drop out of the rendered geometry. Elements
+   * without a `value` are RETAINED regardless of filter (D:-1
+   * anti-gaming guard — projectile parts etc. shouldn't silently
+   * disappear). */
+  valueFilter?: ValueFilterState | null;
+  /** FM-04a Phase 30 C — hover coord-readout callback. Fires
+   * throttled (~30Hz) with world-space hit coords and screen-space
+   * anchor while the cursor hovers over the mesh (no drag). Fires
+   * with `null` when the cursor leaves or no mesh hit. Used by the
+   * parent panel's CoordReadoutTooltip overlay (Hyperworks-style). */
+  onHoverCoords?: (
+    info:
+      | {
+          worldX: number;
+          worldY: number;
+          worldZ: number;
+          screenX: number;
+          screenY: number;
+        }
+      | null,
+  ) => void;
+  /** FM-04a Phase 31 D — WebGL context-loss callback. Fires when the
+   * underlying canvas emits a `webglcontextlost` event (GPU reset,
+   * browser memory pressure, tab backgrounded long enough to reclaim
+   * GPU resources). The parent panel reacts by falling back to the
+   * SVG renderer path and surfacing a warning toast — preserving
+   * the reviewer's ability to keep working without a hard reload.
+   * `reason` is the empty string when the browser doesn't supply
+   * one (most do not on the event); the panel synthesizes a generic
+   * message in that case. */
+  onContextLost?: (reason: string) => void;
+  /** FM-04a Phase 40 A — iso-surface overlay toggle. Default false
+   * (the per-element coloring is the truth view; the iso-surface is an
+   * OPT-IN smoothed Tier-0 viz approximation). When true, an additional
+   * translucent magenta surface is drawn where the cell→point-averaged
+   * field crosses `isoThreshold`, over tetrahedral elements only. The
+   * caller MUST surface the honesty framing (this component renders a
+   * badge naming the approximation). */
+  isoSurfaceEnabled?: boolean;
+  /** FM-04a Phase 40 A — iso-surface threshold (same units as the
+   * field component). When omitted, defaults to the midpoint of
+   * [valueMin, valueMax]. */
+  isoThreshold?: number;
+}
+
+export function ResultMeshWebGLViewport({
+  frame,
+  valueMin,
+  valueMax,
+  nextFrame,
+  playing = false,
+  deformationScale = 1,
+  sectionCut = null,
+  fieldComponent = 'mises',
+  fieldUnits,
+  colormap = DEFAULT_COLORMAP,
+  onNodePicked,
+  valueFilter = null,
+  onHoverCoords,
+  onContextLost,
+  isoSurfaceEnabled = false,
+  isoThreshold,
+}: ResultMeshWebGLViewportProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // FM-04a Phase 43 — latest geometry bounds, captured by the geometry
+  // effect so the nav gizmo's Fit/Home preset can reframe the model
+  // (recompute radius from the bounding-box span) on demand.
+  const boundsRef = useRef<THREE.Box3 | null>(null);
+  const stateRef = useRef<{
+    renderer: THREE.WebGLRenderer;
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    mesh: THREE.Mesh | null;
+    // Phase 40 A — opt-in iso-surface overlay mesh (null when disabled).
+    isoMesh: THREE.Mesh | null;
+    clipPlane: THREE.Plane;
+    target: THREE.Vector3;
+    radius: number;
+    azimuth: number;
+    elevation: number;
+    initialized: boolean;
+  } | null>(null);
+  const [supported] = useState<boolean>(detectWebGLSupport);
+  const [triangleCount, setTriangleCount] = useState<number>(0);
+  // Phase 22 B — frame-to-frame animation tInterp state.
+  const [animTInterp, setAnimTInterp] = useState<number>(0);
+  // Phase 23 C — picked node state for the HUD overlay.
+  const [pickedNode, setPickedNode] = useState<PickedNodeInfo | null>(null);
+  // Phase 40 A — PURE iso-surface extraction, computed independently of
+  // the three.js render state so the honesty badge (a DOM affordance)
+  // reflects the real extraction even where WebGL can't initialise
+  // (jsdom tests). Null when the overlay is disabled (default). The
+  // geometry effect below consumes the SAME result to build the actual
+  // THREE.Mesh, so the badge can never disagree with what's drawn.
+  const isoData = useMemo(() => {
+    if (!isoSurfaceEnabled || !frame) return null;
+    // Scalar accessor mirrors the per-element coloring's derivation
+    // (componentValue over the active fieldComponent); elements with
+    // neither a tensor nor a `value` are EXCLUDED (undefined) rather
+    // than fabricated to valueMin — honest omission.
+    const isoScalarFor: ElementScalarAccessor = (element) => {
+      // Codex R0 P2: honor the active value filter so the overlay never
+      // renders geometry from elements the truth mesh has filtered out
+      // (and the badge can't claim crossings the filtered mesh lacks).
+      if (valueFilter && !applyValueFilter(element, valueFilter, fieldComponent)) {
+        return undefined;
+      }
+      return element.stressTensor
+        ? componentValue(element.stressTensor, fieldComponent, element.value ?? Number.NaN)
+        : element.value;
+    };
+    const threshold =
+      typeof isoThreshold === 'number' && Number.isFinite(isoThreshold)
+        ? isoThreshold
+        : (valueMin + valueMax) / 2;
+    // Codex R0 P1: march over the SAME deformed / playback-interpolated
+    // coordinates the base mesh is rebuilt from (deformationScale,
+    // nextFrame, animTInterp), so the overlay stays welded to the mesh
+    // instead of peeling away in undeformed space.
+    const deformedCoords = buildNodeCoords(
+      frame,
+      nextFrame ?? null,
+      animTInterp,
+      deformationScale,
+    );
+    return {
+      result: extractIsoSurface(frame, threshold, isoScalarFor, deformedCoords),
+      threshold,
+    };
+  }, [
+    isoSurfaceEnabled,
+    frame,
+    isoThreshold,
+    fieldComponent,
+    valueMin,
+    valueMax,
+    valueFilter,
+    nextFrame,
+    animTInterp,
+    deformationScale,
+  ]);
+
+  // Initialise + dispose the three.js context once.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !supported) return;
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    } catch {
+      // Some browsers / jsdom drop WebGL silently — fail fast to the
+      // SVG fallback path rendered by the parent.
+      return;
+    }
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setClearColor(0x020617);
+    // FM-04a Phase 22 B — enable local clipping so the section-cut
+    // plane can hide one half of the mesh on demand.
+    renderer.localClippingEnabled = true;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.001, 10000);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.45);
+    directional.position.set(1, 1.5, 1);
+    scene.add(ambient);
+    scene.add(directional);
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect();
+      const width = Math.max(1, Math.floor(rect.width));
+      const height = Math.max(1, Math.floor(rect.height || 360));
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
+
+    container.appendChild(renderer.domElement);
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.setAttribute('data-testid', 'webgl-canvas');
+
+    // FM-04a Phase 31 D — WebGL context-loss handler. The browser
+    // can drop the GL context under memory pressure, GPU reset, or
+    // when a backgrounded tab outlives its idle threshold. The
+    // default behavior is a silent black canvas; here we
+    // preventDefault() to suppress the browser's restoration retry
+    // (which can re-loop on persistent failures) and surface the
+    // event up so the parent can fall back to the SVG render path.
+    // E:-1 unmount safety: we capture the handler reference for the
+    // useEffect cleanup so the listener is removed when the
+    // component unmounts.
+    const onContextLostHandler = (event: Event) => {
+      event.preventDefault();
+      const reason =
+        event instanceof Event && 'statusMessage' in event
+          ? String((event as unknown as { statusMessage: string }).statusMessage ?? '')
+          : '';
+      onContextLost?.(reason);
+    };
+    renderer.domElement.addEventListener(
+      'webglcontextlost',
+      onContextLostHandler as EventListener,
+      false,
+    );
+
+    stateRef.current = {
+      renderer,
+      scene,
+      camera,
+      mesh: null,
+      isoMesh: null,
+      // Inactive clip plane until a sectionCut prop tells us otherwise.
+      clipPlane: new THREE.Plane(new THREE.Vector3(1, 0, 0), Infinity),
+      target: new THREE.Vector3(0, 0, 0),
+      radius: 1,
+      azimuth: Math.PI / 4,
+      elevation: Math.PI / 6,
+      initialized: false,
+    };
+
+    resize();
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    observer?.observe(container);
+    return () => {
+      observer?.disconnect();
+      renderer.domElement.removeEventListener(
+        'webglcontextlost',
+        onContextLostHandler as EventListener,
+        false,
+      );
+      renderer.dispose();
+      if (renderer.domElement.parentElement === container) {
+        container.removeChild(renderer.domElement);
+      }
+      stateRef.current = null;
+    };
+  }, [supported, onContextLost]);
+
+  // Build / rebuild geometry when the selected frame, animation
+  // interpolation, magnification, or nextFrame changes.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state || !frame) {
+      setTriangleCount(0);
+      return;
+    }
+    const { geometry, bounds, triangleCount: count } = buildBufferGeometry(
+      frame,
+      valueMin,
+      valueMax,
+      {
+        nextFrame: nextFrame ?? null,
+        tInterp: animTInterp,
+        deformationScale,
+        fieldComponent,
+        valueFilter,
+        colormap,
+      },
+    );
+
+    if (state.mesh) {
+      state.scene.remove(state.mesh);
+      state.mesh.geometry.dispose();
+      (state.mesh.material as THREE.Material).dispose();
+    }
+
+    // Phase 22 B — clip planes wired into the material when a
+    // section-cut state is active.
+    const clippingPlanes: THREE.Plane[] = [];
+    if (sectionCut) {
+      const axisIdx = { x: 0, y: 1, z: 2 }[sectionCut.axis];
+      const normal = new THREE.Vector3(
+        axisIdx === 0 ? 1 : 0,
+        axisIdx === 1 ? 1 : 0,
+        axisIdx === 2 ? 1 : 0,
+      );
+      if (sectionCut.showLow) normal.multiplyScalar(-1);
+      const dist = sectionCut.showLow ? sectionCut.positionM : -sectionCut.positionM;
+      state.clipPlane.normal.copy(normal);
+      state.clipPlane.constant = dist;
+      clippingPlanes.push(state.clipPlane);
+    }
+
+    const material = new THREE.MeshPhongMaterial({
+      vertexColors: true,
+      flatShading: false,
+      side: THREE.DoubleSide,
+      shininess: 35,
+      clippingPlanes,
+      clipShadows: true,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    state.scene.add(mesh);
+    state.mesh = mesh;
+
+    // FM-04a Phase 40 A — the opt-in iso-surface overlay is built in its
+    // OWN effect below (Codex R1 P2): keeping it out of this geometry
+    // effect means dragging the iso-threshold slider does NOT rerun the
+    // bounds-fit logic that overwrites the camera target/radius, so
+    // close-up threshold tuning no longer snaps the camera back.
+
+    // FM-04a Phase 43 (Codex R0 P2) — retain the FULL-model bounds for the
+    // nav gizmo's Fit/Home preset. The `bounds` above are computed from only
+    // the RETAINED elements when a value-filter is active, so caching them
+    // would make Fit zoom to the filtered subset (or no-op if the filter
+    // empties the mesh). When a filter is active, recompute bounds from the
+    // unfiltered model (same deformation state, filter omitted) and dispose
+    // the throwaway geometry; otherwise `bounds` already frames the whole model.
+    if (valueFilter) {
+      const full = buildBufferGeometry(frame, valueMin, valueMax, {
+        nextFrame: nextFrame ?? null,
+        tInterp: animTInterp,
+        deformationScale,
+        fieldComponent,
+      });
+      boundsRef.current = full.bounds;
+      full.geometry.dispose();
+    } else {
+      boundsRef.current = bounds;
+    }
+    const center = new THREE.Vector3();
+    bounds.getCenter(center);
+    const size = new THREE.Vector3();
+    bounds.getSize(size);
+    const span = Math.max(size.x, size.y, size.z) || 1;
+    state.target.copy(center);
+    state.radius = span * 2.2;
+    if (!state.initialized) {
+      state.azimuth = Math.PI / 4;
+      state.elevation = Math.PI / 6;
+      state.initialized = true;
+    }
+    setTriangleCount(count);
+    renderScene(state);
+  }, [frame, valueMin, valueMax, nextFrame, animTInterp, deformationScale, sectionCut, fieldComponent, valueFilter, colormap]);
+
+  // FM-04a Phase 40 A (Codex R1 P2) — iso-surface overlay built in a
+  // SEPARATE effect from the base mesh. It rebuilds on isoData (toggle /
+  // threshold / deformation / filter via the memo) and sectionCut (clip
+  // planes), but NEVER touches the camera target/radius — so threshold
+  // tuning leaves the reviewer's pan/zoom intact. Runs AFTER the geometry
+  // effect above, so `state.clipPlane` is already configured for the
+  // current section cut. Default OFF → isoData is null → pure cleanup,
+  // and the per-element render stays byte-unchanged.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    if (state.isoMesh) {
+      state.scene.remove(state.isoMesh);
+      state.isoMesh.geometry.dispose();
+      (state.isoMesh.material as THREE.Material).dispose();
+      state.isoMesh = null;
+    }
+    if (isoData && isoData.result.triangles.length > 0) {
+      const isoTris = isoData.result.triangles;
+      const positions = new Float32Array(isoTris.length * 9);
+      let p = 0;
+      for (const tri of isoTris) {
+        positions[p++] = tri.a[0]; positions[p++] = tri.a[1]; positions[p++] = tri.a[2];
+        positions[p++] = tri.b[0]; positions[p++] = tri.b[1]; positions[p++] = tri.b[2];
+        positions[p++] = tri.c[0]; positions[p++] = tri.c[1]; positions[p++] = tri.c[2];
+      }
+      const isoGeom = new THREE.BufferGeometry();
+      isoGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      isoGeom.computeVertexNormals();
+      // Share the base mesh's section-cut clip plane (already configured
+      // by the geometry effect) so the overlay is cut identically.
+      const clippingPlanes: THREE.Plane[] = sectionCut ? [state.clipPlane] : [];
+      // Magenta — deliberately OUTSIDE the blue→green→orange truth
+      // gradient hue range so the smoothed overlay is never mistaken
+      // for the per-element field. Translucent so the truth mesh stays
+      // visible behind it.
+      const isoMaterial = new THREE.MeshPhongMaterial({
+        color: 0xe879f9,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide,
+        flatShading: false,
+        clippingPlanes,
+        clipShadows: true,
+      });
+      const isoMesh = new THREE.Mesh(isoGeom, isoMaterial);
+      isoMesh.renderOrder = 1; // draw after the opaque per-element mesh
+      state.scene.add(isoMesh);
+      state.isoMesh = isoMesh;
+    }
+    renderScene(state);
+  }, [isoData, sectionCut]);
+
+  // Phase 22 B — animation loop. When `playing && nextFrame`, drive
+  // `animTInterp` from 0 → 1 over a fixed duration so the parent's
+  // setInterval-based frame advance is smoothed by per-frame
+  // interpolation. When playing stops or nextFrame disappears, snap
+  // back to 0 (i.e. render the source frame, undeformed by blend).
+  useEffect(() => {
+    if (!playing || !nextFrame) {
+      setAnimTInterp(0);
+      return;
+    }
+    let rafId = 0;
+    let cancelled = false;
+    const startedAt = performance.now();
+    // Match the parent setInterval cadence (240ms) so the animation
+    // arrives at t=1 around the moment the frame advances.
+    const DURATION_MS = 220;
+    const tick = () => {
+      if (cancelled) return;
+      const elapsed = performance.now() - startedAt;
+      const t = Math.min(1, elapsed / DURATION_MS);
+      setAnimTInterp(t);
+      if (t < 1) {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [playing, nextFrame, frame]);
+
+  // Mouse interactions: orbit (left drag), pan (right drag), zoom
+  // (wheel). Hand-rolled rather than via three/examples/OrbitControls
+  // so the dependency surface stays at vanilla three.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    const dom = state.renderer.domElement;
+
+    let dragging: 'orbit' | 'pan' | null = null;
+    let lastX = 0;
+    let lastY = 0;
+    let dragStartedAt = { x: 0, y: 0 };
+    let totalDragDistance = 0;
+    const ROTATE_SPEED = 0.005;
+    const PAN_SPEED = 0.0015;
+    const ZOOM_FACTOR = 0.12;
+    // Phase 23 C — click vs drag threshold (px). A mouseup within
+    // this radius of mousedown counts as a click → triggers raycast.
+    const CLICK_PX_THRESHOLD = 4;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) dragging = 'orbit';
+      else if (e.button === 2) dragging = 'pan';
+      lastX = e.clientX;
+      lastY = e.clientY;
+      dragStartedAt = { x: e.clientX, y: e.clientY };
+      totalDragDistance = 0;
+      e.preventDefault();
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      totalDragDistance += Math.abs(dx) + Math.abs(dy);
+      if (dragging === 'orbit') {
+        state.azimuth -= dx * ROTATE_SPEED;
+        state.elevation = Math.max(
+          -Math.PI / 2 + 0.01,
+          Math.min(Math.PI / 2 - 0.01, state.elevation - dy * ROTATE_SPEED),
+        );
+      } else {
+        const right = new THREE.Vector3()
+          .setFromMatrixColumn(state.camera.matrix, 0)
+          .multiplyScalar(-dx * state.radius * PAN_SPEED);
+        const up = new THREE.Vector3()
+          .setFromMatrixColumn(state.camera.matrix, 1)
+          .multiplyScalar(dy * state.radius * PAN_SPEED);
+        state.target.add(right).add(up);
+      }
+      renderScene(state);
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      // Phase 23 C — if the mouseup is close to the mousedown (i.e.
+      // a click, not a drag), trigger a raycast pick.
+      const totalDelta =
+        Math.abs(e.clientX - dragStartedAt.x)
+        + Math.abs(e.clientY - dragStartedAt.y);
+      if (
+        e.button === 0
+        && totalDelta <= CLICK_PX_THRESHOLD
+        && totalDragDistance <= CLICK_PX_THRESHOLD
+        && frame
+        && state.mesh
+      ) {
+        const rect = dom.getBoundingClientRect();
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), state.camera);
+        const hits = ray.intersectObject(state.mesh, false);
+        if (hits.length > 0) {
+          const worldPoint: [number, number, number] = [
+            hits[0].point.x,
+            hits[0].point.y,
+            hits[0].point.z,
+          ];
+          // Rebuild the same node coord map the geometry build used
+          // so we map the world hit back to a frame node label.
+          const nodeCoords = buildNodeCoords(
+            frame,
+            nextFrame ?? null,
+            animTInterp,
+            deformationScale,
+          );
+          const closest = findClosestNode(frame, worldPoint, nodeCoords);
+          if (closest) {
+            const fieldValue = fieldValueAtNode(frame, closest.label, fieldComponent);
+            const info: PickedNodeInfo = {
+              label: closest.label,
+              position: closest.position,
+              fieldValue,
+            };
+            setPickedNode(info);
+            onNodePicked?.(info);
+          }
+        }
+      }
+      dragging = null;
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 1 + ZOOM_FACTOR : 1 - ZOOM_FACTOR;
+      state.radius = Math.max(1e-4, state.radius * factor);
+      renderScene(state);
+    };
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    // Phase 23 C — Escape clears the picked node.
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPickedNode(null);
+        onNodePicked?.(null);
+      }
+    };
+
+    // FM-04a Phase 30 C — hover coord-readout. Throttled raycast on
+    // mousemove WHEN NOT DRAGGING (D:-1 guard — don't fight the orbit
+    // controls). 30Hz throttle: floor(1000/30) = 33ms. Emits world-
+    // space hit coords + screen-space anchor (relative to the dom
+    // bounding box) to the parent panel's CoordReadoutTooltip.
+    let hoverLastFiredAt = -Infinity;
+    const HOVER_THROTTLE_MS = 33;
+    const onHover = (e: MouseEvent) => {
+      if (!onHoverCoords) return;
+      if (dragging) return;
+      if (!frame || !state.mesh) return;
+      const now =
+        typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - hoverLastFiredAt < HOVER_THROTTLE_MS) return;
+      hoverLastFiredAt = now;
+      const rect = dom.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
+      if (
+        localX < 0
+        || localX > rect.width
+        || localY < 0
+        || localY > rect.height
+      ) {
+        onHoverCoords(null);
+        return;
+      }
+      const ndcX = (localX / rect.width) * 2 - 1;
+      const ndcY = -(localY / rect.height) * 2 + 1;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), state.camera);
+      const hits = ray.intersectObject(state.mesh, false);
+      if (hits.length === 0) {
+        onHoverCoords(null);
+        return;
+      }
+      onHoverCoords({
+        worldX: hits[0].point.x,
+        worldY: hits[0].point.y,
+        worldZ: hits[0].point.z,
+        screenX: localX,
+        screenY: localY,
+      });
+    };
+    const onMouseLeave = () => {
+      if (onHoverCoords) onHoverCoords(null);
+    };
+
+    dom.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    dom.addEventListener('mousemove', onHover);
+    dom.addEventListener('mouseleave', onMouseLeave);
+    dom.addEventListener('wheel', onWheel, { passive: false });
+    dom.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      dom.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      dom.removeEventListener('mousemove', onHover);
+      dom.removeEventListener('mouseleave', onMouseLeave);
+      dom.removeEventListener('wheel', onWheel);
+      dom.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [triangleCount, frame, nextFrame, animTInterp, deformationScale, fieldComponent, onNodePicked, onHoverCoords]);
+
+  const message = useMemo(() => {
+    if (!supported) return 'WebGL not available — falling back to SVG body';
+    if (!frame) return 'No frame selected';
+    if (triangleCount === 0) return 'No renderable triangles in frame';
+    return null;
+  }, [supported, frame, triangleCount]);
+
+  // FM-04a Phase 43 — camera-preset seam for the nav gizmo. Maps a named
+  // preset onto the hand-rolled spherical camera (azimuth/elevation) and,
+  // for the framing presets (Fit/Home), recomputes `radius` from the
+  // retained geometry bounds so the whole model is framed. Then triggers
+  // the existing render path (renderScene). No-ops safely when the GL
+  // context isn't initialised (jsdom / WebGL-unavailable).
+  const setView = useCallback((preset: ViewPreset) => {
+    const state = stateRef.current;
+    if (!state) return;
+    const angles = VIEW_PRESET_ANGLES[preset];
+    state.azimuth = angles.azimuth;
+    state.elevation = angles.elevation;
+    if (angles.frame) {
+      const bounds = boundsRef.current;
+      if (bounds && !bounds.isEmpty()) {
+        const center = new THREE.Vector3();
+        bounds.getCenter(center);
+        const size = new THREE.Vector3();
+        bounds.getSize(size);
+        const span = Math.max(size.x, size.y, size.z) || 1;
+        state.target.copy(center);
+        state.radius = span * 2.2;
+      }
+    }
+    renderScene(state);
+  }, []);
+
+  return (
+    <div
+      data-testid="result-mesh-webgl-viewport"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: 280,
+        background: '#020617',
+        borderRadius: 8,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        ref={containerRef}
+        data-testid="webgl-canvas-container"
+        style={{ width: '100%', height: '100%' }}
+      />
+      {message && (
+        <div
+          data-testid="webgl-message"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#94a3b8',
+            fontSize: '0.85rem',
+            pointerEvents: 'none',
+            textAlign: 'center',
+            padding: 16,
+          }}
+        >
+          {message}
+        </div>
+      )}
+      <div
+        data-testid="webgl-overlay-help"
+        style={{
+          position: 'absolute',
+          left: 12,
+          top: 12,
+          color: '#94a3b8',
+          fontSize: '0.68rem',
+          fontFamily:
+            'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+          background: 'rgba(2, 6, 23, 0.62)',
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          borderRadius: 4,
+          padding: '4px 8px',
+          letterSpacing: '0.05em',
+          pointerEvents: 'none',
+        }}
+      >
+        DRAG · ORBIT  ·  R-DRAG · PAN  ·  WHEEL · ZOOM  ·  CLICK · PROBE  ·  ESC · CLEAR
+      </div>
+      {/* FM-04a Phase 40 A — iso-surface honesty badge (T:-1 guard).
+          Renders only while the opt-in overlay is enabled. Names the
+          approximation in plain terms so the smoothed surface is never
+          read as the solved field. */}
+      {isoData && (
+        <div
+          data-testid="webgl-iso-surface-badge"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: 12,
+            transform: 'translateX(-50%)',
+            color: '#fdf4ff',
+            fontSize: '0.66rem',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+            background: 'rgba(112, 26, 117, 0.82)',
+            border: '1px solid rgba(232, 121, 249, 0.6)',
+            borderRadius: 4,
+            padding: '5px 10px',
+            lineHeight: 1.45,
+            maxWidth: '90%',
+            textAlign: 'center',
+            pointerEvents: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          <div style={{ fontWeight: 800, letterSpacing: '0.06em' }}>
+            ISO-SURFACE · SMOOTHED TIER-0 VIZ APPROXIMATION
+          </div>
+          <div data-testid="webgl-iso-surface-badge-detail">
+            {isoData.result.metadata.triangleCount > 0
+              ? `${isoData.result.metadata.triangleCount} tris @ threshold ${isoData.threshold.toExponential(2)}`
+              : 'no crossing at this threshold (tet-only)'}
+            {' '}· per-element coloring is the truth view
+          </div>
+          {isoData.result.metadata.skippedElementTypes.length > 0 && (
+            <div
+              data-testid="webgl-iso-surface-badge-skipped"
+              style={{ opacity: 0.85 }}
+            >
+              skipped (non-tet, v1 scope): {isoData.result.metadata.skippedElementTypes.join(', ')}
+            </div>
+          )}
+          {isoData.result.metadata.incompleteTetTypes.length > 0 && (
+            <div
+              data-testid="webgl-iso-surface-badge-incomplete"
+              style={{ opacity: 0.85 }}
+            >
+              incomplete (missing data): {isoData.result.metadata.incompleteTetTypes.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+      {pickedNode && (
+        <div
+          data-testid="webgl-picked-node-hud"
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            color: '#e2e8f0',
+            fontSize: '0.72rem',
+            fontFamily:
+              'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
+            background: 'rgba(2, 6, 23, 0.85)',
+            border: '1px solid rgba(96, 165, 250, 0.45)',
+            borderRadius: 4,
+            padding: '8px 12px',
+            lineHeight: 1.45,
+            pointerEvents: 'none',
+            minWidth: 180,
+          }}
+        >
+          <div
+            style={{
+              color: '#60a5fa',
+              fontSize: '0.62rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              marginBottom: 4,
+            }}
+          >
+            NODE {pickedNode.label}
+          </div>
+          <div data-testid="webgl-picked-node-coords">
+            x: {pickedNode.position[0].toExponential(3)}
+            <br />
+            y: {pickedNode.position[1].toExponential(3)}
+            <br />
+            z: {pickedNode.position[2].toExponential(3)}
+          </div>
+          {pickedNode.fieldValue !== null && (
+            <div
+              data-testid="webgl-picked-node-field"
+              style={{ marginTop: 4, color: '#fbbf24' }}
+            >
+              {fieldComponent}: {pickedNode.fieldValue.toExponential(3)}
+            </div>
+          )}
+        </div>
+      )}
+      {/* FM-04a Phase 43 — viewport navigation gizmo. Only mounted when
+          WebGL is supported (the camera seam is a no-op otherwise, but
+          there's no canvas to navigate in the SVG-fallback path). */}
+      {supported && <ViewportNavGizmo onSetView={setView} />}
+      {/* FM-04a Phase 43 — color legend (ScaleBar): the value→color ramp the
+          mesh is painted with, the conspicuous missing CAE viz primitive.
+          Gated on `message === null` (Codex R0) — i.e. ONLY when there is
+          renderable colored geometry; otherwise the empty-state message is
+          showing and a legend would describe a non-existent range. */}
+      {message === null && (
+        <ScaleBar
+          valueMin={valueMin}
+          valueMax={valueMax}
+          fieldComponent={fieldComponent}
+          units={fieldUnits}
+          colormap={colormap}
+        />
+      )}
+    </div>
+  );
+}
+
+function renderScene(state: NonNullable<typeof stateRefShape>) {
+  const { camera, renderer, scene, target, radius, azimuth, elevation } = state;
+  const cosE = Math.cos(elevation);
+  camera.position.set(
+    target.x + radius * cosE * Math.cos(azimuth),
+    target.y + radius * Math.sin(elevation),
+    target.z + radius * cosE * Math.sin(azimuth),
+  );
+  camera.lookAt(target);
+  renderer.render(scene, camera);
+}
+
+// Helper alias used only to type `state` in the standalone render
+// function above. Mirrors the shape stored in `stateRef.current`.
+declare const stateRefShape:
+  | {
+      renderer: THREE.WebGLRenderer;
+      scene: THREE.Scene;
+      camera: THREE.PerspectiveCamera;
+      mesh: THREE.Mesh | null;
+      isoMesh: THREE.Mesh | null;
+      clipPlane: THREE.Plane;
+      target: THREE.Vector3;
+      radius: number;
+      azimuth: number;
+      elevation: number;
+      initialized: boolean;
+    }
+  | undefined;

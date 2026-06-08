@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "nafems-le10-thick-plate-candidate",
+  "record_kind": "published_benchmark_reference",
+  "_record_kind_note": "This file records the PUBLISHED NAFEMS LE10 target stress (the reference value). It is NOT the verdict. The real meshed ccx solve + signed residual comparison is now COMPLETE (2026-06-03) and lives in the sibling cross_check_verdict.yaml (verdict=PASS, observed -5.4379 MPa, +1.08% vs this -5.38 MPa target). This reference record keeps the filename published_reference.yaml (NOT cross_check_verdict.yaml) so it does not double-count in the verdict cohort glob.",
+
+  "solver_kind": "linear_static",
+  "cross_check_kind": "nafems_le10_thick_plate_pressure_point_d",
+
+  "analytical_only": false,
+  "verdict": "REFERENCE_ONLY",
+  "_verdict_note": "This file stays REFERENCE_ONLY: it records what NAFEMS published, not a solve verdict. The PASS verdict from the real ccx solve is in cross_check_verdict.yaml. (Historically this case was analytical-only/deferred; the V2-1 / ADR-027 work landed the real solve on 2026-06-03.)",
+
+  "tier": "tier_1_candidate",
+  "_tier_note": "This published_reference.yaml does not itself drive tier promotion; the case is promoted to tier_2_validated by the overlay reading the sibling cross_check_verdict.yaml (verdict=PASS), and the case_id is now registered in _claim_tier.py CLAIM_TIER_REGISTRY.",
+
+  "published_reference": {
+    "benchmark": "NAFEMS LE10 - Thick Plate Pressure",
+    "source": "NAFEMS Publication TNSB Rev.3, 'The Standard NAFEMS Benchmarks', October 1990, ISBN 1-874376-04-0",
+    "target_stress_component": "sigma_yy (direct stress)",
+    "target_value_pa": -5380000.0,
+    "target_sign_convention": "sigma_yy is COMPRESSIVE (negative) at point D in the Code_Aster/FeenoX/ccx (tension-positive) convention; the real ccx solve reproduced -5.4379 MPa (negative), confirming the sign. The MAGNITUDE 5.38 MPa is unanimous and community-canonical across 6+ CAE sources; some report it as a magnitude and read it tensile at the inside-top corner (a surface/orientation labeling artifact). Sign normalized to the solver's own stress-output convention. (CORRECTED 2026-06-03: the prior 'blueprint convention, must re-confirm' caveat is resolved by the triangulation in NOTES.md.)",
+    "target_location": "point D = (2.0, 0, +0.3) m on the UPPER (loaded) surface - the inner-ellipse MAJOR-semi-axis tip (x = inner x-semi-axis = 2.0) lying on the y=0 symmetry plane. CORRECTED 2026-06-03: the prior value 'lower surface, inner-edge point on the minor axis' was WRONG on BOTH counts (it is the UPPER surface, and the MAJOR-axis tip on the y=0 plane, not the minor axis). The error was caught by the 2026-06-03 multi-source spec triangulation (FeenoX evaluates sigmay(2000,0,+300) = upper)."
+  },
+
+  "benchmark_context": {
+    "_provenance": "Geometry / material / loading / BC / target stress AND SIGN triangulated 2026-06-03 across three independent reproductions (FeenoX/Code_Aster parametric LE10 with a runnable .comm/.geo, ESRD StressCheck Benchmarks Guide, Abaqus/Altair benchmark guides) and confirmed by the real ccx solve. The primary TNSB Rev.3 document was not directly fetched; geometry/sign rest on these authoritative secondary reproductions (disclosed in NOTES.md).",
+    "material": {"youngs_modulus_pa": 210000000000.0, "poisson_ratio": 0.30, "density_kg_m3": 7800},
+    "loading": {"type": "uniform_normal_pressure_upper_surface", "pressure_pa": 1000000.0},
+    "geometry_standard_parametrization": "outer ellipse semi-axes 3.25 (x) x 2.75 (y) m; inner ellipse (hole) 2.0 (x) x 1.0 (y) m; thickness 0.6 m; quarter model x>=0, y>=0, full thickness (mid-plane frame z in [-0.3,+0.3])",
+    "boundary_conditions": [
+      "ux=0 on face ABA'B' (x=0 symmetry plane)",
+      "uy=0 on face DCD'C' (y=0 symmetry plane, contains D)",
+      "ux=uy=0 on face BCB'C' (outer elliptic rim, in-plane pinned)",
+      "uz=0 on the outer-rim mid-plane (NAFEMS line EE' substitute; removes z rigid-body)"
+    ]
+  },
+
+  "solved": "V2-1 / ADR-027 (2026-06-03): real ccx 2.23, C3D20, 40x20x6 (4800 el), sigma_yy(D) = -5.4379 MPa, residual +1.08% vs -5.38 MPa, PASS (tol 3%), monotone mesh convergence. See cross_check_verdict.yaml + convergence_study.json.",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_nafems_le10"
+}

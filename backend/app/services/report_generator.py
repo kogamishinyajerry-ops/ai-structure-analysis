@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from ..parsers.frd_parser import FRDParseResult
 from .rule_engine import get_rule_engine
+from .candidate_report_spine import build_candidate_report_spine
 # RFC-001 §6.1 Bucket B: services.knowledge_base frozen — Sprint 2 RAG is not in
 # the MVP wedge. Standards-citation linkage stays wired through the frozen
 # module until M5/M6 rebuild (see backend/app/_frozen/sprint2/README.md).
@@ -22,6 +23,7 @@ class ReportContent:
     validation: Dict[str, Any]
     markdown: str
     increments: List[Dict[str, Any]] = field(default_factory=list)
+    candidate_report_spine: Dict[str, Any] = field(default_factory=dict)
 
 class ReportGenerator:
     """报告生成器
@@ -38,7 +40,15 @@ class ReportGenerator:
         else:
             self.gs_root = golden_samples_root
 
-    def generate(self, result: FRDParseResult, case_id: Optional[str] = None) -> ReportContent:
+    def generate(
+        self,
+        result: FRDParseResult,
+        case_id: Optional[str] = None,
+        *,
+        source_path: Optional[Path] = None,
+        original_filename: Optional[str] = None,
+        solver_job_status: Optional[Dict[str, Any]] = None,
+    ) -> ReportContent:
         """生成分析报告
         
         Args:
@@ -157,6 +167,17 @@ class ReportGenerator:
                     if kb_results:
                         markdown += f"  - > [!NOTE]\n  - > **知识库参考**: {kb_results[0].content}\n"
 
+        candidate_report_spine = build_candidate_report_spine(
+            result=result,
+            metrics=metrics,
+            validation=validation,
+            case_id=case_id,
+            golden_samples_root=self.gs_root,
+            source_path=source_path,
+            original_filename=original_filename,
+            solver_job_status=solver_job_status,
+        )
+
         return ReportContent(
             summary=f"最大应力 {max_vm:.2f} MPa, 安全系数 {metrics['safety_factor']}",
             metrics=metrics,
@@ -169,7 +190,8 @@ class ReportGenerator:
                 "value": inc.value,
                 "max_displacement": inc.max_displacement,
                 "max_von_mises": inc.max_von_mises
-            } for inc in result.increments]
+            } for inc in result.increments],
+            candidate_report_spine=candidate_report_spine,
         )
 
     def _load_expected_results(self, case_id: str) -> Optional[Dict[str, Any]]:

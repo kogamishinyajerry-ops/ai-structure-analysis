@@ -8,10 +8,10 @@ interface ComplianceBadgeProps {
 export function ComplianceBadge({ status, standard }: ComplianceBadgeProps) {
   const getColors = () => {
     switch (status) {
-      case 'PASS': return { bg: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.2)', text: '#10b981', icon: <ShieldCheck size={14} /> };
-      case 'CRITICAL': return { bg: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.2)', text: '#f59e0b', icon: <ShieldAlert size={14} /> };
-      case 'FAIL': return { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.2)', text: '#ef4444', icon: <ShieldX size={14} /> };
-      default: return { bg: 'rgba(148, 163, 184, 0.1)', border: 'rgba(148, 163, 184, 0.2)', text: '#94a3b8', icon: null };
+      case 'PASS': return { bg: 'var(--success-glow)', border: 'rgba(74, 138, 94, 0.30)', text: 'var(--success-500)', icon: <ShieldCheck size={14} /> };
+      case 'CRITICAL': return { bg: 'rgba(179, 121, 26, 0.10)', border: 'rgba(179, 121, 26, 0.30)', text: 'var(--warn-400)', icon: <ShieldAlert size={14} /> };
+      case 'FAIL': return { bg: 'rgba(197, 69, 59, 0.10)', border: 'rgba(197, 69, 59, 0.30)', text: 'var(--danger-400)', icon: <ShieldX size={14} /> };
+      default: return { bg: 'var(--c-100)', border: 'var(--border)', text: 'var(--text-muted)', icon: null };
     }
   };
 

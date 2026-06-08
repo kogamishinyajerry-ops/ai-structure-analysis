@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "nafems-le10-thick-plate-candidate",
+  "verdict": "PASS",
+
+  "_what_this_is": "Real CalculiX (ccx 2.23) solve of the NAFEMS LE10 thick-plate-pressure benchmark, with sigma_yy at point D compared to the PUBLISHED NAFEMS reference value. This is the project's first PUBLIC-BENCHMARK AGREEMENT (vs the analytical closed-form cross-checks of the other tier_2 cases). It is real-solver validated but NOT signed validation (no independent reviewer signoff per ADR-023 Tier-2-signed / ADR-027 G-2).",
+
+  "tolerance_pct": 3.0,
+  "residual_pct": 1.0762,
+  "analytical_pa": -5380000.0,
+  "observed_pa": -5437900.0,
+  "reference_kind": "published_benchmark",
+  "cross_check_kind": "nafems_le10_thick_plate_pressure_point_d",
+
+  "benchmark": "NAFEMS LE10 - Thick Plate Pressure",
+  "benchmark_source": "NAFEMS Publication TNSB Rev.3 (Oct 1990, ISBN 1-874376-04-0), Test LE10. Geometry / BCs / evaluation point / sign triangulated 2026-06-03 across three independent reproductions: the FeenoX/Code_Aster parametric benchmark (which evaluates sigmay(2000,0,300) = -5.38 MPa), the ESRD StressCheck 'Standard NAFEMS Benchmarks: Linear Elastic Tests' guide ('Direct stress in y-direction at point D is -5.38 MPa'), and the Abaqus/Altair benchmark guides.",
+
+  "target_stress_component": "sigma_yy",
+  "target_value_pa": -5380000.0,
+  "target_sign_convention": "Compressive (negative) sigma_yy at point D in the Code_Aster/FeenoX/ccx (tension-positive) convention. ccx reproduced -5.4379 MPa (negative), matching FeenoX's -5.38 MPa. The MAGNITUDE 5.38 MPa is community-canonical and unanimous; the SIGN is normalized to ccx's own stress-output convention. Some CAE docs report the magnitude and read it tensile at the 'inside top corner' — a surface/orientation labeling artifact, not a physics dispute (see NOTES.md).",
+
+  "point_d_m": [2.0, 0.0, 0.3],
+  "point_d_surface": "upper",
+  "point_d_note": "Inner-ellipse MAJOR-semi-axis tip (x=2.0) on the y=0 symmetry plane, on the UPPER (loaded) surface. This CORRECTS the prior published_reference.yaml, which mislabeled D as 'lower surface, minor axis' (both wrong; the spec triangulation caught it).",
+
+  "geometry_m": {
+    "outer_ellipse_semi_axes": [3.25, 2.75],
+    "inner_ellipse_semi_axes": [2.0, 1.0],
+    "thickness": 0.6,
+    "quarter_model": true,
+    "frame": "mid-plane z in [-0.3, +0.3] (lower z=-0.3, mid z=0, upper z=+0.3)"
+  },
+  "boundary_conditions": [
+    "x=0 symmetry plane (ABA'B'): ux=0",
+    "y=0 symmetry plane (DCD'C', contains D): uy=0",
+    "outer elliptic rim (BCB'C'): ux=0 and uy=0 (in-plane pinned)",
+    "outer-rim mid-plane nodes (z=0): uz=0 (removes z rigid-body; NAFEMS line EE' substitute)"
+  ],
+  "load": {"type": "uniform_normal_pressure_upper_surface", "pressure_pa": 1000000.0, "direction": "downward (-z)"},
+
+  "material_id": "nafems-le10-isotropic-steel",
+  "material_reference": "NAFEMS LE10 spec material: isotropic linear-elastic steel, E = 210 GPa, nu = 0.30 (density 7800 kg/m^3, immaterial to the linear-static target).",
+
+  "element_type": "C3D20",
+  "mesh_nc_nr_nt": [40, 20, 6],
+  "node_count": 22815,
+  "element_count": 4800,
+  "convergence_monotone": true,
+  "convergence_note": "Monotone convergence toward the NAFEMS target from above: 216 el +3.47% -> 512 +2.72% -> 1152 +2.43% -> 2560 +1.84% -> 4800 +1.08%. See convergence_study.json. Full-integration C3D20 chosen (reduced-integration C3D20R was noisier at this sharp inner-edge stress).",
+
+  "ccx_version": "2.23",
+  "generated_at_utc": "2026-06-03T12:00:00+00:00",
+  "reproduce": "python golden_samples/nafems-le10-thick-plate-candidate/data/generator.py [--ladder]",
+
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_nafems_le10; sign_normalized_to_solver_convention"
+}

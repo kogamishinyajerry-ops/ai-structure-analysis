@@ -1,0 +1,185 @@
+#RADIOSS STARTER
+#--------------------------------------------------------------------------------------------------|
+# GS-102-candidate / FM-04a Tier 1 ballistic candidate starter deck (minimal syntax demo)
+#
+# WORDING DISCIPLINE (per ADR-023 + ADR-024 lite):
+#   * Tier 1 engineering candidate; not signed validation; not benchmark agreement.
+#   * JC plasticity parameters cited from Børvik 2002 Part II Table 2 (Weldox 460E).
+#   * NOT validated against Børvik 2002; NOT "perforation completed";
+#     NOT "bullet-through-steel complete"; NOT "validated physics".
+#
+# SCOPE (deliberately narrow — deck-author iteration may further refine):
+#   * Geometry is INTENTIONALLY coarse: 1 hex projectile + 1 hex plate element.
+#   * Material properties cite Børvik 2002 Part II Table 2 (Weldox 460E) for
+#     PLAS_JOHNS. Projectile is approximated as elastic hardened steel.
+#   * Initial velocity V0 = 285 m/s = 0.285 mm/ms applied to projectile node group.
+#   * Units: kg / mm / ms (matches GS-101-demo-unsigned convention).
+#
+# DECK SIMPLIFICATIONS for first-pass starter pass-through:
+#   * /FAIL/JOHNSON intentionally omitted in this minimal version. JC damage +
+#     element deletion are reserved for a deck-author iteration round under
+#     the same ADR-024 (lite) cover (see NOTES.md "Iteration log").
+#   * /BCS intentionally omitted — unconstrained plate is non-physical but
+#     keeps the starter pass-through narrow; clamping is a deck-author
+#     iteration item.
+#   * /INTER/TYPE7 contact intentionally omitted — projectile passes through
+#     plate kinematically. This is a SYNTAX demo, not a perforation demo.
+#
+# FORBIDDEN (without fresh ADR cover):
+#   * Republished experimental tables from Børvik 2002.
+#   * Refined mesh that would imply benchmark-quality geometry.
+#   * Any /TITLE or comment that claims Tier 2 status.
+#--------------------------------------------------------------------------------------------------|
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BEGIN
+gs102_candidate
+      2022         0
+                  kg                  mm                  ms
+                  kg                  mm                  ms
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/TITLE
+GS-102-candidate Tier 1 syntax demo (Borvik 2002 params, NOT validated)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  1. MATERIALS
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+# /MAT/PLAS_JOHNS/1 — projectile (hardened steel, JC plasticity stand-in; no rate dep)
+/MAT/PLAS_JOHNS/1
+projectile_steel_hardened_candidate
+#              RHO_I
+              7.85E-6                   0
+#                  E                  Nu     Iflag
+                 204                  .33         0
+#                  a                   b                   n           EPS_p_max            SIG_max0
+                1500                 200                  .5                1E30                   0
+#                  c           EPS_DOT_0       ICC   Fsmooth               F_cut               Chard
+                   0                   0         0         0                   0                   0
+#                  m              T_melt              rhoC_p                 T_r
+                   0                   0                   0                   0
+# /MAT/PLAS_JOHNS/2 — Weldox 460E plate (Borvik 2002 Part II Table 2; cited values)
+/MAT/PLAS_JOHNS/2
+weldox_460E_plate_candidate
+#              RHO_I
+              7.85E-6                   0
+#                  E                  Nu     Iflag
+                 200                  .33         0
+#                  a                   b                   n           EPS_p_max            SIG_max0
+                 490                 383                 .45                1E30                   0
+#                  c           EPS_DOT_0       ICC   Fsmooth               F_cut               Chard
+              0.0114                5.E-4         0         0                   0                   0
+#                  m              T_melt              rhoC_p                 T_r
+                 .94                1800                   0                 293
+# /FAIL/JOHNSON/2 — JC damage + element deletion on plate material
+#   D1..D5 + EPS_DOT_0 cited from Borvik 2002 Part II Table 2 (Weldox 460E)
+#   per ADR-024 (lite). Ifail_sh=2 (shell delete); Ifail_so=1 (solid delete).
+#   Tier 1 candidate; not signed validation. Format per OpenRadioss
+#   radioss2024 cfg fail_johnson.cfg (no title line; 5x20 + 20+10+10+20+20+10).
+/FAIL/JOHNSON/2
+#                 D1                  D2                  D3                  D4                  D5
+              0.0705               1.732                -.54               -.015                   0
+#      EPSILON_DOT_0  IFAIL_SH  IFAIL_SO            EPSF_MIN                DADV               IXFEM
+                .001         2         1                   0                   0                    0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  2. NODES (Tier 1 syntax demo — 16 nodes, 1 projectile hex + 1 plate hex)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/NODE
+         1               -10.0                -5.0                -5.0
+         2                10.0                -5.0                -5.0
+         3                10.0                 5.0                -5.0
+         4               -10.0                 5.0                -5.0
+         5               -10.0                -5.0                 5.0
+         6                10.0                -5.0                 5.0
+         7                10.0                 5.0                 5.0
+         8               -10.0                 5.0                 5.0
+         9                30.0               -10.0               -10.0
+        10                42.0               -10.0               -10.0
+        11                42.0                10.0               -10.0
+        12                30.0                10.0               -10.0
+        13                30.0               -10.0                10.0
+        14                42.0               -10.0                10.0
+        15                42.0                10.0                10.0
+        16                30.0                10.0                10.0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  3. SOLID PROPERTIES + PARTS
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/PROP/SOLID/1
+projectile_solid
+#   Isolid    Ismstr      Iale     Icpre  Itetra10     Inpts   Itetra4    Iframe                  Dn
+         0         0         0         0         0         0         0         0                   0
+#                 qa                  qb                   h              Lambda                  Mu
+                   0                   0                   0                   0                   0
+#         deltaT_min            vdef_min            vdef_max             ASP_max             COL_min
+                   0                   0                   0                   0                   0
+#     Ndir sphpartID  Icontrol
+         0         0         0
+/PROP/SOLID/2
+plate_solid
+#   Isolid    Ismstr      Iale     Icpre  Itetra10     Inpts   Itetra4    Iframe                  Dn
+         0         0         0         0         0         0         0         0                   0
+#                 qa                  qb                   h              Lambda                  Mu
+                   0                   0                   0                   0                   0
+#         deltaT_min            vdef_min            vdef_max             ASP_max             COL_min
+                   0                   0                   0                   0                   0
+#     Ndir sphpartID  Icontrol
+         0         0         0
+/PART/1
+projectile
+         1         1
+/PART/2
+plate_weldox_460E
+         2         2
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  4. ELEMENTS (1 projectile hex, 1 plate hex)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BRICK/1
+         1         1         2         3         4         5         6         7         8
+/BRICK/2
+         2         9        10        11        12        13        14        15        16
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  5. NODE GROUPS
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/GRNOD/NODE/100
+projectile_nodes_for_inivel
+         1         2         3         4         5         6         7         8
+# Plate back-face nodes (x = +42 mm) — clamped by /BCS/1 to mimic
+# rigid back-side support (the only physical anchor available with
+# the 1-hex plate Tier 1 syntax demo). Outer-rim clamping per
+# ADR-024 (lite) is degenerate at this mesh density and is reserved
+# for FM-04b.
+/GRNOD/NODE/200
+plate_back_face_nodes_for_clamp
+        10        11        14        15
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  6. BOUNDARY CONDITIONS (clamp plate back face — all 6 DOF locked)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/BCS/1
+plate_back_face_clamp_candidate
+#   trarot   Skew_id   Gnod_id
+   111 111         0       200
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  7. CONTACT (projectile nodes vs plate surface, TYPE7)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/SURF/PART/EXT/2
+plate_surface_for_contact_candidate
+         2
+/INTER/TYPE7/1
+projectile_vs_plate_contact_candidate
+#  Slav_id   Mast_id      Istf                Igap     Multi      Ibag      Idel     Icurv
+       100         2         5                   0         0         0         2         0
+#          GAP_SCALE             GAP_MAX
+                   0                   0
+#              STMIN               STMAX
+                   0                   0
+#              STFAC                FRIC             GAP_MIN              Tstart               Tstop
+                   0                   0                  .1                   0                   0
+#     I_BC                        INACTI               VIS_S               VIS_F              BUMULT
+       000                             0                   0                   0                   0
+#    Ifric    Ifiltr               Xfreq     Iform
+         0         0                   0         0
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+#-  8. INITIAL VELOCITY  (V0 along +X, sourced from Borvik 2002 Part I; not benchmark agreement)
+#---1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|---10----|
+/INIVEL/TRA/1
+projectile_initial_velocity_candidate
+#                 Vx                  Vy                  Vz   Gnod_id   Skew_id
+                .285                   0                   0       100         0
+/END

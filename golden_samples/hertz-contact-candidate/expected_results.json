@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.4.0",
+  "case_id": "hertz-contact-candidate",
+  "case_kind": "contact_pair_static",
+  "tier_2_status": "validated",
+  "phase_34_c_outcome": "CCX 2.23 *CONTACT PAIR converged; verdict PASS; residual -6.823% within 20% tolerance",
+  "geometry": {
+    "kind": "stacked_cube_uniaxial_contact",
+    "punch_width_m": 0.020,
+    "punch_height_m": 0.010,
+    "substrate_width_m": 0.020,
+    "substrate_height_m": 0.030,
+    "contact_area_m2": 0.0004,
+    "honest_note": "NOT Hertz curvature contact; stacked-cube uniaxial. Hertz curvature analytical SSOT (Phase 33 D hertz_contact.py) remains for future curved-geometry phase."
+  },
+  "loading": {
+    "type": "vertical_distributed_force_on_punch_top",
+    "total_load_n": 4000.0,
+    "average_pressure_pa": 1.0e07
+  },
+  "material": {
+    "material_id": "steel-s355",
+    "youngs_modulus_pa": 2.10e11,
+    "poisson_ratio": 0.30,
+    "yield_stress_pa": 3.55e08,
+    "elastic_regime_ratio": 0.0282
+  },
+  "analytical_reference": {
+    "kind": "1d_uniaxial_compression_stacked_column",
+    "formula": "delta = F * (h_punch + h_substrate) / (E * A)",
+    "indentation_m": 1.904762e-06,
+    "source_textbook": "Timoshenko & Goodier, Theory of Elasticity, 3rd ed., Chapter 1",
+    "ssot_module": "backend/app/services/cross_check/contact_pair_runner.py"
+  },
+  "ccx_observation": {
+    "observed_indentation_m": 1.774792e-06,
+    "residual_pct": -6.823,
+    "tolerance_pct": 20.0,
+    "verdict": "PASS",
+    "node_count": 250,
+    "element_count": 128,
+    "contact_pair_node_count": 50,
+    "ccx_version": "2.23",
+    "step_increments": 1
+  },
+  "phase_33_d_analytical_ssot_preserved": {
+    "module": "backend/app/services/cross_check/hertz_contact.py",
+    "purpose": "Hertz curvature line-contact analytical reference (Johnson §4.2). Remains as SSOT for future curved-geometry contact phases. NOT used in Phase 34 C cross-check (Phase 34 C uses 1D uniaxial reference for stacked-cube geometry)."
+  },
+  "cohort_membership": "tier_2_validated",
+  "cohort_count_before_phase_34c": 11,
+  "cohort_count_after_phase_34c": 12,
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement"
+}

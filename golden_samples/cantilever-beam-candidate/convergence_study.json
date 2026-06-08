@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1.0",
+  "case_id": "cantilever-beam-candidate",
+  "refinement_param_name": "characteristic_length_m",
+  "refinement_units": "m",
+  "trend_monotone": true,
+  "generated_at_utc": "2026-05-18T04:21:37.112709+00:00",
+  "notes": "Phase 32 A convergence sweep on the Phase 21 A canonical cantilever (1.0m × 0.1m × 0.1m steel-s355, F=-1000N tip load). 3 live ccx 2.23 + gmsh runs at -clmax = 0.035 / 0.025 / 0.018 m. Geometric ratio is ~1.40-1.39 (treated as constant by the Richardson estimator). Analytical reference is Euler-Bernoulli small-deflection tip deflection δ = -F·L³/(3·E·I). C3D10 quadratic-tet mesh via gmsh. Phase 32 adds Richardson extrapolation.",
+  "points": [
+    {
+      "label": "cl=35mm",
+      "refinement_param": 0.035,
+      "node_count": 3079,
+      "element_count": 1512,
+      "observed_value": -0.00019029116923076925,
+      "analytical_value": -0.00019047619047619045,
+      "residual_pct": -0.09713615384613337,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=25mm",
+      "refinement_param": 0.025,
+      "node_count": 6570,
+      "element_count": 3559,
+      "observed_value": -0.00019044651485148513,
+      "analytical_value": -0.00019047619047619045,
+      "residual_pct": -0.015579702970293274,
+      "verdict": "PASS"
+    },
+    {
+      "label": "cl=18mm",
+      "refinement_param": 0.018,
+      "node_count": 14851,
+      "element_count": 8766,
+      "observed_value": -0.00019054138536585367,
+      "analytical_value": -0.00019047619047619045,
+      "residual_pct": 0.034227317073186186,
+      "verdict": "PASS"
+    }
+  ],
+  "richardson": {
+    "extrapolated_value": -0.00019069021378535,
+    "observed_order_p": 1.4831437357448518,
+    "refinement_ratio_r": 1.3944444444444446,
+    "refinement_ratio_constant": true,
+    "extrapolated_residual_pct": 0.1123622373087599,
+    "notes": ""
+  }
+}

@@ -29,6 +29,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,agents]"
 
+      # FM-04a: pyvista/vtk are HARD deps (pyproject), so the figure-render
+      # tests (test_report_cli_figures, test_visualize_plot_get_shim) clear
+      # their `importorskip` guards and actually execute on CI. On a bare
+      # headless ubuntu runner VTK's OpenGL2 render window has no GL context
+      # and `plotter.screenshot()` SEGFAULTS (exit 139), aborting the whole
+      # pytest run before later failures can even surface. Provide a virtual
+      # X display (xvfb) + Mesa software GL (llvmpipe via mesa-dri) so the
+      # off-screen render path has a context. Package names are 24.04-noble
+      # (libgl1-mesa-glx was dropped; use libglx-mesa0 + libgl1-mesa-dri).
+      - name: Install headless GL stack (VTK/pyvista off-screen render)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libxrender1 libxext6 libsm6
+
       - name: Lint — ruff check
         run: ruff check .
 
@@ -36,4 +51,266 @@ jobs:
         run: ruff format --check .
 
       - name: Test — pytest
-        run: pytest tests/ -v --tb=short
+        # xvfb-run -a wraps the suite in a virtual X display; transparent to
+        # the non-GL tests, gives VTK a context for the off-screen renders.
+        run: xvfb-run -a pytest tests/ -v --tb=short
+
+      # ADR-028/029 honesty-seam regression gate. The graph-wiring + fidelity-
+      # discriminator tests (the tier_0_dummy / dummyFidelityInputs / anti-vacuous-pass /
+      # FAILED-not-SUCCESS-solver guards on agents/state_projection.py + agents/graph_runner.py
+      # — the product's highest-priority honesty deliverable) live under backend/tests/, which
+      # the root `pytest tests/` (testpaths=["tests"]) deliberately excludes, so they had ZERO
+      # regression protection on `main`. Run ONLY the named honesty-seam subset below — NOT the
+      # whole backend/tests/ dir, which carries a separate, out-of-scope set of pre-existing
+      # API/NL-parser/KB failures. Hermetic: these monkeypatch FreeCAD/gmsh/ccx (no real solver;
+      # backend/pytest.ini's `-m "not requires_solver"` deselects the skipif-ccx leg). Wired into
+      # the existing required `lint-and-test` check — mirrors the FM-04a frontend-gate precedent
+      # below — so an honesty-seam regression now fails `main`.
+      - name: Test — ADR-028/029 honesty-seam (graph-wiring) gate
+        run: |
+          xvfb-run -a pytest \
+            backend/tests/test_graph_intake_wiring.py \
+            backend/tests/test_graph_geometry_wiring.py \
+            backend/tests/test_graph_mesh_wiring.py \
+            backend/tests/test_graph_solver_wiring.py \
+            backend/tests/test_graph_both_flags_wiring.py \
+            backend/tests/test_workflow_fidelity_discriminator.py \
+            --tb=short
+
+      # --- Frontend gate (vitest + eslint) ---
+      # FM-04a: the frontend suite (vitest) and lint (eslint) previously ran
+      # in no CI job, so 99 test files + the eslint baseline never gated `main`.
+      # Wired here into the existing required `lint-and-test` check.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend — install
+        run: npm ci
+        working-directory: frontend
+
+      # FM-04a: CI ran eslint + vitest but NEVER type-checked the frontend, so
+      # 16 strict-mode (TS6 strict-by-default) errors in src/ accumulated unseen
+      # — a plain `tsc --noEmit` on the root tsconfig is a no-op (files:[] +
+      # references), so `tsc -b` (what `npm run build` runs) is the real gate.
+      # Wired here so TS regressions fail on `main` instead of rotting until a
+      # local `npm run build`.
+      #   tsc -b covers the WEB project (tsconfig.app + tsconfig.node refs). The
+      # ELECTRON project (main.ts / renderer.ts / preload.cts) has its own
+      # tsconfig NOT in those refs, and preload.cts isn't matched by eslint
+      # (*.ts/*.tsx) — so it has no other CI check. Type-check it explicitly
+      # (--noEmit: pure gate, no dist-electron artifacts in CI) (Codex R0 P2).
+      - name: Frontend — typecheck (tsc -b + electron)
+        working-directory: frontend
+        run: |
+          npx tsc -b
+          npx tsc -p electron/tsconfig.json --noEmit
+
+      - name: Frontend — eslint baseline guard (ceiling 70)
+        working-directory: frontend
+        run: |
+          # eslint-70 baseline (FM-04a honesty contract): 70 known problems
+          # (69 errors + 1 warning) are tracked debt toward zero, NOT a clean
+          # gate — `eslint .` exits non-zero at baseline. This guard blocks
+          # REGRESSIONS above 70 without forcing the debt to zero. As debt is
+          # paid, lower the ceiling; never raise it to admit new problems.
+          set +e
+          npx eslint . -f json > eslint-report.json
+          ESLINT_EXIT=$?
+          set -e
+          if [ "$ESLINT_EXIT" -gt 1 ]; then
+            echo "::error::eslint crashed (exit $ESLINT_EXIT), not a lint-count failure"
+            cat eslint-report.json
+            exit 1
+          fi
+          COUNT=$(node -e "const d=require('./eslint-report.json'); console.log(d.reduce((n,f)=>n+f.errorCount+f.warningCount,0))")
+          echo "eslint problems: $COUNT (baseline ceiling 70)"
+          if [ "$COUNT" -gt 70 ]; then
+            echo "::error::eslint regressed above the 70 baseline ($COUNT > 70) — fix new problems before merge"
+            exit 1
+          fi
+
+      - name: Frontend — test (vitest)
+        run: npm test
+        working-directory: frontend
+
+  # --- ADR-027 V2-0 (partial): live re-solve of one representative case -----
+  # G-1's honest gap: the 13 cross-check residuals were pinned only by the
+  # committed verdict YAML — no CI job ever ran a real ccx solve (backend/tests
+  # never ran in CI, and no runner had ccx installed). This job re-solves the
+  # canonical NAFEMS LE10 deck with a real CalculiX on every PR and asserts the
+  # benchmark verdict + a tight drift pin against the frozen observation
+  # (backend/tests/test_workflow_real_le10.py). Claim tier: Tier 1 (real
+  # solver, public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-le10-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        # ubuntu-24.04 (noble) universe ships calculix-ccx 2.21 — exactly the
+        # tools/calculix_driver REQUIRED_CCX_VERSION minimum. If the runner
+        # image ever regresses below 2.21, run_solve raises loudly inside the
+        # tests (a visible FAIL, never a silent skip).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        # le10_available() == (ccx on PATH) and (deck exists). Hard-fail both
+        # preconditions here so the ccx-guarded tests below can never silently
+        # skip and let this job report green without a live solve.
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/nafems-le10-thick-plate-candidate/data/run_40_20_6_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real LE10 e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_le10.py -v --tb=short
+
+  # --- FM-05: live re-solve of the NAFEMS LE11 thermal-stress benchmark -----
+  # Mirrors real-le10-e2e for the project's SECOND public-benchmark agreement
+  # (NAFEMS LE11, imposed-temperature thermo-elastic, sigma_zz@A vs the published
+  # -105 MPa). Re-solves the sealed canonical r4 deck with real ccx and asserts
+  # the benchmark verdict + a tight drift pin
+  # (backend/tests/test_workflow_real_le11.py). Tier 1 (real solver,
+  # public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-le11-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/nafems-le11-solid-cyl-temperature-candidate/data/run_r4_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real LE11 e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_le11.py -v --tb=short
+
+  # --- FM-05: live re-solve of the rotating-disk centrifugal benchmark ------
+  # Mirrors real-le10-e2e for the project's THIRD public-benchmark agreement
+  # (rotating disk, *DLOAD CENTRIF, sigma_theta@bore vs the Timoshenko plane-
+  # stress closed form). Re-solves the sealed canonical nr=48 deck with real ccx
+  # and asserts the benchmark verdict + a tight drift pin
+  # (backend/tests/test_workflow_real_rotating_disk.py). Tier 1 (real solver,
+  # public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-rotating-disk-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/rotating-disk-centrifugal-candidate/data/run_nr48_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real rotating-disk e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_rotating_disk.py -v --tb=short
+
+  # --- Rank 6 (audit 2026-06-08): live coverage of the ADR-029 P3 solver leg --
+  # The P3 headline — the 4-node graph launching a REAL ccx subprocess — was
+  # never exercised in CI. All graph-solver tests inject a fake rc=201; the ONE
+  # genuine-subprocess test
+  # (test_graph_solver_wiring.py::test_real_ccx_subprocess_faults_and_projects_failed)
+  # is skipif-ccx AND lives in backend/tests/ (never CI-run; no runner had ccx),
+  # so the terminal ccx-launch + rc=201 deck-parse → SOLVER_ERROR leg (the OR-1
+  # corrected classification, c6ecb3e) had ZERO live coverage. This job installs
+  # real ccx and runs that one test. The dummy-fallback mesh (no Nall/Nfix/Eall)
+  # makes ccx fault by construction, so the assertion (FAILED + tier_0_dummy +
+  # solverAttempted, no measurement keys) is host-independent EXCEPT for the
+  # genuine subprocess launch — which is exactly the leg being covered. Tier 1
+  # (real solver, fault-path wiring), NOT signed validation.
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-graph-solver-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        # The target test's ONLY skip condition is `shutil.which("ccx") is None`,
+        # so a hard `which ccx` here forecloses the only silent-skip path: if ccx
+        # is on PATH the skipif is False and the test MUST run.
+        run: |
+          which ccx
+          ccx -v || true
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real graph-solver e2e — live ccx subprocess fault + FAILED projection
+        working-directory: backend
+        # Belt-and-suspenders over the preflight: assert pytest recorded a real
+        # PASS, never a silent "1 skipped" green (grep fails the step on a skip,
+        # since a skipped summary line carries no "passed").
+        run: |
+          pytest "tests/test_graph_solver_wiring.py::test_real_ccx_subprocess_faults_and_projects_failed" \
+            -v --tb=short -ra | tee /tmp/graph_solver_e2e.log
+          grep -qE "[0-9]+ passed" /tmp/graph_solver_e2e.log

@@ -1,0 +1,17 @@
+{
+  "case_id": "rod-wave-impact-candidate",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "convergence_kind": "explicit_dynamics",
+  "combined_verdict": "candidate_observed_stable",
+  "mesh_sweep": {
+    "axis": "mesh_h",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "Synthetic 1D-bar idealization; mesh axis is held constant at element length h=0.025m (40 elements along L=1m). The candidate-observed-stable label is asserted from the analytical 1D-rod manifold match, NOT from a real CFL/h sweep across a physical solver. Tier 2 promotion requires the real explicit_dynamics_transient solve + mesh convergence on it."
+  },
+  "dt_sweep": {
+    "axis": "frame_dt_s",
+    "candidate_stability": "candidate_observed_stable",
+    "rationale": "Synthetic frame_dt=1e-5 s; analytical first-reflection at t=L/c=198.1us rounds to frame index 20 (observed=200us; residual 0.97% within the 5% WAVE_CROSS_CHECK_TOLERANCE_PCT band). No real CFL-limit search performed."
+  }
+}

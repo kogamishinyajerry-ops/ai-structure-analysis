@@ -89,6 +89,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -140,8 +141,18 @@ ZONE: tuple[ZoneEntry, ...] = (
         "HF1.6 — ADR-002 CalculiX 2.21 pin (whole-file; narrowing tracked separately)",
         "ADR-011 §HF1 #6",
     ),
+    # HF1.7a — signed-registry whole-directory read-only (Phase 13 D
+    # split per AR-2026-05-16-001). HF1.7b carve-out below allows
+    # `*-candidate` writes WITHOUT override; signed-registry pattern
+    # remains hard-stop. The prefix entry still matches every path
+    # under `golden_samples/`; the carve-out is applied in
+    # `find_violations` so it can examine the suffix.
     ZoneEntry(
-        "golden_samples/", "prefix", "HF1.7 — golden samples are read-only", "ADR-011 §HF1 #7"
+        "golden_samples/",
+        "prefix",
+        "HF1.7a — signed-registry golden samples are read-only (HF1.7b "
+        "carve-out per AR-2026-05-16-001 allows `*-candidate` writes)",
+        "ADR-011 §HF1 #7 (per AR-2026-05-16-001)",
     ),
     # NEW per AR-2026-04-25-001 §3 — meta-protection + CI enforcement
     ZoneEntry(
@@ -159,6 +170,102 @@ ZONE: tuple[ZoneEntry, ...] = (
 )
 
 
+# Phase 13 D — HF1.7b carve-out (per AR-2026-05-16-001).
+#
+# The FM-04a Tier 1 candidate work writes synthetic candidate cases into
+# `golden_samples/<slug>-candidate/` directories. Phase 12 C + Phase 13 C
+# each had to land these writes via `HF1_GUARD_OVERRIDE`, which is
+# documented in `reports/hf_audit.md` as a CARRY-FORWARD requiring an
+# ADR-011 amendment to formalize the carve-out (so a 1-line regex
+# change closes the override path entirely; the override-abuse risk
+# scales with the count of invocations, which in turn scales with
+# every Phase that ships a new `*-candidate` fixture).
+#
+# AR-2026-05-16-001 splits HF1.7 into:
+#   HF1.7a — `golden_samples/<signed-registry>/` (read-only, hard-stop)
+#   HF1.7b — `golden_samples/*-candidate/` (WRITABLE per FM-04a binding
+#            constraint; no override needed)
+#
+# The carve-out is matched by `_is_candidate_carveout` below. A path
+# qualifies for the carve-out iff its first segment under
+# `golden_samples/` ends in `-candidate` AND does NOT match the
+# signed-registry shape `^GS-\d{3}$` (defense in depth: the carve-out
+# regex is anchored on the SUFFIX while the signed-registry pattern
+# is anchored on the WHOLE first segment, so `GS-101-candidate` would
+# pass `endswith("-candidate")` but is independently checked against
+# the signed-registry pattern to refuse `GS-NNN-candidate` if such a
+# name ever shows up).
+_GOLDEN_SAMPLES_PREFIX = "golden_samples/"
+_CANDIDATE_SUFFIX = "-candidate"
+_SIGNED_REGISTRY_RE = re.compile(r"^GS-\d{3}$")
+# Phase 13 E slice-D MEDIUM-1 closure: a `GS-NNN-candidate` first
+# segment fails the `^GS-\d{3}$` fullmatch (because of the trailing
+# `-candidate`), but the carve-out helper SHOULD STILL reject it —
+# the helper's docstring + the slice-D TAA report named "defense in
+# depth via signed-registry pattern winning over carve-out suffix".
+# The closure pin: a separate PREFIX regex `^GS-\d{3}-` matches any
+# case-directory that STARTS with a signed-registry shape regardless
+# of the suffix. The helper now rejects on EITHER the fullmatch
+# (canonical signed registry) OR the prefix (signed-registry-shape
+# collision with `-candidate` suffix). Test
+# `test_candidate_carveout_rejects_signed_registry_candidate_collision`
+# in `tests/test_hf1_path_guard_candidate_carveout.py` flipped from
+# "documents the gap" to "pins the closure".
+_SIGNED_REGISTRY_PREFIX_RE = re.compile(r"^GS-\d{3}-")
+
+
+def _is_candidate_carveout(path: str) -> bool:
+    """Return True iff ``path`` qualifies for the HF1.7b carve-out
+    (writable `*-candidate` directory under `golden_samples/`).
+
+    Behavior:
+      * Returns False for any path NOT prefixed by `golden_samples/`
+        (the carve-out is scoped to HF1.7 only).
+      * Splits off the first directory segment beneath `golden_samples/`.
+        That segment is the case directory.
+      * Returns True iff the case directory:
+          (a) ends in `-candidate`, AND
+          (b) does NOT match `^GS-\\d{3}$` (signed-registry shape) AND
+          (c) does NOT START with the signed-registry prefix shape
+              `^GS-\\d{3}-` (Phase 13 E slice-D MEDIUM-1 closure: a
+              hypothetical `GS-101-candidate` case-directory fails
+              (b) because of the trailing `-candidate`, but the
+              prefix check (c) still rejects it. Defense in depth:
+              even if the signed-registry pattern is ever colliding
+              with a `-candidate` suffix in some future naming
+              convention, the carve-out helper REJECTS it).
+
+    Symmetrically a path like
+    `golden_samples/cylinder-pv-collapsed-candidate/data/file.json`
+    is INSIDE a `*-candidate` directory and passes all three checks
+    (the case_dir is `cylinder-pv-collapsed-candidate`, which does
+    NOT start with `GS-\\d{3}-`).
+
+    The case directory MUST be the first path segment; paths like
+    `golden_samples/some-candidate/sub/file.txt` are checked against
+    the FIRST segment (`some-candidate`), so deep paths inside the
+    carve-out directory are also writable.
+    """
+    if not path.startswith(_GOLDEN_SAMPLES_PREFIX):
+        return False
+    suffix = path[len(_GOLDEN_SAMPLES_PREFIX) :]
+    if not suffix:
+        return False
+    # First directory segment under golden_samples/ — strip any
+    # trailing path components.
+    case_dir = suffix.split("/", 1)[0]
+    if not case_dir.endswith(_CANDIDATE_SUFFIX):
+        return False
+    if _SIGNED_REGISTRY_RE.fullmatch(case_dir):
+        # Canonical signed-registry shape — hard-stop wins.
+        return False
+    if _SIGNED_REGISTRY_PREFIX_RE.match(case_dir):
+        # Phase 13 E MEDIUM-1 closure: signed-registry prefix collision
+        # (e.g., GS-101-candidate) — hard-stop wins. Defense in depth.
+        return False
+    return True
+
+
 def path_hits_zone(path: str, entry: ZoneEntry) -> bool:
     if entry.match == "exact":
         return path == entry.path
@@ -172,6 +279,15 @@ def find_violations(paths: list[str]) -> list[tuple[str, ZoneEntry]]:
     seen: set[str] = set()
     for p in paths:
         if p in seen:
+            continue
+        # Phase 13 D — HF1.7b carve-out per AR-2026-05-16-001. The
+        # check runs BEFORE the prefix ZONE walk so a `*-candidate`
+        # path under `golden_samples/` is recognized as authorized
+        # without override. Signed-registry pattern still falls
+        # through to HF1.7a hard-stop (the carve-out helper rejects
+        # `^GS-\d{3}$` first segments).
+        if _is_candidate_carveout(p):
+            seen.add(p)
             continue
         for entry in ZONE:
             if path_hits_zone(p, entry):
@@ -313,9 +429,15 @@ def check_paths_and_report(paths: list[str]) -> int:
     for p, entry in violations:
         sys.stderr.write(f"  - {p}\n      {entry.rule}\n      see {entry.adr_ref}\n")
     sys.stderr.write(
-        "\nResolution paths (per ADR-011 §HF1 Recovery):\n"
-        "  1. Open a new ADR (or amend via supersede) before touching this path.\n"
-        "  2. If urgent, set HF1_GUARD_OVERRIDE='<reason>' and cite the reason\n"
+        "\nResolution paths (per ADR-011 §HF1 Recovery; HF1.7 carve-out "
+        "per AR-2026-05-16-001):\n"
+        "  1. If the path is a `golden_samples/*-candidate/` write, NO\n"
+        "     override is needed — HF1.7b carve-out (AR-2026-05-16-001)\n"
+        "     authorizes writes inside `*-candidate` directories. Recheck\n"
+        "     that the case directory ends in `-candidate` and is NOT a\n"
+        "     `GS-NNN` signed-registry shape.\n"
+        "  2. Open a new ADR (or amend via supersede) before touching this path.\n"
+        "  3. If urgent, set HF1_GUARD_OVERRIDE='<reason>' and cite the reason\n"
         "     in the commit message; reviewer must accept the override at PR time.\n"
     )
     return 1

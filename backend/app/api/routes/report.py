@@ -1,5 +1,7 @@
 """报告生成API路由
 """
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import Optional
 from pydantic import BaseModel
@@ -12,7 +14,9 @@ from ...services.pdf_service import get_pdf_service
 from ...db.session import get_db
 from ...models.persistence import SimulationJob
 from ...core.config import settings
+from ...services.solver import get_solver_service
 from fastapi.responses import StreamingResponse
+from ._signed_registry_refusal import assert_not_signed_registry
 
 
 router = APIRouter(prefix="/report", tags=["报告生成"])
@@ -26,6 +30,7 @@ class ReportResponse(BaseModel):
     metrics: dict
     validation: dict
     markdown: str
+    candidate_report_spine: dict
 
 @router.post("/generate", response_model=ReportResponse)
 async def generate_report(
@@ -58,16 +63,27 @@ async def generate_report(
             if not result.success:
                 raise HTTPException(status_code=400, detail=f"解析失败: {result.error_message}")
             
+            latest_job = None
+            solver_job_status = None
+            if case_id:
+                stmt = select(SimulationJob).where(SimulationJob.case_id == case_id).order_by(SimulationJob.created_at.desc()).limit(1)
+                res = await db.execute(stmt)
+                latest_job = res.scalar_one_or_none()
+                if latest_job:
+                    solver_job_status = get_solver_service().get_job_status(latest_job.job_id)
+
             # 3. 生成报告
-            report = report_gen.generate(result, case_id=case_id)
+            report = report_gen.generate(
+                result,
+                case_id=case_id,
+                source_path=Path(tmp_path),
+                original_filename=file.filename,
+                solver_job_status=solver_job_status,
+            )
             
             # 4. 持久化指标到 DB (Sprint 9)
             if case_id:
                 # 寻找该 case 的最新 Job 或创建摘要 Job
-                stmt = select(SimulationJob).where(SimulationJob.case_id == case_id).order_by(SimulationJob.created_at.desc()).limit(1)
-                res = await db.execute(stmt)
-                latest_job = res.scalar_one_or_none()
-                
                 if latest_job:
                     latest_job.metrics = report.metrics
                     latest_job.status = "COMPLETED"
@@ -87,7 +103,8 @@ async def generate_report(
                 summary=report.summary,
                 metrics=report.metrics,
                 validation=report.validation,
-                markdown=report.markdown
+                markdown=report.markdown,
+                candidate_report_spine=report.candidate_report_spine,
             )
 
             
@@ -101,6 +118,8 @@ async def generate_report(
 @router.get("/export/pdf/{case_id}")
 async def export_report_pdf(case_id: str, db: AsyncSession = Depends(get_db)):
     """一键导出专业 PDF 报告"""
+    # Phase 14 A — cross-route signed-registry refusal (SSOT helper).
+    assert_not_signed_registry(case_id, "report-export-pdf")
     # 1. 寻找结果文件 (.frd)
     # 基于 Sprint 9 的 Golden Sample 路径
     case_dir = settings.gs_root / case_id

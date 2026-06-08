@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "case_id": "rotating-disk-centrifugal-candidate",
+  "benchmark_name": "Rotating annular disk under centrifugal load — plane-stress hoop stress",
+  "reference_class": "published_analytical_benchmark",
+
+  "primary_reference": {
+    "citation": "S. P. Timoshenko & J. N. Goodier, 'Theory of Elasticity', 3rd ed., McGraw-Hill, 1970, Article 32 'Rotating Disks'.",
+    "kind": "closed_form_plane_stress_elasticity",
+    "formulas": {
+      "sigma_r": "sigma_r(r) = (3+nu)/8 * rho*omega^2 * [ b^2 + a^2 - a^2*b^2/r^2 - r^2 ]",
+      "sigma_theta": "sigma_theta(r) = (3+nu)/8 * rho*omega^2 * [ b^2 + a^2 + a^2*b^2/r^2 - (1+3*nu)/(3+nu)*r^2 ]",
+      "sigma_theta_at_bore": "sigma_theta(a) = rho*omega^2/4 * [ (3+nu)*b^2 + (1-nu)*a^2 ]"
+    }
+  },
+
+  "independent_reproductions": [
+    "ANSYS Mechanical APDL Verification Manual — rotating-disk / spinning-disk cases (centrifugal body force, analytic Timoshenko comparison).",
+    "code_aster validation suite — rotating-disk (force de rotation) cases compare against the same plane-stress closed form.",
+    "Standard mechanics-of-materials and elasticity texts reproduce the rotating-disk field verbatim (Boresi, Ugural & Fenster, Den Hartog)."
+  ],
+  "_triangulation_note": "The reference is a canonical closed-form plane-stress elasticity solution (not a measurement), reproduced identically across the standard texts and FE verification manuals above — so it is not gated by any single paywalled benchmark document the way the NAFEMS LE-series is (Timoshenko & Goodier is itself a textbook). The agreement target is the formula, which is verifiable independently of any one source. Honest limitation: exact ANSYS-APDL-VM / code_aster case IDs are not pinned here; the citation is the closed form + its standard reproductions.",
+
+  "parameters": {
+    "inner_radius_a_m": 0.2,
+    "outer_radius_b_m": 1.0,
+    "youngs_modulus_pa": 200.0e9,
+    "poisson_ratio": 0.30,
+    "density_kg_m3": 7850.0,
+    "omega_rad_s": 100.0
+  },
+  "target": {
+    "quantity": "sigma_theta at inner bore r=a (peak hoop stress)",
+    "value_pa": 65312000.0,
+    "value_mpa": 65.312,
+    "derivation": "rho*omega^2/4 * [(3+nu)*b^2 + (1-nu)*a^2] = 7850*100^2/4 * [3.3*1.0 + 0.7*0.04] = 1.9625e7 * 3.328 = 6.5312e7 Pa"
+  },
+  "tier": "tier_1_candidate",
+  "_tier_note": "This published_reference.yaml does not itself drive tier promotion; the case is promoted to tier_2_validated by the overlay in backend/app/services/reporting/_claim_tier.py reading the sibling cross_check_verdict.yaml (verdict=PASS). The case_id is registered in CLAIM_TIER_REGISTRY at baseline tier_1_candidate. (Matches the LE10/LE11 published_reference convention; the prior bare claim_tier:tier_2_validated wrongly implied this record itself confers Tier-2.)",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_rotating_disk_timoshenko; centrifugal_body_force_load; plane_stress_3d_elasticity_reference"
+}

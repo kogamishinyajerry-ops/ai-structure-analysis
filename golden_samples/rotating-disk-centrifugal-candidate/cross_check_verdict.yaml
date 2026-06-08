@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "solver_kind": "linear_static",
+  "case_id": "rotating-disk-centrifugal-candidate",
+  "verdict": "PASS",
+
+  "_what_this_is": "Real CalculiX (ccx 2.23) linear-static solve of a thin annular disk under a CENTRIFUGAL body force, with the bore hoop stress sigma_theta(a) compared to the classical Timoshenko & Goodier plane-stress rotating-disk solution. This is the project's THIRD public-benchmark agreement (after NAFEMS LE10 and LE11) and its FIRST with a rotational body-force load (ccx *DLOAD CENTRIF) — a genuinely new load physics. The reference is a CONTINUUM-ELASTICITY closed form (the exact plane-stress stress field), which is why ccx reproduces it cleanly: a thin 3-D solid converges to the plane-stress elasticity solution. This is UNLIKE LE3/FV52, whose references assume a reduced displacement KINEMATICS (thin-shell / Mindlin-plate theory) that full 3-D elasticity does not obey (~6-8% converged gap). Real-solver validated (registry baseline tier_1_candidate, overlay-promoted to tier_2_validated on this PASS verdict) but NOT signed validation (no independent reviewer signoff per ADR-023 Tier-2-signed / ADR-027 G-2).",
+
+  "tolerance_pct": 1.0,
+  "residual_pct": 0.063,
+  "analytical_pa": 65312000.0,
+  "observed_pa": 65353300.0,
+  "reference_kind": "published_analytical_benchmark",
+  "cross_check_kind": "rotating_annular_disk_centrifugal_hoop_stress_bore",
+
+  "benchmark": "Rotating annular disk under centrifugal load (Timoshenko & Goodier rotating-disk)",
+  "benchmark_source": "S. P. Timoshenko & J. N. Goodier, 'Theory of Elasticity', 3rd ed. (McGraw-Hill, 1970), Art. 32 'Rotating Disks', plane-stress closed form (itself a textbook). The same rotating-disk solution is a standard FE verification benchmark (e.g. ANSYS Mechanical APDL Verification Manual rotating-disk cases; code_aster rotating-disk validation) and is reproduced across standard mechanics texts — so the canonical formula is not gated by any single paywalled benchmark document (unlike the NAFEMS LE-series). Honest limitation: exact ANSYS-VM / code_aster case IDs are not pinned here.",
+
+  "target_stress_component": "sigma_theta (hoop / circumferential) at the inner bore r = a",
+  "target_value_pa": 65312000.0,
+  "target_formula": "sigma_theta(a) = rho*omega^2/4 * [(3+nu)*b^2 + (1-nu)*a^2]  (plane stress, free inner edge so sigma_r(a)=0)",
+  "target_sign_convention": "Tensile (positive) hoop stress; ccx reproduced +65.353 MPa vs the +65.312 MPa closed form (+0.063%). The sigma_theta(r) and sigma_r(r) profiles ALONG THE +x RADIAL LINE match the analytic plane-stress field to within +/-0.1% (see convergence_study.json profile section; one radial line at the top surface, not a circumferential or through-thickness sweep); sigma_r(a) computed 0.109 MPa ~ 0 confirms the free inner-edge boundary.",
+
+  "geometry_m": {
+    "inner_radius_a": 0.2,
+    "outer_radius_b": 1.0,
+    "half_thickness_modelled": 0.05,
+    "full_disk_thickness": 0.10,
+    "model": "3-D quarter annulus (double symmetry), half-thickness with z=0 mid-plane symmetry; thin disk -> plane-stress state (sigma_z ~ 0)",
+    "axis_of_rotation": "global z through the origin"
+  },
+  "boundary_conditions": [
+    "y=0 radial edge: uy=0 (quarter symmetry)",
+    "x=0 radial edge: ux=0 (quarter symmetry)",
+    "z=0 mid-plane: uz=0 (through-thickness symmetry -> free top surface -> plane stress)",
+    "inner bore r=a and outer rim r=b: free (no traction)"
+  ],
+  "load": {
+    "type": "centrifugal_body_force",
+    "ccx_keyword": "*DLOAD ... CENTRIF",
+    "omega_rad_s": 100.0,
+    "centrif_magnitude_is": "omega^2 = 10000 (ccx CENTRIF magnitude is the SQUARE of the rotational speed)",
+    "mechanical_surface_load": "none"
+  },
+
+  "material_id": "rotating-disk-steel",
+  "material_reference": "E = 200 GPa, nu = 0.30, rho = 7850 kg/m^3 (steel).",
+  "element_type": "C3D20",
+  "mesh_divisions_canonical": "nr=nc=48 (radial x circumferential), nz=2 through half-thickness",
+  "node_count": 26117,
+  "element_count": 4608,
+  "convergence_monotone": true,
+  "_convergence_monotone_note": "sigma_theta(a) converges MONOTONICALLY to the analytic 65.312 MPa as the mesh refines: 65.591 -> 65.428 -> 65.353 -> 65.323 -> 65.308 MPa at nr = 20/32/48/64/80 (residual +0.43% -> +0.18% -> +0.06% -> +0.02% -> -0.01%). The canonical nr=48 rung (+0.063%) is pinned; refinement closes the residual toward zero (NOT a formulation gap — contrast LE3/FV52).",
+  "convergence_note": "Real ccx 2.23, C3D20, thin quarter annulus under *DLOAD CENTRIF. The bore hoop stress converges monotonically to the Timoshenko closed form, and the sigma_theta(r)/sigma_r(r) profile along the +x radial line agrees to within +/-0.1%. See convergence_study.json.",
+  "ccx_version": "2.23",
+  "generated_at_utc": "2026-06-07T00:00:00+00:00",
+  "reproduce": "python golden_samples/rotating-disk-centrifugal-candidate/data/generator.py [--ladder] [--profile]",
+  "claim_tier": "tier_2_validated",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_rotating_disk_timoshenko; centrifugal_body_force_load; plane_stress_3d_elasticity_reference"
+}

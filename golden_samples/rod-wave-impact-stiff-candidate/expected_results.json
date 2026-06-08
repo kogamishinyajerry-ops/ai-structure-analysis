@@ -1,0 +1,18 @@
+{
+  "analysis_type": "explicit_dynamics",
+  "case_id": "rod-wave-impact-stiff-candidate",
+  "case_name": "1D rod axial-impact wave propagation, L=1.0m, 10mm x 10mm cross section, tool steel (E=210 GPa), impact velocity 10 m/s (synthetic Hopkinson-bar idealization STIFF variant)",
+  "claim_tier": "Tier 1 engineering candidate",
+  "claim_boundary": "tier1_engineering_candidate; not_signed_validation; not_benchmark_agreement",
+  "status": "engineering_candidate",
+  "status_reason": "Tier 1 engineering candidate; not signed validation; not benchmark agreement. STIFF variant: E=210 GPa tool steel produces faster wave (~5174 m/s vs ~5048 m/s carbon-steel canonical) and earlier first reflection (~193us vs ~198us). Observed first_reflection_frame_index=19 (observed=190us) lands 1.71% from analytical (193.3us) \u2014 within the 5% WAVE_CROSS_CHECK_TOLERANCE_PCT engineering tolerance per Phase 14 B explicit_dynamics_extraction.py. Per-frame energy partition closed at machine epsilon. No real OpenRadioss invocation; Tier 2 promotion is explicitly deferred.",
+  "fixture_authoring_notes": {
+    "wave_speed_m_per_s_analytical": 5172.194153034851,
+    "first_reflection_s_analytical": 0.00019334154333963606,
+    "first_reflection_frame_index_observed": 19,
+    "first_reflection_s_observed": 0.00019,
+    "cross_check_tolerance_pct": 5.0,
+    "delta_from_canonical_case": "E increased 200->210 GPa (tool steel vs carbon steel); rho unchanged; geometry unchanged; impact velocity unchanged. Wave speed +2.5%; first-reflection time -2.5%."
+  },
+  "expected_first_reflection_s": 0.00019334154333963606
+}

@@ -33,6 +33,33 @@ def _load_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _write_mesh_quality(
+    output_dir: Path,
+    quality_report: dict[str, Any],
+    thresholds: dict[str, float],
+) -> Path:
+    """Persist mesh quality evidence for Tier 1 report/review surfaces."""
+    quality_path = output_dir / "mesh_quality.json"
+    payload = {
+        "status": "available",
+        "metrics": {
+            "passed": quality_report.get("passed", quality_report.get("ok")),
+            "min_scaled_jacobian": quality_report.get("min_scaled_jacobian"),
+            "max_aspect_ratio": quality_report.get("max_aspect_ratio"),
+            "degenerate_pct": quality_report.get("degenerate_pct"),
+            "bad_element_count": len(quality_report.get("bad_element_ids", [])),
+            "resolution_element_count": len(quality_report.get("resolution_element_ids", [])),
+        },
+        "thresholds": thresholds,
+        "findings": quality_report.get("findings", []),
+        "bad_element_ids_sample": quality_report.get("bad_element_ids", [])[:10],
+        "resolution_element_ids_sample": quality_report.get("resolution_element_ids", [])[:10],
+        "claim_boundary": "tier1_engineering_candidate; not_signed_validation",
+    }
+    quality_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return quality_path
+
+
 def run(state: SimState) -> dict[str, Any]:
     """Mesh agent entrypoint (LangGraph node signature)."""
     logger.info("Mesh Agent invoked.")
@@ -67,13 +94,12 @@ def run(state: SimState) -> dict[str, Any]:
         return {"fault_class": FaultClass.UNKNOWN}
 
     logger.info("Checking quality of %s.", mesh_path)
-    quality_report = check_mesh_quality(
-        mesh_path,
-        thresholds={
-            "min_scaled_jacobian": plan.mesh.min_scaled_jacobian,
-            "max_aspect_ratio": plan.mesh.max_aspect_ratio,
-        },
-    )
+    quality_thresholds = {
+        "min_scaled_jacobian": plan.mesh.min_scaled_jacobian,
+        "max_aspect_ratio": plan.mesh.max_aspect_ratio,
+    }
+    quality_report = check_mesh_quality(mesh_path, thresholds=quality_thresholds)
+    mesh_quality_path = _write_mesh_quality(mesh_dir, quality_report, quality_thresholds)
     mesh_meta_path = mesh_dir / "mesh_meta.json"
     mesh_meta = _load_json(mesh_meta_path)
 
@@ -107,6 +133,8 @@ def run(state: SimState) -> dict[str, Any]:
     new_artifacts.append(str(mesh_path))
     if mesh_meta_path.exists():
         new_artifacts.append(str(mesh_meta_path))
+    if mesh_quality_path.exists():
+        new_artifacts.append(str(mesh_quality_path))
 
     return {
         "fault_class": FaultClass.NONE,
