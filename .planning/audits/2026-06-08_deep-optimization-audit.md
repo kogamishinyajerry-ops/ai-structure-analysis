@@ -64,15 +64,15 @@
   the `agents.solver._render_inp_deck` mock target); `aeron` fallback now imports DOWNWARD from
   `tools.inp_writer`; and a new `test_low_layers_do_not_import_agents` AST guard scans aeron/ + tools/ for
   agents.* imports so the inversion can't return. Behavior-preserving (deck byte-output unchanged).
-- **Rank 9 (P3, test_gap) — INVESTIGATED → owner decision.** Confirmed empirically: a clean/empty/
-  header-only `.sta` returns `converged=True` (false-positive green). The investigator found the safe
-  positive marker (the ccx `.sta` increment-completion data row — present in all 3 sealed *STATIC samples
-  GS-002/GS-003/cantilever, absent in the header-only failure case) and a low-risk fix (require the
-  data-row regex AND no failure substring; correct 2 fake-format fixtures; add the header-only/empty/
-  garbage regression test). **Recommended surface-to-user** because it is a solver-truth-path BEHAVIOR
-  change (mandatory Codex trigger) with a residual false-negative risk on non-`*STATIC` `.sta` shapes
-  (modal/eigenvalue `.sta` formats were NOT in the 3-sample evidence base). Smallest-correct fix is known;
-  awaiting go-ahead.
+- **Rank 9 (P3, test_gap) — DONE** (`41a2b22`, HF1.1 override, owner chose "implement", Codex R0 APPROVE):
+  a clean/empty/header-only `.sta` returned `converged=True` (false-positive green). Fix adds the positive
+  marker `STA_INCREMENT_ROW` (ccx increment-completion data row; alpha header does NOT match) — convergence
+  now requires the data-row regex AND no failure substring. 3 regressions (header-only/empty/garbage all
+  assert `_check_convergence is False`); `test_clean_run` + `test_successful_solve` now use the real GS-003
+  format. 21 pass; ruff clean. Codex confirmed the regex is linear (no backtracking) and a safe marker
+  (no false-neg/false-pos on the reviewed shapes). **Residual (documented, not regressed):** the marker is
+  evidenced on `*STATIC` `.sta` shapes (GS-002/003/cantilever); modal/eigenvalue `.sta` formats were NOT in
+  the evidence base — if such a step is ever wired, re-confirm the two-leading-int-column assumption holds.
 - **Rank 12 (P3, roadmap) — DONE** (`b26d60a`): NEW `backend/tests/test_graph_both_flags_wiring.py` (4
   tests, all values empirically ground-truthed) pins the both-flags-on composite (WARNING geometry+mesh
   crossings + FAILED solver halt + downstream PENDING + net-coverage off=6→on=7 + caseId handoff across
@@ -87,14 +87,16 @@
 Doubly-shielded from CI (root `testpaths=["tests"]` excludes backend/tests entirely; `backend/pytest.ini`
 deselects 4 `@pytest.mark.legacy`). NOT uniform test-rot — 4 distinct causes:
 
-- **Cluster 1a — REAL PRODUCTION BUG (surface-to-user):** `backend/app/api/nl.py:14` declares
-  `APIRouter(prefix="/api/v1")` and `main.py:84` mounts it AGAIN with `prefix="/api/v1"` → the NL
-  endpoints live at the doubled `/api/v1/api/v1/parse-nl|supported-intents|...`. Every other router uses a
-  relative prefix; nl.py is the only double. `frontend/src/components/ChatPanel.tsx:81` calls the correct
-  `/api/v1/parse-nl` and is **silently broken**. Already independently acknowledged in
-  `tests/test_phase14_*.py:114-117` (which works around the buggy doubled path). **Fix = drop the
-  self-prefix in nl.py:14**, BUT it reshapes a public route AND requires updating that in-CI phase14 test
-  (it hard-codes the buggy path) — so safe-refactor + owner sign-off, not a quiet edit.
+- **Cluster 1a — REAL PRODUCTION BUG — DONE** (`98dc932`, owner chose "fix now", Codex R0 APPROVE):
+  `backend/app/api/nl.py:14` declared `APIRouter(prefix="/api/v1")` and `main.py:84` mounted it AGAIN with
+  `prefix="/api/v1"` → the NL endpoints lived at the doubled `/api/v1/api/v1/parse-nl|supported-intents|...`.
+  Every other router uses a relative prefix; nl.py was the only double. `frontend/.../ChatPanel.tsx:81`
+  calls the correct `/api/v1/parse-nl` and was **silently broken**. Fix = drop the self-prefix (nl.py now
+  matches the sibling-router convention) + update the one opt-out enumeration entry in `test_phase14`
+  (`114-117`) from the doubled path to the correct single path. **Before/after proof** (fix stashed vs
+  applied): `test_get_supported_intents` 404 FAIL → PASS; `TestNLAPI parse_natural_language/batch` now reach
+  200 (route resolves; residual `success=False` is the no-`OPENAI_API_KEY` parser env = Cluster 2, out of
+  scope); `test_phase14` 38 pass; `test_parse_result_file` fails both with/without → pre-existing (Cluster 1b).
 - **Cluster 1b — STALE TEST:** the 3 `TestResultAPI` tests hit `/api/v1/supported-formats` /
   `/parse-result`, endpoints DELETED by RFC-001 §6.1 Bucket C (`main.py:83`). Already `@pytest.mark.legacy`.
   Cheap honest deletion.
