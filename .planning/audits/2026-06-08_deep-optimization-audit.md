@@ -54,10 +54,20 @@
   `human_fallback.run` are dead at runtime (2/7 nodes execute only in tests). ADR-028's "real compiled
   graph drives the live pipeline" is NOT met by the actual 7-node graph yet. Record as known-orphaned
   in ADR-029 status so it is never read as live 7-node coverage. P5 is multi-slice, NOT a thin P3 step.
-- **Rank 6 (P2, test_gap):** the real ccx-subprocess solver leg (the headline P3 claim) is never
-  exercised in CI — all 12 solver-driving tests use a fake; the one real test is skipif-ccx AND in the
-  (now partially-gated) backend/tests/. Once a ccx-equipped CI job runs the graph-solver file, the
-  terminal ccx-launch + rc=201 leg gets covered. Bounded: wiring/edges/projection/halt ARE covered.
+- **Rank 6 (P2, test_gap) — DONE** (`6b6bad2`, HF1.9 override, owner chose "Rank 6", Codex R0 APPROVE):
+  the real ccx-subprocess solver leg (the headline P3 claim) was never exercised in CI — all 12
+  solver-driving tests use a fake; the one real test
+  (`test_graph_solver_wiring.py::test_real_ccx_subprocess_faults_and_projects_failed`) is skipif-ccx AND
+  in backend/tests/ (never CI-run, no runner had ccx). Added NON-REQUIRED job `real-graph-solver-e2e`
+  mirroring the 3 existing `real-*-e2e` siblings: installs real ccx (ubuntu-24.04 = calculix-ccx 2.21 =
+  the version floor), runs that one test so the terminal ccx-launch + rc=201 deck-parse → SOLVER_ERROR
+  leg (OR-1, c6ecb3e) gets live coverage. Dummy-fallback mesh (no Nall/Nfix/Eall) faults ccx by
+  construction → host-independent except the genuine subprocess. Anti-skip-green: preflight `which ccx`
+  hard-fails on absence (the only skip path) + `grep -qE "[0-9]+ passed"` reds on a silent skip. **Verified
+  locally on ccx 2.23:** the exact CI command runs+passes under pytest.ini defaults (test uses skipif, not
+  the `requires_solver` marker, so `-m "not requires_solver"` does NOT deselect it). Deliberately NOT
+  promoted to a required check (ADR-013 owner territory). Bounded: wiring/edges/projection/halt were
+  already covered; this adds the genuine-subprocess fault leg.
 - **Rank 7 (P3, wiring) — DONE** (`bd02b1d`, HF1.1 override, Codex R0 APPROVE): MOVED `_render_inp_deck`
   (a pure jinja2 deck-renderer, zero agent-layer deps) VERBATIM to a new low-layer `tools/inp_writer.py`
   as public `render_inp_deck`; `agents/solver.py` re-exports it under the old name (keeps the live path +
