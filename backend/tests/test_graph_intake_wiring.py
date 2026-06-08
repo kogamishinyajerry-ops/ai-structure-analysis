@@ -139,12 +139,17 @@ def test_intake_stage_shape_parity(monkeypatch) -> None:
 
 
 def test_n13_unchanged_with_flag(monkeypatch) -> None:
+    # ISOLATE intake's N-neutrality from ADR-029 P2: the same flag also enables the mesh
+    # crossing, which legitimately adds +1 (covered by test_graph_mesh_wiring). Hold a gmsh
+    # kernel "present" so run_mesh_via_graph refuses (→ scripted), keeping this test measuring
+    # the intake-graph wiring's effect alone (still N-neutral on vs off).
+    monkeypatch.setattr("tools.gmsh_driver.GMSH_AVAILABLE", True)
     monkeypatch.setattr(architect_mod, "_extract_structured_data", lambda **kw: None)
     off = MockWorkflowStore().run_sync(user_request=_NACA)
     monkeypatch.setattr(settings, "workflow_graph_intake", True)
     on = MockWorkflowStore().run_sync(user_request=_NACA)
 
-    assert _agent_driven(off) == _agent_driven(on)  # wiring != coverage inflation
+    assert _agent_driven(off) == _agent_driven(on)  # intake wiring != coverage inflation
     assert _intake(off).provenance is StageProvenance.DETERMINISTIC_AGENT
     assert _intake(on).provenance is StageProvenance.DETERMINISTIC_AGENT
     # flag-on intake carries the graph-runtime fact; flag-off does not

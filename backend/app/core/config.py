@@ -50,14 +50,19 @@ class Settings(BaseSettings):
     # ADR-029 P0/P1 (graph-wiring north star): when True, the graph-wired stages are
     # driven by the REAL LangGraph compiled-graph runtime (a dedicated truncated StateGraph
     # compiled and .invoke()d) instead of a direct node.run() call through the facade —
-    # PROJECT_INTAKE via START->architect->END (P0), and GEOMETRY_VALIDATION via
-    # START->architect->geometry->END (P1, the first cross-node graph data dependency). This
-    # is an ARCHITECTURE-wiring proof that the orphaned agents/graph.py machinery can drive
-    # live stages; it does NOT change provenance or the N/13 agent-driven count, runs no
-    # mesh/solver/human_fallback node (no gmsh/ccx, no Notion side-effect), and honestly
-    # discloses whether each plan was authored by the LLM architect node or a deterministic
-    # seed. Default False so CI + the contract suite are byte-identical (the branch is dead).
-    # (Name retained from P0 for flag stability; it now gates intake + geometry.)
+    # PROJECT_INTAKE via START->architect->END (P0), GEOMETRY_VALIDATION via
+    # START->architect->geometry->END (P1, the first cross-node graph data dependency), and
+    # MESH_GENERATION via START->architect->geometry->mesh->END (P2, the second cross-node
+    # dependency). This is an ARCHITECTURE-wiring proof that the orphaned agents/graph.py
+    # machinery can drive live stages. Intake/geometry do NOT change provenance or N/13 (already
+    # deterministic_agent off-flag); MESH_GENERATION is the one honest increment — a real mesh
+    # node now drives it (scripted_demo -> deterministic_agent, tier_0_dummy with the
+    # dummyFidelityInputs guard), so N/13 rises by exactly 1, at DUMMY fidelity (never a
+    # validation). The mesh node runs gmsh's hardcoded fallback (no real gmsh kernel) and no
+    # solver/human_fallback node (no ccx, no Notion side-effect); outside the triple-dummy regime
+    # the mesh stage stays scripted (a real mesh is never mislabeled tier_0). Default False so CI
+    # + the contract suite are byte-identical (the branch is dead).
+    # (Name retained from P0 for flag stability; it now gates intake + geometry + mesh.)
     workflow_graph_intake: bool = False
 
     @property

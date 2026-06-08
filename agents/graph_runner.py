@@ -41,9 +41,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "build_intake_geometry_graph",
+    "build_intake_geometry_mesh_graph",
     "build_intake_graph",
     "run_geometry_via_graph",
     "run_intake_via_graph",
+    "run_mesh_via_graph",
 ]
 
 # A SimPlan.description sentinel: when the keyless architect node authors nothing, the
@@ -229,3 +231,111 @@ def run_geometry_via_graph(
             status=status,
             progress=progress,
         )
+
+
+def build_intake_geometry_mesh_graph():
+    """Compile a DEDICATED truncated ``StateGraph(SimState)``: architect→geometry→mesh.
+
+    Extends :func:`build_intake_geometry_graph` with the mesh node, imported from
+    :mod:`agents.mesh` DIRECTLY — never :func:`agents.graph.compile_graph` (whose closure pulls
+    backend ``app.well_harness.notion_sync``). Truncated BEFORE the solver, so no ``ccx``
+    subprocess and no ``human_fallback``/Notion node is reachable. This is the SECOND cross-node
+    edge (geometry→mesh): the mesh node consumes the ``geometry_path`` the geometry node left in
+    the shared SimState, then runs the real ``generate_mesh`` + ``check_mesh_quality`` code.
+    """
+    # Lazy import so the flag-off facade import closure does NOT eagerly pull mesh's heavier deps
+    # (checkers.jacobian→meshio, tools.gmsh_driver probing) until a mesh crossing actually builds
+    # this graph — preserving default-off inertness (Codex P2 R0 P3).
+    from agents import mesh
+
+    workflow: StateGraph = StateGraph(SimState)
+    workflow.add_node("architect", architect.run)
+    workflow.add_node("geometry", geometry.run)
+    workflow.add_node("mesh", mesh.run)
+    workflow.add_edge(START, "architect")
+    workflow.add_edge("architect", "geometry")
+    workflow.add_edge("geometry", "mesh")
+    workflow.add_edge("mesh", END)
+    return workflow.compile()
+
+
+def run_mesh_via_graph(
+    user_request: str,
+    *,
+    run_id: str,
+    existing_case_id: str | None = None,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Drive MESH_GENERATION through the real 3-node ``architect→geometry→mesh`` LangGraph
+    runtime (ADR-029 P2 — the second cross-node graph data dependency).
+
+    HONESTY ENVELOPE — the mesh stage may be projected as a graph-driven ``tier_0_dummy`` ONLY
+    in the strict triple-dummy regime: ``geometryFamily=="naca_wing"`` AND
+    ``not FREECAD_AVAILABLE`` AND ``not GMSH_AVAILABLE``. Rationale (verified, not assumed):
+
+    * a real FreeCAD kernel would yield a real STEP, and a real gmsh kernel would mesh it into a
+      REAL mesh whose ``check_mesh_quality`` numbers are genuine — which this ``tier_0`` projection
+      must NEVER mislabel as dummy;
+    * with no gmsh, ``generate_mesh`` writes a hardcoded 4-node/1-tet C3D4 fallback ``.inp``
+      (``generation_mode="fallback"``), over which ``check_mesh_quality`` IS a real numpy
+      measurement — but of DUMMY geometry, so the numbers are tautological, never validated.
+
+    Outside the triple-dummy regime (or on any graph-runtime error) this RAISES
+    :class:`NotImplementedError` — the established facade signal for "not honestly graph-driven
+    here": the caller (mock_pipeline) falls back to the scripted mesh spec, so a real mesh is
+    never mislabeled tier_0 and a runtime hiccup never hard-crashes the demo path.
+
+    The mesh node REQUIRES a ``SimPlan`` and a ``geometry_path``; the keyless architect node
+    authors no plan, so a DETERMINISTIC NACA plan is seeded (carrying ``_SEED_SENTINEL``) for the
+    graph to consume. ``mesh_path`` is the wiring fact (present ⇔ the mesh node ran AND quality
+    passed); its absence raises (refusing to claim ``toolRan=True`` without it).
+    """
+    from tools.freecad_driver import FREECAD_AVAILABLE
+    from tools.gmsh_driver import GMSH_AVAILABLE
+
+    outcome = state_projection.analyze_geometry_plan(user_request)
+    if outcome.metrics["geometryFamily"] != "naca_wing" or FREECAD_AVAILABLE or GMSH_AVAILABLE:
+        # Not the triple-dummy regime → no honest tier_0 mesh crossing. Signal the caller to use
+        # the scripted mesh spec (never mislabel a real gmsh mesh / real-kernel geometry tier_0).
+        raise NotImplementedError(
+            "run_mesh_via_graph: mesh is graph-driven only in the triple-dummy regime "
+            "(naca_wing + no FreeCAD + no gmsh); refusing to mislabel a real mesh as tier_0."
+        )
+
+    intake = state_projection.analyze_intake(user_request, existing_case_id=existing_case_id)
+    seed_plan = SimPlan(
+        case_id=intake.case_id,
+        description=_SEED_SENTINEL,
+        geometry=GeometrySpec(kind="naca", parameters={"profile": "NACA0012"}),
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="graph_mesh_") as psd:
+            seed = _seed_state(user_request, run_id, existing_case_id)
+            seed["plan"] = seed_plan
+            seed["project_state_dir"] = psd
+            final_state = build_intake_geometry_mesh_graph().invoke(seed)
+            final_plan = final_state.get("plan")
+            plan_authored_by = (
+                "deterministic_seed"
+                if isinstance(final_plan, SimPlan) and final_plan.description == _SEED_SENTINEL
+                else "architect_llm"
+            )
+            if not final_state.get("mesh_path"):
+                raise RuntimeError(
+                    "architect→geometry→mesh graph produced no mesh_path "
+                    "(mesh node faulted or quality failed)"
+                )
+            return state_projection.graph_mesh_to_stage_state(
+                final_state,
+                user_request,
+                run_id=run_id,
+                plan_authored_by=plan_authored_by,
+                status=status,
+                progress=progress,
+            )
+    except Exception as exc:  # never hard-crash the live pipeline on a graph-runtime hiccup
+        logger.warning("mesh graph runtime failed (%s); falling back to scripted mesh", exc)
+        raise NotImplementedError(
+            f"run_mesh_via_graph: graph runtime error ({exc}); fall back to scripted mesh."
+        ) from exc

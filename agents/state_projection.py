@@ -73,6 +73,7 @@ __all__ = [
     "geometry_stage_state",
     "graph_geometry_to_stage_state",
     "graph_intake_to_stage_state",
+    "graph_mesh_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
@@ -1167,6 +1168,8 @@ def geometry_stage_state(
 # deterministic_agent → N/13 unchanged.
 
 _GRAPH_GEOM_RUNNER_TAG = "langgraph-architect-geometry"
+_GRAPH_MESH_RUNNER_TAG = "langgraph-architect-geometry-mesh"
+_MESH_CURRENT_OBJECT = "mesh_model"
 
 
 def graph_geometry_to_stage_state(
@@ -1258,6 +1261,113 @@ def graph_geometry_to_stage_state(
         artifacts=StageArtifacts(),  # the dummy STEP lived under the temp dir; nothing real
         agent_explanation=explanation,
         next_action=outcome.next_action,
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+        updated_at=_now_iso(),
+    )
+
+
+def graph_mesh_to_stage_state(
+    final_sim_state: Mapping[str, object],
+    user_request: str,
+    *,
+    run_id: str,
+    plan_authored_by: str,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project a 3-node ``architect→geometry→mesh`` graph's final SimState into MESH_GENERATION.
+
+    ``final_sim_state`` is the accumulated state from
+    :func:`agents.graph_runner.run_mesh_via_graph` (the mesh node already executed inside the
+    graph, consuming the geometry node's ``geometry_path`` — the second cross-node data
+    dependency). ``plan_authored_by`` is ``"deterministic_seed"`` (keyless — a NACA plan was
+    seeded) or ``"architect_llm"`` (the LLM architect node authored the plan that flowed
+    architect→geometry→mesh).
+
+    THE ``dummyFidelityInputs=True`` GUARD (ADR-029 P2 — the load-bearing primitive): the mesh
+    node ran ``check_mesh_quality``, which IS a real numpy measurement (scaled Jacobian /
+    aspect ratio) — but over a hardcoded 4-node/1-tet C3D4 *fallback* mesh of DUMMY geometry
+    (no gmsh kernel, upstream a 10-byte placeholder STEP). So the numbers are tautological (a
+    unit tetra trivially passes), NOT validated mesh fidelity. This flag asserts the
+    measurement's inputs were dummy, so the real numpy number can never be presented as a
+    validated mesh. Honesty pins identical to the geometry crossing: ``tier_0_dummy``,
+    ``meshKernelRan=False``, ZERO measurement-shaped keys surfaced (anti-vacuous-pass),
+    provenance stays ``deterministic_agent`` (no 4th value; N/13 rises by exactly 1 because a
+    real node now drives the stage — architecture progress at dummy fidelity, NOT a validation).
+    Refuses to claim ``toolRan=True`` without the ``mesh_path`` wiring fact.
+    """
+    plan = final_sim_state.get("plan")
+    if not isinstance(plan, SimPlan):
+        raise RuntimeError(
+            "graph_mesh_to_stage_state: final SimState carries no SimPlan; the "
+            "architect→geometry→mesh graph did not produce a consumable plan."
+        )
+    mesh_path = final_sim_state.get("mesh_path")
+    tool_ran = bool(mesh_path)
+    if not tool_ran:
+        # The wiring fact is absent → the mesh node did NOT execute (or quality failed). Refuse
+        # to build a SUCCESS stage that hard-claims toolRan=True (mirrors the P-geomrun guard).
+        raise RuntimeError(
+            "architect→geometry→mesh graph returned no mesh_path; refusing to claim toolRan=True."
+        )
+
+    case_id = plan.case_id
+    outcome = analyze_geometry_plan(user_request)  # reuse family / refSource / fromHint
+    family = outcome.metrics["geometryFamily"]
+
+    authored = (
+        (
+            "本阶段 SimPlan 由 LLM architect 节点产出，经图状态传递给 geometry→mesh 节点链消费"
+            "（真实 architect→geometry→mesh 作者依赖）。"
+        )
+        if plan_authored_by == "architect_llm"
+        else (
+            "本阶段 SimPlan 由确定性规则代理（analyze_intake + 固定 NACA 几何 spec）构造并 seed "
+            "进图状态；keyless 的 LLM architect 节点未产出 plan（pass-through）。"
+        )
+    )
+    disclosure = (
+        "3-node 图 architect→geometry→mesh 经真实 LangGraph 运行时（compiled graph .invoke）执行；"
+        "mesh 节点从共享图状态消费 geometry_path（第二个跨节点图数据依赖）。"
+        f"{authored}"
+        "但未检测到 gmsh 内核（GMSH_AVAILABLE=False，meshKernelRan=False），generate_mesh 仅写出"
+        "硬编码 4-node/1-tet C3D4 占位网格（generation_mode=fallback），其上游是 10 字节占位 STEP"
+        "（非 ISO-10303）。check_mesh_quality 虽是真实 numpy 测量"
+        "（scaled Jacobian / aspect ratio），"
+        "但作用于该 dummy 几何派生的单一单位四面体——数值系 tautological（单位四面体必然过阈），"
+        "非真实网格保真度（dummyFidelityInputs=True）；故不 surface 任何测量形态的网格指标"
+        "（min_scaled_jacobian / max_aspect_ratio / bad_element 一律抑制，anti-vacuous-pass）。"
+        "未验证任何真实网格（tier_0_dummy）。"
+        f"案例号 {case_id} 经图状态由 intake→geometry 流入 mesh。"
+        "唯一净增事实 = 真实 mesh 节点经 3-node 图驱动 MESH_GENERATION（N/13 +1），保真度为 dummy。"
+    )
+    explanation = f"网格节点 dummy 执行（{family}，3-node 图驱动）。{disclosure}"
+    metrics: dict[str, object] = {
+        "geometryFamily": family,
+        "caseId": case_id,
+        "meshKernelRan": False,
+        # ADR-029 P2 — the load-bearing honesty guard: real numpy measurement, dummy inputs.
+        "dummyFidelityInputs": True,
+        # ADR-029 architecture-wiring facts (NOT FEA measurements, NOT a provenance flip):
+        "graphNodeRan": True,
+        "graphRunner": _GRAPH_MESH_RUNNER_TAG,
+        "planAuthoredBy": plan_authored_by,
+    }
+    metrics.update(fidelity_metrics(tool_ran=tool_ran, data_real=False, disclosure=disclosure))
+    return StageState(
+        run_id=run_id,
+        stage=WorkflowStage.MESH_GENERATION,
+        status=status,
+        progress=progress,
+        current_object=_MESH_CURRENT_OBJECT,
+        description=f"网格节点 dummy 执行（{family}，3-node 图驱动）",
+        metrics=StageMetrics.model_validate(metrics),
+        artifacts=StageArtifacts(),  # the dummy fallback mesh lived under the temp dir
+        agent_explanation=explanation,
+        # Point to the genuine next stage (mesh_quality_check), NOT geometry-planning's
+        # "进入材料赋予" — reusing analyze_geometry_plan's next_action here would misdirect the
+        # user past the mesh quality gate (Codex P2 R0 P3).
+        next_action="进入网格质量检查（mesh_quality_check）。",
         provenance=StageProvenance.DETERMINISTIC_AGENT,
         updated_at=_now_iso(),
     )

@@ -128,13 +128,18 @@ def test_architect_authored_plan_flows_to_geometry(monkeypatch) -> None:
 
 
 def test_n13_unchanged_geometry_graph(monkeypatch) -> None:
+    # ISOLATE geometry's N-neutrality from ADR-029 P2: the same flag also enables the mesh
+    # crossing, which legitimately adds +1 (scripted_demo → deterministic_agent at tier_0_dummy,
+    # asserted in test_graph_mesh_wiring). Hold a gmsh kernel "present" so run_mesh_via_graph
+    # refuses (→ scripted), keeping this test measuring GEOMETRY's effect alone (still == 6).
     monkeypatch.setattr("tools.freecad_driver.FREECAD_AVAILABLE", False)
+    monkeypatch.setattr("tools.gmsh_driver.GMSH_AVAILABLE", True)
     monkeypatch.setattr(architect_mod, "_extract_structured_data", lambda **kw: None)
     off = MockWorkflowStore().run_sync(user_request=_NACA)
     monkeypatch.setattr(settings, "workflow_graph_intake", True)
     on = MockWorkflowStore().run_sync(user_request=_NACA)
 
-    assert _agent_driven(off) == _agent_driven(on) == 6  # wiring != coverage inflation
+    assert _agent_driven(off) == _agent_driven(on) == 6  # geometry wiring != coverage inflation
     assert _geom(off).provenance is StageProvenance.DETERMINISTIC_AGENT
     assert _geom(on).provenance is StageProvenance.DETERMINISTIC_AGENT
     # flag-on geometry carries the 2-node graph fact; flag-off (P-geomrun direct path) does not

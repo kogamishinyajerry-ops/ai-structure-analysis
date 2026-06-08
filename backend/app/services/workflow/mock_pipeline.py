@@ -66,6 +66,19 @@ _AGENT_REQUEST_STAGES = frozenset(
     }
 )
 
+# Stages driven through the REAL LangGraph compiled-graph runtime when the flag is on (ADR-029).
+# PROJECT_INTAKE (P0) + GEOMETRY_VALIDATION (P1) overlap _AGENT_REQUEST_STAGES (they also have a
+# non-graph run_node path); MESH_GENERATION (P2) is graph-ONLY — run_node cannot build a
+# tool-bound mesh stage, and run_mesh_via_graph raises NotImplementedError outside the
+# triple-dummy regime, so it falls through to the scripted mesh spec (never mislabel a real mesh).
+_GRAPH_REQUEST_STAGES = frozenset(
+    {
+        WorkflowStage.PROJECT_INTAKE,
+        WorkflowStage.GEOMETRY_VALIDATION,
+        WorkflowStage.MESH_GENERATION,
+    }
+)
+
 # Default wall-clock per progress tick (3 ticks/stage). Small so a full run is
 # ~6-9s — watchable but not slow. Tests use run_sync (no sleeps).
 DEFAULT_TICK_DELAY_S = 0.45
@@ -406,42 +419,33 @@ def _build_stage_state(
     user_request: str | None = None,
     upstream_case_id: str | None = None,
 ) -> StageState:
-    # ADR-028 (D4 facade seam): route the genuinely agent-driven stages through the
-    # real agent nodes when there is genuine user input to analyze and we are on the
-    # mock-demo specs path. Wired today: PROJECT_INTAKE (rule-based intake, P1); the
-    # three setup-planner stages MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES
-    # (deterministic analyze_setup, P-setup); and GEOMETRY_VALIDATION (deterministic
-    # geometry PLANNER, P-geomplan — planning only, no CAD kernel / STEP / defect check,
-    # so it replaces the scripted spec's fabricated shortEdges/slivers metrics here).
-    # Delegation goes through the ADR-015 choke
-    # point backend/app/workbench/agent_facade.py. Guards keeping this surgical + honest:
+    # ADR-028 (D4 facade seam): route the genuinely agent-driven stages through the real agent
+    # nodes when there is genuine user input to analyze and we are on the mock-demo specs path.
+    # Guards keeping this surgical + honest (shared by both the graph and run_node paths below):
     #   * error set       → demo failure injection is NOT agent-authored → scripted;
     #   * specs ≠ mock     → the LE10 real-benchmark path stays scripted until later;
     #   * no user_request  → nothing for the agent to analyze → scripted_demo.
-    # Each returned StageState carries provenance=deterministic_agent; every OTHER stage
-    # keeps the default scripted_demo, so wiring these cannot relabel the rest (ADR-028
-    # D2). The tool/artifact-bound stages stay scripted (the facade raises for them).
-    if (
-        stage in _AGENT_REQUEST_STAGES
-        and error is None
-        and specs is STAGE_SPECS
-        and user_request
-        and user_request.strip()
-    ):
-        # ADR-029 P0/P1 (graph-wiring north star): when the flag is on, drive the graph-wired
-        # stages through the REAL LangGraph compiled-graph runtime instead of a direct
-        # node.run() call — PROJECT_INTAKE via a truncated architect-only graph (P0), and
-        # GEOMETRY_VALIDATION via a truncated architect→geometry graph (P1, the first cross-node
-        # graph data dependency). Flag-gated (default off) so the contract suite is
-        # byte-identical; lazy facade import keeps this module free of any agents.* import
-        # (ADR-015 line-57 pin). Each returns an already-projected StageState whose provenance
-        # is unchanged, so N/13 is identical.
-        if (
-            stage in (WorkflowStage.PROJECT_INTAKE, WorkflowStage.GEOMETRY_VALIDATION)
-            and settings.workflow_graph_intake
-        ):
-            from app.workbench.agent_facade import run_node_via_graph as _run_graph_node
+    # Delegation goes through the ADR-015 choke point backend/app/workbench/agent_facade.py;
+    # every OTHER stage keeps the default scripted_demo (the facade raises for tool-bound stages).
+    _agent_inputs_ready = (
+        error is None and specs is STAGE_SPECS and bool(user_request and user_request.strip())
+    )
 
+    # ADR-029 P0/P1/P2 (graph-wiring north star): when the flag is on, drive the graph-wired
+    # stages through the REAL LangGraph compiled-graph runtime instead of a direct node.run()
+    # call — PROJECT_INTAKE via a truncated architect-only graph (P0), GEOMETRY_VALIDATION via a
+    # truncated architect→geometry graph (P1), and MESH_GENERATION via a truncated
+    # architect→geometry→mesh graph (P2, the second cross-node data dependency). Flag-gated
+    # (default off) so the contract suite is byte-identical; lazy facade import keeps this module
+    # free of any agents.* import (ADR-015 line-57 pin). Intake/geometry provenance is unchanged
+    # (already deterministic_agent off-flag), so wiring them does NOT move N/13; MESH_GENERATION
+    # is the one honest increment (scripted_demo → deterministic_agent, tier_0_dummy), N/13 +1.
+    # run_mesh_via_graph raises NotImplementedError outside the triple-dummy regime → the mesh
+    # stage falls through to its scripted spec below (a real mesh is never mislabeled tier_0).
+    if settings.workflow_graph_intake and stage in _GRAPH_REQUEST_STAGES and _agent_inputs_ready:
+        from app.workbench.agent_facade import run_node_via_graph as _run_graph_node
+
+        try:
             return _run_graph_node(
                 stage,
                 run_id=run_id,
@@ -450,13 +454,25 @@ def _build_stage_state(
                 status=status,
                 progress=progress,
             )
+        except NotImplementedError:
+            # ONLY mesh uses NotImplementedError as a "not honestly graph-driven here → fall back
+            # to the scripted spec" signal (outside the triple-dummy regime). For intake/geometry
+            # a NotImplementedError is never expected, so re-raise it rather than silently
+            # downgrade to the direct path (Codex P2 R0 P3).
+            if stage is not WorkflowStage.MESH_GENERATION:
+                raise
+            # mesh outside the triple-dummy regime → use the scripted mesh spec below
 
+    # Non-graph facade path (P1/P-setup/P-geomplan): PROJECT_INTAKE (rule-based intake); the three
+    # setup-planner stages MATERIAL_ASSIGNMENT / BOUNDARY_CONDITIONS / LOAD_CASES (deterministic
+    # analyze_setup); and GEOMETRY_VALIDATION (deterministic geometry PLANNER — no CAD kernel /
+    # STEP / defect check). P-handoff forwards the upstream PROJECT_INTAKE case id (a plain wire
+    # string read back from the already-projected intake stage — NO agents.* import here, ADR-015
+    # line-57 pin); only the GEOMETRY_VALIDATION crossing path consumes it. Each returned
+    # StageState carries provenance=deterministic_agent.
+    if stage in _AGENT_REQUEST_STAGES and _agent_inputs_ready:
         from app.workbench.agent_facade import run_node as _run_agent_node
 
-        # ADR-028 P-handoff: forward the upstream PROJECT_INTAKE case id (a plain wire string
-        # read back from the already-projected intake stage — NO agents.* import here, ADR-015
-        # line-57 pin). Only the GEOMETRY_VALIDATION crossing path consumes it; intake itself
-        # sees None (its stage is still PENDING when it is built) and the setup stages ignore it.
         return _run_agent_node(
             stage,
             run_id=run_id,
