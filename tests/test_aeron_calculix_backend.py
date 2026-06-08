@@ -164,6 +164,25 @@ def test_solve_maps_driver_failure(sample_plan: SimPlan, tmp_path: Path, mesh_in
     assert outcome.raw_outputs["dat"] == case.case_dir / "solve.dat"
 
 
+def test_failure_status_code_deck_parse_is_solver_error_not_diverged() -> None:
+    """Regression (ADR-029 P3 OR-1): only a genuine SOLVER_CONVERGENCE fault maps to DIVERGED. A
+    deck-parse / undefined-set error — now correctly classified SOLVER_SYNTAX by
+    tools.calculix_driver.classify_solver_failure — must map to SOLVER_ERROR, NOT DIVERGED (it is
+    not a numerical divergence). Guards the end-to-end honesty of the classifier→status mapping."""
+    code = CalculiXFEABackend._failure_status_code(
+        {"fault_class": FaultClass.SOLVER_SYNTAX, "returncode": 201}
+    )
+    assert code is SolveStatusCode.SOLVER_ERROR
+    assert code is not SolveStatusCode.DIVERGED
+    # positive control: a real numerical divergence still maps to DIVERGED.
+    assert (
+        CalculiXFEABackend._failure_status_code(
+            {"fault_class": FaultClass.SOLVER_CONVERGENCE, "returncode": 1}
+        )
+        is SolveStatusCode.DIVERGED
+    )
+
+
 def test_solve_maps_preflight_exception(
     sample_plan: SimPlan, tmp_path: Path, mesh_input: Path
 ) -> None:

@@ -27,6 +27,19 @@ SYNTAX_PATTERNS = (
     "not a valid keyword",
     "syntax error",
     "*error in input",
+    # ccx deck-parse / undefined-set errors emit DIFFERENT wording than "*error in input".
+    # Wording below was observed from real ccx 2.x output (a deck referencing an undefined
+    # node/element set fatal-errors at parse time with "*ERROR reading *SOLID SECTION: element
+    # set Eall has not yet been defined" / "*ERROR in calinput" and exits rc=201). The tests
+    # feed that captured string — they do not run a live solve. Without these patterns the
+    # classification fell
+    # through to the `returncode != 0` catch-all and was mislabeled SOLVER_CONVERGENCE → DIVERGED
+    # — a numerical "divergence" that never happened (the solve never entered the equilibrium
+    # loop). These are deck/input errors, so they belong to SOLVER_SYNTAX → SolveStatusCode.
+    # SOLVER_ERROR, not DIVERGED. (ADR-029 P3 OR-1.)
+    "*error reading",
+    "*error in calinput",
+    "has not yet been defined",
 )
 
 TIMESTEP_PATTERNS = (

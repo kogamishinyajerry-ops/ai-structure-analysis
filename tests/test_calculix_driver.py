@@ -72,6 +72,32 @@ class TestFailureClassification:
             == FaultClass.SOLVER_CONVERGENCE
         )
 
+    def test_deck_parse_undefined_set_is_not_convergence(self):
+        """Regression (ADR-029 P3 OR-1): a ccx deck-parse error from an undefined node/element set
+        (rc=201) must be classified SOLVER_SYNTAX, NOT the SOLVER_CONVERGENCE catch-all — it is a
+        deck/input error, not a numerical divergence (the solve never entered the equilibrium loop).
+        Wording observed from real ccx 2.x output (fed here as a captured string, not a live
+        solve); the previous classifier mislabeled it and the aeron mapping reported DIVERGED."""
+        real_ccx_text = (
+            " *ERROR reading *SOLID SECTION: element set\n"
+            " Eall\n"
+            " has not yet been defined\n"
+            " *ERROR in calinput\n"
+        )
+        fc = classify_solver_failure(real_ccx_text, returncode=201)
+        assert fc is FaultClass.SOLVER_SYNTAX
+        assert fc is not FaultClass.SOLVER_CONVERGENCE  # the bug being regressed
+
+    def test_real_numerical_divergence_still_convergence(self):
+        """The fix must NOT over-reach: a genuine equilibrium-loop divergence (no deck-parse
+        markers) still classifies SOLVER_CONVERGENCE (→ DIVERGED)."""
+        assert (
+            classify_solver_failure(
+                "increment 7: no convergence; solution seems to diverge", returncode=1
+            )
+            is FaultClass.SOLVER_CONVERGENCE
+        )
+
 
 class TestCheckConvergence:
     def test_missing_sta(self, tmp_path):

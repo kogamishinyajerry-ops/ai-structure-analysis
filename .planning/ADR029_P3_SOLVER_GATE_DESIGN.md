@@ -419,12 +419,21 @@ commit), no owner sign-off required first.
 
 ## 8. Open risks (carried, not fixed in P3)
 
-- **OR-1 (driver mislabel):** the dummy-mesh deck error is classified `SOLVER_CONVERGENCE` /
-  `DIVERGED` via the `returncode!=0` catch-all, not the true cause (undefined-set deck-parse).
-  Pre-existing `calculix_driver.py` limitation; **NOT** fixed inline (do not touch the driver in P3).
-  The disclosure neutralizes the honesty impact by stating the catch-all explicitly. Flag as a
-  separate cleanup candidate (improve `SYNTAX_PATTERNS` to match `*error reading` / `*error in
-  calinput`, or add a `PREFLIGHT/DECK` fault class). → candidate background task.
+- **OR-1 (driver mislabel) — RESOLVED 2026-06-08 (separate surgical commit, post-P3):** the
+  `calculix_driver.classify_solver_failure` `SYNTAX_PATTERNS` were extended with the real ccx
+  deck-parse wording (`*error reading` / `*error in calinput` / `has not yet been defined`), so an
+  undefined-set deck error now classifies **`SOLVER_SYNTAX` → `SolveStatusCode.SOLVER_ERROR`**, never
+  `SOLVER_CONVERGENCE` / `DIVERGED`. Verified safe via safe-refactor consumer enumeration (router +
+  reviewer treat SYNTAX and CONVERGENCE identically; the DIVERGED mapping keys only on
+  SOLVER_CONVERGENCE; no existing test feeds these patterns). Regression tests:
+  `test_calculix_driver.test_deck_parse_undefined_set_is_not_convergence` +
+  `test_aeron_calculix_backend.test_failure_status_code_deck_parse_is_solver_error_not_diverged`.
+  **Coupled FOLLOW-UP (flagged, NOT in that commit — per "keep surgical / don't touch the dummy-mesh
+  path"):** the P3 graph-solver disclosure text in `state_projection.graph_solver_to_stage_state` (and
+  the `_ccx_dummy_fault` test fixture's `fault_class=SOLVER_CONVERGENCE`) still describe the OLD
+  catch-all/`solver_convergence` framing — now stale for live runs (a real deck-parse is
+  `solver_syntax`/`SOLVER_ERROR`). Refresh in a follow-up; the disclosure's core point (deck-parse,
+  not numerical divergence, dummy fidelity) remains true and is now better supported.
 - **OR-2 (CONVERGENCE_MONITORING stays scripted):** node→stage map (ADR @94) maps both SOLVER_RUN and
   CONVERGENCE_MONITORING to the solver node, but there is no separate graph node. P3 deliberately
   leaves CONVERGENCE_MONITORING scripted (+1 only, SOLVER_RUN), mirroring P2's MESH_QUALITY_CHECK.
