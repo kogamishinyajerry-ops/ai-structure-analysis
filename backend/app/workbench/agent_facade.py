@@ -6,11 +6,14 @@ This is the **one** file under ``backend/app/workbench/`` permitted to import
 projection lives in the agent layer (:mod:`agents.state_projection`), so the facade
 only ever returns an already-projected :class:`~schemas.workflow_state.StageState`.
 
-ADR-028 P1 scope: :func:`run_node` drives the ``PROJECT_INTAKE`` stage through a real
-agent node — **deterministic** ("rule-based agent") by default, with an explicit,
-**key-gated LLM opt-in** that falls back to deterministic on any failure (so CI stays
-hermetic). The remaining stages are wired in P3 and raise ``NotImplementedError`` until
-then — the facade never silently fabricates agent output for an un-wired stage.
+Scope (ADR-028 + ADR-029): :func:`run_node` drives ``PROJECT_INTAKE`` (a **deterministic**
+"rule-based agent" by default, with an explicit **key-gated LLM opt-in** that falls back to
+deterministic on any failure so CI stays hermetic), the three setup-planner stages
+(material / BC / load), and ``GEOMETRY_VALIDATION``. :func:`run_node_via_graph` drives
+``PROJECT_INTAKE`` / ``GEOMETRY_VALIDATION`` / ``MESH_GENERATION`` / ``SOLVER_RUN`` through the
+real LangGraph compiled-graph runtime (ADR-029 P0–P3). The remaining tool/artifact-bound stages
+(convergence_monitoring / post_processing / result_analysis / report_generation) raise
+``NotImplementedError`` — the facade never silently fabricates agent output for an un-wired stage.
 """
 
 from __future__ import annotations

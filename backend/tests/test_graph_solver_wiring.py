@@ -326,7 +326,7 @@ def test_graph_solver_halts_pipeline_no_fabrication(monkeypatch) -> None:
     # net agent-driven coverage ~ unchanged: solver gained, result_analysis (routing) not reached.
     assert _stage(off, WorkflowStage.RESULT_ANALYSIS).provenance is StageProvenance.DETERMINISTIC_AGENT
     assert _stage(on, WorkflowStage.RESULT_ANALYSIS).status is StageStatus.PENDING
-    assert _agent_driven(on) <= _agent_driven(off)  # NOT a coverage increase (the honest framing)
+    assert _agent_driven(on) == _agent_driven(off)  # net-ZERO: solver +1 cancels result_analysis -1
 
 
 def test_convergence_never_claims_converged_under_graph_solver(monkeypatch) -> None:

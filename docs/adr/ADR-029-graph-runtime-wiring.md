@@ -158,8 +158,8 @@ empirical facts (re-verified this session, incl. a guarded real-ccx test):
 1. The solver node consumes the mesh node's hardcoded **4-node/1-tet C3D4 fallback mesh** (no gmsh
    kernel) and really invokes ccx, which **FAILS by construction** — the dummy mesh defines no
    `Nall/Nfix/Eall` sets, so a ccx-present host fatal-errors at deck parse (**`rc=201`**, classified
-   `solver_convergence` ONLY via the driver's `returncode!=0` catch-all — a known driver limitation,
-   **NOT numerical divergence**), and a ccx-less host `PREFLIGHT_FAIL`s. Either way **no solve occurs**.
+   `solver_syntax` → `SOLVER_ERROR` — a deck-parse/input error, **NOT numerical divergence**; per the
+   OR-1 classifier fix c6ecb3e), and a ccx-less host `PREFLIGHT_FAIL`s. Either way **no solve occurs**.
 2. The wiring fact is the **`solver` history entry** (`any(h['node']=='solver')`) — NOT a tautological
    `fault_class` key (the seed sets it unconditionally), NOT `frd_path` (absent on a faulted solve).
 
