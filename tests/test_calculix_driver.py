@@ -17,6 +17,20 @@ from tools.calculix_driver import (
     run_solve,
 )
 
+# A REAL converged ccx ``.sta`` (copied from golden_samples/GS-003/gs003.sta): the
+# SUMMARY-OF-JOB-INFORMATION header + ONE increment-completion data row. The leading-integer
+# data row is the positive convergence marker `_check_convergence` now requires.
+_REAL_CONVERGED_STA = (
+    "SUMMARY OF JOB INFORMATION\n"
+    "  STEP      INC     ATT  ITRS     TOT TIME     STEP TIME      INC TIME\n"
+    "     1          1     1     1  0.100000E+01  0.100000E+01  0.100000E+01\n"
+)
+# Header but NO data row (an aborted/empty solve) — the false-positive the fix closes.
+_HEADER_ONLY_STA = (
+    "SUMMARY OF JOB INFORMATION\n"
+    "  STEP      INC     ATT  ITRS     TOT TIME     STEP TIME      INC TIME\n"
+)
+
 
 class TestFindCcx:
     def test_found(self):
@@ -108,11 +122,25 @@ class TestCheckConvergence:
         assert _check_convergence(tmp_path, "job") is False
 
     def test_clean_run(self, tmp_path):
-        (tmp_path / "job.sta").write_text(
-            "STEP 1  INC 1  ATT 1  ITCNT 3  CONT ELEM      0\n",
-            encoding="utf-8",
-        )
+        # Real ccx .sta format with a completed-increment data row → converged.
+        (tmp_path / "job.sta").write_text(_REAL_CONVERGED_STA, encoding="utf-8")
         assert _check_convergence(tmp_path, "job") is True
+
+    def test_header_only_sta_is_not_converged(self, tmp_path):
+        """Regression (audit Rank 9): a .sta with the SUMMARY header but NO increment data row
+        (an empty/aborted solve, no error keyword) must NOT report converged — the old
+        absence-of-error-only check falsely returned True here."""
+        (tmp_path / "job.sta").write_text(_HEADER_ONLY_STA, encoding="utf-8")
+        assert _check_convergence(tmp_path, "job") is False
+
+    def test_empty_sta_is_not_converged(self, tmp_path):
+        (tmp_path / "job.sta").write_text("", encoding="utf-8")
+        assert _check_convergence(tmp_path, "job") is False
+
+    def test_garbage_sta_without_error_keyword_is_not_converged(self, tmp_path):
+        """No failure substring AND no data row → still not converged (the bug being regressed)."""
+        (tmp_path / "job.sta").write_text("hello world\nnot a solver file\n", encoding="utf-8")
+        assert _check_convergence(tmp_path, "job") is False
 
 
 class TestRunSolve:
@@ -130,7 +158,7 @@ class TestRunSolve:
         inp.touch()
         (tmp_path / "solve.frd").write_text("FRD DATA", encoding="utf-8")
         (tmp_path / "solve.dat").write_text("DAT DATA", encoding="utf-8")
-        (tmp_path / "solve.sta").write_text("STEP 1 converged\n", encoding="utf-8")
+        (tmp_path / "solve.sta").write_text(_REAL_CONVERGED_STA, encoding="utf-8")
 
         mock_result = MagicMock(returncode=0, stdout="CalculiX finished", stderr="")
 

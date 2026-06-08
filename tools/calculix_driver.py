@@ -62,6 +62,16 @@ CONVERGENCE_PATTERNS = (
     "solution seems to diverge",
 )
 
+# Positive convergence marker. CalculiX writes one increment-summary DATA ROW per completed
+# increment into ``<job>.sta`` — leading whitespace + the STEP/INC integer columns, e.g.
+# ``     1          1     1     1  0.100000E+01 ...`` (see golden_samples/GS-003/gs003.sta). The
+# header line (``  STEP  INC  ATT ...``) starts with letters, not a digit, so it does NOT match;
+# an empty / header-only / aborted .sta has NO data row. Kept permissive (two leading integer
+# columns) so non-*STATIC step types still match while empty/garbage is rejected. Without this
+# positive check, ``_check_convergence`` inferred convergence purely from the ABSENCE of failure
+# substrings, so a clean/empty/garbage .sta falsely reported ``converged=True``.
+STA_INCREMENT_ROW = re.compile(r"^\s+\d+\s+\d+\s", re.MULTILINE)
+
 
 def _find_ccx() -> str | None:
     """Return the absolute path to ``ccx`` if available on PATH."""
@@ -162,10 +172,19 @@ def classify_solver_failure(
 
 
 def _check_convergence(work_dir: Path, jobname: str) -> bool:
-    """Inspect output files to determine whether the solve converged cleanly."""
+    """Inspect output files to determine whether the solve converged cleanly.
+
+    Convergence requires BOTH (a) a POSITIVE completion marker — at least one ccx
+    increment-summary data row in ``<job>.sta`` (:data:`STA_INCREMENT_ROW`) — AND (b) the
+    ABSENCE of any failure substring. The positive marker closes the false-positive where an
+    empty / header-only / garbage ``.sta`` with no error keyword reported ``converged=True``.
+    """
     sta_path = work_dir / f"{jobname}.sta"
     if not sta_path.exists():
         return False
+
+    if not STA_INCREMENT_ROW.search(sta_path.read_text(errors="replace")):
+        return False  # no completed-increment row → the solve did not converge
 
     log_text = _collect_solver_text(work_dir, jobname)
     return classify_solver_failure(log_text, returncode=0) == FaultClass.NONE
