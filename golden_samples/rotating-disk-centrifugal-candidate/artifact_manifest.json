@@ -17,16 +17,16 @@
       "bytes": 5158
     },
     "data/generator.py": {
-      "sha256": "f065c180c8ee7eb09c3a215268fd5a7efa5a5db4bf52cc484f1cebb759605721",
-      "bytes": 12458
+      "sha256": "4c5517c8769dda4830a7027468ec23ff573e923d415a8a30c43c6d42c2ecb4eb",
+      "bytes": 12741
     },
     "data/run_nr48_C3D20/solve.inp": {
       "sha256": "2676432525b6e32b6a68f7104d0fadd2654d38e1b463fc5504cfec664147a71a",
       "bytes": 1911142
     },
     "published_reference.yaml": {
-      "sha256": "b2167dae62e5794a45a01874337ea6a1c658c3cbd8bed0ddc26c88559831a9e3",
-      "bytes": 2431
+      "sha256": "cf4fa95ee9781302b1b0499cff27a64728527092622a7555d474bd6cc4f09669",
+      "bytes": 2993
     }
   },
   "local_only_artifacts_not_sealed": {

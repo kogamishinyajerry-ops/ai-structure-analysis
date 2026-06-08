@@ -63,6 +63,9 @@ NU: float = 0.30          # Poisson ratio
 RHO: float = 7850.0       # density (kg/m^3), steel
 OMEGA: float = 100.0      # angular velocity (rad/s)
 CANONICAL_NR: int = 48    # converged radial/circumferential divisions (headline rung, +0.06%)
+PROFILE_NR: int = 64      # finer rung used for the radial-line profile check; the committed
+                          # convergence_study.json profile_crosscheck data is at nr=64, so the
+                          # documented `--profile` command must solve at this mesh to reproduce it
 TOL_COORD: float = 1e-5
 
 REPO = Path(__file__).resolve().parents[3]
@@ -219,7 +222,7 @@ def solve_one(nr: int, nc: int | None = None, nz: int = 2) -> dict:
         }
 
 
-def profile_check(nr: int = CANONICAL_NR) -> None:
+def profile_check(nr: int = PROFILE_NR) -> None:
     """Compare sigma_theta(r) / sigma_r(r) ALONG THE +x RADIAL LINE to the analytic
     plane-stress field (one radial line at the top surface, not a circumferential or
     through-thickness sweep)."""
@@ -250,7 +253,7 @@ def profile_check(nr: int = CANONICAL_NR) -> None:
 
 def main() -> None:
     if "--profile" in sys.argv:
-        print(f"Rotating disk sigma_theta / sigma_r profile vs Timoshenko (nr={CANONICAL_NR}):")
+        print(f"Rotating disk sigma_theta / sigma_r profile vs Timoshenko (nr={PROFILE_NR}):")
         profile_check()
         return
     ladder = "--ladder" in sys.argv

@@ -35,7 +35,9 @@ Cohort level: the globbed verdict set and the registry's tier_2_validated set
 must match exactly (an admission gate in both directions: a verdict file
 without a registry entry, or a tier-2 registry entry without a verdict file,
 both fail) and may never shrink below the V2-0-era floor of 14
-(13 analytical cross-checks + the NAFEMS LE10 public-benchmark agreement).
+(set when the cohort was 13 analytical cross-checks + the first NAFEMS LE10
+public-benchmark agreement; the cohort has since grown to 16 = 13 analytical
+cross-checks + 3 public-benchmark agreements: NAFEMS LE10/LE11 + rotating-disk).
 
 Honesty note: passing this floor means the *committed evidence* is internally
 consistent and within tolerance.  It is NOT signed validation (ADR-027 G-2)

@@ -35,6 +35,7 @@
     "value_mpa": 65.312,
     "derivation": "rho*omega^2/4 * [(3+nu)*b^2 + (1-nu)*a^2] = 7850*100^2/4 * [3.3*1.0 + 0.7*0.04] = 1.9625e7 * 3.328 = 6.5312e7 Pa"
   },
-  "claim_tier": "tier_2_validated",
-  "claim_boundary": "public_benchmark_agreement; analytical_plane_stress_reference; not_signed_validation"
+  "tier": "tier_1_candidate",
+  "_tier_note": "This published_reference.yaml does not itself drive tier promotion; the case is promoted to tier_2_validated by the overlay in backend/app/services/reporting/_claim_tier.py reading the sibling cross_check_verdict.yaml (verdict=PASS). The case_id is registered in CLAIM_TIER_REGISTRY at baseline tier_1_candidate. (Matches the LE10/LE11 published_reference convention; the prior bare claim_tier:tier_2_validated wrongly implied this record itself confers Tier-2.)",
+  "claim_boundary": "tier2_real_solver_validated; not_signed_validation; public_benchmark_agreement_rotating_disk_timoshenko; centrifugal_body_force_load; plane_stress_3d_elasticity_reference"
 }

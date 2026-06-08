@@ -275,7 +275,7 @@ def _parse_verdict_payload(verdict_path: Path) -> dict | None:
 
     Phase 18-34 verdicts are JSON-style; Phase 34 C hertz-contact is YAML.
     Mirror the Phase 35 B census loader: try ``json`` first (the fast path for
-    the 12 JSON verdicts), fall back to ``yaml`` (the hertz YAML). Never raises
+    the JSON verdicts), fall back to ``yaml`` (the hertz YAML). Never raises
     — any failure (missing / malformed / non-mapping) returns None so a stale
     or absent verdict cannot break import or a request.
     """
@@ -297,7 +297,7 @@ def _parse_verdict_payload(verdict_path: Path) -> dict | None:
 
 def _verdict_is_pass(verdict_path: Path) -> bool:
     """True iff the verdict artifact records a PASS, across both verdict
-    shapes: a top-level ``verdict`` (the 12 JSON verdicts) OR a nested
+    shapes: a top-level ``verdict`` (the JSON verdicts) OR a nested
     ``verdict_outcome.verdict`` (the Phase 34 C hertz-contact YAML)."""
     payload = _parse_verdict_payload(verdict_path)
     if not payload:
