@@ -55,6 +55,27 @@ jobs:
         # the non-GL tests, gives VTK a context for the off-screen renders.
         run: xvfb-run -a pytest tests/ -v --tb=short
 
+      # ADR-028/029 honesty-seam regression gate. The graph-wiring + fidelity-
+      # discriminator tests (the tier_0_dummy / dummyFidelityInputs / anti-vacuous-pass /
+      # FAILED-not-SUCCESS-solver guards on agents/state_projection.py + agents/graph_runner.py
+      # — the product's highest-priority honesty deliverable) live under backend/tests/, which
+      # the root `pytest tests/` (testpaths=["tests"]) deliberately excludes, so they had ZERO
+      # regression protection on `main`. Run ONLY the named honesty-seam subset below — NOT the
+      # whole backend/tests/ dir, which carries a separate, out-of-scope set of pre-existing
+      # API/NL-parser/KB failures. Hermetic: these monkeypatch FreeCAD/gmsh/ccx (no real solver;
+      # backend/pytest.ini's `-m "not requires_solver"` deselects the skipif-ccx leg). Wired into
+      # the existing required `lint-and-test` check — mirrors the FM-04a frontend-gate precedent
+      # below — so an honesty-seam regression now fails `main`.
+      - name: Test — ADR-028/029 honesty-seam (graph-wiring) gate
+        run: |
+          xvfb-run -a pytest \
+            backend/tests/test_graph_intake_wiring.py \
+            backend/tests/test_graph_geometry_wiring.py \
+            backend/tests/test_graph_mesh_wiring.py \
+            backend/tests/test_graph_solver_wiring.py \
+            backend/tests/test_workflow_fidelity_discriminator.py \
+            --tb=short
+
       # --- Frontend gate (vitest + eslint) ---
       # FM-04a: the frontend suite (vitest) and lint (eslint) previously ran
       # in no CI job, so 99 test files + the eslint baseline never gated `main`.
