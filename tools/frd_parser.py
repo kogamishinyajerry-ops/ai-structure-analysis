@@ -35,14 +35,21 @@ def _parse_nodes(lines: list[str], start: int) -> tuple[dict[int, np.ndarray], i
 
 
 def _field_name_from_header(header: str, component_names: list[str]) -> str:
-    normalized = header.upper()
-    if "DISP" in normalized:
+    # Round-2 audit D1: a REAL ccx ``.frd`` 100C header does NOT carry the field name as text —
+    # the field label (DISP/STRESS/…) lives on the ``-4`` line, captured into ``component_names``.
+    # (Only the synthetic test fixtures embed e.g. ``1PDISP`` in the header.) Inspecting the header
+    # ALONE keyed every real displacement field as ``disp`` (component_names[0].lower()), so
+    # ``extract_field_extremes(.., "displacement")`` returned None on every real solve and the
+    # reviewer/viz consumers silently skipped the displacement cross-check. Inspect the header AND
+    # the ``-4`` label so a real solve keys ``displacement``/``stress`` identically to the fixtures.
+    haystack = (header + " " + " ".join(component_names)).upper()
+    if "DISP" in haystack:
         return "displacement"
-    if "STRESS" in normalized:
+    if "STRESS" in haystack:
         return "stress"
-    if "NDTEMP" in normalized or "TEMP" in normalized:
+    if "NDTEMP" in haystack or "TEMP" in haystack:
         return "temperature"
-    if "FORC" in normalized:
+    if "FORC" in haystack:
         return "force"
     return component_names[0].lower() if component_names else "field"
 

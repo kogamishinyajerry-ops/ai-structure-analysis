@@ -1,5 +1,7 @@
 """Tests for tools/frd_parser.py — FRD parsing and field extraction."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -117,3 +119,24 @@ class TestExtractFieldExtremes:
         assert extremes["metric"] == "von_mises"
         assert extremes["max_node"] == 2
         assert extremes["max_magnitude"] > 1.0e6
+
+
+# Round-2 audit D1 regression: a REAL ccx .frd (header carries NO field-name text; the field
+# label is on the -4 line) must key the displacement field as "displacement", not "disp".
+# Before the fix, _field_name_from_header inspected only the 100C header, so a real solve fell
+# through to component_names[0].lower() == "disp" and extract_field_extremes(.., "displacement")
+# returned None — the reviewer/viz consumers then silently skipped the displacement cross-check.
+_REAL_FRD = Path(__file__).resolve().parents[1] / "golden_samples" / "GS-002" / "gs002_result.frd"
+
+
+def test_real_ccx_frd_keys_displacement_not_disp():
+    if not _REAL_FRD.exists():
+        pytest.skip(f"real FRD fixture missing at {_REAL_FRD}")
+    parsed = parse_frd(_REAL_FRD)
+    assert "displacement" in parsed["fields"], (
+        f"real ccx FRD must key 'displacement'; got {sorted(parsed['fields'])}"
+    )
+    assert "disp" not in parsed["fields"]
+    extremes = extract_field_extremes(parsed, "displacement")
+    assert extremes["field"] == "displacement"
+    assert extremes["max_magnitude"] is not None and extremes["max_magnitude"] > 0.0
