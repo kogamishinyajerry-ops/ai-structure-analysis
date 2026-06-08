@@ -110,11 +110,11 @@ _OPT_OUT_ROUTES: tuple[tuple[str, str], ...] = (
     # The route returns the database row regardless of the case_id
     # shape and is not part of the Tier 1 disclaimer trio surface.
     ("GET", "/api/v1/cases/{case_id}"),
-    # NL copilot chat history. Pre-Phase-1.5 frozen surface with a
-    # double-prefix bug (`/api/v1/api/v1/history/{case_id}`). Not a
-    # Tier 1 reviewer-facing route; opt-out documented for the
-    # meta-test enumeration check.
-    ("GET", "/api/v1/api/v1/history/{case_id}"),
+    # NL copilot chat history. NOT a Tier 1 reviewer-facing route; opt-out
+    # documented for the meta-test enumeration check. (The historical
+    # double-prefix bug `/api/v1/api/v1/history/...` was fixed by dropping
+    # nl.py's self-prefix; the route now sits at the correct single prefix.)
+    ("GET", "/api/v1/history/{case_id}"),
     # POST + GET on result-mesh artifact sub-path. The PARENT route
     # `/api/v1/visualize/result-mesh/{case_id}` is in
     # `_KNOWN_CASE_ID_ROUTES`; the artifact sub-route inherits the

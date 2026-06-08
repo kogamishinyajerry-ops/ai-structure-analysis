@@ -11,7 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
-router = APIRouter(prefix="/api/v1", tags=["nlp"])
+# NOTE: do NOT add prefix="/api/v1" here — main.py mounts this router with
+# include_router(nl_router, prefix="/api/v1"). A self-prefix here double-prefixed every
+# route to /api/v1/api/v1/... (404 for the frontend ChatPanel + App.tsx callers, which use
+# the correct single prefix). Every sibling router (frd/visualization/cases/...) uses a
+# RELATIVE prefix and relies on main.py's mount; nl.py now matches them.
+router = APIRouter(tags=["nlp"])
 
 # 初始化解析器
 nl_parser = NLParser()
