@@ -1,30 +1,33 @@
-"""用例库API路由
-"""
-from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any, Optional
-from pathlib import Path
-import json
-from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
+"""用例库API路由"""
 
+import json
+import re
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ...core.config import settings
 from ...db.session import get_db
 from ...services.case_service import get_case_service
-from ...core.config import settings
 
 router = APIRouter(prefix="/cases", tags=["用例库"])
 
 # 黄金样本根目录
 GS_ROOT = settings.gs_root
 
-@router.get("", response_model=List[Dict[str, Any]])
-async def list_cases(
-    project_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_db)
-):
+# Round-2 audit C4 — syntax-validate case_id before interpolating it into GS_ROOT/<case_id>.
+# This is a DOCUMENTED signed-registry opt-out route (it legitimately serves GS-NNN golden
+# samples per test_phase14), so it does NOT refuse ^GS-\d{3}$ — only malformed/traversal ids.
+_CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+@router.get("", response_model=list[dict[str, Any]])
+async def list_cases(project_id: int | None = None, db: AsyncSession = Depends(get_db)):
     """获取所有可用的用例 (from DB, optionally filtered by project)"""
     case_svc = get_case_service()
     db_cases = await case_svc.list_cases(db, project_id=project_id)
-    
+
     return [
         {
             "id": c.id,
@@ -32,26 +35,29 @@ async def list_cases(
             "description": f"Structural Analysis Case - {c.structure_type}",
             "type": "Mechanical",
             "structure": c.structure_type,
-            "frd_path": c.frd_path
+            "frd_path": c.frd_path,
         }
         for c in db_cases
     ]
 
-@router.get("/{case_id}", response_model=Dict[str, Any])
+
+@router.get("/{case_id}", response_model=dict[str, Any])
 async def get_case_details(case_id: str, db: AsyncSession = Depends(get_db)):
     """获取特定用例的详细信息 (from DB context)"""
+    if not _CASE_ID_RE.fullmatch(case_id):
+        raise HTTPException(status_code=400, detail="malformed case_id")
     case_svc = get_case_service()
     c = await case_svc.get_case(db, case_id)
     if not c:
         raise HTTPException(status_code=404, detail=f"用例 {case_id} 不存在")
-    
+
     # 尽可能加载原始的 expected_results.json 作为详情补充
     metadata_path = GS_ROOT / case_id / "expected_results.json"
     if metadata_path.exists():
         try:
-            with open(metadata_path, 'r', encoding='utf-8') as f:
+            with open(metadata_path, encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-            
+
     return {"case_id": c.id, "case_name": c.name}

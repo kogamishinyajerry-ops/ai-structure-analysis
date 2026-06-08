@@ -1,14 +1,17 @@
+import asyncio
+import re
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from pathlib import Path
-from typing import Optional, List
-import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...core.config import settings
 from ...db.session import get_db
 from ...models.persistence import SimulationJob
-from ...services.solver import get_solver_service
 from ...services.analysis_service import get_analysis_service
+from ...services.solver import get_solver_service
+
 # FM-04a Phase 20 A — close the Phase 19 E load-bearing finding:
 # RunRequest.material_id was declared in Phase 18 E (round 3 honesty
 # fix) but never consumed by the service layer. Both the FEA and UX
@@ -16,19 +19,28 @@ from ...services.analysis_service import get_analysis_service
 # performs the file-system compose step (no ccx subprocess) so the
 # (potentially) 30 s ccx invocation remains in the background.
 from ...services.tier2_pipeline import (
-    compose_material_id_inp,
     Tier2PipelineError,
+    compose_material_id_inp,
 )
-from ...core.config import settings
-from ._signed_registry_refusal import assert_not_signed_registry
+from ._signed_registry_refusal import (
+    SIGNED_REGISTRY_RE,
+    assert_not_signed_registry,
+    signed_registry_refusal_detail,
+)
 
+# Round-2 audit C2 — solver-run was the lone exception to the codebase-wide case_id
+# invariant (~16 sibling routes validate this shape + refuse signed-registry). The case_id
+# is interpolated into gs_root/<case_id> by the legacy + modal/buckling branches with no
+# syntax check, so a malformed/traversal id reached the filesystem unguarded.
+_CASE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 router = APIRouter(prefix="/solver", tags=["求解控制"])
 
+
 class RunRequest(BaseModel):
     case_id: str
-    inp_path: Optional[str] = None
-    analysis_type: str = "static" # static, modal, buckling
+    inp_path: str | None = None
+    analysis_type: str = "static"  # static, modal, buckling
     num_modes: int = 5
     # FM-04a Phase 18 E (round 3 honesty fix) — declare the field
     # the frontend already sends so Pydantic stops silently dropping
@@ -38,7 +50,8 @@ class RunRequest(BaseModel):
     # (UX_round3.md + FEA_round3.md both flagged the previous
     # frontend-only state as a false claim). Default None preserves
     # back-compat for every pre-Phase-18 caller.
-    material_id: Optional[str] = None
+    material_id: str | None = None
+
 
 class JobResponse(BaseModel):
     job_id: str
@@ -48,12 +61,20 @@ class JobResponse(BaseModel):
     # used. When material_id was supplied, this carries the resolved
     # citation string (e.g., "EN 10025-2:2019 §7.3"). When the legacy
     # path was taken, the field stays None for back-compat.
-    material_reference: Optional[str] = None
+    material_reference: str | None = None
+
 
 @router.post("/run", response_model=JobResponse)
 async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db)):
     """启动仿真计算并记录到DB"""
-    material_reference: Optional[str] = None
+    # Round-2 audit C2 — validate case_id syntax + refuse signed-registry on EVERY branch
+    # (the material branch already refused; the legacy + modal/buckling branches did not).
+    # solver-run is a mutating route that WRITES ccx outputs into gs_root/<case_id>, so a
+    # ^GS-\d{3}$ id must be refused (ADR-011 §HF1.7a, golden samples read-only).
+    if not _CASE_ID_RE.fullmatch(request.case_id):
+        raise HTTPException(status_code=400, detail="malformed case_id")
+    assert_not_signed_registry(request.case_id, "solver-run")
+    material_reference: str | None = None
     if request.analysis_type == "static":
         # FM-04a Phase 20 A — material_id branch.
         # When the UI supplies a material_id (and does NOT pre-pin an
@@ -82,12 +103,10 @@ async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db
                 )
             jobname = request.case_id.replace("-", "").lower()
             try:
-                composed_inp_path, _material, material_reference = (
-                    compose_material_id_inp(
-                        case_dir,
-                        jobname=jobname,
-                        material_id=request.material_id,
-                    )
+                composed_inp_path, _material, material_reference = compose_material_id_inp(
+                    case_dir,
+                    jobname=jobname,
+                    material_id=request.material_id,
                 )
             except Tier2PipelineError as exc:
                 # 422 (not 500) per Phase 20 A anti-gaming A:-2:
@@ -106,12 +125,30 @@ async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db
         else:
             if request.inp_path:
                 inp_file = Path(request.inp_path)
+                # Round-2 audit C1 (Codex R0 P1) — a client-supplied inp_path bypasses the
+                # case_id guard; ccx runs with cwd=inp_file.parent (the LEXICAL, unresolved
+                # path) and WRITES outputs there. Refuse if EITHER the lexical parts (the dir
+                # ccx actually writes into) OR the resolved parts (catches `..` normalization
+                # into a sealed dir) contain a signed-registry GS-NNN segment, so a crafted
+                # inp_path cannot corrupt sealed reproducibility evidence (ADR-011 §HF1.7a).
+                if any(
+                    SIGNED_REGISTRY_RE.fullmatch(part)
+                    for part in (*inp_file.parts, *inp_file.resolve().parts)
+                ):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=signed_registry_refusal_detail("solver-run inp_path"),
+                    )
             else:
                 inp_file = settings.gs_root / request.case_id / f"{request.case_id.lower()}.inp"
 
             if not inp_file.exists():
                 # 兼容性处理
-                inp_file = settings.gs_root / request.case_id / f"{request.case_id.replace('-','').lower()}.inp"
+                inp_file = (
+                    settings.gs_root
+                    / request.case_id
+                    / f"{request.case_id.replace('-', '').lower()}.inp"
+                )
 
             if not inp_file.exists():
                 raise HTTPException(status_code=404, detail=f"找不到输入文件: {inp_file}")
@@ -122,9 +159,7 @@ async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db
         # 模态 或 屈曲
         analysis_svc = get_analysis_service()
         job_id = await analysis_svc.run_advanced_analysis(
-            request.case_id,
-            request.analysis_type,
-            request.num_modes
+            request.case_id, request.analysis_type, request.num_modes
         )
 
     # 记录到数据库
@@ -132,7 +167,7 @@ async def run_calculation(request: RunRequest, db: AsyncSession = Depends(get_db
         case_id=request.case_id,
         job_id=job_id,
         run_type=request.analysis_type.upper(),
-        status="RUNNING"
+        status="RUNNING",
     )
     db.add(new_job)
     await db.commit()
@@ -154,36 +189,37 @@ async def get_status(job_id: str):
         raise HTTPException(status_code=404, detail="未找到任务")
     return status
 
+
 @router.websocket("/ws/logs/{job_id}")
 async def websocket_logs(websocket: WebSocket, job_id: str):
     """通过 WebSocket 实时推送日志 (Event-Driven)"""
     await websocket.accept()
     solver = get_solver_service()
     job = solver.jobs.get(job_id)
-    
+
     if not job:
         await websocket.send_text("Error: Job not found")
         await websocket.close()
         return
-        
+
     # 创建并注册订阅队列
     queue = asyncio.Queue()
     job.queues.add(queue)
-    
+
     # 先推送已有的历史日志
     for log in job.logs:
         await websocket.send_text(log)
-        
+
     try:
         while True:
             # 阻塞等待新日志
             log = await queue.get()
             await websocket.send_text(log)
-            
+
             # 检查任务是否结束 (通过查看日志中的完成标志)
             if "--- Process Finished" in log or "[SYSTEM] Job terminated" in log:
                 break
-                
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -195,6 +231,7 @@ async def websocket_logs(websocket: WebSocket, job_id: str):
         # 清理队列订阅
         if job and queue in job.queues:
             job.queues.remove(queue)
+
 
 @router.post("/stop/{job_id}")
 async def stop_job(job_id: str):
