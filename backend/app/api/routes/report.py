@@ -1,5 +1,7 @@
 """报告生成API路由
 """
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from typing import Optional
 from pydantic import BaseModel
