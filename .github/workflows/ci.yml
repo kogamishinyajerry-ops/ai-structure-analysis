@@ -73,6 +73,7 @@ jobs:
             backend/tests/test_graph_geometry_wiring.py \
             backend/tests/test_graph_mesh_wiring.py \
             backend/tests/test_graph_solver_wiring.py \
+            backend/tests/test_graph_both_flags_wiring.py \
             backend/tests/test_workflow_fidelity_discriminator.py \
             --tb=short
 
