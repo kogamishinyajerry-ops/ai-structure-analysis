@@ -428,12 +428,19 @@ commit), no owner sign-off required first.
   SOLVER_CONVERGENCE; no existing test feeds these patterns). Regression tests:
   `test_calculix_driver.test_deck_parse_undefined_set_is_not_convergence` +
   `test_aeron_calculix_backend.test_failure_status_code_deck_parse_is_solver_error_not_diverged`.
-  **Coupled FOLLOW-UP (flagged, NOT in that commit — per "keep surgical / don't touch the dummy-mesh
-  path"):** the P3 graph-solver disclosure text in `state_projection.graph_solver_to_stage_state` (and
-  the `_ccx_dummy_fault` test fixture's `fault_class=SOLVER_CONVERGENCE`) still describe the OLD
-  catch-all/`solver_convergence` framing — now stale for live runs (a real deck-parse is
-  `solver_syntax`/`SOLVER_ERROR`). Refresh in a follow-up; the disclosure's core point (deck-parse,
-  not numerical divergence, dummy fidelity) remains true and is now better supported.
+  **Coupled FOLLOW-UP — DONE (separate commit, post-c6ecb3e):** because the dummy deck's undefined-set
+  parse error now classifies `solver_syntax` (not `solver_convergence` via the old catch-all), the P3
+  graph-solver disclosure made a now-FALSE claim about the driver's classification. Propagated the
+  reclassification through every live spot: `state_projection.graph_solver_to_stage_state` (docstring +
+  zh/en disclosure prose + the hard-set `StageError.fault_class` SOLVER_CONVERGENCE→SOLVER_SYNTAX +
+  detail), `config.py` workflow_graph_solver comment, `docs/adr/ADR-029` "what landed" line, and the
+  `test_graph_solver_wiring.py` `_ccx_dummy_fault` fixture (fault_class + realistic "has not yet been
+  defined" wording) + `test_disclosure_states_true_fault_cause_not_diverged` (now asserts `solver_syntax`
+  named, `catch-all` GONE). The disclosure's core point (deck-parse, NOT numerical divergence, dummy
+  fidelity) is unchanged and now accurately sourced. The historical design-draft fence above (§ with the
+  pre-correction WARNING wording) is left as a dated record, not rewritten. Possible future robustness
+  (NOT done — out of scope): have the projector READ `solver_entries[-1]['fault_class']` instead of
+  hard-coding the known dummy-deck outcome, so it can never drift if the classifier changes again.
 - **OR-2 (CONVERGENCE_MONITORING stays scripted):** node→stage map (ADR @94) maps both SOLVER_RUN and
   CONVERGENCE_MONITORING to the solver node, but there is no separate graph node. P3 deliberately
   leaves CONVERGENCE_MONITORING scripted (+1 only, SOLVER_RUN), mirroring P2's MESH_QUALITY_CHECK.

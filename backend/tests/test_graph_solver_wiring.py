@@ -13,7 +13,8 @@ THE HONESTY ENVELOPE these tests pin:
 * the solve is a FAILURE — projected ``status=FAILED`` (never a green SUCCESS), ``tier_0_dummy`` with
   ``dummyFidelityInputs=True``, ``solverAttempted=True`` + ``solverRan=False``, NO measurement-shaped
   key surfaced (anti-vacuous-pass), and the disclosure states the TRUE cause (deck-parse/preflight,
-  NOT numerical divergence) + the driver catch-all mislabel;
+  NOT numerical divergence) + the driver's solver_syntax classification (deck-parse/input error ->
+  SOLVER_ERROR; per the OR-1 classifier fix c6ecb3e);
 * the WIRING FACT is the ``solver`` history entry — NOT a tautological ``fault_class`` key, NOT
   ``frd_path`` (absent on a faulted solve); no solver history → falls back to scripted;
 * provenance stays ``deterministic_agent`` (no 4th value), but the pipeline HALTS at the faulted
@@ -66,14 +67,18 @@ def _ccx_dummy_fault(monkeypatch) -> dict:
 
     def _fake_run(state):
         calls["count"] += 1
+        # rc=201 deck-parse on the undefined-set dummy deck → SOLVER_SYNTAX post-OR-1 (c6ecb3e):
+        # the real ccx wording "...has not yet been defined" now matches SYNTAX_PATTERNS, so this
+        # fake mirrors the live classification (was SOLVER_CONVERGENCE under the old catch-all).
+        # The trailing "****" banner is retained to exercise the disclosure's banner-suppression.
         return {
-            "fault_class": FaultClass.SOLVER_CONVERGENCE,
+            "fault_class": FaultClass.SOLVER_SYNTAX,
             "retry_budgets": {"solver": 1},
             "history": [
                 {
                     "node": "solver",
-                    "fault_class": FaultClass.SOLVER_CONVERGENCE.value,
-                    "msg": "*ERROR reading *ELSET: Eall is not defined\n****",
+                    "fault_class": FaultClass.SOLVER_SYNTAX.value,
+                    "msg": "*ERROR reading *SOLID SECTION: element set Eall has not yet been defined\n****",
                     "ccx_version": "2.23",
                     "returncode": 201,
                     "wall_time_s": 0.31,
@@ -150,7 +155,7 @@ def test_keyless_solver_is_tier0_dummy_failed_with_guard(monkeypatch) -> None:
     for k in _SOLVER_MEASUREMENT_KEYS:
         assert k not in m  # anti-vacuous-pass: no result-shaped solver metric surfaced
     assert st.artifacts.model_dump(exclude_none=True) == {}  # nothing real persisted
-    assert st.errors and st.errors[0].fault_class is FaultClass.SOLVER_CONVERGENCE
+    assert st.errors and st.errors[0].fault_class is FaultClass.SOLVER_SYNTAX
 
 
 def test_faulted_solve_is_failed_not_success(monkeypatch) -> None:
@@ -164,9 +169,9 @@ def test_faulted_solve_is_failed_not_success(monkeypatch) -> None:
 
 
 def test_disclosure_states_true_fault_cause_not_diverged(monkeypatch) -> None:
-    """The disclosure states the TRUE cause (undefined sets / deck parse / preflight) and flags the
-    driver's returncode!=0 catch-all — it must NOT assert numerical divergence, and must NOT echo
-    the solver banner (the ccx '****' asterisks)."""
+    """The disclosure states the TRUE cause (undefined sets / deck parse / preflight) and names the
+    driver's solver_syntax classification (deck-parse/input error → SOLVER_ERROR; post-OR-1) — it
+    must NOT assert numerical divergence, and must NOT echo the solver banner (ccx '****')."""
     _triple_dummy(monkeypatch)
     _ccx_dummy_fault(monkeypatch)
     monkeypatch.setattr(architect_mod, "_extract_structured_data", lambda **kw: None)
@@ -176,7 +181,9 @@ def test_disclosure_states_true_fault_cause_not_diverged(monkeypatch) -> None:
     assert "ccx" in expl
     assert "Nall/Nfix/Eall" in expl or "未定义" in expl  # the real cause
     assert "rc=201" in expl  # the genuine returncode (read as an int, not the banner)
-    assert "兜底" in expl or "catch-all" in expl  # the driver returncode!=0 catch-all named
+    assert "solver_syntax" in expl.lower()  # the driver's deck-parse/input classification (OR-1)
+    assert "SOLVER_ERROR" in expl  # ...which aeron maps to SOLVER_ERROR, NOT DIVERGED (OR-1)
+    assert "兜底" not in expl and "catch-all" not in expl  # the catch-all mislabel is GONE post-OR-1
     assert "非真实数值发散" in expl or "not numerical divergence" in expl  # NOT divergence
     assert "dummyFidelityInputs" in expl
     assert "tier_0_dummy" in expl  # the disclosure names the tier explicitly

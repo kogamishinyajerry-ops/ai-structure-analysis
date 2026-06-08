@@ -47,3 +47,29 @@ plus an over-reach guard (a genuine divergence still → SOLVER_CONVERGENCE → 
   safe via safe-refactor consumer enumeration") and was left unchanged.
 
 Round cap respected (R0 APPROVE + 1 honesty-wording tightening). Local commit, no push.
+
+---
+
+## Follow-up: disclosure consistency sweep (commit 2) — R0 APPROVE
+
+- **Relay:** `codex-relay-with gpt-5.5` (86gs, xhigh), diff-only static review. Governance trigger:
+  the honesty-seam projector `agents/state_projection.graph_solver_to_stage_state`.
+- **Why:** the dummy fallback deck IS exactly the undefined-set parse error OR-1 reclassified, so the
+  P3 graph-solver disclosure's claim "the driver labels it solver_convergence via the returncode!=0
+  catch-all" became FALSE post-OR-1. Propagated `solver_convergence` → `solver_syntax` (deck-parse/
+  input error → SOLVER_ERROR, not divergence) through every LIVE spot: the projector docstring +
+  zh/en disclosure prose + hard-set `StageError.fault_class` (SOLVER_CONVERGENCE→SOLVER_SYNTAX) +
+  detail; `config.py` flag comment; `docs/adr/ADR-029` "what landed" line; and
+  `test_graph_solver_wiring.py` (`_ccx_dummy_fault` fixture fault_class + realistic "has not yet been
+  defined" msg wording, "****" banner retained; `test_disclosure_states_true_fault_cause_not_diverged`
+  now asserts `solver_syntax` + `SOLVER_ERROR` present, `catch-all`/`兜底` absent).
+- **VERDICT: APPROVE.** Codex confirmed (A) every changed live spot now says solver_syntax →
+  SOLVER_ERROR with no residual catch-all claim; (B) the no-`catch-all` guard is non-vacuous (paired
+  with positive real-cause / rc=201 / solver_syntax / not-divergence checks); (C) hard-coding
+  SOLVER_SYNTAX is honest for this constructed dummy-deck path; (D) leaving the scripted mock_pipeline
+  `fail_at_stage` generic SOLVER_CONVERGENCE injection untouched is correct (different path, no
+  classification claim). **P3 (applied verbatim):** added `assert "SOLVER_ERROR" in expl` to also pin
+  the mapping text. The historical pre-correction design-draft fence in the design doc is left as a
+  dated record (not rewritten).
+
+Round cap respected (R0 APPROVE + 1 verbatim P3). Local commit, no push, flag default-off.

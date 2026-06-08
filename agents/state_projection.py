@@ -1435,8 +1435,8 @@ def graph_solver_to_stage_state(
     HONESTY ENVELOPE — the solve is a FAILURE by construction, projected FAILED (never green):
     the dummy fallback mesh (hardcoded 4-node/1-tet C3D4, no gmsh kernel) defines no
     ``Nall/Nfix/Eall`` sets, so a ccx-present host fatal-errors at deck parse (``rc=201``,
-    classified ``solver_convergence`` ONLY via the driver's ``returncode!=0`` catch-all — a known
-    driver limitation, **NOT** numerical divergence) and a ccx-less host ``PREFLIGHT_FAIL``s.
+    classified ``solver_syntax`` — a deck-parse/input error → ``SOLVER_ERROR``, **NOT** numerical
+    divergence; per the OR-1 classifier fix c6ecb3e) and a ccx-less host ``PREFLIGHT_FAIL``s.
     Either way NO solve occurred. ``dummyFidelityInputs=True`` hard-blocks any Tier-1/2 implication
     even on a (structurally impossible) green solve. Honesty pins identical to the mesh crossing:
     ``tier_0_dummy``, ZERO measurement-shaped keys surfaced (anti-vacuous-pass — see
@@ -1488,14 +1488,14 @@ def graph_solver_to_stage_state(
         launch_clause = "并真实启动 ccx 子进程（dry_run=False，于 tempdir 内隔离、部署即删）"
         fault_clause = (
             f"ccx 返回 rc={returncode}（dummy 网格未定义 Nall/Nfix/Eall 集，deck 解析阶段即致命"
-            "报错；驱动层仅凭 returncode!=0 兜底归类 solver_convergence/DIVERGED——"
-            "已知驱动局限，非真实数值发散）"
+            "报错；驱动层归类 solver_syntax——deck 解析/输入错误，映射 SOLVER_ERROR，"
+            "非真实数值发散）"
         )
         ccx_net_fact = "并真实启动了 ccx 子进程"
         en_fault = (
             "ccx launched and FAILED at deck parse (rc=201; no Nall/Nfix/Eall sets) — NOT "
-            "numerical divergence; the driver labels it solver_convergence only via its "
-            "returncode!=0 catch-all"
+            "numerical divergence; the driver classifies it solver_syntax (a deck-parse/input "
+            "error → SOLVER_ERROR)"
         )
     else:
         launch_clause = (
@@ -1591,7 +1591,7 @@ def graph_solver_to_stage_state(
         ),
         errors=[
             StageError(
-                fault_class=(FaultClass.SOLVER_CONVERGENCE if ccx_launched else FaultClass.UNKNOWN),
+                fault_class=(FaultClass.SOLVER_SYNTAX if ccx_launched else FaultClass.UNKNOWN),
                 message=(
                     "ccx rejected the dummy fallback mesh (no Nall/Nfix/Eall sets)"
                     if ccx_launched
@@ -1601,8 +1601,8 @@ def graph_solver_to_stage_state(
                     "graph-driven tier_0_dummy solve on the hardcoded 4-node/1-tet fallback mesh. "
                     + (
                         "ccx launched and failed at deck parse (rc=201); classified "
-                        "solver_convergence only via the driver's returncode!=0 catch-all "
-                        "(known limitation; not numerical divergence)."
+                        "solver_syntax (deck-parse/input error → SOLVER_ERROR; "
+                        "not numerical divergence)."
                         if ccx_launched
                         else "ccx never launched (preflight failed / unsupported backend / deck "
                         "preparation error); no solve was attempted."

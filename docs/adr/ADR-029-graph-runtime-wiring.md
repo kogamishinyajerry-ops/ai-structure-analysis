@@ -179,7 +179,8 @@ implemented design instead:
   `_solver_syntax_failure`, where the node ran but ccx never launched — Codex R0 P1), **zero**
   measurement keys
   (anti-vacuous-pass, machine-checked against `_SOLVER_MEASUREMENT_KEYS`), empty artifacts, a
-  disclosure stating the TRUE cause (deck-parse/preflight, the catch-all mislabel) authored from
+  disclosure stating the TRUE cause (deck-parse/preflight, classified `solver_syntax` → `SOLVER_ERROR`
+  post-OR-1 c6ecb3e — a deck-parse/input error, not numerical divergence) authored from
   static knowledge (never the ccx banner `****`), and provenance `deterministic_agent` (**no 4th
   value**);
 - **HALTS the pipeline** at the faulted solver (`break`, the physically-correct behavior — a rejected

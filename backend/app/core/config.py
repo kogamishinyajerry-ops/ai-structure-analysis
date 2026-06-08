@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     # real ccx subprocess from the runtime. The solver node consumes the upstream mesh node's dummy
     # fallback mesh (hardcoded 4-node/1-tet C3D4; no gmsh kernel) and really invokes ccx, which
     # FAILS by construction: the dummy mesh defines no Nall/Nfix/Eall sets, so a ccx-present host
-    # fatal-errors at deck parse (rc=201, classified solver_convergence ONLY via the driver's
-    # returncode!=0 catch-all — a known driver limitation, NOT numerical divergence), and a ccx-less
+    # fatal-errors at deck parse (rc=201, classified solver_syntax — a deck-parse/input error ->
+    # SOLVER_ERROR, NOT numerical divergence; per the OR-1 classifier fix c6ecb3e), and a ccx-less
     # host PREFLIGHT_FAILs. Either way NO solve occurs. The stage is therefore projected FAILED (never
     # a green SUCCESS) and the pipeline HALTS there (mirrors the real-LE10 solve-failure break) — so
     # NO downstream convergence=True / stress results / safety factor are ever fabricated from a solve
