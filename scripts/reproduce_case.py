@@ -191,18 +191,83 @@ def _reproduce_le10_real(timeout_s: int) -> dict:
     }
 
 
+def _reproduce_le11_real(timeout_s: int) -> dict:
+    """Fresh real-ccx re-solve of the sealed LE11 thermal-stress deck → re-graded."""
+    import tempfile
+
+    from app.services.workflow import real_le11
+
+    with tempfile.TemporaryDirectory(prefix="reproduce_le11_") as td:
+        solve = real_le11.run_le11_solve(Path(td), timeout_s=timeout_s)
+        frd = solve.get("frd_path")
+        if not frd:
+            raise RuntimeError("LE11 re-solve produced no .frd (incomplete solve)")
+        bench = real_le11.extract_le11_benchmark(Path(solve["deck_path"]), Path(frd))
+    return {
+        "observed_pa": float(bench["sigma_zz_pa"]),
+        "analytical_pa": float(bench["target_pa"]),
+        "residual_pct": float(bench["residual_pct"]),
+        "tolerance_pct": float(bench["tolerance_pct"]),
+        "verdict": bench["verdict"],
+        "node_a": bench["node_a"],
+        "point_a_m": bench["point_a_m"],
+        "sigma_zz_mpa": float(bench["sigma_zz_pa"]) / 1e6,
+        "ccx_version": solve.get("ccx_version"),
+        "converged": solve.get("converged"),
+    }
+
+
+def _reproduce_rotating_disk_real(timeout_s: int) -> dict:
+    """Fresh real-ccx re-solve of the sealed rotating-disk centrifugal deck → re-graded."""
+    import tempfile
+
+    from app.services.workflow import real_rotating_disk
+
+    with tempfile.TemporaryDirectory(prefix="reproduce_rotating_disk_") as td:
+        solve = real_rotating_disk.run_rotating_disk_solve(Path(td), timeout_s=timeout_s)
+        frd = solve.get("frd_path")
+        if not frd:
+            raise RuntimeError("rotating-disk re-solve produced no .frd (incomplete solve)")
+        bench = real_rotating_disk.extract_rotating_disk_benchmark(
+            Path(solve["deck_path"]), Path(frd)
+        )
+    return {
+        "observed_pa": float(bench["sigma_theta_pa"]),
+        "analytical_pa": float(bench["target_pa"]),
+        "residual_pct": float(bench["residual_pct"]),
+        "tolerance_pct": float(bench["tolerance_pct"]),
+        "verdict": bench["verdict"],
+        "node_id": bench["node_id"],
+        "point_m": bench["point_m"],
+        "sigma_theta_mpa": float(bench["sigma_theta_pa"]) / 1e6,
+        "ccx_version": solve.get("ccx_version"),
+        "converged": solve.get("converged"),
+    }
+
+
 # Cases with a registered REAL-solver reproducer (re-run the solver from scratch).
 # Anything not listed reproduces via the ccx-free recompute path.
-_REAL_SOLVERS = {"nafems-le10-thick-plate-candidate": _reproduce_le10_real}
+_REAL_SOLVERS = {
+    "nafems-le10-thick-plate-candidate": _reproduce_le10_real,
+    "nafems-le11-solid-cyl-temperature-candidate": _reproduce_le11_real,
+    "rotating-disk-centrifugal-candidate": _reproduce_rotating_disk_real,
+}
 
 
 def _ccx_available() -> bool:
     """Whether ccx is on PATH (presence only; the exact version is recorded from
-    an actual solve, never fabricated on the recompute path)."""
-    try:
-        from app.services.workflow import real_le10
+    an actual solve, never fabricated on the recompute path).
 
-        return bool(real_le10.le10_available())
+    Deck-agnostic: gates only on the solver being installed, NOT on any one
+    case's deck existing (the old form delegated to ``real_le10.le10_available``,
+    which coupled every real-solve case to the LE10 deck). Each per-case
+    reproducer still raises if ITS own sealed deck is missing, so a missing deck
+    surfaces as a hard error on that case, not a silent recompute fallback.
+    """
+    try:
+        from tools.calculix_driver import _find_ccx
+
+        return _find_ccx() is not None
     except Exception:
         return False
 
@@ -394,8 +459,15 @@ def main(argv: list[str] | None = None) -> int:
     re = record["rederived"]
     print(f"reproduce {args.case_id}  [{kind}]")
     if kind == "real_solve":
+        # Per-case headline-stress key (sigma_yy@D for LE10, sigma_zz@A for LE11,
+        # sigma_theta@bore for the rotating disk); fall back to observed_pa.
+        _headline_keys = ("sigma_yy_mpa", "sigma_zz_mpa", "sigma_theta_mpa")
+        headline_mpa = next(
+            (re[k] for k in _headline_keys if re.get(k) is not None),
+            re["observed_pa"] / 1e6,
+        )
         print(
-            f"  sigma_yy@D = {re.get('sigma_yy_mpa'):+.4f} MPa  resid={re['residual_pct']:+.3f}%"
+            f"  headline stress = {headline_mpa:+.4f} MPa  resid={re['residual_pct']:+.3f}%"
             f"  verdict={re['verdict']}  (ccx {record['ccx']['version']})"
         )
         print(

@@ -36,10 +36,12 @@ import reproduce_case as rc  # noqa: E402
 
 _FIXED_NOW = datetime(2026, 6, 7, 4, 0, 0, tzinfo=UTC)
 _LE10 = "nafems-le10-thick-plate-candidate"
+_LE11 = "nafems-le11-solid-cyl-temperature-candidate"
+_DISK = "rotating-disk-centrifugal-candidate"
 
 _needs_ccx = pytest.mark.skipif(
     not rc._ccx_available(),
-    reason="real LE10 re-solve requires ccx on PATH + the deck",
+    reason="real re-solve requires ccx on PATH",
 )
 
 
@@ -291,6 +293,26 @@ def test_real_solve_reproduces_le10_benchmark() -> None:
     published −5.38 MPa σ_yy@D agreement within drift of the committed value."""
     rec = rc.reproduce_case(
         _LE10, repo_root=REPO_ROOT, do_solve=True, timeout_s=900, now=_FIXED_NOW
+    )
+    assert rec["reproduction_kind"] == "real_solve"
+    assert rec["ccx"]["available"] is True
+    assert rec["ccx"]["version"]  # recorded from the actual solve
+    assert rec["inputs_integrity"]["all_hashes_match"] is True
+    assert rec["rederived"]["verdict"] == "PASS"
+    assert rec["agreement"]["within_drift_tolerance"] is True
+    assert rec["agreement"]["verdict_matches_committed"] is True
+    assert rec["reproduced"] is True
+
+
+@_needs_ccx
+@pytest.mark.parametrize("case_id", [_LE11, _DISK])
+def test_real_solve_reproduces_benchmark(case_id: str) -> None:
+    """With ccx present, a fresh re-solve of each newer sealed public-benchmark
+    deck (LE11 thermal-stress, rotating-disk centrifugal) reproduces its committed
+    headline within drift of the committed value — closing G-2 item 6 so all three
+    tier_2 benchmarks are live-solver re-derivable, not just LE10."""
+    rec = rc.reproduce_case(
+        case_id, repo_root=REPO_ROOT, do_solve=True, timeout_s=900, now=_FIXED_NOW
     )
     assert rec["reproduction_kind"] == "real_solve"
     assert rec["ccx"]["available"] is True
