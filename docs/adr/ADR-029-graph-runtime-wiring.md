@@ -113,9 +113,10 @@ ONLY when its delta actually carried the field a stage projects.
 - **P2:** add mesh (MESH_GENERATION, MESH_QUALITY_CHECK). `check_mesh_quality` is a real numpy
   measurement but of dummy geometry → tier_0_dummy with a new `dummyFidelityInputs=True` guard.
 - **P3 — SOLVER ISOLATION GATE (blocking):** before any solver node runs in the backend:
-  `workflow_graph_solver` flag default-off; an honest "ccx attempted, convergence-failed on dummy
-  mesh" disclosure; `dummyFidelityInputs=True` hard-blocks any Tier-1/2 implication even on a green
-  solve.
+  `workflow_graph_solver` flag default-off; an honest "ccx attempted on the dummy mesh and FAILED at
+  **deck parse** (rc=201; no `Nall/Nfix/Eall` sets) — or **preflight-failed** when ccx is absent;
+  **not numerical divergence**" disclosure; `dummyFidelityInputs=True` hard-blocks any Tier-1/2
+  implication even on a green solve. *(As-landed; see "P3 — what landed".)*
 - **P4 — HUMAN_FALLBACK / NOTION ISOLATION GATE (blocking):** before wiring the full
   `compile_graph()`, inject a no-op/test-double `NotionRunRegistrar` OR a settings flag that disables
   the Notion side-effect for graph-driven runs, plus a checkpointer for `interrupt` resumption.
@@ -146,6 +147,68 @@ ONLY when its delta actually carried the field a stage projects.
 
 ---
 
+## P3 — what landed (additive, flag-off, reversible) — 2026-06-08
+
+**SOLVER ISOLATION GATE closed.** `workflow_graph_solver=False` (default) gates SOLVER_RUN through a
+new truncated `architect→geometry→mesh→solver` compiled graph — **the first graph to launch a real
+`ccx` subprocess from the runtime**. **Open-Question #5 is RESOLVED: attempt a real ccx run** (the
+`hard_skip` alternative carries the identical honesty envelope with zero north-star value). Two
+empirical facts (re-verified this session, incl. a guarded real-ccx test):
+
+1. The solver node consumes the mesh node's hardcoded **4-node/1-tet C3D4 fallback mesh** (no gmsh
+   kernel) and really invokes ccx, which **FAILS by construction** — the dummy mesh defines no
+   `Nall/Nfix/Eall` sets, so a ccx-present host fatal-errors at deck parse (**`rc=201`**, classified
+   `solver_convergence` ONLY via the driver's `returncode!=0` catch-all — a known driver limitation,
+   **NOT numerical divergence**), and a ccx-less host `PREFLIGHT_FAIL`s. Either way **no solve occurs**.
+2. The wiring fact is the **`solver` history entry** (`any(h['node']=='solver')`) — NOT a tautological
+   `fault_class` key (the seed sets it unconditionally), NOT `frd_path` (absent on a faulted solve).
+
+**Honest correction to the synthesized design (documented per the honesty contract, not score-gaming):**
+the design draft (`.planning/ADR029_P3_SOLVER_GATE_DESIGN.md`) projected the faulted solver as
+`status=WARNING` and let the pipeline **continue**, claiming **N/13 +1**. Ground-truthing the actual
+code refuted this: the scripted `CONVERGENCE_MONITORING` spec asserts **`converged=True`** and the
+downstream stages fabricate stress results, so a faulted-solver-then-continue would render an
+internally **contradictory** narrative ("solve rejected → converged → here are your results"). The
+implemented design instead:
+
+- projects SOLVER_RUN **`status=FAILED`** (never green; mirrors the real-LE10 solve-failure
+  projection + Codex M4 R0 P2 "a failed solve is never a plain green success"), `tier_0_dummy` with
+  `dummyFidelityInputs=True`, `solverRan=False`, and `graphNodeRan=True` always — but
+  `ccxSubprocessLaunched`/`solverAttempted` ride **returncode-present** (true only for the
+  `_failed_solve` rc=201 path; **false** for `_preflight_failure`/`_unsupported_backend_failure`/
+  `_solver_syntax_failure`, where the node ran but ccx never launched — Codex R0 P1), **zero**
+  measurement keys
+  (anti-vacuous-pass, machine-checked against `_SOLVER_MEASUREMENT_KEYS`), empty artifacts, a
+  disclosure stating the TRUE cause (deck-parse/preflight, the catch-all mislabel) authored from
+  static knowledge (never the ccx banner `****`), and provenance `deterministic_agent` (**no 4th
+  value**);
+- **HALTS the pipeline** at the faulted solver (`break`, the physically-correct behavior — a rejected
+  deck cannot be convergence-monitored / post-processed), so downstream stays **PENDING** and **no**
+  `converged=True`/results/safety-factor are ever fabricated;
+- consequently **N/13 is ~unchanged (net ≈ 0)**, NOT +1: SOLVER_RUN gains `deterministic_agent`, but
+  the halt means the downstream RESULT_ANALYSIS routing is not reached. **The deliverable is the
+  wiring proof + the honest halt, NOT a coverage increase** (mirrors P-geomrun's framing).
+
+**L2 correctness fix (folded in, verified):** `_build_stage_state` is called ~4×/stage in `_advance`
+(3 `_PROGRESS_TICKS` + terminal), so routing ccx through that per-tick seam would fire ~4 subprocesses
+synchronously on the event loop. The graph-solver therefore runs **once**, off-thread via
+`asyncio.to_thread` in `_advance` (mirroring the real-LE10 `_run_real_le10` convention), via a new
+`MockWorkflowStore._run_graph_solver` helper — never in the per-tick seam. `workflow_real_solver` wins
+when both flags are on (the `not real` predicate suppresses the graph-solver; the LE10 Tier-1 path owns
+SOLVER_RUN). The dropped design claims (a fictitious "60s SolveOptions timeout"; a `self._graph_solver_st`
+cache the M2 path doesn't need since the graph-solver feeds no downstream stage) are noted here.
+
+- **Files:** `backend/app/core/config.py` (`workflow_graph_solver`) · `agents/graph_runner.py`
+  (`build_intake_geometry_mesh_solver_graph` + `run_solver_via_graph`) · `agents/state_projection.py`
+  (`graph_solver_to_stage_state` + `_SOLVER_MEASUREMENT_KEYS`) · `backend/app/workbench/agent_facade.py`
+  (SOLVER_RUN branch) · `backend/app/services/workflow/mock_pipeline.py` (`_run_graph_solver` + the
+  HALT in `run_sync`/`_advance`/`run_one_stage`) · NEW `backend/tests/test_graph_solver_wiring.py` (20
+  tests incl. a `skipif`-guarded REAL-ccx subprocess test). 49/49 graph-wiring tests green; the 11
+  pre-existing suite failures (API 404s / NL-parser / KB-linkage) are unrelated (verified by stash).
+  `CONVERGENCE_MONITORING` stays scripted (no separate graph node; it is simply never reached).
+
+---
+
 ## Consequences
 
 - **Positive:** the orphaned graph machinery now genuinely touches the live runtime (the ADR-028
@@ -173,5 +236,13 @@ ONLY when its delta actually carried the field a stage projects.
    `graphDriven` qualifier, never in `StageProvenance`. (The single most important irreversible
    semantic choice.)
 5. **P3 solver gate:** should the graph-driven solver ever attempt a real ccx run on dummy data
-   (honest "attempted, failed-to-converge" disclosure), or hard-skip the solver node until a real
-   (LE10-class) mesh is wired?
+   (honest disclosure), or hard-skip the solver node until a real (LE10-class) mesh is wired? —
+   **RESOLVED 2026-06-08 (see "P3 — what landed"): attempt a real ccx run.** The failed solve is
+   projected FAILED `tier_0_dummy` and HALTS the pipeline (no downstream fabrication). The failure is
+   a **deck-parse** rejection (rc=201; no `Nall/Nfix/Eall` sets) when ccx is present, or a
+   **preflight** failure when absent — **NOT numerical divergence**; and "solver node ran" is held
+   distinct from "ccx subprocess launched" (`ccxSubprocessLaunched`/`solverAttempted` ride the
+   returncode, so a preflight/unsupported fault never over-claims an attempted solve — Codex R0 P1).
+   `dummyFidelityInputs=True` hard-blocks any Tier-1/2 implication. Reversible (flag-off default), so
+   no separate owner gate was required beyond the standing "ultracode 全权授权"
+   directive + the mandatory Codex relay review.

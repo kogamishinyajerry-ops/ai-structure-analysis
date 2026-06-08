@@ -65,6 +65,31 @@ class Settings(BaseSettings):
     # (Name retained from P0 for flag stability; it now gates intake + geometry + mesh.)
     workflow_graph_intake: bool = False
 
+    # ADR-029 P3 — SOLVER ISOLATION GATE: when True, SOLVER_RUN is driven through the truncated
+    # architect->geometry->mesh->solver LangGraph compiled graph — the FIRST graph that launches a
+    # real ccx subprocess from the runtime. The solver node consumes the upstream mesh node's dummy
+    # fallback mesh (hardcoded 4-node/1-tet C3D4; no gmsh kernel) and really invokes ccx, which
+    # FAILS by construction: the dummy mesh defines no Nall/Nfix/Eall sets, so a ccx-present host
+    # fatal-errors at deck parse (rc=201, classified solver_convergence ONLY via the driver's
+    # returncode!=0 catch-all — a known driver limitation, NOT numerical divergence), and a ccx-less
+    # host PREFLIGHT_FAILs. Either way NO solve occurs. The stage is therefore projected FAILED (never
+    # a green SUCCESS) and the pipeline HALTS there (mirrors the real-LE10 solve-failure break) — so
+    # NO downstream convergence=True / stress results / safety factor are ever fabricated from a solve
+    # that did not happen. dummyFidelityInputs=True hard-blocks any Tier-1/2 implication even on a
+    # (structurally impossible) green solve. SOLVER_RUN flips scripted_demo -> deterministic_agent
+    # (the real solver NODE ran; the ccx subprocess launched only when a returncode came back —
+    # ccxSubprocessLaunched/solverAttempted ride returncode-present, so a preflight/unsupported fault
+    # never over-claims a launch), but because the pipeline halts the downstream RESULT_ANALYSIS
+    # routing is NOT reached, so the net N/13 agent-driven count is ~
+    # unchanged: the deliverable is the WIRING PROOF + the honest halt, NOT a coverage increase. The
+    # truncated graph structurally excludes viz/human_fallback (no Notion side-effect); the ccx
+    # scratch lives in an auto-deleted tempdir. Outside the triple-dummy regime (real FreeCAD/gmsh, or
+    # non-NACA) the solver stays scripted (a real solve would be tier_1, never mislabeled tier_0).
+    # workflow_real_solver wins when both are on (the LE10 Tier-1 path owns SOLVER_RUN). Default False
+    # so CI + the contract suite are byte-identical (the branch is dead). NEVER overload
+    # workflow_real_solver or workflow_graph_intake.
+    workflow_graph_solver: bool = False
+
     @property
     def gs_root(self):
         from pathlib import Path

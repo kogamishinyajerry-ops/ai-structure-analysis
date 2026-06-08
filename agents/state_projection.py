@@ -46,6 +46,7 @@ from schemas.sim_plan import AnalysisType, GeometrySpec, SimPlan
 from schemas.sim_state import FaultClass
 from schemas.workflow_state import (
     StageArtifacts,
+    StageError,
     StageMetrics,
     StageProvenance,
     StageState,
@@ -74,6 +75,7 @@ __all__ = [
     "graph_geometry_to_stage_state",
     "graph_intake_to_stage_state",
     "graph_mesh_to_stage_state",
+    "graph_solver_to_stage_state",
     "intake_outcome_to_stage_state",
     "setup_outcome_to_stage_state",
     "sim_state_to_stage_state",
@@ -1170,6 +1172,46 @@ def geometry_stage_state(
 _GRAPH_GEOM_RUNNER_TAG = "langgraph-architect-geometry"
 _GRAPH_MESH_RUNNER_TAG = "langgraph-architect-geometry-mesh"
 _MESH_CURRENT_OBJECT = "mesh_model"
+_GRAPH_SOLVER_RUNNER_TAG = "langgraph-architect-geometry-mesh-solver"
+_SOLVER_CURRENT_OBJECT = "solver_model"
+
+# ADR-029 P3 anti-vacuous-pass: every result-shaped key a GREEN ``agents.solver.run`` could
+# surface (its success return adds frd_path/solve_path/solve_metadata + parsed scalars). A
+# tier_0_dummy faulted-solve projection MUST suppress ALL of these — a dummy/rejected solve can
+# never present a measured result. Machine-checked by the wiring test (not "structurally true
+# today"), because :func:`graph_solver_to_stage_state` is the load-bearing seam. Both camel + snake.
+_SOLVER_MEASUREMENT_KEYS: frozenset[str] = frozenset(
+    {
+        "frdPath",
+        "frd_path",
+        "solvePath",
+        "solve_path",
+        "solveMetadata",
+        "solve_metadata",
+        "maxVonMisesPa",
+        "max_von_mises_pa",
+        "maxVonMises",
+        "max_von_mises",
+        "maxDisplacementM",
+        "max_displacement_m",
+        "maxDisplacement",
+        "max_displacement",
+        "safetyFactor",
+        "safety_factor",
+        "residual",
+        "finalResidual",
+        "final_residual",
+        "converged",
+        "wallTimeS",
+        "wall_time_s",
+        "ccxVersion",
+        "ccx_version",
+        "frames",
+        "fields",
+        "yieldPa",
+        "yield_pa",
+    }
+)
 
 
 def graph_geometry_to_stage_state(
@@ -1368,6 +1410,207 @@ def graph_mesh_to_stage_state(
         # "进入材料赋予" — reusing analyze_geometry_plan's next_action here would misdirect the
         # user past the mesh quality gate (Codex P2 R0 P3).
         next_action="进入网格质量检查（mesh_quality_check）。",
+        provenance=StageProvenance.DETERMINISTIC_AGENT,
+        updated_at=_now_iso(),
+    )
+
+
+def graph_solver_to_stage_state(
+    final_sim_state: Mapping[str, object],
+    user_request: str,
+    *,
+    run_id: str,
+    plan_authored_by: str,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Project a 4-node ``architect→geometry→mesh→solver`` graph's final SimState into SOLVER_RUN
+    (ADR-029 P3 — the SOLVER ISOLATION GATE; the FIRST graph that launches a real ccx subprocess).
+
+    ``final_sim_state`` is the accumulated state from
+    :func:`agents.graph_runner.run_solver_via_graph` (the solver node already executed inside the
+    graph, consuming the mesh node's dummy fallback ``mesh_path`` and really invoking ``ccx``).
+    ``plan_authored_by`` is ``"deterministic_seed"`` (keyless) or ``"architect_llm"``.
+
+    HONESTY ENVELOPE — the solve is a FAILURE by construction, projected FAILED (never green):
+    the dummy fallback mesh (hardcoded 4-node/1-tet C3D4, no gmsh kernel) defines no
+    ``Nall/Nfix/Eall`` sets, so a ccx-present host fatal-errors at deck parse (``rc=201``,
+    classified ``solver_convergence`` ONLY via the driver's ``returncode!=0`` catch-all — a known
+    driver limitation, **NOT** numerical divergence) and a ccx-less host ``PREFLIGHT_FAIL``s.
+    Either way NO solve occurred. ``dummyFidelityInputs=True`` hard-blocks any Tier-1/2 implication
+    even on a (structurally impossible) green solve. Honesty pins identical to the mesh crossing:
+    ``tier_0_dummy``, ZERO measurement-shaped keys surfaced (anti-vacuous-pass — see
+    :data:`_SOLVER_MEASUREMENT_KEYS`), provenance stays ``deterministic_agent`` (no 4th value).
+
+    The WIRING FACT is the ``solver`` history entry (``any(h['node']=='solver')``) — NOT a
+    tautological ``fault_class`` key (the seed sets ``fault_class`` unconditionally) and NOT
+    ``frd_path`` (absent on a faulted solve). Refuses to claim ``toolRan=True`` without it; refuses
+    to project a tier_0_dummy FAILED stage if a real ``frd_path`` IS present (that would be a real
+    solve this projector must never mislabel). The disclosure is authored from this function's own
+    static knowledge — NEVER from the solver history ``msg`` (empirically the ccx banner ``****``).
+    """
+    plan = final_sim_state.get("plan")
+    if not isinstance(plan, SimPlan):
+        raise RuntimeError(
+            "graph_solver_to_stage_state: final SimState carries no SimPlan; the "
+            "architect→geometry→mesh→solver graph did not produce a consumable plan."
+        )
+    history = final_sim_state.get("history")
+    history_list = list(history) if isinstance(history, (list, tuple)) else []
+    solver_entries = [
+        h for h in history_list if isinstance(h, Mapping) and h.get("node") == "solver"
+    ]
+    tool_ran = bool(solver_entries)
+    if not tool_ran:
+        # The non-tautological wiring fact is absent → the solver node did NOT execute as claimed
+        # (e.g. the bare missing-mesh early returns append no history). Refuse to claim toolRan.
+        raise RuntimeError(
+            "architect→geometry→mesh→solver graph produced no solver history entry; "
+            "refusing to claim toolRan=True (the solver node did not run)."
+        )
+    if final_sim_state.get("frd_path"):
+        # A real .frd means the solve SUCCEEDED on real data — never mislabel that tier_0_dummy.
+        raise RuntimeError(
+            "graph_solver_to_stage_state: final SimState carries an frd_path (a successful solve); "
+            "this tier_0_dummy faulted-solve projector must not mislabel a real solve."
+        )
+
+    # Read the genuine returncode (a clean int, NOT the banner msg). A returncode is present ONLY
+    # when a real ccx subprocess ran and returned (the _failed_solve path). _preflight_failure (ccx
+    # absent from PATH), _unsupported_backend_failure (non-CalculiX), and _solver_syntax_failure
+    # (deck preparation failed pre-solve) ALSO append a solver history entry but launch NO ccx
+    # subprocess → returncode is None. So "solver node ran" (graphNodeRan, always true here) MUST be
+    # distinguished from "ccx subprocess launched" (ccx_launched) — Codex P3 R0 P1: never claim an
+    # attempted solve / deck-parse fault for a preflight/unsupported fault where ccx never launched.
+    returncode = solver_entries[-1].get("returncode")
+    ccx_launched = returncode is not None
+    if ccx_launched:
+        launch_clause = "并真实启动 ccx 子进程（dry_run=False，于 tempdir 内隔离、部署即删）"
+        fault_clause = (
+            f"ccx 返回 rc={returncode}（dummy 网格未定义 Nall/Nfix/Eall 集，deck 解析阶段即致命"
+            "报错；驱动层仅凭 returncode!=0 兜底归类 solver_convergence/DIVERGED——"
+            "已知驱动局限，非真实数值发散）"
+        )
+        ccx_net_fact = "并真实启动了 ccx 子进程"
+        en_fault = (
+            "ccx launched and FAILED at deck parse (rc=201; no Nall/Nfix/Eall sets) — NOT "
+            "numerical divergence; the driver labels it solver_convergence only via its "
+            "returncode!=0 catch-all"
+        )
+    else:
+        launch_clause = (
+            "但 ccx 子进程未启动（环境预检失败/ccx 不在 PATH，"
+            "或后端不支持，或求解前 deck 准备失败）"
+        )
+        fault_clause = "ccx 子进程未启动（环境预检失败 / 后端不支持 / deck 准备失败）"
+        ccx_net_fact = "（但本次 ccx 子进程未启动）"
+        en_fault = (
+            "the ccx subprocess did NOT launch (preflight failed / unsupported backend / "
+            "deck-prep error)"
+        )
+
+    case_id = plan.case_id
+    outcome = analyze_geometry_plan(user_request)  # reuse family / refSource / fromHint
+    family = outcome.metrics["geometryFamily"]
+
+    authored = (
+        (
+            "本阶段 SimPlan 由 LLM architect 节点产出，经图状态传递给 "
+            "geometry→mesh→solver 节点链消费"
+            "（真实 architect→geometry→mesh→solver 作者依赖）。"
+        )
+        if plan_authored_by == "architect_llm"
+        else (
+            "本阶段 SimPlan 由确定性规则代理（analyze_intake + 固定 NACA 几何 spec）构造并 seed "
+            "进图状态；keyless 的 LLM architect 节点未产出 plan（pass-through）。"
+        )
+    )
+    disclosure = (
+        "4-node 图 architect→geometry→mesh→solver 经真实 LangGraph 运行时（compiled graph .invoke）"
+        "执行；solver 节点从共享图状态消费 mesh_path（dummy fallback 网格）"
+        f"{launch_clause}。"
+        f"{authored}"
+        "但上游无 gmsh 内核，generate_mesh 仅写出硬编码 4-node/1-tet C3D4 占位网格"
+        "（generation_mode=fallback），其上游是 10 字节占位 STEP（非 ISO-10303）。"
+        f"{fault_clause}——故无任何求解发生。"
+        "即便某 seed 令其绿色求解，其输入仍为 dummy 保真（单位四面体 + 占位 STEP），任何求解数值"
+        "均为 tautological garbage-in（dummyFidelityInputs=True）。"
+        "故本阶段状态记为 FAILED（求解被拒，未求解），绝不显示为绿色 SUCCESS；"
+        "不 surface 任何测量形态 solver 指标（maxVonMises / maxDisplacement / "
+        "safetyFactor / residual / converged / frdPath 一律抑制，anti-vacuous-pass）；"
+        "不产出任何持久 artifact（ccx scratch 随 tempdir 删除）。"
+        "真实管线在此中止：被拒/未启动的求解无从监控收敛 / 后处理 / 分析结果"
+        "（下游阶段保持 PENDING、未到达）。"
+        f"唯一净增事实 = 真实 solver 节点经 4-node 图驱动 SOLVER_RUN{ccx_net_fact}，"
+        "保真度为 dummy；因管线中止，N/13 代理覆盖净增约为 0（此为接线证明，非覆盖增益）。"
+        f"案例号 {case_id} 经图状态由 intake→geometry→mesh 流入 solver。"
+        "[EN: the 4-node compiled graph ran; the solver node executed and "
+        f"{en_fault}. The stage is FAILED (solve rejected / not run, nothing solved), never green "
+        "SUCCESS; the pipeline halts so no convergence/results are fabricated downstream. "
+        "dummyFidelityInputs=True hard-blocks any Tier-1/2 implication; tier_0_dummy. Net "
+        "agent-driven coverage ~unchanged — the deliverable is the wiring proof + the honest "
+        "halt, not a coverage increase.]"
+    )
+    explanation = f"求解节点 dummy 执行并被拒（{family}，4-node 图驱动，FAILED）。{disclosure}"
+    metrics: dict[str, object] = {
+        "geometryFamily": family,
+        "caseId": case_id,
+        # The unambiguous wire story: the solver NODE executed (graphNodeRan, always true here), a
+        # real ccx subprocess launched ONLY when a returncode came back (ccxSubprocessLaunched), and
+        # solverAttempted tracks that ccx launch — NOT merely the node running — so a preflight /
+        # unsupported / deck-prep fault (node ran, ccx never launched) is never over-claimed as an
+        # attempted solve (Codex P3 R0 P1). Nothing was ever solved (solverRan=False).
+        "solverAttempted": ccx_launched,
+        "ccxSubprocessLaunched": ccx_launched,
+        "solverRan": False,
+        # ADR-029 P3 — the load-bearing honesty guard: the measurement's inputs were DUMMY fidelity.
+        "dummyFidelityInputs": True,
+        # ADR-029 architecture-wiring facts (NOT FEA measurements, NOT a provenance flip):
+        "graphNodeRan": True,
+        "graphRunner": _GRAPH_SOLVER_RUNNER_TAG,
+        "planAuthoredBy": plan_authored_by,
+    }
+    metrics.update(fidelity_metrics(tool_ran=tool_ran, data_real=False, disclosure=disclosure))
+    return StageState(
+        run_id=run_id,
+        stage=WorkflowStage.SOLVER_RUN,
+        # Hard-set FAILED regardless of the caller's status arg: the ccx solve was rejected, so the
+        # badge must never be green (mirrors the real-LE10 solve-failure projection + Codex M4 R0 P2
+        # "a failed solve is never shown as a plain green success"). The honest WIRING achievement
+        # rides metrics (graphNodeRan / solverAttempted), not the stage badge.
+        status=StageStatus.FAILED,
+        progress=progress,
+        current_object=_SOLVER_CURRENT_OBJECT,
+        description=f"求解节点 dummy 执行被拒（{family}，4-node 图驱动）",
+        metrics=StageMetrics.model_validate(metrics),
+        artifacts=StageArtifacts(),  # ccx scratch lived under the temp dir; nothing real persisted
+        agent_explanation=explanation,
+        next_action=(
+            "真实管线在此中止（dummy 网格求解被拒）；不进入收敛监控 / 后处理。"
+            "接入真实网格（LE10 级）后方可得真实求解。"
+        ),
+        errors=[
+            StageError(
+                fault_class=(FaultClass.SOLVER_CONVERGENCE if ccx_launched else FaultClass.UNKNOWN),
+                message=(
+                    "ccx rejected the dummy fallback mesh (no Nall/Nfix/Eall sets)"
+                    if ccx_launched
+                    else "ccx subprocess did not launch (preflight / unsupported / deck-prep)"
+                ),
+                detail=(
+                    "graph-driven tier_0_dummy solve on the hardcoded 4-node/1-tet fallback mesh. "
+                    + (
+                        "ccx launched and failed at deck parse (rc=201); classified "
+                        "solver_convergence only via the driver's returncode!=0 catch-all "
+                        "(known limitation; not numerical divergence)."
+                        if ccx_launched
+                        else "ccx never launched (preflight failed / unsupported backend / deck "
+                        "preparation error); no solve was attempted."
+                    )
+                    + " Expected for dummy-fidelity inputs — deliverable = the graph-wiring proof."
+                ),
+            )
+        ],
         provenance=StageProvenance.DETERMINISTIC_AGENT,
         updated_at=_now_iso(),
     )

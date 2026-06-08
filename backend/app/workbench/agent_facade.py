@@ -169,9 +169,11 @@ def run_node_via_graph(
     ``PROJECT_INTAKE`` (P0, truncated architect-only graph), ``GEOMETRY_VALIDATION`` (P1,
     truncated architect→geometry graph — the first cross-node graph data dependency), and
     ``MESH_GENERATION`` (P2, truncated architect→geometry→mesh graph — the second cross-node
-    dependency, ``tier_0_dummy`` with the ``dummyFidelityInputs`` guard). The solver stage
-    still raises ``NotImplementedError`` — it needs the ccx-subprocess isolation gate of a
-    later ADR-029 phase.
+    dependency, ``tier_0_dummy`` with the ``dummyFidelityInputs`` guard), and ``SOLVER_RUN`` (P3,
+    truncated architect→geometry→mesh→solver graph — the FIRST graph to launch a real ccx
+    subprocess; the dummy-mesh solve FAILS rc=201, projected FAILED ``tier_0_dummy`` to HALT the
+    pipeline honestly). The remaining tool/artifact-bound stages (convergence_monitoring /
+    post_processing / result_analysis / report_generation) still raise ``NotImplementedError``.
     """
     if stage is WorkflowStage.PROJECT_INTAKE:
         return graph_runner.run_intake_via_graph(
@@ -201,8 +203,22 @@ def run_node_via_graph(
             status=status,
             progress=progress,
         )
+    if stage is WorkflowStage.SOLVER_RUN:
+        # ADR-029 P3 (SOLVER ISOLATION GATE): the architect→geometry→mesh→solver graph drives
+        # SOLVER_RUN — the FIRST graph to launch a real ccx subprocess. On the dummy fallback mesh
+        # the solve FAILS (rc=201 deck-parse / preflight), so run_solver_via_graph returns a FAILED
+        # tier_0_dummy StageState the caller uses to HALT the pipeline (no downstream fabrication).
+        # Outside the triple-dummy regime it raises NotImplementedError → scripted solver spec.
+        return graph_runner.run_solver_via_graph(
+            user_request or "",
+            run_id=run_id,
+            existing_case_id=existing_case_id,
+            status=status,
+            progress=progress,
+        )
     raise NotImplementedError(
         f"agent_facade.run_node_via_graph: stage {stage.value!r} is not graph-wired yet "
-        "(ADR-029 P0/P1/P2 wire project_intake + geometry_validation + mesh_generation; the "
-        "solver stage lands in a later phase behind the ccx-subprocess isolation gate)."
+        "(ADR-029 P0/P1/P2/P3 wire project_intake + geometry_validation + mesh_generation + "
+        "solver_run; convergence_monitoring / post_processing / result_analysis / report_generation "
+        "remain scripted in later phases)."
     )

@@ -42,10 +42,12 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "build_intake_geometry_graph",
     "build_intake_geometry_mesh_graph",
+    "build_intake_geometry_mesh_solver_graph",
     "build_intake_graph",
     "run_geometry_via_graph",
     "run_intake_via_graph",
     "run_mesh_via_graph",
+    "run_solver_via_graph",
 ]
 
 # A SimPlan.description sentinel: when the keyless architect node authors nothing, the
@@ -338,4 +340,117 @@ def run_mesh_via_graph(
         logger.warning("mesh graph runtime failed (%s); falling back to scripted mesh", exc)
         raise NotImplementedError(
             f"run_mesh_via_graph: graph runtime error ({exc}); fall back to scripted mesh."
+        ) from exc
+
+
+def build_intake_geometry_mesh_solver_graph():
+    """Compile a DEDICATED truncated ``StateGraph(SimState)``: architect→geometry→mesh→solver.
+
+    Extends :func:`build_intake_geometry_mesh_graph` with the solver node, imported from
+    :mod:`agents.solver` DIRECTLY — never :func:`agents.graph.compile_graph` (whose closure pulls
+    backend ``app.well_harness.notion_sync`` via ``agents.human_fallback``). This is the FIRST graph
+    that launches a real ``ccx`` subprocess from the LangGraph runtime (ADR-029 P3). Truncated AFTER
+    the solver (no reviewer/viz/human_fallback node), so the Notion side-effect + ``interrupt`` are
+    structurally unreachable. The solver node consumes the ``mesh_path`` the mesh node left in the
+    shared SimState (the THIRD cross-node edge, mesh→solver).
+    """
+    # Lazy import (mirrors build_intake_geometry_mesh_graph): keep the flag-off facade import
+    # closure from eagerly pulling solver's aeron/ccx-driver deps until a solver crossing actually
+    # builds this graph — preserving default-off inertness.
+    from agents import mesh, solver
+
+    workflow: StateGraph = StateGraph(SimState)
+    workflow.add_node("architect", architect.run)
+    workflow.add_node("geometry", geometry.run)
+    workflow.add_node("mesh", mesh.run)
+    workflow.add_node("solver", solver.run)
+    workflow.add_edge(START, "architect")
+    workflow.add_edge("architect", "geometry")
+    workflow.add_edge("geometry", "mesh")
+    workflow.add_edge("mesh", "solver")
+    workflow.add_edge("solver", END)
+    return workflow.compile()
+
+
+def run_solver_via_graph(
+    user_request: str,
+    *,
+    run_id: str,
+    existing_case_id: str | None = None,
+    status: StageStatus = StageStatus.SUCCESS,
+    progress: float = 1.0,
+) -> StageState:
+    """Drive SOLVER_RUN through the real 4-node ``architect→geometry→mesh→solver`` LangGraph runtime
+    (ADR-029 P3 — the SOLVER ISOLATION GATE; the FIRST graph to launch a real ccx subprocess).
+
+    HONESTY ENVELOPE — graph-driven only in the strict triple-dummy regime
+    (``geometryFamily=="naca_wing"`` AND ``not FREECAD_AVAILABLE`` AND ``not GMSH_AVAILABLE``), else
+    RAISES :class:`NotImplementedError` so the caller (mock_pipeline) keeps the scripted solver
+    spec: a real FreeCAD/gmsh kernel would yield a real mesh whose ccx solve is ``tier_1``, which
+    this ``tier_0_dummy`` faulted-solve projection must NEVER mislabel.
+
+    The solver node consumes the mesh node's hardcoded 4-node/1-tet C3D4 *fallback* mesh and really
+    invokes ``ccx`` (``dry_run=False``) inside an auto-deleted tempdir. The solve FAILS by
+    construction — the dummy mesh defines no ``Nall/Nfix/Eall`` sets, so ccx fatal-errors at deck
+    parse (``rc=201``) when present, or ``PREFLIGHT_FAIL``s when absent. The WIRING FACT is the
+    ``solver`` history entry (every ``agents.solver.run`` failure helper appends one); the two bare
+    missing-mesh early returns append none, and would (correctly) fall back to scripted. Refuses to
+    project without the solver history entry. The projection
+    (:func:`agents.state_projection.graph_solver_to_stage_state`) is a FAILED ``tier_0_dummy`` stage
+    that the caller uses to HALT the pipeline (no downstream convergence/results fabricated).
+    """
+    from tools.freecad_driver import FREECAD_AVAILABLE
+    from tools.gmsh_driver import GMSH_AVAILABLE
+
+    outcome = state_projection.analyze_geometry_plan(user_request)
+    if outcome.metrics["geometryFamily"] != "naca_wing" or FREECAD_AVAILABLE or GMSH_AVAILABLE:
+        # Not the triple-dummy regime → no honest tier_0 solver crossing. Signal the caller to use
+        # the scripted solver spec (never mislabel a real-mesh ccx solve as tier_0).
+        raise NotImplementedError(
+            "run_solver_via_graph: solver is graph-driven only in the triple-dummy regime "
+            "(naca_wing + no FreeCAD + no gmsh); refusing to mislabel a real solve as tier_0."
+        )
+
+    intake = state_projection.analyze_intake(user_request, existing_case_id=existing_case_id)
+    seed_plan = SimPlan(
+        case_id=intake.case_id,
+        description=_SEED_SENTINEL,
+        geometry=GeometrySpec(kind="naca", parameters={"profile": "NACA0012"}),
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="graph_solver_") as psd:
+            seed = _seed_state(user_request, run_id, existing_case_id)
+            seed["plan"] = seed_plan
+            seed["project_state_dir"] = psd
+            final_state = build_intake_geometry_mesh_solver_graph().invoke(seed)
+            final_plan = final_state.get("plan")
+            plan_authored_by = (
+                "deterministic_seed"
+                if isinstance(final_plan, SimPlan) and final_plan.description == _SEED_SENTINEL
+                else "architect_llm"
+            )
+            history = final_state.get("history") or []
+            solver_ran = any(isinstance(h, dict) and h.get("node") == "solver" for h in history)
+            if not solver_ran:
+                # The solver node never produced its node contract (e.g. the mesh node faulted, or a
+                # bare missing-mesh early return appended no history) → not honestly graph-driven
+                # here. Fall back to the scripted solver spec rather than fabricate a crossing.
+                raise NotImplementedError(
+                    "run_solver_via_graph: graph produced no solver history entry "
+                    "(solver node did not run); fall back to scripted solver."
+                )
+            return state_projection.graph_solver_to_stage_state(
+                final_state,
+                user_request,
+                run_id=run_id,
+                plan_authored_by=plan_authored_by,
+                status=status,
+                progress=progress,
+            )
+    except NotImplementedError:
+        raise  # propagate the "fall back to scripted" signal verbatim
+    except Exception as exc:  # never hard-crash the live pipeline on a graph-runtime hiccup
+        logger.warning("solver graph runtime failed (%s); falling back to scripted solver", exc)
+        raise NotImplementedError(
+            f"run_solver_via_graph: graph runtime error ({exc}); fall back to scripted solver."
         ) from exc

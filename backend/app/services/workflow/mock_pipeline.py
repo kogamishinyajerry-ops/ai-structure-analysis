@@ -662,6 +662,35 @@ class MockWorkflowStore:
         self._solve_ctx[run_id] = ctx
         return ctx
 
+    def _run_graph_solver(self, run: MockRun) -> StageState | None:
+        """ADR-029 P3: drive SOLVER_RUN through the architect→geometry→mesh→solver compiled graph
+        (the FIRST graph to launch a real ccx subprocess). The dummy fallback mesh has no node sets,
+        so the solve FAILS (rc=201 / preflight); returns the projected FAILED ``tier_0_dummy``
+        StageState, which the caller uses to HALT the pipeline (no downstream fabrication).
+
+        Returns ``None`` when the crossing is NOT honestly graph-driven here — no ``user_request``
+        (nothing to analyze → scripted_demo, mirrors ``_agent_inputs_ready``), or
+        :func:`run_solver_via_graph` raised ``NotImplementedError`` (outside the triple-dummy regime,
+        or a graph-runtime error) — so the caller keeps the scripted solver spec and the full
+        pipeline. Routed through the ADR-015 facade choke point (NO ``agents.*`` import in this
+        module). Called EXACTLY ONCE per run (never inside the per-tick ``_build_stage_state`` seam),
+        so exactly one ccx subprocess launches — off the event loop in :meth:`_advance`."""
+        req = (run.user_request or "").strip()
+        if not req:
+            return None
+        from app.workbench.agent_facade import run_node_via_graph as _run_graph_node
+
+        try:
+            return _run_graph_node(
+                WorkflowStage.SOLVER_RUN,
+                run_id=run.run_id,
+                user_request=req,
+                existing_case_id=_intake_case_id(run.stages),
+            )
+        except NotImplementedError:
+            # Outside the triple-dummy regime, or a graph-runtime error → scripted solver spec.
+            return None
+
     def _new_run(
         self,
         label: str | None,
@@ -795,19 +824,33 @@ class MockWorkflowStore:
                         return st
                 elif real:
                     solve_ctx = self._solve_ctx.get(run.run_id)
-                st = _build_stage_state(
-                    run.run_id,
-                    stage,
-                    _terminal_status(stage, real, solve_ctx),
-                    1.0,
-                    backend=backend,
-                    specs=specs,
-                    solve_ctx=solve_ctx,
-                    user_request=run.user_request,
-                    upstream_case_id=_intake_case_id(run.stages),
-                )
+                # ADR-029 P3 (SOLVER ISOLATION GATE): graph-driven solver (M2 external path). The
+                # dummy-mesh ccx solve faults → FAILED tier_0_dummy. Finalizing below (FAILED) makes
+                # the existing `run.status is FAILED` guard refuse the downstream stage drives — the
+                # M2 equivalent of the self-driving HALT (no fabricated convergence/results).
+                graph_solver_st = None
+                if (
+                    settings.workflow_graph_solver
+                    and not real
+                    and stage is WorkflowStage.SOLVER_RUN
+                ):
+                    graph_solver_st = self._run_graph_solver(run)
+                if graph_solver_st is not None:
+                    st = graph_solver_st
+                else:
+                    st = _build_stage_state(
+                        run.run_id,
+                        stage,
+                        _terminal_status(stage, real, solve_ctx),
+                        1.0,
+                        backend=backend,
+                        specs=specs,
+                        solve_ctx=solve_ctx,
+                        user_request=run.user_request,
+                        upstream_case_id=_intake_case_id(run.stages),
+                    )
             run.stages[idx] = st
-            if fail or stage is CANONICAL_STAGE_ORDER[-1]:
+            if fail or stage is CANONICAL_STAGE_ORDER[-1] or st.status is StageStatus.FAILED:
                 self._finalize(run)
             return st
 
@@ -859,6 +902,15 @@ class MockWorkflowStore:
                             detail="real LE10 ccx solve failed",
                         ),
                     )
+                    break
+            # ADR-029 P3 (SOLVER ISOLATION GATE): when workflow_graph_solver is on (and NOT the
+            # real-LE10 path, which wins), drive SOLVER_RUN through the 4-node compiled graph. The
+            # dummy-mesh ccx solve is rejected (rc=201) → a FAILED tier_0_dummy stage → HALT the
+            # pipeline (downstream stays PENDING, never reached), so no convergence/results are faked.
+            if settings.workflow_graph_solver and not real and stage is WorkflowStage.SOLVER_RUN:
+                graph_solver_st = self._run_graph_solver(run)
+                if graph_solver_st is not None:
+                    run.stages[idx] = graph_solver_st
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id,
@@ -929,6 +981,14 @@ class MockWorkflowStore:
                             detail="real LE10 ccx solve failed",
                         ),
                     )
+                    break
+            # ADR-029 P3 (SOLVER ISOLATION GATE): graph-driven solver, off the event loop + ONCE
+            # (never in the per-tick _build_stage_state seam above). The dummy-mesh ccx solve faults
+            # → FAILED tier_0_dummy → HALT (downstream PENDING, no fabricated convergence/results).
+            if settings.workflow_graph_solver and not real and stage is WorkflowStage.SOLVER_RUN:
+                graph_solver_st = await asyncio.to_thread(self._run_graph_solver, run)
+                if graph_solver_st is not None:
+                    run.stages[idx] = graph_solver_st
                     break
             run.stages[idx] = _build_stage_state(
                 run.run_id,
