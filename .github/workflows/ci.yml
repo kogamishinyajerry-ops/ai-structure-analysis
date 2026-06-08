@@ -161,3 +161,81 @@ jobs:
       - name: Real LE10 e2e — live ccx solve + benchmark + drift pin
         working-directory: backend
         run: pytest tests/test_workflow_real_le10.py -v --tb=short
+
+  # --- FM-05: live re-solve of the NAFEMS LE11 thermal-stress benchmark -----
+  # Mirrors real-le10-e2e for the project's SECOND public-benchmark agreement
+  # (NAFEMS LE11, imposed-temperature thermo-elastic, sigma_zz@A vs the published
+  # -105 MPa). Re-solves the sealed canonical r4 deck with real ccx and asserts
+  # the benchmark verdict + a tight drift pin
+  # (backend/tests/test_workflow_real_le11.py). Tier 1 (real solver,
+  # public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-le11-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/nafems-le11-solid-cyl-temperature-candidate/data/run_r4_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real LE11 e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_le11.py -v --tb=short
+
+  # --- FM-05: live re-solve of the rotating-disk centrifugal benchmark ------
+  # Mirrors real-le10-e2e for the project's THIRD public-benchmark agreement
+  # (rotating disk, *DLOAD CENTRIF, sigma_theta@bore vs the Timoshenko plane-
+  # stress closed form). Re-solves the sealed canonical nr=48 deck with real ccx
+  # and asserts the benchmark verdict + a tight drift pin
+  # (backend/tests/test_workflow_real_rotating_disk.py). Tier 1 (real solver,
+  # public-benchmark cross-check), NOT signed validation (G-2).
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-rotating-disk-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        run: |
+          which ccx
+          ccx -v || true
+          test -f "golden_samples/rotating-disk-centrifugal-candidate/data/run_nr48_C3D20/solve.inp"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real rotating-disk e2e — live ccx solve + benchmark + drift pin
+        working-directory: backend
+        run: pytest tests/test_workflow_real_rotating_disk.py -v --tb=short
