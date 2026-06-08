@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from ..parsers.frd_parser import FRDParseResult
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,11 +24,11 @@ def build_candidate_report_spine(
     result: FRDParseResult,
     metrics: Mapping[str, Any],
     validation: Mapping[str, Any],
-    case_id: Optional[str],
+    case_id: str | None,
     golden_samples_root: Path,
-    source_path: Optional[Path] = None,
-    original_filename: Optional[str] = None,
-    solver_job_status: Optional[Mapping[str, Any]] = None,
+    source_path: Path | None = None,
+    original_filename: str | None = None,
+    solver_job_status: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the FM-03 candidate reproducibility package payload."""
 
@@ -73,15 +73,21 @@ def build_candidate_report_spine(
                 )
             )
     artifacts.extend(
-        _artifact_record("solver_log", path, "Solver-side log/status artifact found beside the case deck")
+        _artifact_record(
+            "solver_log", path, "Solver-side log/status artifact found beside the case deck"
+        )
         for path in solver_log_artifacts
     )
     artifacts.extend(
-        _artifact_record("mesh_metadata", path, "Mesh generation metadata artifact visible to the report path")
+        _artifact_record(
+            "mesh_metadata", path, "Mesh generation metadata artifact visible to the report path"
+        )
         for path in mesh_meta_artifacts
     )
     artifacts.extend(
-        _artifact_record("mesh_quality", path, "Mesh quality sidecar artifact visible to the report path")
+        _artifact_record(
+            "mesh_quality", path, "Mesh quality sidecar artifact visible to the report path"
+        )
         for path in mesh_quality_artifacts
     )
     artifacts.extend(
@@ -160,7 +166,7 @@ def build_candidate_report_spine(
 
     return {
         "schema_version": "fm03-candidate-report-spine.v2",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_at_utc": datetime.now(UTC).isoformat(),
         "claim_tier": "Tier 1 engineering candidate",
         "allowed_claim": "engineering candidate, not signed validation",
         "no_overclaim": "not signed validation",
@@ -168,7 +174,9 @@ def build_candidate_report_spine(
             "case_id": case_id or "uploaded-artifact",
             "case_name": _expected_value(expected, "case_name", result.file_name),
             "expected_results_status": _expected_value(expected, "status", "unavailable"),
-            "status_reason": _expected_value(expected, "status_reason", "No expected_results.json loaded"),
+            "status_reason": _expected_value(
+                expected, "status_reason", "No expected_results.json loaded"
+            ),
             "failure_pattern_ref": _expected_value(expected, "failure_pattern_ref", "not surfaced"),
         },
         "provenance": {
@@ -187,7 +195,9 @@ def build_candidate_report_spine(
         "solver": {
             "truth_source": "CalculiX artifact",
             "latest_job_id": None if solver_job_status is None else solver_job_status.get("job_id"),
-            "latest_job_status": None if solver_job_status is None else solver_job_status.get("status"),
+            "latest_job_status": None
+            if solver_job_status is None
+            else solver_job_status.get("status"),
             "normal_termination_state": _normal_termination_state(solver_job_status),
             "logs": solver_logs,
         },
@@ -224,7 +234,7 @@ def build_candidate_report_spine(
     }
 
 
-def _load_expected_results(root: Path, case_id: Optional[str]) -> dict[str, Any]:
+def _load_expected_results(root: Path, case_id: str | None) -> dict[str, Any]:
     if not case_id:
         return {}
     path = root / case_id / "expected_results.json"
@@ -241,14 +251,14 @@ def _expected_value(expected: Mapping[str, Any], key: str, default: str) -> str:
     return str(value) if value not in (None, "") else default
 
 
-def _find_input_deck(case_dir: Optional[Path]) -> Optional[Path]:
+def _find_input_deck(case_dir: Path | None) -> Path | None:
     if case_dir is None or not case_dir.exists():
         return None
     matches = sorted(case_dir.glob("*.inp"))
     return matches[0] if matches else None
 
 
-def _find_solver_log_artifacts(case_dir: Optional[Path], case_id: Optional[str]) -> list[Path]:
+def _find_solver_log_artifacts(case_dir: Path | None, case_id: str | None) -> list[Path]:
     search_dirs: list[Path] = []
     if case_dir is not None and case_dir.exists():
         search_dirs.append(case_dir)
@@ -261,7 +271,7 @@ def _find_solver_log_artifacts(case_dir: Optional[Path], case_id: Optional[str])
     return _dedupe_paths(matches)
 
 
-def _find_mesh_meta_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_mesh_meta_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "mesh"):
         meta_path = search_dir / "mesh_meta.json"
@@ -270,7 +280,7 @@ def _find_mesh_meta_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_mesh_quality_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_mesh_quality_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "mesh"):
         quality_path = search_dir / "mesh_quality.json"
@@ -279,7 +289,7 @@ def _find_mesh_quality_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_mesh_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_mesh_convergence_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "mesh"):
         for file_name in ("mesh_convergence.json", "mesh_refinement_convergence.json"):
@@ -289,7 +299,7 @@ def _find_mesh_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_ballistic_metrics_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_ballistic_metrics_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "ballistic"):
         metrics_path = search_dir / "ballistic_metrics.json"
@@ -298,7 +308,7 @@ def _find_ballistic_metrics_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_animation_manifest_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_animation_manifest_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "ballistic"):
         manifest_path = search_dir / "animation_manifest.json"
@@ -307,7 +317,7 @@ def _find_animation_manifest_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_time_step_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_time_step_convergence_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "ballistic"):
         for file_name in ("time_step_convergence.json", "dt_refinement_convergence.json"):
@@ -317,7 +327,7 @@ def _find_time_step_convergence_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _find_time_step_series_artifacts(case_id: Optional[str]) -> list[Path]:
+def _find_time_step_series_artifacts(case_id: str | None) -> list[Path]:
     matches: list[Path] = []
     for search_dir in _case_runtime_dirs(case_id, "ballistic"):
         series_path = search_dir / "time_step_series.json"
@@ -326,7 +336,7 @@ def _find_time_step_series_artifacts(case_id: Optional[str]) -> list[Path]:
     return _dedupe_paths(matches)
 
 
-def _case_runtime_dirs(case_id: Optional[str], stage: str) -> list[Path]:
+def _case_runtime_dirs(case_id: str | None, stage: str) -> list[Path]:
     if not case_id:
         return []
 
@@ -360,7 +370,7 @@ def _artifact_record(
     path: Path,
     description: str,
     *,
-    display_path: Optional[str] = None,
+    display_path: str | None = None,
 ) -> dict[str, Any]:
     if not path.exists() or not path.is_file():
         return {
@@ -393,8 +403,8 @@ def _safe_path(path: Path) -> str:
 
 
 def _manifest_id(
-    case_id: Optional[str],
-    source_path: Optional[Path],
+    case_id: str | None,
+    source_path: Path | None,
     artifact_hashes: list[dict[str, Any]],
 ) -> str:
     seed = case_id or (source_path.name if source_path else "uploaded-artifact")
@@ -424,7 +434,9 @@ def _build_assumptions(expected: Mapping[str, Any]) -> dict[str, Any]:
             "stress_unit": "MPa per current ReportGenerator convention",
             "length_unit": "model-dependent; FRD does not carry explicit unit metadata",
         },
-        "material": _declared_or_unavailable(material, "material source is not declared in expected_results.json"),
+        "material": _declared_or_unavailable(
+            material, "material source is not declared in expected_results.json"
+        ),
         "boundary_conditions": _declared_or_unavailable(
             {"supports": supports, "load": load} if supports or load else None,
             "boundary/load conditions are not surfaced by the current report payload",
@@ -444,7 +456,7 @@ def _declared_or_unavailable(value: Any, unavailable_reason: str) -> dict[str, A
 
 def _build_mesh_evidence(
     result: FRDParseResult,
-    input_deck: Optional[Path],
+    input_deck: Path | None,
     mesh_meta_artifacts: list[Path],
     mesh_quality_artifacts: list[Path],
     mesh_convergence_artifacts: list[Path],
@@ -455,7 +467,9 @@ def _build_mesh_evidence(
     convergence_study = _mesh_convergence_study_summary(mesh_convergence_artifacts)
 
     return {
-        "status": "partial" if deck_summary["status"] == "available" or result.nodes else "unavailable",
+        "status": "partial"
+        if deck_summary["status"] == "available" or result.nodes
+        else "unavailable",
         "claim_impact": (
             "mesh topology is surfaced for Tier 1 reproducibility only; "
             "mesh adequacy or convergence is not proven"
@@ -473,7 +487,7 @@ def _build_mesh_evidence(
     }
 
 
-def _parse_input_deck_mesh(input_deck: Optional[Path]) -> dict[str, Any]:
+def _parse_input_deck_mesh(input_deck: Path | None) -> dict[str, Any]:
     if input_deck is None:
         return {
             "status": "unavailable",
@@ -489,7 +503,7 @@ def _parse_input_deck_mesh(input_deck: Optional[Path]) -> dict[str, Any]:
             "unavailable_reason": f"failed to read input deck: {exc}",
         }
 
-    section: Optional[str] = None
+    section: str | None = None
     current_element_type = "UNKNOWN"
     node_count = 0
     element_count = 0
@@ -532,11 +546,13 @@ def _parse_input_deck_mesh(input_deck: Optional[Path]) -> dict[str, Any]:
         "include_count": include_count,
     }
     if include_count:
-        summary["limitation"] = "include files are referenced but not expanded by this Tier 1 report spine"
+        summary["limitation"] = (
+            "include files are referenced but not expanded by this Tier 1 report spine"
+        )
     return summary
 
 
-def _extract_inp_option(keyword_line: str, option: str) -> Optional[str]:
+def _extract_inp_option(keyword_line: str, option: str) -> str | None:
     prefix = f"{option.upper()}="
     for part in keyword_line.split(",")[1:]:
         token = part.strip()
@@ -574,8 +590,12 @@ def _mesh_metadata_summary(mesh_meta_artifacts: list[Path]) -> dict[str, Any]:
         "artifacts": artifact_records,
         "generation_mode": payload.get("generation_mode", "unavailable"),
         "mesh_level": field_config.get("mesh_level") if isinstance(field_config, Mapping) else None,
-        "element_order": field_config.get("element_order") if isinstance(field_config, Mapping) else None,
-        "thin_wall_detected": field_config.get("thin_wall_detected") if isinstance(field_config, Mapping) else None,
+        "element_order": field_config.get("element_order")
+        if isinstance(field_config, Mapping)
+        else None,
+        "thin_wall_detected": field_config.get("thin_wall_detected")
+        if isinstance(field_config, Mapping)
+        else None,
     }
 
 
@@ -650,7 +670,9 @@ def _mesh_convergence_study_summary(mesh_convergence_artifacts: list[Path]) -> d
         }
 
     path = mesh_convergence_artifacts[0]
-    artifact = _artifact_record("mesh_convergence", path, "Mesh refinement convergence-study artifact")
+    artifact = _artifact_record(
+        "mesh_convergence", path, "Mesh refinement convergence-study artifact"
+    )
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -678,14 +700,14 @@ def _mesh_convergence_study_summary(mesh_convergence_artifacts: list[Path]) -> d
         "candidate_stability": _candidate_stability_verdict(tolerance_pct, relative_change_pct),
         "run_count": len(runs) if isinstance(runs, list) else 0,
         "runs": runs if isinstance(runs, list) else [],
-        "claim_boundary": str(payload.get("claim_boundary", "tier1_engineering_candidate; not_signed_validation")),
+        "claim_boundary": str(
+            payload.get("claim_boundary", "tier1_engineering_candidate; not_signed_validation")
+        ),
         "claim_impact": "Tier 1 candidate convergence evidence only; benchmark agreement and signed validation remain blocked",
     }
 
 
-def _candidate_stability_verdict(
-    tolerance_pct: Any, relative_change_pct: Any
-) -> str:
+def _candidate_stability_verdict(tolerance_pct: Any, relative_change_pct: Any) -> str:
     """Tier 1 candidate stability rule.
 
     Returns one of:
@@ -771,26 +793,33 @@ def _time_step_convergence_study_summary(
 
 
 def _build_convergence_evidence(
-    solver_job_status: Optional[Mapping[str, Any]],
+    solver_job_status: Mapping[str, Any] | None,
     solver_log_artifacts: list[Path],
     mesh_convergence_study: Mapping[str, Any],
 ) -> dict[str, Any]:
     source_artifacts = [_solver_artifact_record(path) for path in solver_log_artifacts]
-    artifact_kinds = {str(item.get("kind")) for item in source_artifacts if item.get("status") == "available"}
-    all_signals = [
-        signal
-        for item in source_artifacts
-        for signal in item.get("signals", [])
-    ]
+    artifact_kinds = {
+        str(item.get("kind")) for item in source_artifacts if item.get("status") == "available"
+    }
+    all_signals = [signal for item in source_artifacts for signal in item.get("signals", [])]
     job_status = str(solver_job_status.get("status")) if solver_job_status is not None else None
     job_completed = job_status is not None and job_status.upper() == "COMPLETED"
     has_failure_marker = "failure_marker" in all_signals
-    has_converged_signal = any(signal in all_signals for signal in ("converged_token", "normal_termination"))
+    has_converged_signal = any(
+        signal in all_signals for signal in ("converged_token", "normal_termination")
+    )
 
-    if job_completed:
+    # A failure marker in any attached artifact is dispositive: NEVER report
+    # completed/converged regardless of the job-status enum. A "COMPLETED" job status is
+    # only ccx rc==0, which is NOT proof of convergence (see services/solver.py) — so it
+    # must not override an explicit failure signal on this Tier-1 honesty surface.
+    if has_failure_marker:
+        status = "artifact_reference_only" if source_artifacts else "unavailable"
+        normal_termination = "unavailable"
+    elif job_completed:
         status = "job_completed"
         normal_termination = "completed"
-    elif has_converged_signal and not has_failure_marker:
+    elif has_converged_signal:
         status = "solver_artifact_converged"
         normal_termination = "available"
     elif source_artifacts:
@@ -801,12 +830,16 @@ def _build_convergence_evidence(
         normal_termination = "unavailable"
 
     missing_reasons: list[str] = []
-    if "sta" not in artifact_kinds and not job_completed:
+    # The missing-.sta disclosure is NOT gated on job_completed: a COMPLETED job status
+    # (rc==0) is not a substitute for an attached .sta normal-termination artifact.
+    if "sta" not in artifact_kinds:
         missing_reasons.append("CalculiX .sta normal-termination artifact is not attached")
     if "cvg" not in artifact_kinds:
         missing_reasons.append("CalculiX .cvg iteration/convergence history is not attached")
     if not source_artifacts and solver_job_status is None:
-        missing_reasons.append("no solver job status or solver-side convergence artifact is visible")
+        missing_reasons.append(
+            "no solver job status or solver-side convergence artifact is visible"
+        )
     if mesh_convergence_study.get("status") != "available":
         missing_reasons.append("mesh refinement convergence study is not attached")
 
@@ -862,7 +895,7 @@ def _solver_artifact_signals(path: Path) -> list[str]:
 
 
 def _build_solver_logs(
-    solver_job_status: Optional[Mapping[str, Any]],
+    solver_job_status: Mapping[str, Any] | None,
     solver_log_artifacts: list[Path],
 ) -> dict[str, Any]:
     if solver_job_status is not None:
@@ -890,7 +923,7 @@ def _build_solver_logs(
     }
 
 
-def _normal_termination_state(solver_job_status: Optional[Mapping[str, Any]]) -> str:
+def _normal_termination_state(solver_job_status: Mapping[str, Any] | None) -> str:
     if solver_job_status is None:
         return "unavailable"
     status = str(solver_job_status.get("status") or "unknown").upper()
@@ -976,7 +1009,7 @@ def _build_ballistic_evidence(
     }
 
 
-def _read_first_json(paths: list[Path]) -> Optional[Mapping[str, Any]]:
+def _read_first_json(paths: list[Path]) -> Mapping[str, Any] | None:
     if not paths:
         return None
     try:
@@ -987,7 +1020,7 @@ def _read_first_json(paths: list[Path]) -> Optional[Mapping[str, Any]]:
 
 def _ballistic_initial_velocity(
     expected: Mapping[str, Any],
-    metrics_payload: Optional[Mapping[str, Any]],
+    metrics_payload: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     expected_velocity = None
     if isinstance(expected, Mapping):
@@ -1021,8 +1054,8 @@ def _ballistic_initial_velocity(
 
 
 def _ballistic_residual_velocity(
-    metrics_payload: Optional[Mapping[str, Any]],
-    metrics_source: Optional[str],
+    metrics_payload: Mapping[str, Any] | None,
+    metrics_source: str | None,
 ) -> dict[str, Any]:
     if not isinstance(metrics_payload, Mapping):
         return {
@@ -1046,8 +1079,8 @@ def _ballistic_residual_velocity(
 
 
 def _ballistic_perforation_marker(
-    metrics_payload: Optional[Mapping[str, Any]],
-    metrics_source: Optional[str],
+    metrics_payload: Mapping[str, Any] | None,
+    metrics_source: str | None,
 ) -> dict[str, Any]:
     if not isinstance(metrics_payload, Mapping):
         return {
@@ -1073,8 +1106,8 @@ def _ballistic_perforation_marker(
 
 
 def _ballistic_energy_balance(
-    metrics_payload: Optional[Mapping[str, Any]],
-    metrics_source: Optional[str],
+    metrics_payload: Mapping[str, Any] | None,
+    metrics_source: str | None,
 ) -> dict[str, Any]:
     if not isinstance(metrics_payload, Mapping):
         return {
@@ -1088,7 +1121,7 @@ def _ballistic_energy_balance(
             "unavailable_reason": "ballistic_metrics.json does not declare an energy_balance object",
         }
 
-    def _coerce(key: str) -> Optional[float]:
+    def _coerce(key: str) -> float | None:
         value = payload.get(key)
         return float(value) if isinstance(value, (int, float)) else None
 
@@ -1098,9 +1131,11 @@ def _ballistic_energy_balance(
     hourglass = _coerce("hourglass_energy_j")
     residual = _coerce("residual_kinetic_energy_j")
 
-    energy_ratio: Optional[float] = None
+    energy_ratio: float | None = None
     if initial and initial > 0:
-        accounted = sum(value for value in (plastic, contact, hourglass, residual) if value is not None)
+        accounted = sum(
+            value for value in (plastic, contact, hourglass, residual) if value is not None
+        )
         energy_ratio = round(accounted / initial, 6)
 
     return {
@@ -1153,7 +1188,7 @@ def _ballistic_time_step_series(time_step_series_artifacts: list[Path]) -> dict[
             "unavailable_reason": "time_step_series.json is unreadable or not a JSON object",
         }
 
-    def _coerce(key: str) -> Optional[float]:
+    def _coerce(key: str) -> float | None:
         value = payload.get(key)
         return float(value) if isinstance(value, (int, float)) else None
 
@@ -1209,7 +1244,9 @@ def _build_reviewer_summary(
 ) -> dict[str, Any]:
     blockers: list[str] = []
     if expected.get("status") == "insufficient_evidence":
-        blockers.append(str(expected.get("status_reason") or "expected_results status is insufficient_evidence"))
+        blockers.append(
+            str(expected.get("status_reason") or "expected_results status is insufficient_evidence")
+        )
     if validation.get("status") == "FAIL":
         blockers.append("report validation returned FAIL")
     if assumptions["material"]["status"] != "declared":
@@ -1220,7 +1257,10 @@ def _build_reviewer_summary(
         blockers.append("solver logs unavailable")
     if mesh_evidence["quality"]["status"] != "available":
         blockers.append("mesh quality metric evidence unavailable")
-    if "mesh refinement convergence study is not attached" in convergence_evidence["missing_reasons"]:
+    if (
+        "mesh refinement convergence study is not attached"
+        in convergence_evidence["missing_reasons"]
+    ):
         blockers.append("mesh refinement convergence study unavailable")
     if ballistic_evidence["status"] != "candidate_observed":
         blockers.append("ballistic candidate metrics unavailable")

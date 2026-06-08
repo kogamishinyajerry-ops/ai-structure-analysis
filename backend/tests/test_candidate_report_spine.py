@@ -612,3 +612,41 @@ def test_mesh_convergence_study_stability_indicator_when_within_tolerance(tmp_pa
     study = report.candidate_report_spine["mesh_evidence"]["convergence_study"]
     assert study["status"] == "available"
     assert study["candidate_stability"] == "candidate_observed_stable"
+
+
+def test_failure_marker_overrides_job_completed(tmp_path) -> None:
+    """Round-2 audit A2: a COMPLETED job status (ccx rc==0) must NOT report
+    normal_termination='completed' when an attached artifact carries an explicit failure
+    marker. rc==0 is not proof of convergence; the failure signal is dispositive on this
+    Tier-1 honesty surface. (Regresses the old `if job_completed:`-first ordering.)"""
+    log = tmp_path / "solve.dat"
+    log.write_text("increment 7: no convergence; solution seems to diverge\n", encoding="utf-8")
+
+    evidence = spine_module._build_convergence_evidence(
+        {"status": "COMPLETED"},
+        [log],
+        {"status": "unavailable"},
+    )
+
+    assert "failure_marker" in evidence["signals"]
+    assert evidence["normal_termination"] != "completed"
+    assert evidence["status"] != "job_completed"
+
+
+def test_missing_sta_disclosed_even_when_job_completed(tmp_path) -> None:
+    """Round-2 audit A2: the missing-.sta disclosure is NOT suppressed by a COMPLETED job
+    status — a COMPLETED job (rc==0) is not a substitute for an attached .sta
+    normal-termination artifact."""
+    log = tmp_path / "solve.dat"  # a .dat, NOT a .sta
+    log.write_text("normal termination\n", encoding="utf-8")
+
+    evidence = spine_module._build_convergence_evidence(
+        {"status": "COMPLETED"},
+        [log],
+        {"status": "unavailable"},
+    )
+
+    assert any(
+        "CalculiX .sta normal-termination artifact is not attached" in reason
+        for reason in evidence["missing_reasons"]
+    )
