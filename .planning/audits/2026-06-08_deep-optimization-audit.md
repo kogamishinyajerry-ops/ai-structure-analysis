@@ -58,22 +58,57 @@
   exercised in CI — all 12 solver-driving tests use a fake; the one real test is skipif-ccx AND in the
   (now partially-gated) backend/tests/. Once a ccx-equipped CI job runs the graph-solver file, the
   terminal ccx-launch + rc=201 leg gets covered. Bounded: wiring/edges/projection/halt ARE covered.
-- **Rank 7 (P3, wiring):** `aeron/drivers/calculix_backend.py:88` imports `agents.solver._render_inp_deck`
-  — the only agents.* import outside the facade, reaching a PRIVATE helper of the high layer from a low
-  driver; the ADR-015 test scans only `backend/app/workbench/`, so it is silently un-guarded. Either
-  move `_render_inp_deck` to a shared lower module, or sanction it as a carve-out in ADR-015. Layering
-  hygiene, no behavioral bug.
-- **Rank 9 (P3, test_gap):** `_check_convergence` (tools/calculix_driver.py:164) asserts convergence by
-  ABSENCE of failure substrings + .sta existence — a clean/empty .sta returns `converged=True`. Narrow
-  exposure (named tier_1/2 benchmarks re-parse the .frd numerically). The proper fix (require a positive
-  ccx completion marker) is a non-surgical solver-truth behavior change → its own slice + Codex + real-ccx
-  verification. NOT a quick-win.
-- **Rank 12 (P3, roadmap):** no test exercises both graph flags on together; Open-Q2 unresolved. Add one
-  composite test (both flags on, NACA dummy) before P5.
+- **Rank 7 (P3, wiring) — DONE** (`bd02b1d`, HF1.1 override, Codex R0 APPROVE): MOVED `_render_inp_deck`
+  (a pure jinja2 deck-renderer, zero agent-layer deps) VERBATIM to a new low-layer `tools/inp_writer.py`
+  as public `render_inp_deck`; `agents/solver.py` re-exports it under the old name (keeps the live path +
+  the `agents.solver._render_inp_deck` mock target); `aeron` fallback now imports DOWNWARD from
+  `tools.inp_writer`; and a new `test_low_layers_do_not_import_agents` AST guard scans aeron/ + tools/ for
+  agents.* imports so the inversion can't return. Behavior-preserving (deck byte-output unchanged).
+- **Rank 9 (P3, test_gap) — INVESTIGATED → owner decision.** Confirmed empirically: a clean/empty/
+  header-only `.sta` returns `converged=True` (false-positive green). The investigator found the safe
+  positive marker (the ccx `.sta` increment-completion data row — present in all 3 sealed *STATIC samples
+  GS-002/GS-003/cantilever, absent in the header-only failure case) and a low-risk fix (require the
+  data-row regex AND no failure substring; correct 2 fake-format fixtures; add the header-only/empty/
+  garbage regression test). **Recommended surface-to-user** because it is a solver-truth-path BEHAVIOR
+  change (mandatory Codex trigger) with a residual false-negative risk on non-`*STATIC` `.sta` shapes
+  (modal/eigenvalue `.sta` formats were NOT in the 3-sample evidence base). Smallest-correct fix is known;
+  awaiting go-ahead.
+- **Rank 12 (P3, roadmap) — DONE** (`b26d60a`): NEW `backend/tests/test_graph_both_flags_wiring.py` (4
+  tests, all values empirically ground-truthed) pins the both-flags-on composite (WARNING geometry+mesh
+  crossings + FAILED solver halt + downstream PENDING + net-coverage off=6→on=7 + caseId handoff across
+  all 4 crossings). Added to the required honesty-seam CI gate (now 6 files / 69 tests).
 - **Rank 13 (P3, doc_drift) — SKIPPED:** ADR-028:48 cites `mock_pipeline.py:76-270` / "27 strings"
   (now STAGE_SPECS@101 + LE10_STAGE_SPECS@221, grep=26). Historical **Context** section (dated
   2026-06-04); rewriting a decision record's line-ref for near-zero value adds churn. Left as a dated
   record. Optionally add an "as-of authoring" qualifier later.
+
+## NEW finding — the 11 pre-existing backend/tests failures root-caused (investigation `wz91qugqf`)
+
+Doubly-shielded from CI (root `testpaths=["tests"]` excludes backend/tests entirely; `backend/pytest.ini`
+deselects 4 `@pytest.mark.legacy`). NOT uniform test-rot — 4 distinct causes:
+
+- **Cluster 1a — REAL PRODUCTION BUG (surface-to-user):** `backend/app/api/nl.py:14` declares
+  `APIRouter(prefix="/api/v1")` and `main.py:84` mounts it AGAIN with `prefix="/api/v1"` → the NL
+  endpoints live at the doubled `/api/v1/api/v1/parse-nl|supported-intents|...`. Every other router uses a
+  relative prefix; nl.py is the only double. `frontend/src/components/ChatPanel.tsx:81` calls the correct
+  `/api/v1/parse-nl` and is **silently broken**. Already independently acknowledged in
+  `tests/test_phase14_*.py:114-117` (which works around the buggy doubled path). **Fix = drop the
+  self-prefix in nl.py:14**, BUT it reshapes a public route AND requires updating that in-CI phase14 test
+  (it hard-codes the buggy path) — so safe-refactor + owner sign-off, not a quiet edit.
+- **Cluster 1b — STALE TEST:** the 3 `TestResultAPI` tests hit `/api/v1/supported-formats` /
+  `/parse-result`, endpoints DELETED by RFC-001 §6.1 Bucket C (`main.py:83`). Already `@pytest.mark.legacy`.
+  Cheap honest deletion.
+- **Cluster 2 — ENV:** `test_parsers.py` NL-intent tests get a 401 from an invalid `OPENAI_API_KEY` in the
+  env (the in-body skip guards only check for a MISSING key). No code bug; the parser degrades correctly.
+- **Cluster 3 — ENV/DEP (legacy):** `test_knowledge_base_linkage` — chromadb references `np.float_`
+  (removed in NumPy 2.0; env has numpy 2.4.4) → KB import fails. A requirements-pin decision over a frozen
+  Sprint-2 module; do NOT blind-pin numpy<2 (the FEA code uses numpy 2.x).
+- **Cluster 4 — STALE TEST:** `test_solver_run_router` asserts `status=="PENDING"` but the route returns
+  `"RUNNING"` (solver.py:143; the sibling `test_solver_status_router` agrees). One-line test update.
+
+Net: 1 real bug to surface (1a) + 2 trivial test cleanups (1b delete, 4 one-line) + 2 env/dep items.
+Bundled as **surface-to-user** because the headline (1a) reshapes a public API path + ripples to a
+CI-tracked test + the frontend.
 
 ## Note on workflow execution
 
