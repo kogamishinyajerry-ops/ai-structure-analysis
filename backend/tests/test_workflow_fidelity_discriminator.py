@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.workflow.mock_pipeline import MockWorkflowStore
-from schemas.workflow_state import StageMetrics, StageProvenance, WorkflowStage
+from schemas.workflow_state import StageMetrics, StageProvenance, StageStatus, WorkflowStage
 
 from agents.state_projection import StageFidelityTier, fidelity_metrics
 
@@ -161,6 +161,9 @@ def test_naca_request_crosses_to_real_geometry_node_as_tier_0_dummy(monkeypatch)
     run = MockWorkflowStore().run_sync(user_request="分析这个机翼 NACA0012 的结构强度")
     geom = next(s for s in run.stages if s.stage is WorkflowStage.GEOMETRY_VALIDATION)
     assert geom.provenance is StageProvenance.DETERMINISTIC_AGENT
+    # Rank-3 honesty pin: a tier_0_dummy ran-clean crossing is WARNING (passing-with-caveats),
+    # never a green SUCCESS — the badge must not visually imply a real (tier_1+) validation.
+    assert geom.status is StageStatus.WARNING
     m = geom.metrics.model_dump(by_alias=True, exclude_none=True)
     assert m["fidelityTier"] == "tier_0_dummy"  # the net-new fact: real node ran, dummy data
     # anti-vacuous-pass: NO measurement / valid key is surfaced as a result

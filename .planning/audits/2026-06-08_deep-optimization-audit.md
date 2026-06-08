@@ -24,18 +24,21 @@
 - **Rank 10 (P3, test_gap) — DONE** (`3776b87`): `test_graph_solver_wiring.py:329` `<=` → `==` to pin
   the documented net-ZERO coverage invariant.
 
-## Surfaced as a DECISION (not auto-changed)
+## Owner decision → ADOPTED + DONE
 
-- **Rank 3 (P2, honesty) — needs owner call.** `geometry_dummy_exec_to_stage_state` defaults
-  `status=SUCCESS` (state_projection.py:1007→1112) on the default-flag-off dummy path, while its own
-  docstring admits `check_geometry valid=True` is "a sidecar tautology — NOT a measured solid" — a
-  green badge visually indistinguishable from a real pass, whereas the solver crossing is hard-FAILED.
-  `StageStatus.WARNING` ("passing-with-caveats") EXISTS (workflow_state.py:73) and would be more
-  honest. **NOT auto-changed** because: (a) it alters default-path product UX (green→yellow), (b)
-  M-blast-radius — every test asserting SUCCESS on geometry/mesh dummy stages + frontend rendering,
-  (c) it is a defensible product-semantics judgment (the honesty IS already carried by tier_0_dummy +
-  disclosure + suppressed measurement keys; SUCCESS = "the node ran without error"). Apply to both
-  geometry + mesh tier_0_dummy stages if adopted. **Effort M.**
+- **Rank 3 (P2, honesty) — DONE** (owner chose "adopt"): the three tier_0_dummy "ran-clean"
+  projectors (`geometry_dummy_exec_to_stage_state` [default path], `graph_geometry_to_stage_state`,
+  `graph_mesh_to_stage_state`) now project `StageStatus.WARNING` ("passing-with-caveats") instead of
+  green `SUCCESS`, via a new documented helper `_tier0_dummy_status()` (terminal SUCCESS→WARNING; any
+  other status passes through). The real-geometry PLANNER path stays SUCCESS; the solver crossing
+  stays hard-FAILED (it actually errors). **Blast-radius was an OVERESTIMATE** — the safe-refactor
+  enumeration found NO test asserts these projectors' status (the honesty-seam tests assert
+  provenance/tier/disclosure/N13, not the badge); the only SUCCESS asserts were intake + a bracket
+  provenance test, both unaffected. Frontend already renders `warning` (mock_pipeline emits it for the
+  demo `_WARNING_STAGES`), so no frontend change. Full backend suite identical to baseline (11 fail /
+  1378 pass — the 11 are the pre-existing out-of-scope failures), root tests/ 2704 pass, +3 regression
+  pins added. Codex gpt-5.5 diff-only R0 APPROVE (no findings). The honesty nuance still ALSO rides
+  tier_0_dummy + disclosure + suppressed measurement keys; this makes the badge consistent with them.
 
 ## Deferred (real but non-surgical / lower value)
 

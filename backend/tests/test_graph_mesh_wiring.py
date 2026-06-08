@@ -30,7 +30,7 @@ import agents.architect as architect_mod
 import agents.graph_runner as gr
 from agents.graph_runner import run_mesh_via_graph
 from schemas.sim_plan import GeometrySpec, SimPlan
-from schemas.workflow_state import StageProvenance, WorkflowStage
+from schemas.workflow_state import StageProvenance, StageStatus, WorkflowStage
 
 _NACA = "分析这个机翼 NACA0012 的结构强度"
 _BRACKET = "对支架做静力分析，关注应力与位移"
@@ -103,6 +103,7 @@ def test_keyless_mesh_is_tier0_dummy_with_guard(monkeypatch) -> None:
     m = st.metrics.model_dump(by_alias=True, exclude_none=True)
 
     assert st.provenance is StageProvenance.DETERMINISTIC_AGENT  # NOT a provenance flip
+    assert st.status is StageStatus.WARNING  # Rank-3: tier_0_dummy crossing warns, never green
     assert m["graphNodeRan"] is True
     assert m["graphRunner"] == "langgraph-architect-geometry-mesh"
     assert m["planAuthoredBy"] == "deterministic_seed"

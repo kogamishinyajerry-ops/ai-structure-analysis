@@ -984,6 +984,23 @@ def fidelity_metrics(*, tool_ran: bool, data_real: bool, disclosure: str) -> dic
     }
 
 
+def _tier0_dummy_status(status: StageStatus) -> StageStatus:
+    """Map a tier_0_dummy stage's TERMINAL status to the honest badge (Rank-3 honesty fix).
+
+    A tier_0_dummy crossing that ran WITHOUT erroring is *passing-with-caveats*, NOT a clean pass:
+    the node executed but on dummy-fidelity inputs and any "valid"/quality check is a tautology, not
+    a measurement. Projecting a green ``SUCCESS`` makes the badge visually indistinguishable from a
+    real (tier_1+) validation — the honesty contract's "never let tier_0 evidence imply higher".
+    So a terminal ``SUCCESS`` becomes :data:`StageStatus.WARNING` ("passing-with-caveats"; a
+    first-class status already emitted for the demo ``_WARNING_STAGES``). Any non-SUCCESS terminal
+    status (e.g. an upstream-driven FAILED, or the solver crossing's hard FAILED — which does not go
+    through here) is respected unchanged. The honesty nuance still also rides the disclosure +
+    ``tier_0_dummy`` tier + suppressed measurement keys; this only makes the BADGE consistent with
+    them. (The solver crossing stays hard-FAILED — it actually errors — and never calls this.)
+    """
+    return StageStatus.WARNING if status is StageStatus.SUCCESS else status
+
+
 # --- Real geometry-node dummy crossing (ADR-028 P-geomrun) --------------------
 # The FIRST time a real tool-bound agent node executes in the live pipeline: for a
 # NACA/wing request, CALL the real agents.geometry.run under execution_mode=dummy.
@@ -1109,7 +1126,9 @@ def geometry_dummy_exec_to_stage_state(
     return StageState(
         run_id=run_id,
         stage=WorkflowStage.GEOMETRY_VALIDATION,
-        status=status,
+        # tier_0_dummy "ran-clean" crossing → WARNING, never green SUCCESS (Rank-3 honesty fix):
+        # the node executed but the geometry was never validated (dummy STEP + tautological check).
+        status=_tier0_dummy_status(status),
         progress=progress,
         current_object=_GEOMETRY_PLAN_CURRENT_OBJECT,
         description=f"几何节点 dummy 执行（{family}）",
@@ -1295,7 +1314,8 @@ def graph_geometry_to_stage_state(
     return StageState(
         run_id=run_id,
         stage=WorkflowStage.GEOMETRY_VALIDATION,
-        status=status,
+        # tier_0_dummy graph crossing → WARNING, never green SUCCESS (Rank-3 honesty fix).
+        status=_tier0_dummy_status(status),
         progress=progress,
         current_object=_GEOMETRY_PLAN_CURRENT_OBJECT,
         description=f"几何节点 dummy 执行（{family}，2-node 图驱动）",
@@ -1399,7 +1419,9 @@ def graph_mesh_to_stage_state(
     return StageState(
         run_id=run_id,
         stage=WorkflowStage.MESH_GENERATION,
-        status=status,
+        # tier_0_dummy graph crossing → WARNING, never green SUCCESS (Rank-3 honesty fix):
+        # check_mesh_quality ran on the hardcoded fallback mesh — a dummy-fidelity input.
+        status=_tier0_dummy_status(status),
         progress=progress,
         current_object=_MESH_CURRENT_OBJECT,
         description=f"网格节点 dummy 执行（{family}，3-node 图驱动）",
