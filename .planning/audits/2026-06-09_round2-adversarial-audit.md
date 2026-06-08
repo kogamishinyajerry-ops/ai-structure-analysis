@@ -146,23 +146,49 @@ live code; the workflow is a funnel, not the final word).
 - **A3 — RESOLVED by A1** (downstream): once solver.py no longer marks non-converged solves COMPLETED,
   the sensitivity sweep's `== "COMPLETED"` rollup inherits the honest status. No separate change.
 
-### SURFACE for owner steer (next tranche)
-- **Tranche C (security, constitutional 命中即审):** C1/C2/C4 are clear governance-aligned fixes
-  (mirror the verified codebase-wide `_CASE_ID_RE` + `assert_not_signed_registry` invariant; ~16
-  sibling routes have it, `solver.py`/`cases.py` are the exceptions). **C2 will flip
-  `test_solver_run_router` (currently posts `GS-001` expecting 200) to 422 — that test gets updated as
-  part of the fix.** **C3 (no auth + CORS `*`) needs a threat-model decision:** is the backend
-  localhost-only (Electron) or network-deployed? Drives P2-vs-dev-posture and whether to add an auth
-  dependency. → Codex-gated when executed.
-- **Tranche D (frd_parser, CONFIRMED-LATENT):** D1/D2/D3 are real contract bugs whose only consumers
-  (reviewer/viz) are the runtime-orphaned 7-node graph. Fix now (correctness hygiene) or defer until
-  the graph is wired (ADR-028/029)? → owner call. Solver-truth-adjacent → Codex when executed.
-- **Tranche E (graph-intake, flag-gated `workflow_graph_intake` default-off):** E1 (tier_0_dummy mesh
-  doesn't halt → downstream scripted green fabrication) is a genuine honesty-seam gap; E2 (per-tick
-  graph re-exec on the event loop) is correctness/perf. Fix proactively or wait until the flag ships? → owner call.
-- **F1 (chat history re-offers actions, live):** `/parse-nl` persists unexecuted actions; reload
-  re-offers a confirm button that re-launches a solve. UX/correctness; needs a small schema add
-  (`executed` flag) → owner call on scope.
+### DONE this session (tranches C + D1; owner picked C/D/E, localhost threat model)
+- **C1/C2/C4 — DONE** (`10923ea`, Codex R0 CHANGES_REQUIRED → R1 APPROVE; paths NOT in HF1 zone):
+  solver-run gets a top-of-route `_CASE_ID_RE` (400) + `assert_not_signed_registry` (422) covering ALL
+  branches; a client `inp_path` is refused if its lexical OR resolved parts contain a GS-NNN segment
+  (Codex R0 P1: the resolve()-only check missed a lexical-GS-NNN symlink — fixed to check both);
+  cases.py gets the `_CASE_ID_RE` syntax check only (documented signed-registry opt-out, serves GS-NNN).
+  `test_solver_run_router` corrected (non-signed id + real RUNNING return) + 3 guard tests. **C3
+  (auth/CORS) DEFERRED** — owner confirmed localhost-only (Electron); no-auth + CORS `*` is accepted
+  dev posture, not a live threat. Re-open if the backend is ever network-deployed.
+- **D1 — DONE** (`220d7f3`, Codex R0 APPROVE; not in HF1 zone): `_field_name_from_header` now inspects
+  the `-4` label (component_names) as well as the header, so a real ccx `.frd` keys `displacement`
+  (was `disp` → every `extract_field_extremes(.., "displacement")` returned None). Verified on GS-002;
+  +1 real-format regression; 8 synthetic + 34 consumer tests pass. Still latent (reviewer/viz consumers
+  orphaned) but fixed while cheap — bites the moment the graph is wired.
+
+### REMAINING — deferred / needs design
+- **D2 — DEFER (latent dead code):** component names read from the `-4` field-label line, not the `-5`
+  component lines. von Mises still works via the `component_count>=6` fallback; only future
+  component-label consumers (VTP annotations) are affected. Fix when those land.
+- **D3 — DEFER (defense-in-depth, orphaned):** `agents/reviewer.py` returns ACCEPT_WITH_NOTE when ALL
+  reference fields are missing (zero comparisons → max_error 0.0 → passing tier). With D1 fixed the
+  primary mislabel cause is gone; this is the residual all-fields-missing guard. In the orphaned
+  reviewer → fix alongside D2 when the graph is wired.
+- **Tranche E — NEEDS DESIGN DECISION (not a surgical fix):** ground-truthing E1 shows it is a
+  **halt-placement design choice**, not a quick fix, and it entangles the ADR-029 honesty seam:
+  - **E1** (`mock_pipeline.py`): with `workflow_graph_intake` ON + `workflow_graph_solver` OFF, a
+    tier_0_dummy MESH_GENERATION (WARNING over a 4-node fallback) does NOT halt → MESH_QUALITY_CHECK +
+    SOLVER_RUN run over SCRIPTED specs → a green quality check (11260 elements) + green solve one stage
+    after an honest "dummy mesh" WARNING. Real honesty gap. **BUT** making a tier_0_dummy mesh halt
+    changes the both-flags composite that `test_graph_both_flags_wiring` (Rank 12, `b26d60a`) pins as
+    "WARNING mesh → FAILED **solver** halt" — i.e. today the SOLVER halts, not the mesh. Options: (a)
+    halt at the dummy mesh always (most honest; mesh-halt replaces solver-halt when both-on → update the
+    Rank-12 test + reconsider N/13 coverage semantics); (b) halt at the dummy mesh ONLY when
+    graph_solver is OFF (preserves both-flags solver-halt); (c) keep proceeding but project the scripted
+    downstream stages as tier_0_dummy WARNING too (no green fabrication, no halt). **Owner call** —
+    each has different N/13-coverage + both-flags-test implications. Flag is default-OFF (not live-biting).
+  - **E2** (`mock_pipeline.py`): per-tick `_build_stage_state` rebuilds + `.invoke()`s the graph for
+    GEOMETRY/MESH ~4×/stage synchronously on the FastAPI event loop (no `to_thread`) → blocks concurrent
+    runs. Structural async refactor (mirror the solver's once-per-run + `asyncio.to_thread` discipline);
+    real but flag-gated. → bundle with the E1 decision.
+- **F1 (chat history re-offers actions, live) — NOT this round** (owner did not select F1):
+  `/parse-nl` persists unexecuted actions; reload re-offers a confirm button that re-launches a solve.
+  Needs a small `executed`-flag schema add. Available next.
 
 **Protocol held:** each fix ground-truthed in the main session before edit; solver-truth/security/schema
-→ Codex R0 before local commit; local-commit/no-push.
+→ Codex R0 before local commit (round cap respected: C went R0→R1); local-commit/no-push.
