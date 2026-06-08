@@ -180,8 +180,16 @@ live code; the workflow is a funnel, not the final word).
     halt at the dummy mesh always (most honest; mesh-halt replaces solver-halt when both-on → update the
     Rank-12 test + reconsider N/13 coverage semantics); (b) halt at the dummy mesh ONLY when
     graph_solver is OFF (preserves both-flags solver-halt); (c) keep proceeding but project the scripted
-    downstream stages as tier_0_dummy WARNING too (no green fabrication, no halt). **Owner call** —
-    each has different N/13-coverage + both-flags-test implications. Flag is default-OFF (not live-biting).
+    downstream stages as tier_0_dummy WARNING too (no green fabrication, no halt). Flag is default-OFF
+    (not live-biting). **→ OWNER DECISION (2026-06-09): option (a) — a tier_0_dummy mesh ALWAYS halts**
+    (most honest: stop at the first dummy stage, downstream PENDING, regardless of the solver flag).
+    Implementation DEFERRED (owner wrapped up round-2). When picked up: (1) in BOTH drivers (`_advance`
+    async + `run_sync`), after building the MESH_GENERATION stage, if its metrics carry
+    `fidelityTier == tier_0_dummy` → break (downstream PENDING); (2) UPDATE `test_graph_both_flags_wiring`
+    (Rank 12, `b26d60a`) — both-flags-on now halts at MESH, not SOLVER (the solver crossing no longer
+    runs in the dummy regime); (3) re-state the N/13 note (net coverage drops by the solver stage — honest,
+    not a regression: a dummy mesh genuinely cannot feed a real solve); (4) Codex-gate the honesty-seam
+    change. E2 (per-tick graph re-exec → once-per-stage + `asyncio.to_thread`) bundles here.
   - **E2** (`mock_pipeline.py`): per-tick `_build_stage_state` rebuilds + `.invoke()`s the graph for
     GEOMETRY/MESH ~4×/stage synchronously on the FastAPI event loop (no `to_thread`) → blocks concurrent
     runs. Structural async refactor (mirror the solver's once-per-run + `asyncio.to_thread` discipline);
