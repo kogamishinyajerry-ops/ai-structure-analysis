@@ -261,3 +261,56 @@ jobs:
       - name: Real rotating-disk e2e — live ccx solve + benchmark + drift pin
         working-directory: backend
         run: pytest tests/test_workflow_real_rotating_disk.py -v --tb=short
+
+  # --- Rank 6 (audit 2026-06-08): live coverage of the ADR-029 P3 solver leg --
+  # The P3 headline — the 4-node graph launching a REAL ccx subprocess — was
+  # never exercised in CI. All graph-solver tests inject a fake rc=201; the ONE
+  # genuine-subprocess test
+  # (test_graph_solver_wiring.py::test_real_ccx_subprocess_faults_and_projects_failed)
+  # is skipif-ccx AND lives in backend/tests/ (never CI-run; no runner had ccx),
+  # so the terminal ccx-launch + rc=201 deck-parse → SOLVER_ERROR leg (the OR-1
+  # corrected classification, c6ecb3e) had ZERO live coverage. This job installs
+  # real ccx and runs that one test. The dummy-fallback mesh (no Nall/Nfix/Eall)
+  # makes ccx fault by construction, so the assertion (FAILED + tier_0_dummy +
+  # solverAttempted, no measurement keys) is host-independent EXCEPT for the
+  # genuine subprocess launch — which is exactly the leg being covered. Tier 1
+  # (real solver, fault-path wiring), NOT signed validation.
+  # NOT a branch-protection required check — promoting it touches ADR-013.
+  real-graph-solver-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install CalculiX (ccx)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends calculix-ccx
+
+      - name: Preflight — the real path MUST be runnable (no skip-green)
+        # The target test's ONLY skip condition is `shutil.which("ccx") is None`,
+        # so a hard `which ccx` here forecloses the only silent-skip path: if ccx
+        # is on PATH the skipif is False and the test MUST run.
+        run: |
+          which ccx
+          ccx -v || true
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,agents]"
+
+      - name: Real graph-solver e2e — live ccx subprocess fault + FAILED projection
+        working-directory: backend
+        # Belt-and-suspenders over the preflight: assert pytest recorded a real
+        # PASS, never a silent "1 skipped" green (grep fails the step on a skip,
+        # since a skipped summary line carries no "passed").
+        run: |
+          pytest "tests/test_graph_solver_wiring.py::test_real_ccx_subprocess_faults_and_projects_failed" \
+            -v --tb=short -ra | tee /tmp/graph_solver_e2e.log
+          grep -qE "[0-9]+ passed" /tmp/graph_solver_e2e.log
