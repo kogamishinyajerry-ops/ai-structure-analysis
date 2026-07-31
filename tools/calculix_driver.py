@@ -15,7 +15,12 @@ from schemas.sim_state import FaultClass
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 600
-REQUIRED_CCX_VERSION = (2, 21)
+# ADR-002 specifies CalculiX 2.21 as the target. Debian bookworm main
+# ships calculix-ccx 2.20 (see Dockerfile comment + P1-01 PR #10).
+# Per ADR-008 N-3 we pin the floor at the Debian-shipped 2.20 and record
+# the actual version in manifest.yaml.tool_versions. Upgrading the shipped
+# binary to 2.21 via source-build is a follow-up task, not a P1-01/02 gate.
+REQUIRED_CCX_VERSION = (2, 20)
 VERSION_FLAGS = ("-v", "-version", "--version")
 
 SYNTAX_PATTERNS = (

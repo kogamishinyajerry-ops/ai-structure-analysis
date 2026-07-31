@@ -40,12 +40,19 @@ class TestVersionGate:
             assert _ensure_supported_ccx_version("/usr/bin/ccx") == "2.21"
 
     def test_rejects_unsupported_version(self):
-        mock_result = MagicMock(stdout="CalculiX version 2.20", stderr="")
+        # Anything below the floor (currently 2.20 per ADR-008 N-3) must raise.
+        mock_result = MagicMock(stdout="CalculiX version 2.19", stderr="")
         with (
             patch("tools.calculix_driver.subprocess.run", return_value=mock_result),
             pytest.raises(RuntimeError, match="unsupported"),
         ):
             _ensure_supported_ccx_version("/usr/bin/ccx")
+
+    def test_accepts_debian_shipped_2_20(self):
+        # ADR-008 N-3: P1-01 baseline ships 2.20 from Debian bookworm.
+        mock_result = MagicMock(stdout="CalculiX version 2.20", stderr="")
+        with patch("tools.calculix_driver.subprocess.run", return_value=mock_result):
+            assert _ensure_supported_ccx_version("/usr/bin/ccx") == "2.20"
 
 
 class TestFailureClassification:
