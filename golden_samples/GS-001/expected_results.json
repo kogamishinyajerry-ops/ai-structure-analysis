@@ -275,5 +275,68 @@
       "expected_results.json v2.0: Wrong theory calculation (unit error)",
       "expected_results.json v3.0: Corrected theory values, documented FEA model issues"
     ]
+  },
+  "validation_refs_v2": {
+    "schema_version": "v2-P1-03",
+    "reference_frame": "CalculiX 2.20, mm/N/MPa units, C3D8I element (post P1-03 fix)",
+    "default_tolerance_pct": 5.0,
+    "deck_notes": [
+      "Canonical deck is golden_samples/GS-001/gs001.inp (C3D8I).",
+      "Legacy shear-locked C3D8 deck preserved as gs001_c3d8_shearlock.inp",
+      "for P1-05 fault-injection basis and regression diagnosis."
+    ],
+    "metrics": [
+      {
+        "id": "free_end_deflection_uy",
+        "source": "disp",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          11,
+          22,
+          33,
+          44
+        ],
+        "component": "UY",
+        "reference": 0.7619,
+        "unit": "mm",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: delta_max = P*L^3/(3*E*I) with P=400N, L=100mm, E=210GPa, I=833.33mm^4"
+      },
+      {
+        "id": "fixed_end_sxx_top_fibre",
+        "source": "stress",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          12,
+          34
+        ],
+        "component": "SXX",
+        "reference": 240.0,
+        "unit": "MPa",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (tension on top fibre)"
+      },
+      {
+        "id": "fixed_end_sxx_bottom_fibre",
+        "source": "stress",
+        "reduction": "avg_magnitude_at_nodes",
+        "nodes": [
+          1,
+          23
+        ],
+        "component": "SXX",
+        "reference": 240.0,
+        "unit": "MPa",
+        "tolerance_pct": 5.0,
+        "reference_theory": "Euler-Bernoulli: sigma_max = P*L*(h/2)/I = 240 MPa (compression on bottom fibre, validator uses |SXX|)"
+      }
+    ],
+    "legacy_c3d8_observed_baseline": {
+      "note": "For regression: running the legacy gs001_c3d8_shearlock.inp through this validator must FAIL — it is the shear-lock diagnostic baseline.",
+      "expected_failures": {
+        "free_end_deflection_uy_pct": -35.22,
+        "fixed_end_sxx_bottom_fibre_pct": -20.8
+      }
+    }
   }
 }
